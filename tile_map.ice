@@ -16,26 +16,24 @@ algorithm tilemap(
 ) <autorun> {
     // Character position on the screen x 0-41, y 0-31 * 42 ( fetch it two pixels ahead of the actual x pixel, so it is always ready, colours 1 pixel ahead )
     // Adjust for the offsets, effective 0 point margin is ( 1,1 ) to ( 40,30 ) with a 1 tile border
-    uint6   xtmpos <: ( {{6{tm_offset_x[4,1]}}, tm_offset_x} + ( pix_active ? ( pix_x + 11d18 ) : 11d16 ) ) >> 4;
-    uint6   xtmposactions <: ( {{6{tm_offset_x[4,1]}}, tm_offset_x} + ( pix_active ? ( pix_x + 11d17 ) : 11d16 ) ) >> 4;
-    uint11  ytmpos <: ( {{6{tm_offset_y[4,1]}}, tm_offset_y} + ( pix_vblank ? 11d16 : 11d16 + pix_y ) ) >> 4;
+    uint6   xtmpos <: ( {{6{tm_offset_x[4,1]}}, tm_offset_x} + ( pix_active ? ( pix_x + 11d17 ) : 11d16 ) ) >> 4;
+    uint11  ytmpos <: ( {{6{tm_offset_y[4,1]}}, tm_offset_y } + ( pix_vblank ? 11d16 : 11d16 + pix_y ) ) >> 4;
 
     // Derive the x and y coordinate within the current 16x16 tilemap block x 0-15, y 0-15, adjusted for offsets
     uint4   xintm <: { 1b0, pix_x[0,4] } + tm_offset_x;                                                 uint4   revx <: ~xintm;
     uint4   yintm <: { 1b0, pix_y[0,4] } + tm_offset_y;                                                 uint4   revy <: ~yintm;
 
+    // Apply rotation/reflection
     uint1   action00 <:: ( ~|actions.rdata0[0,2] ); uint1   action01 <:: ( actions.rdata0[0,2] == 2b01 );
     uint1   action10 <:: ( actions.rdata0[0,2] == 2b10 );
+    uint4   xpixel <: actions.rdata0[2,1] ? action00 ? xintm : action01 ? yintm : action10 ? revx : revy : actions.rdata0[0,1] ? revx : xintm;
+    uint4   ypixel <: actions.rdata0[2,1] ? action00 ? yintm : action01 ? revx : action10 ? revy : xintm : actions.rdata0[1,1] ? revy : yintm;
 
     // Set up reading of the tilemap
-    tiles.addr0 := xtmpos + ytmpos * 42; actions.addr0 := xtmposactions + ytmpos * 42;
+    tiles.addr0 := xtmpos + ytmpos * 42; actions.addr0 := xtmpos + ytmpos * 42;
 
     // Setup the reading and writing of the tiles16x16 using rotation/reflection
-    tiles16x16.addr0 := { tiles.rdata0,
-                            actions.rdata0[2,1] ? action00 ? yintm : action01 ? revx : action10 ? revy : xintm :
-                                actions.rdata0[1,1] ? revy : yintm,
-                            actions.rdata0[2,1] ? action00 ? xintm : action01 ? yintm : action10 ? revx : revy :
-                                actions.rdata0[0,1] ? revx : xintm };
+    tiles16x16.addr0 := { tiles.rdata0, ypixel, xpixel };
 
     tilemap_display := pix_active & ~colour7( tiles16x16.rdata0 ).alpha;
     pixel := tiles16x16.rdata0[0,6];
