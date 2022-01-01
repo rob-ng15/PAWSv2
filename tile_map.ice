@@ -1,7 +1,6 @@
 algorithm tilemap(
     simple_dualport_bram_port0 tiles16x16,
     simple_dualport_bram_port0 tiles,
-    simple_dualport_bram_port0 actions,
 
     input   uint10  pix_x,
     input   uint10  pix_y,
@@ -14,29 +13,32 @@ algorithm tilemap(
     input   int5    tm_offset_x,
     input   int5    tm_offset_y
 ) <autorun> {
-    // Character position on the screen x 0-41, y 0-31 * 42 ( fetch it two pixels ahead of the actual x pixel, so it is always ready, colours 1 pixel ahead )
+    int11   xscreen <: pix_active ? pix_x + 1 : 0;
+    int11   yscreen <: pix_vblank ? 0 : pix_y;
+
+    // Character position on the screen x 0-41, y 0-31 * 42 ( used to fetch the tile number and action for that cell )
     // Adjust for the offsets, effective 0 point margin is ( 1,1 ) to ( 40,30 ) with a 1 tile border
-    uint6   xtmpos <: ( {{6{tm_offset_x[4,1]}}, tm_offset_x} + ( pix_active ? ( pix_x + 11d17 ) : 11d16 ) ) >> 4;
-    uint11  ytmpos <: ( {{6{tm_offset_y[4,1]}}, tm_offset_y } + ( pix_vblank ? 11d16 : 11d16 + pix_y ) ) >> 4;
+    uint6   xtmpos <: ( {{6{tm_offset_x[4,1]}}, tm_offset_x } + xscreen + 11d16 + pix_active ) >> 4;
+    uint6   ytmpos <: ( {{6{tm_offset_y[4,1]}}, tm_offset_y } + ( 11d16 + pix_y ) ) >> 4;
 
     // Derive the x and y coordinate within the current 16x16 tilemap block x 0-15, y 0-15, adjusted for offsets
-    uint4   xintm <: { 1b0, pix_x[0,4] } + tm_offset_x;                                                 uint4   revx <: ~xintm;
-    uint4   yintm <: { 1b0, pix_y[0,4] } + tm_offset_y;                                                 uint4   revy <: ~yintm;
+    uint4   xintm <: { 1b0, xscreen[0,4] } + tm_offset_x;                                               uint4   revx <: ~xintm;
+    uint4   yintm <: { 1b0, yscreen[0,4] } + tm_offset_y;                                               uint4   revy <: ~yintm;
 
     // Apply rotation/reflection
-    uint1   action00 <:: ( ~|actions.rdata0[0,2] ); uint1   action01 <:: ( actions.rdata0[0,2] == 2b01 );
-    uint1   action10 <:: ( actions.rdata0[0,2] == 2b10 );
-    uint4   xpixel <: actions.rdata0[2,1] ? action00 ? xintm : action01 ? yintm : action10 ? revx : revy : actions.rdata0[0,1] ? revx : xintm;
-    uint4   ypixel <: actions.rdata0[2,1] ? action00 ? yintm : action01 ? revx : action10 ? revy : xintm : actions.rdata0[1,1] ? revy : yintm;
+    uint1   action00 <:: ( ~|tmentry( tiles.rdata0 ).action );                                          uint1   action01 <:: ( tmentry( tiles.rdata0 ).action == 2b01 );
+    uint1   action10 <:: ( tmentry( tiles.rdata0 ).action == 2b10 );
+    uint4   xpixel <: tmentry( tiles.rdata0 ).rflag ? action00 ? xintm : action01 ? yintm : action10 ? revx : revy : tiles.rdata0[6,1] ? revx : xintm;
+    uint4   ypixel <: tmentry( tiles.rdata0 ).rflag ? action00 ? yintm : action01 ? revx : action10 ? revy : xintm : tiles.rdata0[7,1] ? revy : yintm;
 
     // Set up reading of the tilemap
-    tiles.addr0 := xtmpos + ytmpos * 42; actions.addr0 := xtmpos + ytmpos * 42;
+    tiles.addr0 := xtmpos + ytmpos * 42;
 
     // Setup the reading and writing of the tiles16x16 using rotation/reflection
-    tiles16x16.addr0 := { tiles.rdata0, ypixel, xpixel };
+    tiles16x16.addr0 := { tmentry( tiles.rdata0 ).tilenumber, ypixel, xpixel };
 
-    tilemap_display := pix_active & ~colour7( tiles16x16.rdata0 ).alpha;
-    pixel := tiles16x16.rdata0[0,6];
+    tilemap_display := pix_active & ~pixel7( tiles16x16.rdata0 ).alpha;
+    pixel := pixel7( tiles16x16.rdata0 ).rgb;
 }
 
 algorithm   calcoffset(
@@ -54,7 +56,6 @@ algorithm   calcoffset(
 
 algorithm tile_map_writer(
     simple_dualport_bram_port1 tiles,
-    simple_dualport_bram_port1 actions,
 
     // Set TM at x, y, character with foreground, background and rotation
     input   uint6   tm_x,
@@ -72,8 +73,7 @@ algorithm tile_map_writer(
     output  uint3   tm_active
 ) <autorun,reginputs> {
     // COPY OF TILEMAP FOR SCROLLING
-    simple_dualport_bram uint6 tiles_copy[1344] = uninitialized;
-    simple_dualport_bram uint3 actions_copy[1344] = uninitialized;
+    simple_dualport_bram uint9 tiles_copy[1344] = uninitialized;
 
     // OFFSET CALCULATIONS
     calcoffset TMOX( offset <: tm_offset_x );       calcoffset TMOY( offset <: tm_offset_y );
@@ -93,21 +93,19 @@ algorithm tile_map_writer(
     uint11  write_address <:: tm_x + tm_y * 42;
 
     // STORAGE FOR SAVED CHARACTER WHEN WRAPPING
-    uint6   new_tile = uninitialized; uint2  new_action = uninitialized;
+    uint9   new_tile = uninitialized;
 
     // CLEARSCROLL address
     uint11  tmcsaddr = uninitialized;               uint11  tmcsNEXT <:: tmcsaddr + 1;
 
     // TILEMAP WRITE FLAGS
-    tiles.wenable1 := 1; tiles_copy.wenable1 := 1; actions.wenable1 := 1; actions_copy.wenable1 := 1;
+    tiles.wenable1 := 1; tiles_copy.wenable1 := 1;
 
     always_after {
         if( tm_write ) {
             // Write character to the tilemap
-            tiles.addr1 = write_address; tiles.wdata1 = tm_character;
-            tiles_copy.addr1 =write_address; tiles_copy.wdata1 = tm_character;
-            actions.addr1 = write_address; actions.wdata1 = tm_actions;
-            actions_copy.addr1 = write_address; actions_copy.wdata1 = tm_actions;
+            tiles.addr1 = write_address; tiles.wdata1 = { tm_actions, tm_character };
+            tiles_copy.addr1 = write_address; tiles_copy.wdata1 = { tm_actions, tm_character };
         }
 
         switch( tm_scrollwrap ) {                                                                                           // ACT AS PER tm_scrollwrap
@@ -133,24 +131,19 @@ algorithm tile_map_writer(
                     while( y_cursor_addr != 1344 ) {                                                                            // REPEAT UNTIL AT BOTTOM OF THE SCREEN
                         x_cursor = tm_dodir ? 0 : 41;                                                                           // SAVE CHARACTER AT START/END OF LINE FOR WRAPPING
                         temp_1 = y_cursor_addr + x_cursor;
-                        tiles_copy.addr0 = temp_1; actions_copy.addr0 = temp_1;
+                        tiles_copy.addr0 = temp_1;
                         ++:
                         new_tile = tm_scroll ? 0 : tiles_copy.rdata0;
-                        new_action = tm_scroll ? 2h0 : actions_copy.rdata0;
                         while( tm_dodir ? ( x_cursor != 42 ) : ( |x_cursor ) ) {                                                // START AT THE LEFT/RIGHT OF THE LINE
                             temp_1 = tm_dodir ? temp_2NEXT1 : temp_2PREV1;                                                      // SAVE THE ADJACENT CHARACTER
-                            tiles_copy.addr0 = temp_1; actions_copy.addr0 = temp_1;
+                            tiles_copy.addr0 = temp_1;
                             ++:
                             tiles.addr1 = temp_2; tiles.wdata1 = tiles_copy.rdata0;                                             // COPY INTO NEW LOCATION
                             tiles_copy.addr1 = temp_2; tiles_copy.wdata1 = tiles_copy.rdata0;
-                            actions.addr1 = temp_2; actions.wdata1 = actions_copy.rdata0;
-                            actions_copy.addr1 = temp_2; actions_copy.wdata1 = actions_copy.rdata0;
                             x_cursor = tm_dodir ? xNEXT : xPREV;                                                                // MOVE TO NEXT CHARACTER ON THE LINE
                         }
                         tiles.addr1 = ySAVED; tiles.wdata1 = new_tile;                                                          // WRITE BLANK OR THE WRAPPED CHARACTER
                         tiles_copy.addr1 = ySAVED; tiles_copy.wdata1 = new_tile;
-                        actions.addr1 = ySAVED; actions.wdata1 = new_action;
-                        actions_copy.addr1 = ySAVED; actions_copy.wdata1 = new_action;
                         y_cursor_addr = yNEXT;
                     }
                     tm_offset_x = 0;
@@ -159,33 +152,27 @@ algorithm tile_map_writer(
                     while( x_cursor != 42 ) {                                                                                   // REPEAT UNTIL AT RIGHT OF THE SCREEN
                         y_cursor_addr = tm_dodir ? 0 : 1302;                                                                    // SAVE CHARACTER AT TOP/BOTTOM OF THE SCREEN FOR WRAPPING
                         temp_1 = x_cursor + y_cursor_addr;
-                        tiles_copy.addr0 = temp_1; actions_copy.addr0 = temp_1;
+                        tiles_copy.addr0 = temp_1;
                         ++:
                         new_tile = tm_scroll ? 0 : tiles_copy.rdata0;
-                        new_action = tm_scroll ? 2h0 : actions_copy.rdata0;
                         while( tm_dodir ? ( y_cursor_addr != 1302 ) : ( |y_cursor_addr ) ) {                                    // START AT TOP/BOTTOM OF THE SCREEN
                             temp_1 = tm_dodir ? temp_2NEXT42 : temp_2PREV42;                                                    // SAVE THE ADJACENT CHARACTER
-                            tiles_copy.addr0 = temp_1; actions_copy.addr0 = temp_1;
+                            tiles_copy.addr0 = temp_1;
                             ++:
                             tiles.addr1 = temp_2; tiles.wdata1 = tiles_copy.rdata0;                                             // COPY TO NEW LOCATION
                             tiles_copy.addr1 = temp_2; tiles_copy.wdata1 = tiles_copy.rdata0;
-                            actions.addr1 = temp_2; actions.wdata1 = actions_copy.rdata0;
-                            actions_copy.addr1 = temp_2; actions_copy.wdata1 = actions_copy.rdata0;
                             y_cursor_addr = tm_dodir ? yNEXT : yPREV;                                                           // MOVE TO THE NEXT CHARACTER IN THE COLUMN
                         }
                         tiles.addr1 = xSAVED; tiles.wdata1 = new_tile;                                                          // WRITE BLANK OR WRAPPED CHARACTER
                         tiles_copy.addr1 = xSAVED; tiles_copy.wdata1 = new_tile;
-                        actions.addr1 = xSAVED; actions.wdata1 = new_action;
-                        actions_copy.addr1 = xSAVED; actions_copy.wdata1 = new_action;
                         x_cursor = xNEXT;
                     }
                     tm_offset_y = 0;
                 }
                 case 2: {                                                                                                   // CLEAR
-                    tiles.wdata1 = 0; tiles_copy.wdata1 = 0; actions.wdata1 = 2h0; actions_copy.wdata1 = 2h0;
+                    tiles.wdata1 = 0; tiles_copy.wdata1 = 0;
                     while( tmcsaddr != 1344 ) {
                         tiles.addr1 = tmcsaddr; tiles_copy.addr1 = tmcsaddr;
-                        actions.addr1 = tmcsaddr; actions_copy.addr1 = tmcsaddr;
                         tmcsaddr = tmcsNEXT;
                     }
                     tm_offset_x = 0;

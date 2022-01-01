@@ -878,14 +878,12 @@ algorithm tilemap_memmap(
         pad(uninitialized)
     };
 
-    // 42 x 32 tile map, allows for pixel scrolling with border { 2 bit reflection, 6 bits tile number }
-    simple_dualport_bram uint6 tiles <@video_clock,@video_clock> [1344] = uninitialized;
-    simple_dualport_bram uint3 actions <@video_clock,@video_clock> [1344] = uninitialized;
+    // 42 x 32 tile map, allows for pixel scrolling with border { 2 bit rotation/reflection, 6 bits tile number }
+    simple_dualport_bram uint9 tiles <@video_clock,@video_clock> [1344] = uninitialized;
 
     tilemap tile_map <@video_clock,!video_reset> (
         tiles16x16 <:> tiles16x16,
         tiles <:> tiles,
-        actions <:> actions,
         pix_x      <: pix_x,
         pix_y      <: pix_y,
         pix_active <: pix_active,
@@ -896,7 +894,7 @@ algorithm tilemap_memmap(
         tilemap_display :> pixel_display
     );
 
-    tile_map_writer TMW <@video_clock,!video_reset> ( tiles <:> tiles, actions <:> actions );
+    tile_map_writer TMW <@video_clock,!video_reset> ( tiles <:> tiles );
     tilebitmapwriter TBMW <@video_clock,!video_reset> ( tiles16x16 <:> tiles16x16 );
 
      // LATCH MEMORYWRITE

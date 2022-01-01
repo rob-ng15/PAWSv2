@@ -5,6 +5,10 @@ bitfield colour7 {
     uint2   green,
     uint2   blue
 }
+bitfield pixel7 {
+    uint1   alpha,
+    uint6   rgb
+}
 
 // 6 bit colour red, green, blue { rrggbb }
 bitfield colour6 {
@@ -19,13 +23,11 @@ bitfield colour13 {
     uint6   foreground,
 }
 
-// USED FOR TILEMAP COLOUR ENTRY TO INCLUDE THE REFLECTION FLAGS
-bitfield colour15 {
-    uint1   y_reflect,
-    uint1   x_reflect,
-    uint1   alpha,
-    uint6   background,
-    uint6   foreground,
+// TILEMAP ENTRY
+bitfield tmentry {
+    uint1   rflag,
+    uint2   action,
+    uint6   tilenumber
 }
 
 // Vertex in the vector block
