@@ -12,7 +12,7 @@ algorithm bitmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint7   pixel,
     output! uint1   bitmap_display,
 
     // Pixel reader
@@ -23,6 +23,9 @@ algorithm bitmap(
     // Pixel x and y fetching 1 in advance due to bram latency
     uint9   x_plus_one <: pix_x[1,9] + pix_x[0,1];                uint8   y_line <: pix_vblank ? 0 : pix_y[1,8];
     uint9   x_pixel <: pix_active ? x_plus_one : 0; uint17  address <: y_line * 320 + x_pixel;
+
+    uint7   colour1 <: { bitmap_1A.rdata0, bitmap_1R.rdata0, bitmap_1G.rdata0, bitmap_1B.rdata0 };
+    uint7   colour0 <: { bitmap_0A.rdata0, bitmap_0R.rdata0, bitmap_0G.rdata0, bitmap_0B.rdata0 };
 
     // Pixel being read?
     bitmap_colour_read := ( pix_x == bitmap_x_read ) & ( pix_y == bitmap_y_read ) ?
@@ -36,8 +39,8 @@ algorithm bitmap(
     bitmap_1A.addr0 := address; bitmap_1R.addr0 := address; bitmap_1G.addr0 := address; bitmap_1B.addr0 := address;
 
     // RENDER - Default to transparent
-    bitmap_display := pix_active & ~( framebuffer ? bitmap_1A.rdata0 : bitmap_0A.rdata0 );
-    pixel := framebuffer ? { bitmap_1R.rdata0, bitmap_1G.rdata0, bitmap_1B.rdata0 } : { bitmap_0R.rdata0, bitmap_0G.rdata0, bitmap_0B.rdata0 };
+    bitmap_display := pix_active & ( framebuffer ? ( colour1 != 64 ) : ( colour0 != 64 ) );
+    pixel := framebuffer ? colour1 : colour0;
 }
 
 algorithm bitmapwriter(

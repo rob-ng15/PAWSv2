@@ -726,7 +726,7 @@ void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, uns
 }
 // COPY A { RRRRRRRR GGGGGGGG BBBBBBBB } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK AS A 64 GREY SCALE
 void gpu_pixelblock24bw( short x, short y, unsigned short w, unsigned short h, unsigned char *buffer  ) {
-    unsigned char *maxbufferpos = buffer + 3 * ( w * h );
+    unsigned char *maxbufferpos = buffer + 3 * ( w * h ), greyscale;
     wait_gpu_finished();
     *GPU_X = x;
     *GPU_Y = y;
@@ -734,7 +734,8 @@ void gpu_pixelblock24bw( short x, short y, unsigned short w, unsigned short h, u
     *GPU_WRITE = 10;
 
     while( buffer < maxbufferpos ) {
-        *PB_COLOUR7 = ( ( *buffer++ + *buffer++ + *buffer++ ) / 3 ) >> 2;
+        greyscale = ( ( *buffer++ + *buffer++ + *buffer++ ) / 3 ) >> 1;
+        *PB_COLOUR7 = ( greyscale == 64 ) ? 65 : greyscale;
     }
     *PB_STOP = 3;
 }

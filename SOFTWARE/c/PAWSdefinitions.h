@@ -50,6 +50,7 @@
 #define COPPER_USE_CPU_INPUT 0x400
 
 // COLOURS
+// COLOURS
 #define TRANSPARENT 0x40
 #define BLACK 0x00
 #define VDKBLUE 0x01
@@ -268,15 +269,15 @@ typedef struct {
 #define COLOR_PAIR(a) a|COLORS
 
 // COLOURS
-#define COLOR_BLACK 0x00
-#define COLOR_BLUE 0x03
-#define COLOR_GREEN 0x0c
-#define COLOR_CYAN 0x0f
-#define COLOR_RED 0x30
-#define COLOR_MAGENTA 0x33
-#define COLOR_YELLOW 0x3c
-#define COLOR_WHITE 0x3f
-#define ORANGE 0x38
+#define COLOR_BLACK BLACK
+#define COLOR_BLUE BLUE
+#define COLOR_GREEN GREEN
+#define COLOR_CYAN CYAN
+#define COLOR_RED RED
+#define COLOR_MAGENTA MAGENTA
+#define COLOR_YELLOW YELLOW
+#define COLOR_WHITE WHITE
+#define COLOR_ORANGE ORANGE
 
 #define COLS 80
 #define LINES 60

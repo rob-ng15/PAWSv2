@@ -822,75 +822,9 @@ char *dithernames[] = {
     "DITHER2COLSTATIC"
 };
 
-char *colournames[] = {
-    "BLACK",
-    "0x01",
-    "DKBLUE",
-    "BLUE",
-    "0x04",
-    "0x05",
-    "0x06",
-    "LTBLUE",
-    "DKGREEN",
-    "0x09",
-    "0x0a",
-    "DKCYAN",
-    "GREEN",
-    "0x0d",
-    "0x0e",
-    "CYAN",
-    "0x10",
-    "DKPURPLE",
-    "0x12",
-    "PURPLE",
-    "0x14",
-    "GREY1",
-    "0x16",
-    "LTPURPLE",
-    "0x18",
-    "0x19",
-    "0x1a",
-    "0x1b",
-    "0x1c",
-    "LTGREEN",
-    "0x1e",
-    "LTCYAN",
-    "DKRED",
-    "0x21",
-    "DKMAGENTA",
-    "0x23",
-    "BROWN",
-    "0x25",
-    "0x26",
-    "0x27",
-    "DKYELLOW",
-    "0x29",
-    "GREY2",
-    "0x2b",
-    "0x2c",
-    "0x2d",
-    "0x2e",
-    "0x2f",
-    "RED",
-    "0x31",
-    "0x32",
-    "MAGENTA",
-    "DKORANGE",
-    "LTRED",
-    "0x36",
-    "LTMAGENTA",
-    "ORANGE",
-    "LTORANGE",
-    "PEACH",
-    "PINK",
-    "YELLOW",
-    "LTYELLOW",
-    "0x3e",
-    "WHITE"
-};
-
 void displayreset( void ) {
     // RESET THE DISPLAY
+    screen_mode( 0, 0 );
     gpu_cs();
     tpu_cs();
     tilemap_scrollwrapclear( LOWER_LAYER, 9 );
@@ -908,14 +842,18 @@ void colourtable( void ) {
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Colour Test" );
 
     uint8 colour = 0;
-    for( uint16 y = 0; y < 8; y++ ) {
+    for( uint16 y = 0; y < 16; y++ ) {
         for( uint16 x = 0; x < 8; x++ ) {
-            gpu_rectangle( colour, x * 40, y * 30, 39 + x * 40, 29 + y * 30 );
-            gpu_printf_centre( 63 - colour, x * 40 + 20, y * 30 + 15, NORMAL, 0, 0, colournames[colour] );
+            gpu_rectangle( colour, x * 40, y * 15, 39 + x * 40, 14 + y * 15 );
             colour++;
         }
     }
-    sleep( 1000, 0 );
+
+    // CYCLE THROUGH COLOUR MODES
+    for( short i = 0; i < 4; i++ ) {
+        screen_mode( 0, i );
+        sleep( 2000, 0 );
+    }
 }
 
 // DISPLAY THE BACKGROUNDS

@@ -922,9 +922,9 @@ algorithm pixelblock(
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
     uint1   update = uninitialised;                 uint1   lineend <:: ( bitmap_x_write == x + width - 1 );
-
+    uint7   grrggbb <:: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };
     bitmap_write := ( ( newpixel == 1 ) & ( colour7 != ignorecolour ) ) | ( newpixel == 2 );
-    bitmap_colour_write := ( newpixel == 1 ) ? colour7 : { 1b0, colour8r[6,2], colour8g[6,2], colour8b[6,2] };
+    bitmap_colour_write := ( newpixel == 1 ) ? colour7 : ( grrggbb == 64 ) ? 80 : grrggbb;
 
     always_after {
         if( start ) {

@@ -5,8 +5,8 @@ bitfield CU{
     uint1   valueflag,
     uint10  value,
     uint4   mode,
-    uint6   colour_alt,
-    uint6   colour
+    uint7   colour_alt,
+    uint7   colour
 }
 
 algorithm background_writer(
@@ -15,32 +15,32 @@ algorithm background_writer(
     input   uint1   pix_active,
     input   uint1   pix_vblank,
 
-    input   uint6   backgroundcolour,
-    input   uint6   backgroundcolour_alt,
+    input   uint7   backgroundcolour,
+    input   uint7   backgroundcolour_alt,
     input   uint4   backgroundcolour_mode,
     input   uint2   background_update,
 
     input   uint1   copper_status,
     input   uint1   copper_program,
-    input   uint6   copper_address,
+    input   uint7   copper_address,
     input   uint3   copper_command,
     input   uint3   copper_condition,
     input   uint11  copper_coordinate,
     input   uint10  copper_cpu_input,
     input   uint4   copper_mode,
-    input   uint6   copper_alt,
-    input   uint6   copper_colour,
+    input   uint7   copper_alt,
+    input   uint7   copper_colour,
 
-    output  uint6   BACKGROUNDcolour,
-    output  uint6   BACKGROUNDalt,
+    output  uint7   BACKGROUNDcolour,
+    output  uint7   BACKGROUNDalt,
     output  uint4   BACKGROUNDmode
 ) <autorun,reginputs> {
     // BACKGROUND CO-PROCESSOR PROGRAM STORAGE
     // { 3 bit command, 3 bit mask, { 1 bit for cpuinput flag, 10 bit coordinate }, 4 bit mode, 6 bit colour 2, 6 bit colour 1 }
-    simple_dualport_bram uint33 copper[ 64 ] = uninitialised;
+    simple_dualport_bram uint35 copper[ 128 ] = uninitialised;
 
     uint1   copper_execute = uninitialised;         uint1   copper_branch = uninitialised;
-    uint6   PC = 0;                                 uint6   PCplus1 <:: PC + 1;
+    uint7   PC = 0;                                 uint7   PCplus1 <:: PC + 1;
     uint10  copper_variable = 0;
 
     // COPPER PROGRAM ENTRY
@@ -99,7 +99,7 @@ algorithm background_writer(
                     // CHANGE A PROGRAM LINE IN THE COPPER MEMORY
                     if( copper_program ) {
                         copper.addr1 = copper_address;
-                        copper.wdata1 = { copper_command[0,3], copper_condition[0,3], copper_coordinate[0,11], copper_mode[0,4], copper_alt[0,6], copper_colour[0,6] };
+                        copper.wdata1 = { copper_command[0,3], copper_condition[0,3], copper_coordinate[0,11], copper_mode[0,4], copper_alt[0,7], copper_colour[0,7] };
                     }
                     PC = 0;
                 }
@@ -114,18 +114,18 @@ algorithm background_writer(
 
 algorithm rainbow(
     input   uint3   y,
-    output  uint6   colour
+    output  uint7   colour
 ) <autorun> {
     always_after {
         switch( y ) {
-            case 3b000: { colour = 6b100000; }
-            case 3b001: { colour = 6b110000; }
-            case 3b010: { colour = 6b111000; }
-            case 3b011: { colour = 6b111100; }
-            case 3b100: { colour = 6b001100; }
-            case 3b101: { colour = 6b000011; }
-            case 3b110: { colour = 6b010010; }
-            case 3b111: { colour = 6b011011; }
+            case 3b000: { colour = 7b100000; }
+            case 3b001: { colour = 7b110000; }
+            case 3b010: { colour = 7b111000; }
+            case 3b011: { colour = 7b111100; }
+            case 3b100: { colour = 7b001100; }
+            case 3b101: { colour = 7b000011; }
+            case 3b110: { colour = 7b010010; }
+            case 3b111: { colour = 7b011011; }
         }
     }
 }
@@ -134,12 +134,12 @@ algorithm background_display(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint7   pixel,
 
     input   uint2  staticGenerator,
 
-    input   uint6   b_colour,
-    input   uint6   b_alt,
+    input   uint7   b_colour,
+    input   uint7   b_alt,
     input   uint4   b_mode
 ) <autorun,reginputs> {
     // TRUE FOR COLOUR, FALSE FOR ALT
@@ -152,7 +152,7 @@ algorithm background_display(
             case 0: { pixel = b_alt; }                                              // EVERYTHING ELSE
             case 1: { pixel = b_colour; }
             case 2: { pixel = RAINBOW.colour; }                                     // RAINBOW
-            case 3: { pixel = {3{staticGenerator}}; }                               // STATIC
+            case 3: { pixel = {4{staticGenerator}}; }                               // STATIC
         }
     }
 }

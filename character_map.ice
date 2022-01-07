@@ -6,13 +6,13 @@ algorithm character_map(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint7   pixel,
     output! uint1   character_map_display,
 
     input   uint1   blink,
     input   uint7   cursor_x,
     input   uint6   cursor_y,
-    input   uint6   tpu_foreground,
+    input   uint7   tpu_foreground,
     input   uint7   tpu_background,
     input   uint1   tpu_showcursor
 ) <autorun,reginputs> {
@@ -42,9 +42,9 @@ algorithm character_map(
     characterGenerator8x8.addr := { charactermap.rdata0, yincharacter };
 
     // RENDER - Default to transparent
-    character_map_display := pix_active & ( characterpixel | ~colour13(colourmap.rdata0).alpha | is_cursor );
+    character_map_display := pix_active & ( characterpixel | ( colour14(colourmap.rdata0).background != 64 ) | is_cursor );
     pixel := is_cursor ? characterpixel ? tpu_background : tpu_foreground
-                        : characterpixel ? colour13(colourmap.rdata0).foreground : colour13(colourmap.rdata0).background;
+                        : characterpixel ? colour14(colourmap.rdata0).foreground : colour14(colourmap.rdata0).background;
 }
 
 algorithm cmcursorx(
@@ -88,7 +88,7 @@ algorithm character_map_writer(
     input   uint7   tpu_x,
     input   uint6   tpu_y,
     input   uint9   tpu_character,
-    input   uint6   tpu_foreground,
+    input   uint7   tpu_foreground,
     input   uint7   tpu_background,
     input   uint3   tpu_write,
 
@@ -101,7 +101,7 @@ algorithm character_map_writer(
     output  uint6   cursor_y
 ) <autorun,reginputs> {
     // COPY OF CHARCTER MAP FOR THE CURSES BUFFER
-    simple_dualport_bram uint22 charactermap_copy[4800] = uninitialized;
+    simple_dualport_bram uint23 charactermap_copy[4800] = uninitialized;
 
     // Counter for clearscreen
     uint13  tpu_start_cs_addr = uninitialized;      uint13  tpu_cs_addr = uninitialized;                    uint13  tpu_cs_addr_next <:: tpu_cs_addr + 1;
@@ -154,14 +154,14 @@ algorithm character_map_writer(
             onehot( tpu_active ) {
                 case 0: {                                                                                                                               // TPU WIPE - WHOLE OR PARTIAL SCREEN (LINE)
                     charactermap.addr1 = tpu_cs_addr; colourmap.addr1 = tpu_cs_addr;
-                    charactermap.wdata1 = 0; colourmap.wdata1 = 13b1000000000000;
+                    charactermap.wdata1 = 0; colourmap.wdata1 = 14b10000001000000;
                     while( tpu_cs_addr != tpu_max_count ) {
                         charactermap.addr1 = tpu_cs_addr; colourmap.addr1 = tpu_cs_addr;
                         tpu_cs_addr = tpu_cs_addr_next;
                     }
                 }
                 case 1: {                                                                                                                               // CURSES WIPE
-                    charactermap_copy.wdata1 = 22b1000000000000000000000;
+                    charactermap_copy.wdata1 = 23b10000001000000000000000;
                     while( tpu_cs_addr != 4800 ) {
                         charactermap_copy.addr1 = tpu_cs_addr;
                         tpu_cs_addr = tpu_cs_addr_next;
@@ -171,7 +171,7 @@ algorithm character_map_writer(
                     while( tpu_cs_addr != 4800 ) {
                         ++:
                         charactermap.addr1 = tpu_cs_addr; charactermap.wdata1 = charactermap_copy.rdata0[0,9];
-                        colourmap.addr1 = tpu_cs_addr; colourmap.wdata1 = { charactermap_copy.rdata0[15,7], charactermap_copy.rdata0[9,6] };
+                        colourmap.addr1 = tpu_cs_addr; colourmap.wdata1 = { charactermap_copy.rdata0[16,7], charactermap_copy.rdata0[9,7] };
                         tpu_cs_addr = tpu_cs_addr_next;
                     }
                 }

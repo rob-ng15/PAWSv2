@@ -285,7 +285,7 @@ void reset_display( void ) {
     *FRAMEBUFFER_DRAW = 1; gpu_cs(); while( !*GPU_FINISHED );
     *FRAMEBUFFER_DRAW = 0; gpu_cs(); while( !*GPU_FINISHED );
     *FRAMEBUFFER_DISPLAY = 0;
-    *SCREENMODE = 0; *COLOUR = 1;
+    *SCREENMODE = 0; *COLOUR = 0;
     *TPU_CURSOR = 0; tpu_cs();
     *TERMINAL_SHOW = 0; *TERMINAL_RESET = 1;
     *LOWER_TM_SCROLLWRAPCLEAR = 9;

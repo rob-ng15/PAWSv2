@@ -3,7 +3,7 @@ algorithm sprite_layer(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint7   pixel,
     output! uint1   sprite_layer_display,
 
     // For reading sprite characteristics
@@ -109,7 +109,7 @@ algorithm sprite_generator(
     input   uint3   sprite_tile_number,
     simple_dualport_bram_port0 tiles,
     output! uint1   pix_visible,
-    output! uint6   pixel
+    output! uint7   pixel
 ) <autorun> {
     int11   x <: { 1b0, pix_x };                                                                        int11   xspritex <: ( x - sprite_x ) + pix_active;
     int11   y <: { 1b0, pix_y };                                                                        int11   yspritey <: ( y - sprite_y );
@@ -131,8 +131,8 @@ algorithm sprite_generator(
     tiles.addr0 := { sprite_tile_number, yinsprite, xinsprite };
 
     // Determine if pixel is visible
-    pix_visible := sprite_active & xinrange & yinrange & ( ~colour7(tiles.rdata0).alpha );
-    pixel := tiles.rdata0[ 0, 6 ];
+    pix_visible := sprite_active & xinrange & yinrange & ( tiles.rdata0 != 64 );
+    pixel := tiles.rdata0;
 }
 
 algorithm sprite_layer_writer(

@@ -173,10 +173,6 @@ $$end
 
     // Combine the display layers for display
     multiplex_display display <@clock_25mhz,!video_reset> (
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
-        pix_active <: pix_active,
-        pix_vblank <: vblank,
         pix_red    :> video_r,
         pix_green  :> video_g,
         pix_blue   :> video_b,
@@ -286,7 +282,7 @@ $$end
 
     if( ~reset ) {
         // SET DEFAULT DISPLAY ORDER AND COLOUR MODE
-        display.display_order = 0; display.colour = 1;
+        display.display_order = 0; display.colour = 0;
     }
 }
 
@@ -313,7 +309,7 @@ algorithm background_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint7   pixel,
 
     // Memory access
     input   uint6   memoryAddress,
@@ -382,7 +378,7 @@ algorithm bitmap_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint7   pixel,
     output! uint1   pixel_display,
 
     // Memory access
@@ -590,7 +586,7 @@ algorithm charactermap_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint7   pixel,
     output! uint1   pixel_display,
     input   uint1   blink,
 
@@ -607,7 +603,7 @@ algorithm charactermap_memmap(
     // 80 x 30 character buffer
     // Setting background to 40 (ALPHA) allows the bitmap/background to show through, charactermap { BOLD, character }
     simple_dualport_bram uint9 charactermap <@video_clock,@video_clock> [4800] = uninitialized;
-    simple_dualport_bram uint13 colourmap <@video_clock,@video_clock> [4800] = uninitialized;
+    simple_dualport_bram uint14 colourmap <@video_clock,@video_clock> [4800] = uninitialized;
 
     // CHARACTER MAP WRITER
     uint6   tpu_foreground = uninitialized;
@@ -678,7 +674,7 @@ algorithm sprite_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint7   pixel,
     output! uint1   pixel_display,
 
     // Memory access
@@ -786,7 +782,7 @@ algorithm terminal_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint1   pixel,
     output! uint1   pixel_display,
     input   uint1   blink,
 
@@ -847,7 +843,7 @@ algorithm tilemap_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint7   pixel,
     output! uint1   pixel_display,
 
     // Memory access

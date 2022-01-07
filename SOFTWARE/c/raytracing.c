@@ -235,7 +235,7 @@ int main() {
 
     init_scene(spheres, lights);
 
-    gpu_cs();
+    gpu_cs(); screen_mode( 0, 1 );
     gpu_pixelblock_start( 0, 0, 320 );
 
     render(spheres, NB_SPHERES, lights, NB_LIGHTS);

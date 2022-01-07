@@ -17,7 +17,7 @@ int main( void ) {
         width = njGetWidth();
         height = njGetHeight();
         imagebuffer=njGetImage();
-        screen_mode( 0, 0 );
+        screen_mode( 0, 3 );
         gpu_pixelblock24bw( 0, 0, width, height, imagebuffer );
         free( filebuffer );
     } else {

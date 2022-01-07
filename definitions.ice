@@ -17,10 +17,9 @@ bitfield colour6 {
     uint2   blue
 }
 
-bitfield colour13 {
-    uint1   alpha,
-    uint6   background,
-    uint6   foreground,
+bitfield colour14 {
+    uint7   background,
+    uint7   foreground
 }
 
 // TILEMAP ENTRY

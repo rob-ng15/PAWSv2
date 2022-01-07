@@ -6,7 +6,7 @@ algorithm tilemap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint6   pixel,
+    output! uint7   pixel,
     output! uint1   tilemap_display,
 
     // For scrolling/wrapping
@@ -37,8 +37,8 @@ algorithm tilemap(
     // Setup the reading and writing of the tiles16x16 using rotation/reflection
     tiles16x16.addr0 := { tmentry( tiles.rdata0 ).tilenumber, ypixel, xpixel };
 
-    tilemap_display := pix_active & ~pixel7( tiles16x16.rdata0 ).alpha;
-    pixel := pixel7( tiles16x16.rdata0 ).rgb;
+    tilemap_display := pix_active & ( tiles16x16.rdata0 != 64 );
+    pixel := tiles16x16.rdata0;
 }
 
 algorithm   calcoffset(
