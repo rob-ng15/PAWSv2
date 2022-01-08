@@ -144,7 +144,7 @@ void drawboard( void ) {
     for( int x = 0; x < MAX_RANK; x++ ) {
         for( int y = 0; y < MAX_COLUMN; y++ ) {
             // DRAW THE BOARD
-            gpu_rectangle( ( ( x & 1 ) == ( y & 1 ) ) ? GREY1 : GREY2, 40 + x * 30, y * 30, 70 + x * 30, 30  + y * 30 );
+            gpu_rectangle( ( ( x & 1 ) == ( y & 1 ) ) ? DKGREY : LTGREY, 40 + x * 30, y * 30, 70 + x * 30, 30  + y * 30 );
 
             // DRAW THE PIECES
             if( board[x][y].type != NONE )

@@ -162,7 +162,7 @@ int main( void ) {
     INITIALISEMEMORY();
     // CLEAR and SET THE BACKGROUND
     gpu_cs();
-    set_background( GREY2, DKBLUE - 1, BKG_SNOW );
+    set_background( LTGREY, BLUE30, BKG_SNOW );
 
     // set up curses library
     initscr();

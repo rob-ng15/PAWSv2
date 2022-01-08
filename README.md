@@ -95,7 +95,7 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
             * 80 x 8
 
 ![BIOS](documentation/Screenshots/COLOURS.jpg)
-<br>64 Colour Display
+<br>128 Colour Display
 
 ![BIOS](documentation/Screenshots/3DMAZE.jpg)
 <br>Demonstration game for the GPU and the hardware accelerated drawing of 2D Shapes

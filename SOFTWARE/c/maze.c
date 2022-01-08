@@ -176,7 +176,7 @@ struct DrawList2D POWERGHOSTMOUTH[] = {
 void setghostcolour( unsigned short ghost ) {
     unsigned char colour[] = { CYAN, MAGENTA, ORANGE, RED };
     for( int i = 0; i < 5; i++ ) {
-        GHOSTBODY[i].colour = powerstatus ? ( powerstatus > 40 ) ? DKPURPLE : WHITE : colour[ ghost];
+        GHOSTBODY[i].colour = powerstatus ? ( powerstatus > 40 ) ? VIOLET : WHITE : colour[ ghost ];
     }
 }
 
@@ -279,7 +279,7 @@ void draw_pill( unsigned short steps ) {
     unsigned short pillsize = ( 160 - perspectivex[ steps ] ) / 8;
 
     gpu_circle( WHITE, 160, 240 - perspectivey[ steps ], pillsize, 0xff, 1 );
-    gpu_circle( GREY2, 160, 240 - perspectivey[ steps ], pillsize, 0xff, 0 );
+    gpu_circle( GREY80, 160, 240 - perspectivey[ steps ], pillsize, 0xff, 0 );
 }
 
 // ADAPTED FROM https://weblog.jamisbuck.org/2011/2/3/maze-generation-sidewinder-algorithm.html#
@@ -595,14 +595,14 @@ void drawleft( unsigned short steps, unsigned char totheleft ) {
             break;
         case ' ':
             // GAP
-            gpu_rectangle( GREY2, perspectivex[ steps ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240 - perspectivey[ steps + 1 ] );
-            gpu_line( GREY1, perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240- perspectivey[ steps + 1 ] );
+            gpu_rectangle( GREY80, perspectivex[ steps ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240 - perspectivey[ steps + 1 ] );
+            gpu_line( GREY70, perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240- perspectivey[ steps + 1 ] );
             break;
         case 'E':
             left_wall( MAGENTA, DKMAGENTA, steps );
             break;
         case '#':
-            left_wall( GREY1, GREY2, steps );
+            left_wall( GREY40, GREY30, steps );
             break;
         default:
             break;
@@ -617,14 +617,14 @@ void drawright( unsigned short steps, unsigned char totheright ) {
             break;
         case ' ':
             // GAP
-            gpu_rectangle( GREY2, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps ], 240 - perspectivey[ steps + 1 ] );
-            gpu_line( GREY1, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps + 1 ],  240 - perspectivey[ steps + 1 ] );
+            gpu_rectangle( GREY80, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps ], 240 - perspectivey[ steps + 1 ] );
+            gpu_line( GREY70, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps + 1 ],  240 - perspectivey[ steps + 1 ] );
             break;
         case 'E':
             right_wall( MAGENTA, DKMAGENTA, steps );
             break;
         case '#':
-            right_wall( GREY1, GREY2, steps );
+            right_wall( GREY50, GREY60, steps );
             break;
         default:
             break;
@@ -667,7 +667,7 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
                     gpu_rectangle( MAGENTA, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
                     break;
                 case '#':
-                    gpu_rectangle( GREY2, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
+                    gpu_rectangle( GREY80, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
                     break;
                 default:
                     break;

@@ -1223,7 +1223,7 @@ void displayfilename( unsigned char *filename, unsigned char type ) {
             displayname[j++] = filename[i];
         }
     }
-    gpu_outputstringcentre( type == 1 ? WHITE : GREY2, 176, 0, displayname, 2 );
+    gpu_outputstringcentre( type == 1 ? WHITE : GREY50, 176, 0, displayname, 2 );
 }
 
 unsigned int __basecluster = 0xffffff8;

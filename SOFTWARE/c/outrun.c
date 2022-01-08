@@ -157,78 +157,78 @@ void set_tilemaps( void ) {
     tilemap_scrollwrapclear( UPPER_LAYER, 9 );
 
     for( int i = 0; i < 2; i++ ) {
-        set_tilemap_bitmap( LOWER_LAYER, 1 + i, &mountainslopes[ i * 16 ] );
+//        set_tilemap_bitmap( LOWER_LAYER, 1 + i, &mountainslopes[ i * 16 ] );
     }
     for( int i = 0; i < 3; i++ ) {
-        set_tilemap_bitmap( UPPER_LAYER, 1 + i, &cityblocks[ i * 16 ] );
+//        set_tilemap_bitmap( UPPER_LAYER, 1 + i, &cityblocks[ i * 16 ] );
     }
 
     for( int y = 0; y < 32; y++ ) {
         for( int x = 0; x < 42; x++ ) {
             switch( mountains[y][x] ) {
                 case '1':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, TRANSPARENT, GREY1, 0 );
+//                    set_tilemap_tile( LOWER_LAYER, x, y, 1, TRANSPARENT, GREY1, 0 );
                     break;
                 case '2':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, TRANSPARENT, GREY1, REFLECT_X );
+//                    set_tilemap_tile( LOWER_LAYER, x, y, 1, TRANSPARENT, GREY1, REFLECT_X );
                     break;
                 case '3':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 2, TRANSPARENT, GREY1, 0 );
+//                    set_tilemap_tile( LOWER_LAYER, x, y, 2, TRANSPARENT, GREY1, 0 );
                     break;
                 case '4':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 0, GREY1, GREY1, 0 );
+//                    set_tilemap_tile( LOWER_LAYER, x, y, 0, GREY1, GREY1, 0 );
                     break;
                 case '5':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, GREY1, GREY2, 0 );
+//                    set_tilemap_tile( LOWER_LAYER, x, y, 1, GREY1, GREY2, 0 );
                     break;
                 case '6':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, GREY1, GREY2, REFLECT_X );
+//                    set_tilemap_tile( LOWER_LAYER, x, y, 1, GREY1, GREY2, REFLECT_X );
                     break;
                 case '7':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 2, GREY1, GREY2, 0 );
+//                    set_tilemap_tile( LOWER_LAYER, x, y, 2, GREY1, GREY2, 0 );
                     break;
                 case '8':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 0, GREY2, GREY2, 0 );
+//                    set_tilemap_tile( LOWER_LAYER, x, y, 0, GREY2, GREY2, 0 );
                     break;
             }
             switch( cityscape[y][x] ) {
                 // DKMAGENTA BUILDING
                 case '1':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKMAGENTA, GREY1, 0 );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKMAGENTA, GREY1, 0 );
                     break;
                 case '2':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 1, DKMAGENTA, YELLOW, 0 );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 1, DKMAGENTA, YELLOW, 0 );
                     break;
                 case '3':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKMAGENTA, 0 );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKMAGENTA, 0 );
                     break;
                 case '4':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKMAGENTA, REFLECT_X );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKMAGENTA, REFLECT_X );
                     break;
                 case '5':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 3, DKMAGENTA, YELLOW, 0 );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 3, DKMAGENTA, YELLOW, 0 );
                     break;
                 // DKBLUE BUILDING
                 case 'A':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKBLUE, GREY1, 0 );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKBLUE, GREY1, 0 );
                     break;
                 case 'B':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKBLUE, 0 );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKBLUE, 0 );
                     break;
                 case 'C':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKBLUE, REFLECT_X );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKBLUE, REFLECT_X );
                     break;
                 case 'D':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 1, DKBLUE, DKCYAN, 0 );
+//                   set_tilemap_tile( UPPER_LAYER, x, y, 1, DKBLUE, DKCYAN, 0 );
                     break;
                 case 'd':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 3, DKBLUE, BLACK, 0 );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 3, DKBLUE, BLACK, 0 );
                     break;
                 case 'E':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKRED, GREY1, 0 );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKRED, GREY1, 0 );
                     break;
                 case 'I':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKORANGE, GREY1, 0 );
+//                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKORANGE, GREY1, 0 );
                     break;
             }
         }
@@ -249,13 +249,13 @@ void set_tilemaps( void ) {
 #define SMALLBEAM 10
 
 struct DrawList2D LEFTCHEVRON[] = {
-    { DLRECT, GREY2, DITHERSOLID, { -4, 0 }, { 4, -32 }, },
+    { DLRECT, GREY50, DITHERSOLID, { -4, 0 }, { 4, -32 }, },
     { DLRECT, BLACK, DITHERSOLID, { -32, -32 }, { 32, -64 }, },
     { DLQUAD, WHITE, DITHERSOLID, { -16, -48 }, { 0, -48 }, { 8, -32 }, { -8, -32 } },
     { DLQUAD, WHITE, DITHERSOLID, { -8, -64 }, { 8, -64 }, { 0, -48 }, { -16, -48 } },
 };
 struct DrawList2D RIGHTCHEVRON[] = {
-    { DLRECT, GREY2, DITHERSOLID, { -4, 0 }, { 4, -32 }, },
+    { DLRECT, GREY50, DITHERSOLID, { -4, 0 }, { 4, -32 }, },
     { DLRECT, BLACK, DITHERSOLID, { -32, -32 }, { 32, -64 }, },
     { DLQUAD, WHITE, DITHERSOLID, { 0, -48 }, { 16, -48 }, { 8, -32 }, { -8, -32 } },
     { DLQUAD, WHITE, DITHERSOLID, { -8, -64 }, { 8, -64 }, { 16, -48 }, { 0, -48 } },
@@ -263,13 +263,13 @@ struct DrawList2D RIGHTCHEVRON[] = {
 
 struct DrawList2D PINETREE[] = {
     { DLRECT, BROWN, DKBROWN, DITHERCHECK1, { -8, 0 }, { 8, -32 }, },
-    { DLTRI, VDKGREEN, DITHERSOLID, { 0, -96 }, { 32, -32 }, { -32, -32 } },
+    { DLTRI, FORESTGREEN, DITHERSOLID, { 0, -96 }, { 32, -32 }, { -32, -32 } },
 };
 
 struct DrawList2D LEFTBEAM[] = {
-    { DLRECT, DKORANGE, DITHERSOLID, { -4, 0 }, { 4, -128 } },
-    { DLRECT, DKORANGE, DITHERSOLID, { -36, 0 }, { -28, -128 } },
-    { DLRECT, DKORANGE, DITHERSOLID, { -36, -124 }, { 160, -132 } },
+    { DLRECT, STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -128 } },
+    { DLRECT, STEELBLUE, DITHERSOLID, { -36, 0 }, { -28, -128 } },
+    { DLRECT, STEELBLUE, DITHERSOLID, { -36, -124 }, { 160, -132 } },
     { DLLINE, DKRED, DITHERSOLID, { 0, -128 }, { -32, -96 }, { 5, 0 } },
     { DLLINE, DKRED, DITHERSOLID, { -32, -128 }, { 0, -96 }, { 5, 0 } },
     { DLLINE, DKRED, DITHERSOLID, { 0, -64 }, { -32, -32 }, { 5, 0 } },
@@ -285,9 +285,9 @@ struct DrawList2D LEFTBEAMSMALL[] = {
 
 struct DrawList2D RIGHTBEAM[] = {
     { DLRECT, BLACK, DITHERSOLID, { -112, -136 }, { -96, -120 }, },
-    { DLRECT, DKORANGE, DITHERSOLID, { -4, 0 }, { 4, -128 } },
-    { DLRECT, DKORANGE, DITHERSOLID, { 28, 0 }, { 36, -128 } },
-    { DLRECT, DKORANGE, DITHERSOLID, { -160, -124 }, { 36, -132 } },
+    { DLRECT, STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -128 } },
+    { DLRECT, STEELBLUE, DITHERSOLID, { 28, 0 }, { 36, -128 } },
+    { DLRECT, STEELBLUE, DITHERSOLID, { -160, -124 }, { 36, -132 } },
     { DLLINE, DKRED, DITHERSOLID, { 0, -128 }, { 32, -96 }, { 5, 0 } },
     { DLLINE, DKRED, DITHERSOLID, { 32, -128 }, { 0, -96 }, { 5, 0 } },
     { DLLINE, DKRED, DITHERSOLID, { 0, -64 }, { 32, -32 }, { 5, 0 } },
@@ -295,25 +295,25 @@ struct DrawList2D RIGHTBEAM[] = {
 };
 
 struct DrawList2D RIGHTBEAMSMALL[] = {
-    { DLRECT, DKORANGE, DITHERSOLID, { -4, 0 }, { 4, -32 } },
+    { DLRECT, STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -32 } },
 };
 
 // BILLBOARD - 4 DESIGNS, TO BE DISPLAYED IN ORDER
 struct DrawList2D LEFTBILLBOARD1[] = {
-    { DLRECT, 0x2f, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
     { DLCIRC, YELLOW, DITHERSOLID, { -92, -48 }, { 32, 0b11111001 }, },
     { DLCIRC, WHITE, DITHERSOLID, { -60, -48 }, { 8, 0xff }, }
 };
 struct DrawList2D LEFTBILLBOARD2[] = {
-    { DLRECT, 0x2f, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
     { DLRECT, RED, DITHERSOLID, { -40, -30 }, { -88, -66 }, },
     { DLCIRC, RED, DITHERSOLID, { -64, -66 }, { 24, 0b11000011 }, },
     { DLCIRC, RED, DITHERSOLID, { -80, -30 }, { 8, 0b00111100 }, },
@@ -325,19 +325,19 @@ struct DrawList2D LEFTBILLBOARD2[] = {
     { DLCIRC, BLUE, DITHERSOLID, { -48, -56 }, { 4, 0xff }, },
 };
 struct DrawList2D LEFTBILLBOARD3[] = {
-    { DLRECT, 0x2f, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
     { DLCIRC, YELLOW, DITHERSOLID, { -60, -48 }, { 32, 0xff }, },
 };
 struct DrawList2D LEFTBILLBOARD4[] = {
-    { DLRECT, 0x2f, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
     { DLRECT, DKBLUE, DITHERSOLID, { -40, -30 }, { -88, -66 }, },
     { DLCIRC, DKBLUE, DITHERSOLID, { -64, -66 }, { 24, 0b11000011 }, },
     { DLCIRC, DKBLUE, DITHERSOLID, { -80, -30 }, { 8, 0b00111100 }, },
@@ -353,20 +353,20 @@ struct DrawList2D LEFTBILLBOARD4[] = {
 };
 
 struct DrawList2D RIGHTBILLBOARD1[] = {
-    { DLRECT, 0x2f, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
     { DLCIRC, YELLOW, DITHERSOLID, { 92, -48 }, { 32, 0b10011111 }, },
     { DLCIRC, WHITE, DITHERSOLID, { 60, -48 }, { 8, 0xff }, }
 };
 struct DrawList2D RIGHTBILLBOARD2[] = {
-    { DLRECT, 0x2f, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
     { DLRECT, PEACH, DITHERSOLID, { 40, -30 }, { 88, -66 }, },
     { DLCIRC, PEACH, DITHERSOLID, { 64, -66 }, { 24, 0b11000011 }, },
     { DLCIRC, PEACH, DITHERSOLID, { 80, -30 }, { 8, 0b00111100 }, },
@@ -378,19 +378,19 @@ struct DrawList2D RIGHTBILLBOARD2[] = {
     { DLCIRC, BLUE, DITHERSOLID, { 48, -56 }, { 4, 0xff }, },
 };
 struct DrawList2D RIGHTBILLBOARD3[] = {
-    { DLRECT, 0x2f, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
     { DLCIRC, YELLOW, DITHERSOLID, { 60, -48 }, { 32, 0xff }, }
 };
 struct DrawList2D RIGHTBILLBOARD4[] = {
-    { DLRECT, 0x2f, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
-    { DLLINE, LTCYAN, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
+    { DLLINE, BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
     { DLRECT, DKBLUE, DITHERSOLID, { 40, -30 }, { 88, -66 }, },
     { DLCIRC, DKBLUE, DITHERSOLID, { 64, -66 }, { 24, 0b11000011 }, },
     { DLCIRC, DKBLUE, DITHERSOLID, { 80, -30 }, { 8, 0b00111100 }, },
@@ -518,19 +518,19 @@ void drawtunnelface( float px, float py, float scale ) {
     short x1, y1, x2, y2;
     gettunnelrectangle( px, py, scale, &x1, &y1, &x2, &y2 );
     short wh = 4.5 * scale, wy = py - wh;
-    gpu_dither( DITHERBRICK, GREY2 );
-    if( y1 > 0 ) gpu_rectangle( 0x10, 0, wy, 319, y1 - 1 );
-    if( x1 > 0 ) gpu_rectangle( 0x10, 0, y1, x1 -1, y2 - 1 );
-    if( x2 < 319 ) gpu_rectangle( 0x10, x2, y1, 319, y2 - 1 );
+    gpu_dither( DITHERBRICK, GREY30 );
+    if( y1 > 0 ) gpu_rectangle( GREY40, 0, wy, 319, y1 - 1 );
+    if( x1 > 0 ) gpu_rectangle( GREY40, 0, y1, x1 -1, y2 - 1 );
+    if( x2 < 319 ) gpu_rectangle( GREY40, x2, y1, 319, y2 - 1 );
     gpu_dither( DITHEROFF );
 }
 
 void drawroad( float x1, float y1, float scale1, float x2, float y2, float scale2, int sumct, int tnl ) {
     // DRAW GRASS
-    if( !tnl ) gpu_rectangle( (sumct%2) ? GREEN : DKGREEN, 0, y1, 319, y2 );
+    if( !tnl ) gpu_rectangle( (sumct%2) ? GREEN80 : GREEN60, 0, y1, 319, y2 );
 
     short w1 = 3 * scale1, w2 = 3 * scale2;
-    drawtrapezium( GREY1, x1, y1, w1, x2, y2, w2 );
+    drawtrapezium( DKGREY, x1, y1, w1, x2, y2, w2 );
 
     // CENTRE LINE MARKINGS
     if( !(sumct % 4 ) ) {
