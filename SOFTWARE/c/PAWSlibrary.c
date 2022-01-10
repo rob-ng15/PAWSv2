@@ -371,6 +371,30 @@ void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned ch
     }
 }
 
+// SET THE TILE BITMAP for 4 tiles to the 32 x 32 pixel bitmap
+void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap ) {
+    switch( tm_layer ) {
+        case 0:
+            for( short i = 0; i < 4; i++ ) {
+                *LOWER_TM_WRITER_TILE_NUMBER = tile + i;
+                for( short y = 0; y < 16; y++ ) {
+                    *LOWER_TM_WRITER_Y = y;
+                    for( short x = 0; x < 16; x++ ) { *LOWER_TM_WRITER_X = x; *LOWER_TM_WRITER_COLOUR = bitmap[ ( y + (i&1 ? 16 : 0) )* 32 + ( x + ( i>1 ? 16 : 0 ) ) ]; }
+                }
+            }
+            break;
+        case 1:
+            for( short i = 0; i < 4; i++ ) {
+                *UPPER_TM_WRITER_TILE_NUMBER = tile + i;
+                for( short y = 0; y < 16; y++ ) {
+                    *UPPER_TM_WRITER_Y = y;
+                    for( short x = 0; x < 16; x++ ) { *UPPER_TM_WRITER_X = x; *UPPER_TM_WRITER_COLOUR = bitmap[ ( y + (i&1 ? 16 : 0) )* 32 + ( x + ( i>1 ? 16 : 0 ) ) ]; }
+                }
+            }
+            break;
+    }
+}
+
 // SCROLL WRAP or CLEAR the TILEMAP
 //  action == 1 to 4 move the tilemap 1 pixel LEFT, UP, RIGHT, DOWN and SCROLL at limit
 //  action == 5 to 8 move the tilemap 1 pixel LEFT, UP, RIGHT, DOWN and WRAP at limit

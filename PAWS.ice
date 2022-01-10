@@ -86,6 +86,7 @@ $$end
     uint1   clock_io = uninitialized;
     uint1   clock_cpu = uninitialized;
     uint1   clock_decode = uninitialized;
+    uint1   gpu_clock = uninitialized;
 $$if VERILATOR then
     $$clock_25mhz = 'video_clock'
     // --- PLL
@@ -95,9 +96,11 @@ $$if VERILATOR then
       clock_decode   :> clock_decode,
       compute_clock :> clock_system,
       compute_clock :> clock_cpu,
-      compute_clock :> clock_io
+      compute_clock :> clock_io,
+      video_clock :> gpu_clock
     );
 $$else
+    uint1   video_clock = uninitialized;
     $$clock_25mhz = 'clock'
     // CLOCK/RESET GENERATION
     // CPU + MEMORY
@@ -116,6 +119,8 @@ $$else
         clkin    <: $clock_25mhz$,
         clkCPU  :> clock_cpu,
         clkDECODE  :> clock_decode,
+        clkVIDEO :> video_clock,
+        clkGPU :> gpu_clock,
         locked   :> pll_lock_CPU
     );
 $$end
@@ -202,7 +207,7 @@ $$end
     );
 
     video_memmap VIDEO_Map <@clock_io,!reset> (
-        clock_25mhz <: $clock_25mhz$,
+        video_clock <: $clock_25mhz$,
         memoryAddress <: CPU.address[0,12],
         writeData <: CPU.writedata,
 $$if HDMI then

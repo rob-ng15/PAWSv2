@@ -53,14 +53,16 @@ algorithm multiplex_display(
         background <: background_p
     );
 
-    // GREY/GRADIENT LEVELS
-    uint8   grey8 <: ( LAYER.pixel[0,3] + 1 ) * 25;                                                     // ROUGHLY 10%, 20%, 30%, 40%, 50%, 60%, 70%, 80%
-    uint8   grey64 <: { LAYER.pixel[0,6], LAYER.pixel[0,2] };                                           // 64 GREYSCALE
-    uint8   grey128 <: { LAYER.pixel[0,7], LAYER.pixel[0,1] };                                          // 128 GREYSCALE
+    // TEMPORARY STORAGE FOR CALCULATIONS
+    uint8   grey = uninitialised;
 
     // SPECIAL COLOUR PALETTES
     uint8   R[] = { 153, 255, 034, 070, 138, 255, 135, 229 };                                           uint8   G[] = { 076, 215, 139, 130, 043, 192, 206, 255 };
     uint8   B[] = { 000, 000, 034, 180, 226, 203, 235, 204 };                                           uint3   lookup <: LAYER.pixel[0,3];
+
+    // GRADIENTS
+    uint8   GREY[] = { 26, 51, 77, 102, 128, 153, 179, 204 };                                           // GRADIENTS AT 10%, 20% ... 80%
+    uint8   GREEN[] = { 0, 36, 73, 109, 146, 182, 219, 255 };                                           // GGG -> 255
 
     // DEFAULT to PAWSv1 COLOUR EXPANSIONS
     pix_red := {4{LAYER.pixel[4,2]}};               pix_green := {4{LAYER.pixel[2,2]}};                 pix_blue := {4{LAYER.pixel[0,2]}};
@@ -70,14 +72,15 @@ algorithm multiplex_display(
             case 2b00: {                                                                                // PAWSv2 PALETTE, V1 + GRADIENTS
                 if( LAYER.pixel[6,1] ) {
                     pix_red = 0; pix_green = 0; pix_blue = 0;
+                    grey = GREY[ LAYER.pixel[0,3] ];
                     switch( LAYER.pixel[3,3] ) {
-                        case 0: { pix_red = grey8; pix_green = grey8; pix_blue = grey8; }               // GREYS
-                        case 1: { pix_red = grey8; }                                                    // REDS
-                        case 2: { pix_green = grey8; }                                                  // GREENS
-                        case 3: { pix_blue = grey8; }                                                   // BLUES
-                        case 4: { pix_red = grey8; pix_green = grey8; }                                 // YELLOWS
-                        case 5: { pix_red = grey8; pix_blue = grey8; }                                  // MAGENTAS
-                        case 6: { pix_green = grey8; pix_blue = grey8; }                                // CYANS
+                        case 0: { pix_red = grey; pix_green = grey; pix_blue = grey; }               // GREYS
+                        case 1: { pix_red = grey; }                                                    // REDS
+                        case 2: { pix_green = grey; }                                                  // GREENS
+                        case 3: { pix_blue = grey; }                                                   // BLUES
+                        case 4: { pix_red = grey; pix_green = grey; }                                 // YELLOWS
+                        case 5: { pix_red = grey; pix_blue = grey; }                                  // MAGENTAS
+                        case 6: { pix_green = grey; pix_blue = grey; }                                // CYANS
                         case 7: {                                                                       // 8 SPECIAL COLOURS
                             pix_red = R[ lookup ];
                             pix_green = G[ lookup ];
@@ -87,15 +90,17 @@ algorithm multiplex_display(
                 }
             }
             case 2b01: {                                                                                // PAWSv2 RRGGGBB
-                pix_green = { LAYER.pixel[6,1] ? { |LAYER.pixel[2,2], 1b1 } : 2b00, {3{LAYER.pixel[2,2]}} };
+                pix_green = GREEN[ { LAYER.pixel[6,1], LAYER.pixel[2,2] } ];
             }
             case 2b10: {                                                                                // PAWSv1 + 64 GREY
                 if( LAYER.pixel[6,1] ) {
-                    pix_red = grey64; pix_green = grey64; pix_blue = grey64;
+                    grey = { LAYER.pixel[0,6], LAYER.pixel[0,2] };
+                    pix_red = grey; pix_green = grey; pix_blue = grey;
                 }
             }
             case 2b11: {                                                                                // PAWSv2 GREYSCALE
-                pix_red = grey128; pix_green = grey128; pix_blue = grey128;
+                grey = { LAYER.pixel[0,7], LAYER.pixel[0,1] };
+                pix_red = grey; pix_green = grey; pix_blue = grey;
             }
         }
     }

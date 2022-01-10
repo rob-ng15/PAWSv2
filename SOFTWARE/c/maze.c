@@ -55,7 +55,7 @@ unsigned short ghosteyes[4][4] = { { 0, 1, 2, 3 }, { 3, 0, 1, 2 }, { 2, 3, 0, 1 
 // DRAW WELCOME SCREEN
 void drawwelcome( void ) {
     // DISPLAY ULX3 BITMAP
-    gpu_pixelblock7( 0, 10, 320, 219, BLUE, ulx3sbitmap );
+    gpu_pixelblock7( 0, 10, 320, 219, TRANSPARENT, ulx3sbitmap );
     gpu_printf_centre( YELLOW, 160, 8, BOLD, 1, 0, "3D MONSTER MAZE" );
 
     // DRAW JOYSTICK AND LABEL
@@ -595,14 +595,14 @@ void drawleft( unsigned short steps, unsigned char totheleft ) {
             break;
         case ' ':
             // GAP
-            gpu_rectangle( GREY80, perspectivex[ steps ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240 - perspectivey[ steps + 1 ] );
-            gpu_line( GREY70, perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240- perspectivey[ steps + 1 ] );
+            gpu_rectangle( GREY60, perspectivex[ steps ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240 - perspectivey[ steps + 1 ] );
+            gpu_line( GREY20, perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240- perspectivey[ steps + 1 ] );
             break;
         case 'E':
             left_wall( MAGENTA, DKMAGENTA, steps );
             break;
         case '#':
-            left_wall( GREY40, GREY30, steps );
+            left_wall( GREY30, GREY40, steps );
             break;
         default:
             break;
@@ -617,14 +617,14 @@ void drawright( unsigned short steps, unsigned char totheright ) {
             break;
         case ' ':
             // GAP
-            gpu_rectangle( GREY80, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps ], 240 - perspectivey[ steps + 1 ] );
-            gpu_line( GREY70, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps + 1 ],  240 - perspectivey[ steps + 1 ] );
+            gpu_rectangle( GREY60, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps ], 240 - perspectivey[ steps + 1 ] );
+            gpu_line( GREY20, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps + 1 ],  240 - perspectivey[ steps + 1 ] );
             break;
         case 'E':
             right_wall( MAGENTA, DKMAGENTA, steps );
             break;
         case '#':
-            right_wall( GREY50, GREY60, steps );
+            right_wall( GREY40, GREY50, steps );
             break;
         default:
             break;
@@ -667,7 +667,7 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
                     gpu_rectangle( MAGENTA, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
                     break;
                 case '#':
-                    gpu_rectangle( GREY80, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
+                    gpu_rectangle( GREY60, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
                     break;
                 default:
                     break;
@@ -802,7 +802,7 @@ int main( void ) {
             firstrun = 0;
         } else {
             // DISPLAY 3D PACMAN BITMAP
-            gpu_pixelblock7( 0, 0, 320, 240, BLACK, pacman3dbitmap );
+            gpu_pixelblock7( 0, 0, 320, 240, TRANSPARENT, pacman3dbitmap );
         }
 
         // RESET POWER PILL STATUS
@@ -852,7 +852,7 @@ int main( void ) {
             // DISPLAY TOMBSTONE BITMAP AND RESET TO BEGINNING
             bitmap_draw( 1 - framebuffer );
             gpu_cs();
-            gpu_pixelblock7( 0, 0, 320, 298, WHITE, tombstonebitmap );
+            gpu_pixelblock7( 37, 0, 246, 240, TRANSPARENT, tombstonebitmap );
             framebuffer = 1 - framebuffer;
             bitmap_display( framebuffer );
             level = 0;
