@@ -1,4 +1,4 @@
-# PAWS a Risc-V RVIMAFC CPU
+# PAWSv2 a Risc-V RVIMAFC CPU
 
 * Written in Silice
     * Inspired by ICE-V by [ICE-V](https://github.com/sylefeb/Silice/tree/master/projects/ice-v) by @sylefeb
@@ -11,10 +11,10 @@ The display hardware does as much as possible to compensate for the slow CPU spe
 
 ## Quick Instructions
 
-Copy the files from the directory "SOFTWARE/PAWS" to an SDCARD and insert into the ULX3S. Flash the bitstream from "ULX3S/BUILD_ulx3s/PAWS.bit" to the ULX3S
+Copy the files from the directory "SOFTWARE/PAWS" to an SDCARD and insert into the ULX3S. Flash the bitstream from "ULX3S/BUILD_ulx3s/PAWSv2.bit" to the ULX3S
 
 ```
-fujproj PAWS.bit
+fujproj PAWSv2.bit
 ```
 
 This will initialise the BIOS and allow the selection of a PAW file to load and run.
@@ -78,13 +78,15 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
         * 16K Instruction and Data Cache
 
 * DISPLAY
-    * HDMI 640 x 480 ouput
+    * HDMI 640 x 480 ouput with 127 colours + transparency
         * Background with pattern generator
             * Co-Processor to switch pattern generator parameters mid-frame
-        * 2 x Tilemap Layers
+        * 2 x Tilemap Layers ( full colour )
             * 42 x 32 ( 40 x 30 visible ) with pixel scrolling
-        * 2 x Sprite Layers
+            * Tiles can be reflected or rotated
+        * 2 x Sprite Layers ( full colour )
             * 16 sprites per layer
+            * Sprites can be reflected or rotated, and doubled in size
         * Bitmap with GPU
             * Accelerated drawing of lines, rectangles, circles ( optional fill ), triangles
             * Single and full colour blitters

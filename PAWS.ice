@@ -84,6 +84,7 @@ $$end
 ) <@clock_system> {
     uint1   clock_system = uninitialized;
     uint1   clock_io = uninitialized;
+    uint1   clock_io25 = uninitialized;
     uint1   clock_cpu = uninitialized;
     uint1   clock_decode = uninitialized;
     uint1   gpu_clock = uninitialized;
@@ -97,10 +98,10 @@ $$if VERILATOR then
       compute_clock :> clock_system,
       compute_clock :> clock_cpu,
       compute_clock :> clock_io,
+      video_clock :> clock_io25,
       video_clock :> gpu_clock
     );
 $$else
-    uint1   video_clock = uninitialized;
     $$clock_25mhz = 'clock'
     // CLOCK/RESET GENERATION
     // CPU + MEMORY
@@ -119,7 +120,7 @@ $$else
         clkin    <: $clock_25mhz$,
         clkCPU  :> clock_cpu,
         clkDECODE  :> clock_decode,
-        clkVIDEO :> video_clock,
+        clkIO25 :> clock_io25,
         clkGPU :> gpu_clock,
         locked   :> pll_lock_CPU
     );
@@ -181,7 +182,7 @@ $$if not SIMULATION then
         sd_csn :> sd_csn,
         sd_miso <: sd_miso,
 $$end
-        clock_25mhz <: $clock_25mhz$,
+        clock_25mhz <: clock_io25,
 
         memoryAddress <: CPU.address[0,12],
         writeData <: CPU.writedata
@@ -192,13 +193,13 @@ $$if SIMULATION then
     uint4 audio_r(0);
 $$end
     timers_memmap TIMERS_Map <@clock_io,!reset> (
-        clock_25mhz <: $clock_25mhz$,
+        clock_25mhz <: clock_io25,
         memoryAddress <: CPU.address[0,5],
         writeData <: CPU.writedata
     );
 
     audio_memmap AUDIO_Map <@clock_io,!reset> (
-        clock_25mhz <: $clock_25mhz$,
+        clock_25mhz <: clock_io25,
         memoryAddress <: CPU.address[0,3],
         writeData <: CPU.writedata,
         audio_l :> audio_l,

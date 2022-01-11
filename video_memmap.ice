@@ -206,7 +206,7 @@ $$end
                     switch( memoryAddress[1,7] ) {
                         $$for i=0,15 do
                             case $0x00 + i$: { readData = LOWER_SPRITE.sprite_read_active_$i$; }
-                            case $0x10 + i$: { readData = LOWER_SPRITE.sprite_read_double_$i$; }
+                            case $0x10 + i$: { readData = LOWER_SPRITE.sprite_read_actions_$i$; }
                             case $0x30 + i$: { readData = {{5{LOWER_SPRITE.sprite_read_x_$i$[10,1]}}, LOWER_SPRITE.sprite_read_x_$i$}; }
                             case $0x40 + i$: { readData = {{6{LOWER_SPRITE.sprite_read_y_$i$[9,1]}}, LOWER_SPRITE.sprite_read_y_$i$}; }
                             case $0x50 + i$: { readData = LOWER_SPRITE.sprite_read_tile_$i$; }
@@ -220,7 +220,7 @@ $$end
                     switch( memoryAddress[1,7] ) {
                         $$for i=0,15 do
                             case $0x00 + i$: { readData = UPPER_SPRITE.sprite_read_active_$i$; }
-                            case $0x10 + i$: { readData = UPPER_SPRITE.sprite_read_double_$i$; }
+                            case $0x10 + i$: { readData = UPPER_SPRITE.sprite_read_actions_$i$; }
                             case $0x30 + i$: { readData = {{5{UPPER_SPRITE.sprite_read_x_$i$[10,1]}}, UPPER_SPRITE.sprite_read_x_$i$}; }
                             case $0x40 + i$: { readData = {{6{UPPER_SPRITE.sprite_read_y_$i$[9,1]}}, UPPER_SPRITE.sprite_read_y_$i$}; }
                             case $0x50 + i$: { readData = UPPER_SPRITE.sprite_read_tile_$i$; }
@@ -691,7 +691,7 @@ algorithm sprite_memmap(
     // For reading sprite characteristics
     $$for i=0,15 do
         output  uint1   sprite_read_active_$i$,
-        output  uint4   sprite_read_double_$i$,
+        output  uint4   sprite_read_actions_$i$,
         output  int11   sprite_read_x_$i$,
         output  int10   sprite_read_y_$i$,
         output  uint3   sprite_read_tile_$i$,
@@ -717,7 +717,7 @@ algorithm sprite_memmap(
         collision_layer_4 <: collision_layer_4,
         $$for i=0,15 do
             sprite_read_active_$i$ <: sprite_read_active_$i$,
-            sprite_read_double_$i$ <: sprite_read_double_$i$,
+            sprite_read_actions_$i$ <: sprite_read_actions_$i$,
             sprite_read_x_$i$ <: sprite_read_x_$i$,
             sprite_read_y_$i$ <: sprite_read_y_$i$,
             sprite_read_tile_$i$ <: sprite_read_tile_$i$,
@@ -731,7 +731,7 @@ algorithm sprite_memmap(
     sprite_layer_writer SLW <@video_clock,!video_reset> (
         $$for i=0,15 do
             sprite_read_active_$i$ :> sprite_read_active_$i$,
-            sprite_read_double_$i$ :> sprite_read_double_$i$,
+            sprite_read_actions_$i$ :> sprite_read_actions_$i$,
             sprite_read_x_$i$ :> sprite_read_x_$i$,
             sprite_read_y_$i$ :> sprite_read_y_$i$,
             sprite_read_tile_$i$ :> sprite_read_tile_$i$,

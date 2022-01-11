@@ -9,7 +9,7 @@ algorithm sprite_layer(
     // For reading sprite characteristics
     $$for i=0,15 do
         input   uint1   sprite_read_active_$i$,
-        input   uint4   sprite_read_double_$i$,
+        input   uint4   sprite_read_actions_$i$,
         input   uint6   sprite_read_colour_$i$,
         input   int11   sprite_read_x_$i$,
         input   int10   sprite_read_y_$i$,
@@ -39,7 +39,7 @@ algorithm sprite_layer(
             pix_active <: pix_active,
             pix_vblank <: pix_vblank,
             sprite_active <: sprite_read_active_$i$,
-            sprite_double <: sprite_read_double_$i$,
+            sprite_actions <: sprite_read_actions_$i$,
             sprite_x <: sprite_read_x_$i$,
             sprite_y <: sprite_read_y_$i$,
             sprite_tile_number <: sprite_read_tile_$i$,
@@ -103,7 +103,7 @@ algorithm sprite_generator(
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     input   uint1   sprite_active,
-    input   uint4   sprite_double,
+    input   uint4   sprite_actions,
     input   int11   sprite_x,
     input   int11   sprite_y,
     input   uint3   sprite_tile_number,
@@ -113,19 +113,19 @@ algorithm sprite_generator(
 ) <autorun> {
     int11   x <: { 1b0, pix_x };                                                                        int11   xspritex <: ( x - sprite_x ) + pix_active;
     int11   y <: { 1b0, pix_y };                                                                        int11   yspritey <: ( y - sprite_y );
-    int11   xspriteshift <: ( xspritex >>> sprite_double[0,1] );                                        int11   yspriteshift <: yspritey >>> sprite_double[0,1];
+    int11   xspriteshift <: ( xspritex >>> sprite_actions[3,1] );                                        int11   yspriteshift <: yspritey >>> sprite_actions[3,1];
 
     uint4   revx <: ~xspriteshift;                                                                      uint4   revy <: ~yspriteshift;
-    uint1   action00 <: ( ~|sprite_double[1,2] );         uint1   action01 <: ( sprite_double[1,2] == 2b01 );         uint1   action10 <: ( sprite_double[1,2] == 2b10 );
+    uint1   action00 <: ( ~|sprite_actions[0,2] );         uint1   action01 <: ( sprite_actions[0,2] == 2b01 );         uint1   action10 <: ( sprite_actions[0,2] == 2b10 );
 
     // Calculate position in sprite, handling rotation/reflection and doubling
-    uint6 spritesize <: sprite_double[0,1] ? 32 : 16;
+    uint6 spritesize <: sprite_actions[3,1] ? 32 : 16;
     uint1 xinrange <: ( x >= __signed(sprite_x) ) & ( x < __signed( sprite_x + spritesize ) );
     uint1 yinrange <: ( y >= __signed(sprite_y) ) & ( y < __signed( sprite_y + spritesize ) );
-    uint4 xinsprite <: sprite_double[3,1] ? action00 ? xspriteshift : action01 ? yspriteshift : action10 ? revx : revy :
-                            sprite_double[1,1] ? revx : xspriteshift;
-    uint4 yinsprite <: sprite_double[3,1] ? action00 ? yspriteshift : action01 ? revx : action10 ? revy : xspriteshift :
-                            sprite_double[2,1] ? revy : yspriteshift;
+    uint4 xinsprite <: sprite_actions[2,1] ? action00 ? xspriteshift : action01 ? yspriteshift : action10 ? revx : revy :
+                            sprite_actions[0,1] ? revx : xspriteshift;
+    uint4 yinsprite <: sprite_actions[2,1] ? action00 ? yspriteshift : action01 ? revx : action10 ? revy : xspriteshift :
+                            sprite_actions[1,1] ? revy : yspriteshift;
 
     // READ ADDRESS FOR SPRITE
     tiles.addr0 := { sprite_tile_number, yinsprite, xinsprite };
@@ -144,7 +144,7 @@ algorithm sprite_layer_writer(
     // For reading sprite characteristics
     $$for i=0,15 do
         output  uint1   sprite_read_active_$i$,
-        output  uint4   sprite_read_double_$i$,
+        output  uint4   sprite_read_actions_$i$,
         output  int11   sprite_read_x_$i$,
         output  int10   sprite_read_y_$i$,
         output  uint3   sprite_read_tile_$i$,
@@ -153,13 +153,13 @@ algorithm sprite_layer_writer(
     // Storage for the sprites
     // Stored as registers as needed instantly
     uint1   sprite_active[16] = uninitialised;
-    uint4   sprite_double[16] = uninitialised;
+    uint4   sprite_actions[16] = uninitialised;
     int11   sprite_x[16] = uninitialised;
     int10   sprite_y[16] = uninitialised;
     uint3   sprite_tile_number[16] = uninitialised;
 
-    int11   sprite_offscreen_negative <: sprite_double[ sprite_set_number ][0,1] ? -32 : -16;
-    int11   sprite_to_negative <: sprite_double[ sprite_set_number ][0,1] ? -31 : -15;
+    int11   sprite_offscreen_negative <: sprite_actions[ sprite_set_number ][0,1] ? -32 : -16;
+    int11   sprite_to_negative <: sprite_actions[ sprite_set_number ][0,1] ? -31 : -15;
     uint1   sprite_offscreen_x = uninitialised;
     uint1   sprite_offscreen_y = uninitialised;
     uint1   sprite_off_left = uninitialised;
@@ -170,7 +170,7 @@ algorithm sprite_layer_writer(
     $$for i=0,15 do
         // For setting sprite read paramers
         sprite_read_active_$i$ := sprite_active[$i$];
-        sprite_read_double_$i$ := sprite_double[$i$];
+        sprite_read_actions_$i$ := sprite_actions[$i$];
         sprite_read_x_$i$ := sprite_x[$i$];
         sprite_read_y_$i$ := sprite_y[$i$];
         sprite_read_tile_$i$ := sprite_tile_number[$i$];
@@ -188,7 +188,7 @@ algorithm sprite_layer_writer(
         switch( sprite_layer_write ) {
             case 0: {}
             case 1: { sprite_active[ sprite_set_number ] = sprite_write_value[0,1]; }
-            case 2: { sprite_double[ sprite_set_number ] = sprite_write_value[0,4]; }
+            case 2: { sprite_actions[ sprite_set_number ] = sprite_write_value[0,4]; }
             case 4: { sprite_x[ sprite_set_number ] = sprite_write_value[0,11]; }
             case 5: { sprite_y[ sprite_set_number ] = sprite_write_value[0,10]; }
             case 6: { sprite_tile_number[ sprite_set_number ] = sprite_write_value[0,3]; }

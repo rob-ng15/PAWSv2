@@ -115,7 +115,7 @@ unsigned char volatile * FRAMEBUFFER_DISPLAY = ( unsigned char volatile * ) 0xd6
 unsigned char volatile * FRAMEBUFFER_DRAW = ( unsigned char volatile * ) 0xd6f2;
 
 unsigned short volatile * LOWER_SPRITE_ACTIVE = ( unsigned short volatile * ) 0xd300;
-unsigned short volatile * LOWER_SPRITE_DOUBLE = ( unsigned short volatile * ) 0xd320;
+unsigned short volatile * LOWER_SPRITE_ACTIONS = ( unsigned short volatile * ) 0xd320;
 short volatile * LOWER_SPRITE_X = ( short volatile * ) 0xd360;
 short volatile * LOWER_SPRITE_Y = ( short volatile * ) 0xd380;
 unsigned short volatile * LOWER_SPRITE_TILE = ( unsigned short volatile * ) 0xd3a0;
@@ -128,7 +128,7 @@ unsigned char volatile * LOWER_SPRITE_WRITER_X = ( unsigned char volatile * ) 0x
 unsigned char volatile * LOWER_SPRITE_WRITER_COLOUR = ( unsigned char volatile * ) 0xd806;
 
 unsigned short volatile * UPPER_SPRITE_ACTIVE = ( unsigned short volatile * ) 0xd400;
-unsigned short volatile * UPPER_SPRITE_DOUBLE = ( unsigned short volatile * ) 0xd420;
+unsigned short volatile * UPPER_SPRITE_ACTIONS = ( unsigned short volatile * ) 0xd420;
 short volatile * UPPER_SPRITE_X = ( short volatile * ) 0xd460;
 short volatile * UPPER_SPRITE_Y = ( short volatile * ) 0xd480;
 unsigned short volatile * UPPER_SPRITE_TILE = ( unsigned short volatile * ) 0xd4a0;

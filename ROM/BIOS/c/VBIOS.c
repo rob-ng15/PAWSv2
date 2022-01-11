@@ -375,7 +375,7 @@ void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsign
             LOWER_SPRITE_TILE[sprite_number] = tile;
             LOWER_SPRITE_X[sprite_number] = x;
             LOWER_SPRITE_Y[sprite_number] = y;
-            LOWER_SPRITE_DOUBLE[sprite_number] = sprite_attributes;
+            LOWER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
             break;
 
         case 1:
@@ -383,7 +383,7 @@ void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsign
             UPPER_SPRITE_TILE[sprite_number] = tile;
             UPPER_SPRITE_X[sprite_number] = x;
             UPPER_SPRITE_Y[sprite_number] = y;
-            UPPER_SPRITE_DOUBLE[sprite_number] = sprite_attributes;
+            UPPER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
             break;
     }
 }
@@ -413,7 +413,7 @@ void set_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_numb
                 LOWER_SPRITE_Y[sprite_number] = value;
                 break;
             case 5:
-                LOWER_SPRITE_DOUBLE[sprite_number] = ( unsigned char) value;
+                LOWER_SPRITE_ACTIONS[sprite_number] = ( unsigned char) value;
                 break;
         }
     } else {
@@ -433,7 +433,7 @@ void set_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_numb
                 UPPER_SPRITE_Y[sprite_number] = value;
                 break;
             case 5:
-                UPPER_SPRITE_DOUBLE[sprite_number] = ( unsigned char) value;
+                UPPER_SPRITE_ACTIONS[sprite_number] = ( unsigned char) value;
                 break;
         }
     }
@@ -578,8 +578,8 @@ void main( void ) {
     set_sprite_bitmaps( 1, 0, &pacman_bitmap[0] );
     set_sprite_bitmaps( 1, 1, &ghost_bitmap[0] );
 
-    set_sprite( 1, 0, 1, 0, 440, 4, 11 );
-    set_sprite( 1, 1, 1, 64, 440, 0, 1 );
+    set_sprite( 1, 0, 1, 0, 440, 4, 13 );
+    set_sprite( 1, 1, 1, 64, 440, 0, 8);
 
     while(1) {
         await_vblank();
