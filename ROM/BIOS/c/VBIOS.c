@@ -550,7 +550,7 @@ void main( void ) {
     // SETUP INITIAL WELCOME MESSAGE
     draw_paws_logo();
     draw_sdcard();
-    gpu_outputstring( WHITE, 66, 2, "PAWS", 2 );
+    gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 66, 34, "Risc-V RV32IMAFC CPU", 0 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD

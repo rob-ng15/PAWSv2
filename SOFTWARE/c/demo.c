@@ -1,4 +1,4 @@
-#include "PAWSlibrary.h"
+#include "library/PAWSlibrary.h"
 #include <math.h>
 
 // FOR TILEMAP DEMO
@@ -1220,10 +1220,10 @@ void spritedemo( void ) {
     }
 
     // EVEN SPRITES GHOST NON-POWER, ODD SPRITES GHOST POWER
-    set_sprite( LOWER_LAYER, 0, 1, 144, 64, 0, 1 );                                                     set_sprite( LOWER_LAYER, 1, 0, 144, 64, 0, 1 );
-    set_sprite( LOWER_LAYER, 2, 1, 464, 64, 2, 1 );                                                     set_sprite( LOWER_LAYER, 3, 0, 464, 64, 2, 1 );
-    set_sprite( LOWER_LAYER, 4, 1, 464, 384, 4, 1 );                                                    set_sprite( LOWER_LAYER, 5, 0, 464, 384, 4, 1 );
-    set_sprite( LOWER_LAYER, 6, 1, 144, 384, 6, 1 );                                                    set_sprite( LOWER_LAYER, 7, 0, 144, 384, 6, 1 );
+    set_sprite( LOWER_LAYER, 0, 1, 144, 64, 0, SPRITE_DOUBLE );     set_sprite( LOWER_LAYER, 1, 0, 144, 64, 0, SPRITE_DOUBLE );
+    set_sprite( LOWER_LAYER, 2, 1, 464, 64, 2, SPRITE_DOUBLE );     set_sprite( LOWER_LAYER, 3, 0, 464, 64, 2, SPRITE_DOUBLE );
+    set_sprite( LOWER_LAYER, 4, 1, 464, 384, 4, SPRITE_DOUBLE );    set_sprite( LOWER_LAYER, 5, 0, 464, 384, 4, SPRITE_DOUBLE );
+    set_sprite( LOWER_LAYER, 6, 1, 144, 384, 6, SPRITE_DOUBLE );    set_sprite( LOWER_LAYER, 7, 0, 144, 384, 6, SPRITE_DOUBLE );
 
     set_sprite_bitmaps( UPPER_LAYER, 0, &pacman_bitmap[0] );
     set_sprite( UPPER_LAYER, 0, 1, 304, 415, 0, 1 );
@@ -1244,7 +1244,7 @@ void spritedemo( void ) {
 
         // ANIMATE PACMAN
         set_sprite_attribute( UPPER_LAYER, 0, SPRITE_TILE, ( ( animation_count & 96 ) >> 5 ) );
-        set_sprite_attribute( UPPER_LAYER, 0, SPRITE_ACTION, ghost_direction[1] * 2 + 9 );
+        set_sprite_attribute( UPPER_LAYER, 0, SPRITE_ACTION, ghost_direction[1] + SPRITE_DOUBLE + ROTATE0 );
 
         // ANIMATE THE GHOSTS
         for( short i = 0; i < 4; i++ ) {

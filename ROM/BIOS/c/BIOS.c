@@ -585,9 +585,9 @@ void main( void ) {
     }
     SMTSTART( (unsigned int )smtthread );
 
-    gpu_outputstring( WHITE, 66, 2, 1, "PAWS", 2 );
+    gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV32IMAFC CPU", 0 );
-    gpu_outputstringcentre( GREY2, 224, 0, "PAWS for ULX3S by Rob S in Silice", 0);
+    gpu_outputstringcentre( GREY2, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS
     while( *UART_STATUS & 1 ) { char temp = *UART_DATA; }

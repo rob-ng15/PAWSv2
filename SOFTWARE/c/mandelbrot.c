@@ -1,4 +1,4 @@
-#include "PAWSlibrary.h"
+#include "library/PAWSlibrary.h"
 #include <stdio.h>
 
 // TRANSLATION OF http://www.rosettacode.org/wiki/Mandelbrot_set#BASIC256 to C and PAWSlibrary
@@ -13,24 +13,30 @@ int main( void ) {
     float jx, jy, tx, ty, wx, wy, r;
     int k;
 
-    gpu_pixelblock_start( 0, 0, graphwidth );
+    for( int step = 16; step > 0; step = step >> 1 ) {
+        int offset = step - 1;
+        if( !offset ) gpu_pixelblock_start( 0, 0, graphwidth );
 
-    for( int y = 0; y < graphheight; y++ ) {
-        //tpu_printf_centre( 0, TRANSPARENT, WHITE, "( %3d, %3d )", x, y );
-        jy = ymin + y * dy;
-        for( int x = 0; x < graphwidth; x++ ) {
-            jx = xmin + x * dx;
-            k = 0; wx = 0.0; wy = 0.0;
-            do {
-                tx = wx * wx - wy * wy + jx;
-                ty = 2.0 * wx * wy + jy;
-                wx = tx;
-                wy = ty;
-                r = wx * wx + wy * wy;
-                k = k + 1;
-            } while( ( r < m ) && ( k < kt ) );
+        for( int y = 0; y < graphheight; y += step) {
+            jy = ymin + y * dy;
+            for( int x = 0; x < graphwidth; x += step ) {
+                jx = xmin + x * dx;
+                k = 0; wx = 0.0; wy = 0.0;
+                do {
+                    tx = wx * wx - wy * wy + jx;
+                    ty = 2.0 * wx * wy + jy;
+                    wx = tx;
+                    wy = ty;
+                    r = wx * wx + wy * wy;
+                    k = k + 1;
+                } while( ( r < m ) && ( k < kt ) );
 
-            gpu_pixelblock_pixel7( k );
+                if( offset ) {
+                    gpu_rectangle( k, x, y, x + offset, y + offset );
+                } else {
+                    gpu_pixelblock_pixel7( k );
+                }
+            }
         }
     }
 

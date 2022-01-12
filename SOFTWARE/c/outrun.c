@@ -1,7 +1,7 @@
 // PSEUDO 3D RACER BASED UPON:
 // https://www.lexaloffle.com/bbs/?tid=35767
 
-#include "PAWSlibrary.h"
+#include "library/PAWSlibrary.h"
 #include <math.h>
 #include <stdio.h>
 
@@ -34,6 +34,8 @@ unsigned short mountainslopes[] = {
     0b0111111111111110,
     0b1111111111111111
 };
+
+#include "graphics/outrun-graphics.h"
 
 unsigned char* mountains[]={
     "                                          ",   // OFFSCREEN TOP
@@ -70,53 +72,6 @@ unsigned char* mountains[]={
     "                                          "    // OFFSCREEN BOTTOM
 };
 
-unsigned short cityblocks[] = {
-    // DKMAGENTA BUILDING WITH WALKWAY
-    0,0,0,
-    0b0011000110001100,
-    0b0111101111011110,
-    0b0111101111011110,
-    0b0111101111011110,
-    0,0,0,
-    0b0011000110001100,
-    0b0111101111011110,
-    0b0111101111011110,
-    0b0111101111011110,
-    0,0,
-
-    0b0000000000000001,
-    0b0000000000000001,
-    0b0000000000000111,
-    0b0000000000001111,
-    0b0000000000001111,
-    0b0000000000111111,
-    0b0000000001111111,
-    0b0000000001111111,
-    0b0000000111111111,
-    0b0000001111111111,
-    0b0000001111111111,
-    0b0000111111111111,
-    0b0001111111111111,
-    0b0001111111111111,
-    0b0111111111111111,
-    0b1111111111111111,
-
-    0,0,
-    0b0000000110000000,
-    0b0000011111100000,
-    0b0000111111110000,
-    0b0000111111110000,
-    0b0000111111110000,
-    0b0000111111110000,
-    0b0000111111110000,
-    0b0000111111110000,
-    0b0000111111110000,
-    0b0000111111110000,
-    0b0000111111110000,
-    0b0000111111110000,
-    0,0,
-};
-
 unsigned char *cityscape[]={
     "                                          ",   // OFFSCREEN TOP
     "                                          ",
@@ -127,19 +82,19 @@ unsigned char *cityscape[]={
     "                                          ",
     "                                          ",
     "                                          ",
-    "       EE                     EE          ",
-    "      EEEE   1     1         EEEE  I      ",
-    "BC    EEEE  354   354        EEEE III   BC",
-    "DA    EEEE  555  35554   I   EEEE III   AD",
-    "DDDC  EEEE 35554 15551  III  EEEE III BDDD",
-    "DDDA  EEEE 15552225551 IIIII EEEE III ADDD",   // BASELINE
-    "DDDA  EEEE 15551 15551 IIIII EEEE III ADDD",
-    "DDDA  EEEE 15552225551 IIIII EEEE III ADDD",
-    "DDDA  EEEE 15551 15551 IIIII EEEE III ADDD",
-    "DDDA  EEEE 15551 15551 IIIII EEEE III ADDD",
-    "ADDA  EEEE 11111 11111 IIIII EEEE III ADDA",
-    "AADA  EEEE 11111 11111 IIIII EEEE III ADAA",
-    "ddDA  EEEE 11111 11111 IIIII EEEE III ADdA",
+    "   AC                                     ",
+    "   BD                                     ",
+    "   EG     ac                              ",
+    "   FH     bd                              ",
+    "   EG     eg                              ",
+    "   FH     fh                              ",
+    "   EG     ik                              ",
+    "   FH     jl                              ",
+    "   EG     mo                              ",
+    "   FH     np                              ",
+    "   EG     qs                              ",
+    "   FH     rt                              ",
+    "                                          ",
     "                                          ",
     "                                          ",
     "                                          ",
@@ -153,14 +108,19 @@ unsigned char *cityscape[]={
 };
 
 void set_tilemaps( void ) {
-    tilemap_scrollwrapclear( LOWER_LAYER, 9 );
-    tilemap_scrollwrapclear( UPPER_LAYER, 9 );
+    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
+    tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
 
     for( int i = 0; i < 2; i++ ) {
 //        set_tilemap_bitmap( LOWER_LAYER, 1 + i, &mountainslopes[ i * 16 ] );
     }
-    for( int i = 0; i < 3; i++ ) {
-//        set_tilemap_bitmap( UPPER_LAYER, 1 + i, &cityblocks[ i * 16 ] );
+
+    // SET BUILDINGS TILEMAPS
+    for( int i = 0; i < 2; i++ ) {
+        set_tilemap_bitmap32x32( UPPER_LAYER, 1 + i*4, &building_1[ i * 1024 ] );
+    }
+    for( int i = 0; i < 5; i++ ) {
+        set_tilemap_bitmap32x32( UPPER_LAYER, 9 + i*4, &building_2[ i * 1024 ] );
     }
 
     for( int y = 0; y < 32; y++ ) {
@@ -192,43 +152,37 @@ void set_tilemaps( void ) {
                     break;
             }
             switch( cityscape[y][x] ) {
-                // DKMAGENTA BUILDING
-                case '1':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKMAGENTA, GREY1, 0 );
-                    break;
-                case '2':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 1, DKMAGENTA, YELLOW, 0 );
-                    break;
-                case '3':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKMAGENTA, 0 );
-                    break;
-                case '4':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKMAGENTA, REFLECT_X );
-                    break;
-                case '5':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 3, DKMAGENTA, YELLOW, 0 );
-                    break;
-                // DKBLUE BUILDING
                 case 'A':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKBLUE, GREY1, 0 );
-                    break;
                 case 'B':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKBLUE, 0 );
-                    break;
                 case 'C':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 2, TRANSPARENT, DKBLUE, REFLECT_X );
-                    break;
                 case 'D':
-//                   set_tilemap_tile( UPPER_LAYER, x, y, 1, DKBLUE, DKCYAN, 0 );
-                    break;
-                case 'd':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 3, DKBLUE, BLACK, 0 );
-                    break;
                 case 'E':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKRED, GREY1, 0 );
+                case 'F':
+                case 'G':
+                case 'H':
+                    set_tilemap_tile( UPPER_LAYER, x, y, 1 + ( cityscape[y][x] ) - 'A', 0 );
                     break;
-                case 'I':
-//                    set_tilemap_tile( UPPER_LAYER, x, y, 0, DKORANGE, GREY1, 0 );
+                case 'a':
+                case 'b':
+                case 'c':
+                case 'd':
+                case 'e':
+                case 'f':
+                case 'g':
+                case 'h':
+                case 'i':
+                case 'j':
+                case 'k':
+                case 'l':
+                case 'm':
+                case 'n':
+                case 'o':
+                case 'p':
+                case 'q':
+                case 'r':
+                case 's':
+                case 't':
+                    set_tilemap_tile( UPPER_LAYER, x, y, 9 + ( cityscape[y][x] ) - 'a', 0 );
                     break;
             }
         }
@@ -280,7 +234,7 @@ struct DrawList2D LEFTBEAM[] = {
 };
 
 struct DrawList2D LEFTBEAMSMALL[] = {
-    { DLRECT, DKORANGE, DITHERSOLID, { -4, 0 }, { 4, -32 } },
+    { DLRECT, STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -32 } },
 };
 
 struct DrawList2D RIGHTBEAM[] = {
@@ -530,7 +484,7 @@ void drawroad( float x1, float y1, float scale1, float x2, float y2, float scale
     if( !tnl ) gpu_rectangle( (sumct%2) ? GREEN80 : GREEN60, 0, y1, 319, y2 );
 
     short w1 = 3 * scale1, w2 = 3 * scale2;
-    drawtrapezium( DKGREY, x1, y1, w1, x2, y2, w2 );
+    drawtrapezium( !tnl ? GREY40 : DKGREY, x1, y1, w1, x2, y2, w2 );
 
     // CENTRE LINE MARKINGS
     if( !(sumct % 4 ) ) {
@@ -571,14 +525,14 @@ void draw() {
 
     // MOVE THE TILEMAPS
     if( road[cnr].tu < 0 ) {
-        tilemap_scrollwrapclear( LOWER_LAYER, 5 );
-        tilemap_scrollwrapclear( UPPER_LAYER, 5 );
-        if( road[cnr].tu <= -0.5 ) tilemap_scrollwrapclear( LOWER_LAYER, 5 );
+        tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_LEFT );
+        tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_LEFT );
+        if( road[cnr].tu <= -0.5 ) tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_LEFT );
     }
     if( road[cnr].tu > 0 ) {
-        tilemap_scrollwrapclear( LOWER_LAYER, 7 );
-        tilemap_scrollwrapclear( UPPER_LAYER, 7 );
-        if( road[cnr].tu >= 0.5 ) tilemap_scrollwrapclear( LOWER_LAYER, 7 );
+        tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_RIGHT );
+        tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_RIGHT );
+        if( road[cnr].tu >= 0.5 ) tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_RIGHT );
     }
 
     for( int i = 0; i < DRAWSEGMENTS; i++ ) {
@@ -598,7 +552,7 @@ void draw() {
 
         sumct = corner[cnr] + seg - 1;
         if( tnl ) {
-            unsigned char wallcol = ( sumct % 4 < 2 ) ? VDKBLUE : BLACK;
+            unsigned char wallcol = ( sumct % 4 < 2 ) ? GREY20 : GREY30;
             gettunnelrectangle( p.x, p.y, p.z, &x1, &y1, &x2, &y2 );
             gettunnelrectangle( pp.x, pp.y, pp.z, &px2, &py1, &px2, &py2 );
             if( y1 > py1 ) gpu_rectangle( wallcol, px1, py1, px2-1, y1-1 );
