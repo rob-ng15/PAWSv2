@@ -1,4 +1,4 @@
-#include "PAWSlibrary.h"
+#include "library/PAWSlibrary.h"
 
 // Ideas from:
 // https://codereview.stackexchange.com/questions/234619/chess-game-in-c

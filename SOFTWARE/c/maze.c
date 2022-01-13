@@ -1,4 +1,4 @@
-#include "PAWSlibrary.h"
+#include "library/PAWSlibrary.h"
 #include <stdlib.h>
 #define min(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -6,13 +6,13 @@
      _a < _b ? _a : _b; })
 
 // INCLUDE TOMBSTONE IMAGE
-#include "TOMBSTONE_BMP.h"
+#include "graphics/TOMBSTONE_BMP.h"
 
 // INCLUDE CONTROLS IMAGE
-#include "ULX3S_BMP.h"
+#include "graphics/ULX3S_BMP.h"
 
 // INCLUDE 3D PACMAN BACKDROP
-#include "3DPACMAN_BMP.h"
+#include "graphics/3DPACMAN_BMP.h"
 
 // MAZE SIZES
 #define MAXWIDTH 80

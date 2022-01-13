@@ -3,7 +3,7 @@
 
 /* Further ported to PAWS */
 
-#include "PAWSlibrary.h"
+#include "library/PAWSlibrary.h"
 #include <stdio.h>
 #include <math.h>
 #include <fenv.h>

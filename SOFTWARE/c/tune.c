@@ -1,4 +1,4 @@
-#include "PAWSlibrary.h"
+#include "library/PAWSlibrary.h"
 
 unsigned char tune_treble[] = {  36, 48, 43, 40, 48, 42, 41, 37, 49, 44, 41, 49, 44, 41, 0xff };
 unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 32, 24, 16, 16, 16, 32, 24, 32, 0xff };

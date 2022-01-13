@@ -81,19 +81,19 @@ unsigned char *cityscape[]={
     "                                          ",
     "                                          ",
     "                                          ",
+    "   Aa                                     ",
+    "   Bb     JjJj                            ",
+    "   Cc  D  KkKk                            ",
+    "   Cc  E  LlLl                            ",
+    "   Cc  F  MmMm  OTTTTo                    ",
+    "   Cc  G  NnNn  PUUUUp                    ",
+    "   Cc  H  NnNn  QqQqQq                    ",
+    "   Cc  I  NnNn  RrRrRr                    ",
+    "   Cc  I  NnNn  SsSsSs                    ",
+    "   Cc  I  NnNn  QqQqQq                    ",
+    "   Cc  I  NnNn  RrRrRr                    ",
+    "   Cc  I  NnNn  SsSsSs                    ",
     "                                          ",
-    "   AC                                     ",
-    "   BD                                     ",
-    "   EG     ac                              ",
-    "   FH     bd                              ",
-    "   EG     eg                              ",
-    "   FH     fh                              ",
-    "   EG     ik                              ",
-    "   FH     jl                              ",
-    "   EG     mo                              ",
-    "   FH     np                              ",
-    "   EG     qs                              ",
-    "   FH     rt                              ",
     "                                          ",
     "                                          ",
     "                                          ",
@@ -116,11 +116,8 @@ void set_tilemaps( void ) {
     }
 
     // SET BUILDINGS TILEMAPS
-    for( int i = 0; i < 2; i++ ) {
-        set_tilemap_bitmap32x32( UPPER_LAYER, 1 + i*4, &building_1[ i * 1024 ] );
-    }
-    for( int i = 0; i < 5; i++ ) {
-        set_tilemap_bitmap32x32( UPPER_LAYER, 9 + i*4, &building_2[ i * 1024 ] );
+    for( int i = 0; i < 21; i++ ) {
+        set_tilemap_bitmap( UPPER_LAYER, 1 + i, &building_graphics[ i * 256 ] );
     }
 
     for( int y = 0; y < 32; y++ ) {
@@ -152,37 +149,17 @@ void set_tilemaps( void ) {
                     break;
             }
             switch( cityscape[y][x] ) {
-                case 'A':
-                case 'B':
-                case 'C':
-                case 'D':
-                case 'E':
-                case 'F':
-                case 'G':
-                case 'H':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 1 + ( cityscape[y][x] ) - 'A', 0 );
+                case ' ':
+                case '@':
                     break;
-                case 'a':
-                case 'b':
-                case 'c':
-                case 'd':
-                case 'e':
-                case 'f':
-                case 'g':
-                case 'h':
-                case 'i':
-                case 'j':
-                case 'k':
-                case 'l':
-                case 'm':
-                case 'n':
-                case 'o':
-                case 'p':
-                case 'q':
-                case 'r':
-                case 's':
-                case 't':
-                    set_tilemap_tile( UPPER_LAYER, x, y, 9 + ( cityscape[y][x] ) - 'a', 0 );
+                default:
+                    if( cityscape[y][x] > 'Z' ) {
+                        // LOWER CASE - REFLECTION
+                        set_tilemap_tile( UPPER_LAYER, x, y, cityscape[y][x] - 96, REFLECT_X );
+                    } else {
+                        // UPPER CASE - NO REFLECTION
+                        set_tilemap_tile( UPPER_LAYER, x, y, cityscape[y][x] - 64, 0 );
+                    }
                     break;
             }
         }
@@ -484,18 +461,18 @@ void drawroad( float x1, float y1, float scale1, float x2, float y2, float scale
     if( !tnl ) gpu_rectangle( (sumct%2) ? GREEN80 : GREEN60, 0, y1, 319, y2 );
 
     short w1 = 3 * scale1, w2 = 3 * scale2;
-    drawtrapezium( !tnl ? GREY40 : DKGREY, x1, y1, w1, x2, y2, w2 );
+    drawtrapezium( tnl ? GREY30 : GREY40, x1, y1, w1, x2, y2, w2 );
 
     // CENTRE LINE MARKINGS
     if( !(sumct % 4 ) ) {
         short mw1 = .1 * scale1, mw2 = .1 * scale2;
-        drawtrapezium( WHITE, x1, y1, mw1, x2, y2, mw2 );
+        drawtrapezium( tnl ? GREY70 : WHITE, x1, y1, mw1, x2, y2, mw2 );
     }
 
     // SHOULDER MARKINGS
     short sw1 = .2 * scale1, sw2 = .2 * scale2;
-    drawtrapezium( (sumct%2) ? WHITE : RED, x1-w1, y1, sw1 ,x2-w2 , y2, sw2 );
-    drawtrapezium( (sumct%2) ? WHITE : RED, x1+w1, y1, sw1, x2+w2, y2, sw2 );
+    drawtrapezium( (sumct%2) ? tnl ? GREY70 : WHITE : tnl ? RED70 : RED, x1-w1, y1, sw1 ,x2-w2 , y2, sw2 );
+    drawtrapezium( (sumct%2) ? tnl ? GREY70 : WHITE : tnl ? RED70 : RED, x1+w1, y1, sw1, x2+w2, y2, sw2 );
 }
 
 void draw() {
@@ -552,7 +529,7 @@ void draw() {
 
         sumct = corner[cnr] + seg - 1;
         if( tnl ) {
-            unsigned char wallcol = ( sumct % 4 < 2 ) ? GREY20 : GREY30;
+            unsigned char wallcol = ( sumct % 4 < 2 ) ? BLUE20 : BLUE30;
             gettunnelrectangle( p.x, p.y, p.z, &x1, &y1, &x2, &y2 );
             gettunnelrectangle( pp.x, pp.y, pp.z, &px2, &py1, &px2, &py2 );
             if( y1 > py1 ) gpu_rectangle( wallcol, px1, py1, px2-1, y1-1 );

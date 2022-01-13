@@ -1,4 +1,4 @@
-#include "PAWSlibrary.h"
+#include "library/PAWSlibrary.h"
 #include <stdlib.h>
 
 int main( void ) {

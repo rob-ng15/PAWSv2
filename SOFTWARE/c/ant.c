@@ -1,4 +1,4 @@
-#include "PAWSlibrary.h"
+#include "library/PAWSlibrary.h"
 
 // http://http://www.rosettacode.org/wiki/Langton%27s_ant
 

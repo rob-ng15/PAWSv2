@@ -1,4 +1,4 @@
-#include "PAWSlibrary.h"
+#include "library/PAWSlibrary.h"
 
 void smtthread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
