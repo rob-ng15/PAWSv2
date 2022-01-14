@@ -116,14 +116,6 @@ void set_ufo_bullet_sprites( void ) {
     set_sprite_bitmaps( 1, UFOBULLETSPRITE, &ufo_bullet_sprite[0] );
 }
 
-// HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
-void set_tilemap_32x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
-    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
-    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y, start_tile + 2,  0 );
-    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
-}
-
 void set_tilemap( void ) {
     unsigned char i, x, y, colour;
 
@@ -136,9 +128,9 @@ void set_tilemap( void ) {
     set_tilemap_bitmap32x32( LOWER_LAYER, 9, &tilemap_bitmap_back[ 2048 ] );
 
     // PLACE JUPITER, SATURN, COMET
-    set_tilemap_32x32tile( LOWER_LAYER, 8, 8, 1 );
-    set_tilemap_32x32tile( LOWER_LAYER, 33, 23, 5 );
-    set_tilemap_32x32tile( LOWER_LAYER, 21,15, 9 );
+    set_tilemap_tile32x32( LOWER_LAYER, 8, 8, 1 );
+    set_tilemap_tile32x32( LOWER_LAYER, 33, 23, 5 );
+    set_tilemap_tile32x32( LOWER_LAYER, 21,15, 9 );
 
     // SET AND PLACE ROCKET SHIPS
     for( unsigned char tile_number = 0; tile_number < 4; tile_number++ ) {
@@ -147,7 +139,7 @@ void set_tilemap( void ) {
     for( i = 0; i < 4; i++ ) {
         x = rng( 18 ) + ( x&1 ? 21 : 1 );
         y = rng( 7 ) + i*7 + 1;
-        set_tilemap_32x32tile( UPPER_LAYER, x, y, 1 );
+        set_tilemap_tile32x32( UPPER_LAYER, x, y, 1 );
     }
 }
 

@@ -395,6 +395,14 @@ void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsign
     }
 }
 
+// HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
+void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile( tm_layer, x + 1, y, start_tile + 2,  0 );
+    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
+}
+
 // SCROLL WRAP or CLEAR the TILEMAP
 //  action == 1 to 4 move the tilemap 1 pixel LEFT, UP, RIGHT, DOWN and SCROLL at limit
 //  action == 5 to 8 move the tilemap 1 pixel LEFT, UP, RIGHT, DOWN and WRAP at limit
