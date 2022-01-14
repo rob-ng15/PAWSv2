@@ -82,18 +82,18 @@ unsigned char *cityscape[]={
     "                                          ",
     "                                          ",
     "                                          ",
-    "   Aa                                     ",
-    "   Bb     JjJj                            ",
-    "   Cc  D  KkKk                            ",
-    "   Cc  E  LlLl                            ",
-    "   Cc  F  MmMm  OTTTTo                    ",
-    "   Cc  G  NnNn  PUUUUp                    ",
-    "   Cc  H  NnNn  QqQqQq                    ",
-    "   Cc  I  NnNn  RrRrRr                    ",
-    "   Cc  I  NnNn  SsSsSs                    ",
-    "   Cc  I  NnNn  QqQqQq                    ",
-    "   Cc  I  NnNn  RrRrRr                    ",
-    "   Cc  I  NnNn  SsSsSs                    ",
+    "  Aa                                      ",
+    "  Bb                         JjJj    JjJj ",
+    "  Cc                      D  KkKk    KkKk ",
+    "  Cc                      E  LlLl    LlLl ",
+    "  Cc  OTTTTo              F  MmMm    MmMm ",
+    "  Cc  PUUUUp  V        v  G  NnNn    NnNn ",
+    "  Cc  QqQqQq  W        w  H  NnNnNnNnNnNn ",
+    "  Cc  RrRrRr  X        x  I  NnNnNnNnNnNn ",
+    "  Cc  SsSsSs  yYyY  yYyY  I  NnNn    NnNn ",
+    "  Cc  QqQqQq  YyYyYyYyYy  I  NnNnNnNnNnNn ",
+    "  Cc  RrRrRr  yYyYyYyYyY  I  NnNnNnNnNnNn ",
+    "  Cc  SsQsSs  YyYy  YyYy  I  NnNn    NnNn ",
     "                                          ",
     "                                          ",
     "                                          ",
@@ -111,13 +111,20 @@ void set_tilemaps( void ) {
     tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
     tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
 
-    for( int i = 0; i < 2; i++ ) {
-//        set_tilemap_bitmap( LOWER_LAYER, 1 + i, &mountainslopes[ i * 16 ] );
-    }
 
     // SET BUILDINGS TILEMAPS
-    for( int i = 0; i < 21; i++ ) {
+    for( int i = 0; i < 25; i++ ) {
         set_tilemap_bitmap( UPPER_LAYER, 1 + i, &building_graphics[ i * 256 ] );
+    }
+
+    // SET CLOUD TILEMAPS
+    for( int i = 0; i < 4; i++ ) {
+        set_tilemap_bitmap32x32( LOWER_LAYER, 1 + ( i * 4 ), &cloud_graphics[ i * 1024 ] );
+    }
+
+    // SET MOUNTAIN TILEMAPS
+    for( int i = 0; i < 2; i++ ) {
+//        set_tilemap_bitmap( LOWER_LAYER, 1 + i, &mountainslopes[ i * 16 ] );
     }
 
     for( int y = 0; y < 32; y++ ) {
@@ -164,6 +171,12 @@ void set_tilemaps( void ) {
             }
         }
     }
+
+    // DRAW THE CLOUD
+    set_tilemap_tile32x32( LOWER_LAYER, 17, 4, 1 );
+    set_tilemap_tile32x32( LOWER_LAYER, 17, 6, 5 );
+    set_tilemap_tile32x32( LOWER_LAYER, 19, 4, 9 );
+    set_tilemap_tile32x32( LOWER_LAYER, 19, 6, 13 );
 }
 
 // ROADSIDE ITEMS - AS DRAWLISTS FOR EASIER PLACEMENT AND SCALING

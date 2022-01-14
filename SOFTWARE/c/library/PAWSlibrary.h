@@ -59,6 +59,7 @@ extern void set_copper_cpuinput( unsigned short );
 extern void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action );
 extern void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap );
 extern void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap );
+extern void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned char start_tile );
 extern unsigned char tilemap_scrollwrapclear( unsigned char, unsigned char );
 
 // GPU AND BITMAP
