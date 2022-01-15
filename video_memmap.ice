@@ -606,13 +606,9 @@ algorithm charactermap_memmap(
     simple_dualport_bram uint14 colourmap <@video_clock,@video_clock> [4800] = uninitialized;
 
     // CHARACTER MAP WRITER
-    uint6   tpu_foreground = uninitialized;
-    uint7   tpu_background = uninitialized;
     character_map_writer CMW <@video_clock,!video_reset> (
         charactermap <:> charactermap,
         colourmap <:> colourmap,
-        tpu_foreground <: tpu_foreground,
-        tpu_background <: tpu_background,
         tpu_active :> tpu_active,
         curses_character :> curses_character,
         curses_background :> curses_background,
@@ -631,8 +627,6 @@ algorithm charactermap_memmap(
         pixel    :> pixel,
         character_map_display :> pixel_display,
         blink <: blink,
-        tpu_foreground <: tpu_foreground,
-        tpu_background <: tpu_background,
         cursor_x <: CMW.cursor_x,
         cursor_y <: CMW.cursor_y
     );
@@ -647,8 +641,8 @@ algorithm charactermap_memmap(
                     case 3h0: { CMW.tpu_x = writeData; }
                     case 3h1: { CMW.tpu_y = writeData; }
                     case 3h2: { CMW.tpu_character = writeData; }
-                    case 3h3: { tpu_background = writeData; }
-                    case 3h4: { tpu_foreground = writeData; }
+                    case 3h3: { CMW.tpu_background = writeData; character_map_window.tpu_background = writeData; }
+                    case 3h4: { CMW.tpu_foreground = writeData; character_map_window.tpu_foreground = writeData; }
                     case 3h5: { CMW.tpu_write = writeData; }
                     case 3h6: { character_map_window.tpu_showcursor = writeData; }
                     default: {}
@@ -736,6 +730,9 @@ algorithm sprite_memmap(
             sprite_read_y_$i$ :> sprite_read_y_$i$,
             sprite_read_tile_$i$ :> sprite_read_tile_$i$,
         $$end
+        // SET SPRITE NUMBER AND VALUE TO WRITE FROM THE MEMORY ADDRESS
+        sprite_set_number <: memoryAddress[1,4],
+        sprite_write_value <: writeData
     );
 
     // UPDATE THE SPRITE TILE BITMAPS
@@ -760,8 +757,6 @@ algorithm sprite_memmap(
                     }
                 } else {
                     // SET SPRITE ATTRIBUTE
-                    SLW.sprite_set_number = memoryAddress[1,4];
-                    SLW.sprite_write_value = writeData;
                     SLW.sprite_layer_write = memoryAddress[5,3] + 1;
                 }
             }
