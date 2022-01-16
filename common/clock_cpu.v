@@ -8,7 +8,7 @@ module ulx3s_clk_risc_ice_v_CPU
     output  clkCPU,             // 50 MHz, 0 deg        // SYSTEM CLOCK cpu
     output  clkDECODE,          // 100 MHz, 0 deg       // CPU decoder and compressed instruction expander
     output  clkIO25,            // 25 MHz, 0 deg        // VIDO CLOCK (if used)
-    output  clkGPU,             // 25 MHz, 0 deg        // GPU CLOCK (if used)
+    output  clkGPU,             // 50 MHz, 0 deg        // GPU CLOCK (if used)
     output  locked
 );
 (* FREQUENCY_PIN_CLKI="25" *)
@@ -40,7 +40,7 @@ EHXPLLL #(
         .CLKOS2_CPHASE(5),
         .CLKOS2_FPHASE(0),
         .CLKOS3_ENABLE("ENABLED"),
-        .CLKOS3_DIV(24),
+        .CLKOS3_DIV(12),
         .CLKOS3_CPHASE(5),
         .CLKOS3_FPHASE(0),
          .FEEDBK_PATH("CLKOP"),

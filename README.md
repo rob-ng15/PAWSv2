@@ -14,7 +14,7 @@ The display hardware does as much as possible to compensate for the slow CPU spe
 Copy the files from the directory "SOFTWARE/PAWS" to an SDCARD and insert into the ULX3S. Flash the bitstream from "ULX3S/BUILD_ulx3s/PAWSv2.bit" to the ULX3S
 
 ```
-fujproj PAWSv2.bit
+fujprog PAWSv2.bit
 ```
 
 This will initialise the BIOS and allow the selection of a PAW file to load and run.

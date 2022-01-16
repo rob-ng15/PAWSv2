@@ -1,6 +1,6 @@
 // Runs at 25MHz
 algorithm apu(
-    input   uint4   waveform,
+    input   uint3   waveform,
     input   uint16  frequency,
     input   uint16  duration,
     input   uint1   apu_write,
@@ -8,33 +8,34 @@ algorithm apu(
     output  uint1   audio_active,
     output  uint4   audio_output
 ) <autorun,reginputs> {
-    uint5   point = uninitialised;                  uint4   level = uninitialised;
-    uint1   updatepoint = uninitialised;
-
-    waveform WAVEFORM( point <: point, staticGenerator <: staticGenerator, audio_output :> level );
-    audiocounter COUNTER( active :> audio_active, updatepoint :> updatepoint );
+    waveform WAVEFORM( staticGenerator <: staticGenerator );
+    audiocounter COUNTER( active :> audio_active );
 
     COUNTER.start := 0;
 
     always_before {
-        if( updatepoint ) { audio_output = level; }
+        if( audio_active ) {
+            if( COUNTER.updatepoint ) { audio_output = WAVEFORM.audio_output; }
+        } else {
+            audio_output = 0;
+        }
     }
     always_after {
         if( apu_write ) {
-            point = 0;
+            WAVEFORM.point = 0;
             WAVEFORM.selected_waveform = waveform;
             COUNTER.selected_frequency = frequency;
             COUNTER.selected_duration = duration;
             COUNTER.start = 1;
         } else {
-            point = point + updatepoint;
+            WAVEFORM.point = WAVEFORM.point + COUNTER.updatepoint;
         }
     }
 }
 
 algorithm waveform(
     input   uint5   point,
-    input   uint4   selected_waveform,
+    input   uint3   selected_waveform,
     input   uint4   staticGenerator,
     output  uint4   audio_output
 ) <autorun,reginputs> {

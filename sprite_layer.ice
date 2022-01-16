@@ -1,6 +1,6 @@
 algorithm sprite_layer(
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     output! uint7   pixel,
@@ -99,7 +99,7 @@ algorithm sprite_layer(
 
 algorithm sprite_generator(
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     input   uint1   sprite_active,
@@ -112,8 +112,8 @@ algorithm sprite_generator(
     output! uint7   pixel
 ) <autorun> {
     int11   x <: { 1b0, pix_x };                                                                        int11   xspritex <: ( x - sprite_x ) + pix_active;
-    int11   y <: { 1b0, pix_y };                                                                        int11   yspritey <: ( y - sprite_y );
-    int11   xspriteshift <: ( xspritex >>> sprite_actions[3,1] );                                        int11   yspriteshift <: yspritey >>> sprite_actions[3,1];
+    int11   y <: { 2b0, pix_y };                                                                        int11   yspritey <: ( y - sprite_y );
+    int11   xspriteshift <: ( xspritex >>> sprite_actions[3,1] );                                       int11   yspriteshift <: yspritey >>> sprite_actions[3,1];
 
     uint4   revx <: ~xspriteshift;                                                                      uint4   revy <: ~yspriteshift;
     uint1   action00 <: ( ~|sprite_actions[0,2] );         uint1   action01 <: ( sprite_actions[0,2] == 2b01 );         uint1   action10 <: ( sprite_actions[0,2] == 2b10 );

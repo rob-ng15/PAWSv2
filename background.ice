@@ -11,7 +11,7 @@ bitfield CU{
 
 algorithm background_writer(
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
 
@@ -116,22 +116,15 @@ algorithm rainbow(
     input   uint3   y,
     output  uint7   colour
 ) <autorun> {
+    uint7   rainbow[] = { 7b100000, 7b110000, 7b111000, 7b111100, 7b001100, 7b000011, 7b010010, 7b011011 };
+
     always_after {
-        switch( y ) {
-            case 3b000: { colour = 7b100000; }
-            case 3b001: { colour = 7b110000; }
-            case 3b010: { colour = 7b111000; }
-            case 3b011: { colour = 7b111100; }
-            case 3b100: { colour = 7b001100; }
-            case 3b101: { colour = 7b000011; }
-            case 3b110: { colour = 7b010010; }
-            case 3b111: { colour = 7b011011; }
-        }
+        colour = rainbow[ y ];
     }
 }
 algorithm background_display(
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     output! uint7   pixel,
@@ -152,14 +145,14 @@ algorithm background_display(
             case 0: { pixel = b_alt; }                                              // EVERYTHING ELSE
             case 1: { pixel = b_colour; }
             case 2: { pixel = RAINBOW.colour; }                                     // RAINBOW
-            case 3: { pixel = {4{staticGenerator}}; }                               // STATIC
+            case 3: { pixel = {3{staticGenerator}}; }                               // STATIC
         }
     }
 }
 
 algorithm starfield(
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     output  uint1   star
 ) <autorun> {
     // Variables for SNOW (from @sylefeb)
@@ -180,11 +173,11 @@ algorithm starfield(
 
 algorithm pattern(
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint4   b_mode,
     output! uint2   condition
 ) <autorun> {
-    uint1   tophalf <: ( pix_y < 240 );             uint1   lefthalf <: ( pix_x < 320 );                uint4   checkmode <: b_mode - 7;
+    uint1   tophalf <: ( pix_y < 240 );             uint1   lefthalf <: ( pix_x < 320 );                uint2   checkmode <: b_mode - 7;
     starfield STARS( pix_x <: pix_x, pix_y <: pix_y );
 
     always {

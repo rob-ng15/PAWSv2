@@ -507,7 +507,7 @@ void drawroad( float x1, float y1, float scale1, float x2, float y2, float scale
 
     // SHOULDER MARKINGS
     short sw1 = .2 * scale1, sw2 = .2 * scale2;
-    drawtrapezium( (sumct%2) ? tnl ? GREY70 : WHITE : tnl ? RED70 : RED, x1-w1, y1, sw1 ,x2-w2 , y2, sw2 );
+    drawtrapezium( (sumct%2) ? tnl ? GREY70 : WHITE : tnl ? RED70 : RED, x1-w1, y1, sw1 ,x2-w2, y2, sw2 );
     drawtrapezium( (sumct%2) ? tnl ? GREY70 : WHITE : tnl ? RED70 : RED, x1+w1, y1, sw1, x2+w2, y2, sw2 );
 }
 
