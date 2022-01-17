@@ -510,9 +510,9 @@ algorithm floattoint(
             result = 0;
         } else {
             if( classA[3,1] | NN ) {
-                result = { ~NN & fp32( a ).sign, 31h7fffffff };
+                result = { ~NN & fp32( a ).sign, {31{~fp32( a ).sign}} };
             } else {
-                result = { fp32( a ).sign, NV ? 31h7fffffff : fp32( a ).sign ? -PREP.unsignedfraction : PREP.unsignedfraction };
+                result = { fp32( a ).sign, NV ? {31{~fp32( a ).sign}} : fp32( a ).sign ? -PREP.unsignedfraction : PREP.unsignedfraction };
             }
         }
     }
