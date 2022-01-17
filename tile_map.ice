@@ -3,7 +3,7 @@ algorithm tilemap(
     simple_dualport_bram_port0 tiles,
 
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     output! uint7   pixel,

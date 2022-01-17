@@ -9,7 +9,7 @@ algorithm bitmap(
     simple_dualport_bram_port0 bitmap_1B,
     input   uint1   framebuffer,
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     output! uint7   pixel,
@@ -21,7 +21,7 @@ algorithm bitmap(
     output  uint7   bitmap_colour_read
 ) <autorun,reginputs> {
     // Pixel x and y fetching 1 in advance due to bram latency
-    uint9   x_plus_one <: pix_x[1,9] + pix_x[0,1];                uint8   y_line <: pix_vblank ? 0 : pix_y[1,8];
+    uint9   x_plus_one <: pix_x[1,9] + pix_x[0,1];  uint8   y_line <: pix_vblank ? 0 : pix_y[1,8];
     uint9   x_pixel <: pix_active ? x_plus_one : 0; uint17  address <: y_line * 320 + x_pixel;
 
     uint7   colour1 <: { bitmap_1A.rdata0, bitmap_1R.rdata0, bitmap_1G.rdata0, bitmap_1B.rdata0 };
@@ -179,7 +179,7 @@ algorithm dither(
     input   uint1   static1bit,
     output! uint1   condition
 ) <autorun> {
-    uint4   checkmode <: dithermode - 1;            uint3   revbitmapx <: 3b111 - bitmap_x_write[0,3];
+    uint2   checkmode <: dithermode[0,2] - 1;            uint3   revbitmapx <: ~bitmap_x_write[0,3];
 
     always_after {
         // DITHER PATTERNS

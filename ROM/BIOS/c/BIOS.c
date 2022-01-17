@@ -594,8 +594,8 @@ void main( void ) {
     while( *PS2_AVAILABLE ) { short temp = *PS2_DATA; }
 
     gpu_outputstringcentre( RED, 72, 0, "Waiting for SDCARD", 0 );
+    sleep( 2000 );
     gpu_outputstringcentre( RED, 80, 0, "Press RESET if not detected", 0 );
-    sleep( 1000 );
     sdcard_readsector( 0, BOOTRECORD );
     PARTITIONS = (PartitionTable *) &BOOTRECORD[ 0x1BE ];
 

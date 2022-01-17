@@ -3,7 +3,7 @@ algorithm character_map(
     simple_dualport_bram_port0 colourmap,
 
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     output! uint7   pixel,
@@ -22,24 +22,18 @@ algorithm character_map(
     };
 
     // Character position on the screen x 0-79, y 0-59 * 80 ( fetch it two pixels ahead of the actual x pixel, so it is always ready )
-    uint7   xcharacterpos <: ( pix_active ?  pix_x + 2 : 0 ) >> 3;
-    uint7   xcolourpos <: ( pix_active ?  pix_x + 1 : 0 ) >> 3;
     uint6   ycharacterpos <: ( ( pix_vblank ? 0 : pix_y ) >> 3 );
     uint13  ycharacteraddress <: 80 * ycharacterpos;
     uint1   is_cursor <: tpu_showcursor & blink & ( cursor_x == ( pix_x >> 3 ) ) & ( cursor_y == ycharacterpos );
 
-    // Derive the x and y coordinate within the current 8x8 character block x 0-7, y 0-7
-    uint3 xincharacter <: 7 - pix_x[0,3];
-    uint3 yincharacter <: pix_y[0,3];
-
     // Derive the actual pixel in the current character
-    uint1 characterpixel <: characterGenerator8x8.rdata[ xincharacter, 1 ];
+    uint1 characterpixel <: characterGenerator8x8.rdata[ ~pix_x[0,3], 1 ];
 
     // Set up reading of the charactermap
-    charactermap.addr0 := xcharacterpos + ycharacteraddress; colourmap.addr0 := xcolourpos + ycharacteraddress;
+    charactermap.addr0 := ( ( pix_active ?  pix_x + 2 : 0 ) >> 3 ) + ycharacteraddress; colourmap.addr0 := ( ( pix_active ?  pix_x + 1 : 0 ) >> 3 ) + ycharacteraddress;
 
     // Setup the reading of the characterGenerator8x16 ROM
-    characterGenerator8x8.addr := { charactermap.rdata0, yincharacter };
+    characterGenerator8x8.addr := { charactermap.rdata0, pix_y[0,3] };
 
     // RENDER - Default to transparent
     character_map_display := pix_active & ( characterpixel | ( colour14(colourmap.rdata0).background != 64 ) | is_cursor );

@@ -179,6 +179,29 @@ void set_tilemaps( void ) {
     set_tilemap_tile32x32( LOWER_LAYER, 19, 6, 13 );
 }
 
+// DRAW THE TRAFFIC IN FONT OF THE CITY
+#define SPRITE_YPOS 304
+unsigned char updateflags[] = { 31, 31, 31, 30, 30, 29, 29, 3, 3, 2, 2, 1, 1, 1 };
+void set_sprites() {
+    for( int i = 0; i < 16; i++ ) {
+        set_sprite_bitmaps( LOWER_LAYER, i, &traffic_sprites[0] );
+    }
+
+    unsigned short xpos[] = { 48, 64, 80, 48, 64, 48, 64, 64, 48, 64, 48, 80, 64, 48 };
+    unsigned short tiles[] = { 5, 6, 7, 3, 4, 1, 2, 1, 2, 3, 4, 5, 6, 7 };
+
+    for( int i = 0; i < 7; i++ ) {
+        set_sprite( LOWER_LAYER, i, 1, xpos[i], SPRITE_YPOS, tiles[i], 0 );
+        set_sprite( LOWER_LAYER, i + 7, 1, xpos[ i + 7 ], SPRITE_YPOS, tiles[ i + 7 ], REFLECT_X );
+    }
+}
+
+void move_sprites() {
+    for( int i = 0; i < 14; i++ ) {
+        update_sprite( LOWER_LAYER, i, updateflags[i] );
+    }
+}
+
 // ROADSIDE ITEMS - AS DRAWLISTS FOR EASIER PLACEMENT AND SCALING
 #define NONE 0
 #define TREE 1
@@ -484,7 +507,7 @@ void drawroad( float x1, float y1, float scale1, float x2, float y2, float scale
 
     // SHOULDER MARKINGS
     short sw1 = .2 * scale1, sw2 = .2 * scale2;
-    drawtrapezium( (sumct%2) ? tnl ? GREY70 : WHITE : tnl ? RED70 : RED, x1-w1, y1, sw1 ,x2-w2 , y2, sw2 );
+    drawtrapezium( (sumct%2) ? tnl ? GREY70 : WHITE : tnl ? RED70 : RED, x1-w1, y1, sw1 ,x2-w2, y2, sw2 );
     drawtrapezium( (sumct%2) ? tnl ? GREY70 : WHITE : tnl ? RED70 : RED, x1+w1, y1, sw1, x2+w2, y2, sw2 );
 }
 
@@ -680,6 +703,7 @@ int main() {
     bitmap_display(0);
     set_background_generator();
     set_tilemaps();
+    set_sprites();
 
     // PREPARE ROAD
     init();
@@ -688,7 +712,7 @@ int main() {
     while( !( get_buttons() & 4 ) ) {
         bitmap_draw( !framebuffer );
         draw();
-        update();
+        update(); move_sprites();
         if( !(systemclock()&15) ) {
             tpu_print_centre( 1, TRANSPARENT, WHITE, 1, "Based upon https://www.lexaloffle.com/bbs/?tid=35767" );
             tpu_print_centre( 2, TRANSPARENT, WHITE, 1, "Written by @tommulgrew" );

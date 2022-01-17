@@ -2,7 +2,7 @@ algorithm terminal(
     simple_dualport_bram_port0 terminal,
 
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     output! uint1   pixel,
@@ -24,18 +24,14 @@ algorithm terminal(
     // Determine if cursor, and if cursor is flashing
     uint1 is_cursor <: blink & ( xterminalpos == terminal_x ) & ( &yterminalpos );
 
-    // Derive the x and y coordinate within the current 8x8 terminal character block x 0-7, y 0-7
-    uint3 xinterminal <: 7 - pix_x[0,3];
-    uint3 yinterminal <: pix_y[0,3];
-
     // Derive the actual pixel in the current terminal
-    uint1 terminalpixel <: characterGenerator8x8.rdata[ xinterminal, 1 ];
+    uint1 terminalpixel <: characterGenerator8x8.rdata[ ~pix_x[0,3], 1 ];
 
     // Setup the reading of the terminal memory
     terminal.addr0 := xterminalpos + yterminalpos * 80;
 
     // Setup the reading of the characterGenerator8x8 ROM
-    characterGenerator8x8.addr :=  { terminal.rdata0, yinterminal };
+    characterGenerator8x8.addr :=  { terminal.rdata0, pix_y[0,3] };
 
     // Default to transparent and active pixels always blue
     terminal_display := pix_active & showterminal & ( pix_y > 415 );

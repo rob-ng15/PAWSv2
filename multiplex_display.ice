@@ -127,7 +127,7 @@ algorithm selectlayer(
     output! uint7   pixel
 ) <autorun> {
     // CONVERT TERMINAL COLOUR TO BLUE OR WHITE
-    uint7   terminalcolour <: { {5{terminal}}, 2b11 };
+    uint7   terminalcolour <: { 1b0, {4{terminal}}, 2b11 };
 
     always {
         switch( display_order ) {
