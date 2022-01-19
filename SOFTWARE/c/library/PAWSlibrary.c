@@ -222,13 +222,12 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
     unsigned short i;
 
     sdcard_wait();
-    *SDCARD_SECTOR_HIGH = ( sectorAddress & 0xffff0000 ) >> 16;
-    *SDCARD_SECTOR_LOW = ( sectorAddress & 0x0000ffff );
+    *SDCARD_SECTOR = sectorAddress;
     *SDCARD_START = 1;
     sdcard_wait();
 
     for( i = 0; i < 512; i++ ) {
-        *SDCARD_ADDRESS = i;
+        *SDCARD_BUFFER_ADDRESS = i;
         copyAddress[ i ] = *SDCARD_DATA;
     }
 }
@@ -1975,4 +1974,36 @@ void  __attribute__ ((noreturn)) _exit( int status ){
     while(1);
 }
 
+// NANO JPEG DECODER
 #include "nanojpeg.c"
+
+// FAT16/32 File IO Library from Ultra-Embedded.com
+#define FATFS_NO_DEF_TYPES
+#include "fat_io_lib/fat_filelib.c"
+
+// READ MULTIPLE SECTORS INTO MEMORY FOR fat_io_lib
+int media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
+    unsigned short i;
+
+    while( sector_count ) {
+        sdcard_wait();
+        *SDCARD_SECTOR = sector;
+        *SDCARD_START = 1;
+        sdcard_wait();
+
+        for( i = 0; i < 512; i++ ) {
+            *SDCARD_BUFFER_ADDRESS = i;
+            buffer[ i ] = *SDCARD_DATA;
+        }
+
+        // MOVE TO NEXT SECTOR
+        sector++; sector_count--; buffer += FAT_SECTOR_SIZE;
+    }
+
+    return(1);
+}
+
+// CONNECT TO SDCARD FOR fat_io_lib
+void initSDCARD( void ) {
+    fl_attach_media( media_read, NULL );
+}

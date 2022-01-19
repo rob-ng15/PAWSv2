@@ -12,9 +12,8 @@ unsigned short volatile * PS2_DATA = (unsigned short volatile *) 0xf112;
 // SDCARD
 unsigned char volatile * SDCARD_READY = (unsigned char volatile *) 0xf140;
 unsigned char volatile * SDCARD_START = (unsigned char volatile *) 0xf140;
-unsigned short volatile * SDCARD_SECTOR_LOW = ( unsigned short *) 0xf144;
-unsigned short volatile * SDCARD_SECTOR_HIGH = ( unsigned short *) 0xf142;
-unsigned short volatile * SDCARD_ADDRESS = (unsigned short volatile *) 0xf150;
+unsigned int volatile * SDCARD_SECTOR = ( unsigned int *) 0xf142;
+unsigned short volatile * SDCARD_BUFFER_ADDRESS = (unsigned short volatile *) 0xf150;
 unsigned char volatile * SDCARD_DATA = (unsigned char volatile *) 0xf150;
 
 // DISPLAY UNITS

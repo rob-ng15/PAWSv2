@@ -1,6 +1,11 @@
-extern  int main( void );
+#include <string.h>
+extern  int main( void ),  _bss_start, _bss_end;
 void _start( void ) {
-    // SETUP STACKPOINTER
-    asm volatile ("li sp ,0x7f00");
+    // CLEAR BSS
+    memset( &_bss_start, 0, &_bss_end - &_bss_end );
+
+    // CALL MAIN
     main();
+
+    // RETURN TO BIOS
 }

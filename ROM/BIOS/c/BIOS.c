@@ -368,13 +368,12 @@ void sdcard_wait( void ) {
 void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress ) {
     gpu_blit( RED, 256, 2, 2, 2 );
     sdcard_wait();
-    *SDCARD_SECTOR_HIGH = ( sectorAddress & 0xffff0000 ) >> 16;
-    *SDCARD_SECTOR_LOW = ( sectorAddress & 0x0000ffff );
+    *SDCARD_SECTOR = sectorAddress;
     *SDCARD_START = 1;
     sdcard_wait();
 
     for( unsigned short i = 0; i < 512; i++ ) {
-        *SDCARD_ADDRESS = i;
+        *SDCARD_BUFFER_ADDRESS = i;
         copyAddress[ i ] = *SDCARD_DATA;
     }
     gpu_blit( GREEN, 256, 2, 2, 2 );
