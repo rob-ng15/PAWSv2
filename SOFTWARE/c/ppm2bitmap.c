@@ -13,7 +13,6 @@ unsigned char *galaxybitmap;
 void main( void ) {
     int x, y, count, location;
 
-    INITIALISEMEMORY();
     set_background( 0, 0, BKG_RAINBOW );
 
     // DECODE 3D PACMAN TO BITMAP

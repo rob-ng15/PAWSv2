@@ -4,9 +4,7 @@ unsigned char tune_treble[] = {  36, 48, 43, 40, 48, 42, 41, 37, 49, 44, 41, 49,
 unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 32, 24, 16, 16, 16, 32, 24, 32, 0xff };
 
 int main( void ) {
-    INITIALISEMEMORY();
-
-    unsigned short trebleposition = 0;
+   unsigned short trebleposition = 0;
 
     for( int i = 0; i < 4; i++ ) {
         trebleposition = 0;

@@ -1,8 +1,6 @@
 #include "library/PAWSlibrary.h"
 
 int main( void ) {
-    INITIALISEMEMORY();
-
     // QUICK TEST OF THE TERMINAL WINDOW
     terminal_showhide( 1 );
     terminal_cs();

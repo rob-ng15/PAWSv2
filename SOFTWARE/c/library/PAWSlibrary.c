@@ -8,8 +8,8 @@
 
 typedef unsigned int size_t;
 
-// MEMORY
-unsigned char *MEMORYTOP;
+// TOP OF SDRAM MEMORY
+unsigned char *MEMORYTOP = (unsigned char *)0x8000000;;
 
 // RISC-V CSR FUNCTIONS
 unsigned int CSRisa() {
@@ -773,7 +773,7 @@ void gpu_pixelblock24bw( short x, short y, unsigned short w, unsigned short h, u
 }
 
 // SET GPU TO RECEIVE A PIXEL BLOCK, SEND INDIVIDUAL PIXELS, STOP
-void gpu_pixelblock_start( short x,  short y, unsigned short w, unsigned short h ) {
+void gpu_pixelblock_start( short x,  short y, unsigned short w ) {
     wait_gpu_finished();
     *GPU_X = x;
     *GPU_Y = y;
@@ -1905,7 +1905,7 @@ int clrtoeol( void ) {
 #define MALLOC_MEMORY ( 16384 * 1024 )
 #endif
 
-unsigned char *_heap;
+unsigned char *_heap = NULL;
 unsigned char *_sbrk( int incr ) {
   unsigned char *prev_heap;
 
@@ -1973,17 +1973,6 @@ int _kill() {
 void  __attribute__ ((noreturn)) _exit( int status ){
     ((void(*)(void))0x00000000)();
     while(1);
-}
-
-// SETUP MEMORY - CLEAR THE BSS SECTION AND INITIALISE FOR MALLOC
-extern int _bss_start, _bss_end;
-void INITIALISEMEMORY( void ) {
-    // CLEAR BSS
-    memset( &_bss_start, 0, &_bss_end - &_bss_end );
-
-    // MEMORY
-    MEMORYTOP = (unsigned char *)0x8000000;
-    _heap = NULL;
 }
 
 #include "nanojpeg.c"

@@ -786,7 +786,6 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
 int main( void ) {
     unsigned short firstrun = 1;
 
-    INITIALISEMEMORY();
     set_background( 0, 0, BKG_RAINBOW );
 
     unsigned short levelselected;

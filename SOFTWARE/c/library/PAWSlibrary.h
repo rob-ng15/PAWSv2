@@ -162,7 +162,6 @@ extern void njDone(void);
 extern void SMTSTOP( void );
 extern void SMTSTART( unsigned int );
 extern unsigned char SMTSTATE( void );
-extern void INITIALISEMEMORY( void );
 
 // SIMPLE CURSES
 extern void initscr( void );

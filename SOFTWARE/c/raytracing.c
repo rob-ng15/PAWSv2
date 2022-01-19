@@ -231,8 +231,6 @@ int main() {
     Sphere spheres[NB_SPHERES];
     Light lights[NB_LIGHTS];
 
-    INITIALISEMEMORY();
-
     init_scene(spheres, lights);
 
     gpu_cs(); screen_mode( 0, 1 );

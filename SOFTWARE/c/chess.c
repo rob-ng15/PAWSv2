@@ -208,8 +208,6 @@ void setupboard( void ) {
 }
 
 int main( void ) {
-    INITIALISEMEMORY();
-
     setupscreen();
 
 	// CONTINUE UNTIL FIRE 2 IS PRESSED

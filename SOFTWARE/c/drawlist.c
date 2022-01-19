@@ -1,8 +1,6 @@
 #include "library/PAWSlibrary.h"
 
 int main( void ) {
-    INITIALISEMEMORY();
-
     struct DrawList2D LEFTCHEVRON[] = {
         { DLRECT, LTGREY, DITHERSOLID, { -4, 0 }, { 4, -32 }, },
         { DLRECT, LTGREY, DITHERSOLID, { -32, -32 }, { 32, -64 }, },

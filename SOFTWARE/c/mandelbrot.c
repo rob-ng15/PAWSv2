@@ -4,8 +4,6 @@
 // TRANSLATION OF http://www.rosettacode.org/wiki/Mandelbrot_set#BASIC256 to C and PAWSlibrary
 
 int main( void ) {
-    INITIALISEMEMORY();
-
     const int graphwidth = 320, graphheight = 240, kt = 64;
     float m = 4.0;
     float xmin = -2.1, xmax = 0.6, ymin = -1.35, ymax = 1.35;

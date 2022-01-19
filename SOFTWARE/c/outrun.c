@@ -695,8 +695,6 @@ void set_background_generator( void ) {
 }
 
 int main() {
-    INITIALISEMEMORY;
-
     // SETUP SCREEN
     bitmap_draw( 0 ); gpu_cs();
     bitmap_draw( 1 ); gpu_cs();

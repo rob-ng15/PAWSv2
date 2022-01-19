@@ -983,7 +983,6 @@ void attract( void ) {
 }
 
 int main( void ) {
-    INITIALISEMEMORY();
     initialise_graphics();
 
     while(1) {

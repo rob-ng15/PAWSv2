@@ -5,7 +5,6 @@
 
 
 int main( void ) {
-    INITIALISEMEMORY();
     ps2_keyboardmode(PS2_KEYBOARD);
 
     // set up curses library

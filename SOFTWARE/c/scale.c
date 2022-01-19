@@ -1,8 +1,6 @@
 #include "library/PAWSlibrary.h"
 
 int main( void ) {
-    INITIALISEMEMORY();
-
     // CURRENT FRAMEBUFFER
     unsigned short framebuffer = 0;
 

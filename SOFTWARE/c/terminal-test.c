@@ -11,8 +11,6 @@ int main( void ) {
     int i, j, k, l, m;
     float x, y;
 
-    INITIALISEMEMORY();
-
     // set up curses library
     initscr();
     start_color();

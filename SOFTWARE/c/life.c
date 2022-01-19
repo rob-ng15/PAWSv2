@@ -56,8 +56,6 @@ void game( void ) {
 }
 
 int main( void ) {
-    INITIALISEMEMORY();
-
     gpu_cs();
     tpu_cs();
     set_background( BLACK, BLACK, BKG_RAINBOW );

@@ -1,8 +1,6 @@
 #include "library/PAWSlibrary.h"
 
 int main( void ) {
-    INITIALISEMEMORY();
-
     copper_startstop( 0 );
     copper_program( 0, COPPER_WAIT_VBLANK, 7, 0, BKG_SNOW, BLACK, WHITE );
     copper_program( 1, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, WHITE );

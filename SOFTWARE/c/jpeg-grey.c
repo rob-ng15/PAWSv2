@@ -3,8 +3,6 @@
 #include <stdio.h>
 
 int main( void ) {
-    INITIALISEMEMORY();
-
     int width, height; unsigned int filesize;
     unsigned char *imagebuffer, colour, *filebuffer;
 

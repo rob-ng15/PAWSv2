@@ -1323,7 +1323,6 @@ void floatdemo() {
 }
 
 int main( void ) {
-    INITIALISEMEMORY();
 	for( int loop = 0; loop < 4; loop++ ) {
         colourtable();
 

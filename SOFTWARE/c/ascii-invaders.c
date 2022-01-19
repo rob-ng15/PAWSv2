@@ -159,7 +159,6 @@ void freeBombs();
 void moveAliensDown();
 
 int main( void ) {
-    INITIALISEMEMORY();
     // CLEAR and SET THE BACKGROUND
     gpu_cs();
     set_background( LTGREY, BLUE30, BKG_SNOW );
