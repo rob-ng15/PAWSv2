@@ -1739,6 +1739,7 @@ void __scroll( void ) {
 
 int addch( unsigned char ch ) {
     __curses_cell temp;
+    short gonextline = 0;
 
     switch( ch ) {
         case '\b': {
@@ -1756,15 +1757,7 @@ int addch( unsigned char ch ) {
         case '\n': {
             // LINE FEED
             __curses_x = 0;
-            if( __curses_y == LINES-1 ) {
-                if( __curses_scroll ) {
-                    __scroll();
-                } else {
-                    __curses_y = 0;
-                }
-            } else {
-                __curses_y++;
-            }
+            gonextline = 1;
             break;
         }
         case '\r': {
@@ -1772,6 +1765,16 @@ int addch( unsigned char ch ) {
             __curses_x = 0;
             break;
         }
+        case '\t': {
+            // TAB
+            __curses_x = ( 1 + __curses_x / 8 ) * 8;
+            if( __curses_x >= COLS ) {
+                __curses_x = 0;
+                gonextline = 1;
+            }
+            break;
+        }
+
         default: {
             temp.cell.character = ( __curses_bold ? 256 : 0 ) + ch;
             temp.cell.background = __curses_back;
@@ -1779,20 +1782,26 @@ int addch( unsigned char ch ) {
             __write_curses_cell( __curses_x, __curses_y, temp );
             if( __curses_x == COLS-1 ) {
                 __curses_x = 0;
-                if( __curses_y == LINES-1 ) {
-                    if( __curses_scroll ) {
-                        __scroll();
-                    } else {
-                        __curses_y = 0;
-                    }
-                } else {
-                    __curses_y++;
-                }
+                gonextline = 1;
             } else {
                 __curses_x++;
             }
         }
     }
+
+    // GO TO NEXT LINE, SCROLL/WRAP IF REQUIRED
+    if( gonextline ) {
+        if( __curses_y == LINES-1 ) {
+            if( __curses_scroll ) {
+                __scroll();
+            } else {
+                __curses_y = 0;
+            }
+        } else {
+            __curses_y++;
+        }
+    }
+
     __position_curses( __curses_x, __curses_y );
     if( __curses_autorefresh )
         refresh();
@@ -1972,6 +1981,18 @@ int _kill() {
 void  __attribute__ ((noreturn)) _exit( int status ){
     ((void(*)(void))0x00000000)();
     while(1);
+}
+int _gettimeofday() {
+    return( 0 );
+}
+int _times() {
+    return( 0 );
+}
+int _link ( const char *oldname, const char *newname ) {
+    return -1;
+}
+int _unlink ( const char *name ) {
+    return -1;
 }
 
 // NANO JPEG DECODER

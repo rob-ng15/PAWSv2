@@ -9,7 +9,7 @@ extern unsigned long CSRcycles( void );
 extern unsigned long CSRinstructions( void );
 extern unsigned long CSRtime( void );
 
-// UART AND TERMINAL INPUT / OUTPUT
+// UART INPUT / OUTPUT
 extern void outputcharacter(char);
 extern char inputcharacter( void );
 extern unsigned char character_available( void );
@@ -39,9 +39,6 @@ extern void reset_timer1hz( unsigned char );
 extern void beep( unsigned char, unsigned char, unsigned char, unsigned short );
 extern void await_beep( unsigned char );
 extern unsigned short get_beep_active( unsigned char );
-
-// SDCARD
-extern unsigned char * sdcard_selectfile( char *, char *, unsigned int *, char * );
 
 // DISPLAY
 extern void await_vblank( void );
@@ -188,3 +185,9 @@ extern int mvprintw( int y, int x, const char *fmt,... );
 extern int attron( int attrs );
 extern int deleteln( void );
 extern int clrtoeol( void );
+
+// SDCARD using PAWS fat32
+extern unsigned char * sdcard_selectfile( char *, char *, unsigned int *, char * );
+
+// FAT16/32 File IO Library from Ultra-Embedded.com
+extern void initSDCARD( void );
