@@ -7,6 +7,7 @@
 #include <math.h>
 #include <stdbool.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 // TOP OF SDRAM MEMORY
 unsigned char *MEMORYTOP = (unsigned char *)0x8000000;;
@@ -2049,6 +2050,10 @@ int _link ( const char *oldname, const char *newname ) {
 }
 int _unlink ( const char *name ) {
     return -1;
+}
+int _stat (char *file, struct stat *st ) {
+  st->st_mode = S_IFCHR;
+  return 0;
 }
 
 // fat_io_lib COMPATABILITY LAYER

@@ -1,20 +1,6 @@
-ARCH=riscv64
-AR=$(ARCH)-elf-ar
-CC=$(ARCH)-elf-gcc
-LD=$(ARCH)-elf-ld
-NM=$(ARCH)--elf-nm
-RANLIB=$(ARCH)--elf-ranlib
+include ../makefile.inc
 
-CFLAGS=-march=rv32imafc -mabi=ilp32f -ffunction-sections -fdata-sections -Ofast -fno-pic -fno-unroll-loops -Wno-stringop-overread
-LFLAGS=--as-needed --gc-sections -m elf32lriscv -b elf32-littleriscv --no-relax
-LCONFIG=-Tconfig_c_SDRAM.ld
-INCLUDE=-I/usr/riscv32-elf/include/
-LIBRARY=/usr/riscv64-elf/lib/rv32imafc/ilp32f/libc.a /usr/riscv64-elf/lib/rv32imafc/ilp32f/libm.a /usr/lib/gcc/riscv64-elf/11.1.0/rv32imafc/ilp32f/libgcc.a
-
-# specific options
-CFLAGS:=$(CFLAGS) -Wno-strict-prototypes -Wno-missing-prototypes -Wno-old-style-definition
-
-all: doom.elf
+all: DOOM.PAW
 
 DOOM_OBJECTS= \
 am_map.o \
@@ -142,15 +128,22 @@ build/wi_stuff.o \
 build/w_wad.o \
 build/z_zone.o
 
-doom.elf: $(DOOM_OBJECTS) crt0.o libPAWS.o
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(DOOM_BUILD_OBJECTS) build/crt0.o build/libPAWS.o $(LIBRARY)
+DOOM.PAW : doom.elf
+	$(ARCH)-elf-objcopy -O binary $< $@
+
+doom.elf: $(DOOM_OBJECTS) build/crt0.o $(LIBPAWS)
+	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(DOOM_BUILD_OBJECTS) build/crt0.o $(LIBPAWS) $(LIBRARY)
 	chmod -x $@
 
-libPAWS.o: ../library/PAWSlibrary.c
-	$(CC) $(CFLAGS) -c -o build/$@ $<
+$(LIBPAWS) : $(LIBPAWSSOURCE)
+	$(CC) $(CFLAGS) -c ../library/PAWSlibrary.c -o $@
 
-crt0.o: ../../crt0.c
-	$(CC) $(CFLAGS) -c -o build/$@ $<
+build/crt0.o : ../crt0.c
+	$(CC) $(CFLAGS) -c ../crt0.c -o $@
 
 %.o: %.c
 	$(CC) $(INCLUDE) $(CFLAGS) -c -o build/$@ $<
+
+clean:
+	rm build/*.o doom.elf DOOM.PAW
+
