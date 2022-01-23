@@ -39,5 +39,5 @@ int main( void ) {
     }
 
     gpu_pixelblock_stop();
-    sleep( 4000, 0 );
+    sleep1khz( 4000, 0 );
 }

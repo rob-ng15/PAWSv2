@@ -846,7 +846,7 @@ int main( void ) {
                 gpu_circle( YELLOW, 160, 120, 80, drawsector[i], 1 );
                 framebuffer = 1 - framebuffer;
                 bitmap_display( framebuffer );
-                sleep( 250, 0 );
+                sleep1khz( 250, 0 );
             }
             // DISPLAY TOMBSTONE BITMAP AND RESET TO BEGINNING
             bitmap_draw( 1 - framebuffer );

@@ -5,7 +5,7 @@ void smtthread( void ) {
     asm volatile ("li sp ,0x4000");
     while(1) {
         gpu_rectangle( rng( 64 ), rng( 640 ), rng( 432 ), rng( 640 ), rng( 432 ) );
-        sleep( 500, 1 );
+        sleep1khz( 500, 1 );
     }
 }
 
@@ -18,6 +18,6 @@ int main( void ) {
     for( int loop = 0; loop < 32; loop++ ) {
         tpu_set( 1, 1, TRANSPARENT, WHITE );
         tpu_printf( 1, "Main Thread Counting Away: %d", systemclock() );
-        sleep( 1000, 0 );
+        sleep1khz( 1000, 0 );
     }
 }

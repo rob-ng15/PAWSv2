@@ -852,7 +852,7 @@ void colourtable( void ) {
     // CYCLE THROUGH COLOUR MODES
     for( short i = 0; i < 4; i++ ) {
         screen_mode( 0, i );
-        sleep( 2000, 0 );
+        sleep1khz( 2000, 0 );
     }
 }
 
@@ -864,7 +864,7 @@ void backgrounddemo( void ) {
     for( uint8 bkg = 0; bkg < 16; bkg++ ) {
         set_background( PURPLE, ORANGE, bkg );
         tpu_print_centre( 59, TRANSPARENT, WHITE, 0, backgroundnames[bkg] );
-        sleep( 1000, 0 );
+        sleep1khz( 1000, 0 );
     }
 
     displayreset();
@@ -890,7 +890,7 @@ void backgrounddemo( void ) {
     copper_program( 16, COPPER_JUMP, COPPER_JUMP_ON_VBLANK_EQUAL, 0, 0, 0, 15 );
     copper_program( 17, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 1 );
     copper_startstop( 1 );
-    sleep( 2000, 0 );
+    sleep1khz( 2000, 0 );
 
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Rainbow Stars Test 2 - MAY NOT WORK" );
     copper_startstop( 0 );
@@ -902,7 +902,7 @@ void backgrounddemo( void ) {
     copper_program( 5, COPPER_JUMP, COPPER_JUMP_IF_VARIABLE_LESS, 64, 0, 0, 3 );
     copper_program( 6, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 2 );
     copper_startstop( 1 );
-    sleep( 2000, 0 );
+    sleep1khz( 2000, 0 );
 }
 
 // PUT SOME OBJECTS ON THE TILEMAP AND WRAP LOWER LAYER UP AND LEFT , UPPER LAYER DOWN AND RIGHT
@@ -941,7 +941,7 @@ void tilemapdemo( void ) {
         // UPPER RIGHT AND DOWN
         (void)tilemap_scrollwrapclear( UPPER_LAYER, 7 );
         (void)tilemap_scrollwrapclear( UPPER_LAYER, 8 );
-        sleep( 10, 0 );
+        sleep1khz( 10, 0 );
     }
 }
 
@@ -959,7 +959,7 @@ void gpudemo( void ) {
     for( i = 0; i < 2048; i++ ) {
         gpu_pixel( rng( 64 ), rng( 320 ), rng( 240 ) );
     }
-    sleep( 1000, 0 );
+    sleep1khz( 1000, 0 );
 
     // LINES
     gpu_cs();
@@ -967,7 +967,7 @@ void gpudemo( void ) {
     for( i = 0; i < 1024; i++ ) {
         gpu_line( rng( 64 ), rng( 320 ), rng( 240 ), rng( 320 ), rng( 240 ) );
     }
-    sleep( 1000, 0 );
+    sleep1khz( 1000, 0 );
 
     // WIDE LINES
     gpu_cs();
@@ -975,7 +975,7 @@ void gpudemo( void ) {
     for( i = 0; i < 1024; i++ ) {
         gpu_wideline( rng( 64 ), rng( 320 ), rng( 240 ), rng( 320 ), rng( 240 ), rng(8) + 1 );
     }
-    sleep( 1000, 0 );
+    sleep1khz( 1000, 0 );
 
     // RECTANGLES
     gpu_cs();
@@ -985,7 +985,7 @@ void gpudemo( void ) {
         gpu_rectangle( rng( 64 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 352 ) - 16, rng( 256 ) - 8 );
     }
     gpu_dither( DITHEROFF );
-    sleep( 1000, 0 );
+    sleep1khz( 1000, 0 );
 
     // CIRCLES
     gpu_cs();
@@ -995,7 +995,7 @@ void gpudemo( void ) {
         gpu_circle( rng( 64 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 32 ), 255, rng( 1 ) );
     }
     gpu_dither( DITHEROFF );
-    sleep( 1000, 0 );
+    sleep1khz( 1000, 0 );
 
     // TRIANGLES
     gpu_cs();
@@ -1008,7 +1008,7 @@ void gpudemo( void ) {
         gpu_triangle( rng( 64 ), x1, y1, x2, y2, x3, y3 );
     }
     gpu_dither( DITHEROFF );
-    sleep( 1000, 0 );
+    sleep1khz( 1000, 0 );
 
     // BLITTER
     // SET BLITTER OBJECTS - ALIENS
@@ -1020,7 +1020,7 @@ void gpudemo( void ) {
     for( i = 0; i < 128; i++ ) {
         gpu_blit( rng( 64 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 6 ), rng( 4 ), rng(8) );
     }
-    sleep( 1000, 0 );
+    sleep1khz( 1000, 0 );
 
     // CHARACTER BLITTER
     gpu_cs();
@@ -1028,7 +1028,7 @@ void gpudemo( void ) {
     for( i = 0; i < 128; i++ ) {
         gpu_character_blit( rng( 64 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 256 ), rng( 4 ), rng(8) );
     }
-    sleep( 1000, 0 );
+    sleep1khz( 1000, 0 );
 
     // COLOUR BLITTER
     // SET COLOUR BLITTER OBJECTS - ALIENS FROM GALAXIAN
@@ -1071,7 +1071,7 @@ void gpudemo( void ) {
     for( i = 0; i < 128; i++ ) {
         gpu_colourblit( rng( 352 ) - 16, rng( 256 ) - 8, rng( 9 ), rng( 4 ), rng(8) );
     }
-    sleep( 1000, 0 );
+    sleep1khz( 1000, 0 );
 
     // VECTOR TEST
     gpu_cs();
@@ -1085,7 +1085,7 @@ void gpudemo( void ) {
     for( i = 0; i < 128; i++ ) {
         draw_vector_block( 0, rng( 64 ), rng( 352 ) - 16, rng( 256 ) - 8, rng(8), rng(8) );
     }
-    sleep( 1000, 0 );
+    sleep1khz( 1000, 0 );
 
 }
 
@@ -1104,7 +1104,7 @@ void ditherdemo( void ) {
         }
     }
     gpu_dither( DITHEROFF );
-    sleep( 2000, 0 );
+    sleep1khz( 2000, 0 );
 }
 
 
@@ -1319,7 +1319,7 @@ void floatdemo() {
         colour = ( colour == 1 ) ? 63 : colour - 1;
         scale = scale - 0.01;
     }
-    sleep( 2000, 0 );
+    sleep1khz( 2000, 0 );
 }
 
 int main( void ) {

@@ -42,13 +42,13 @@
 
 // Include support for writing files (1 / 0)?
 #ifndef FATFS_INC_WRITE_SUPPORT
-    #define FATFS_INC_WRITE_SUPPORT         0
+    #define FATFS_INC_WRITE_SUPPORT         1
 #endif
 
 // Support long filenames (1 / 0)?
 // (if not (0) only 8.3 format is supported)
 #ifndef FATFS_INC_LFN_SUPPORT
-    #define FATFS_INC_LFN_SUPPORT           0
+    #define FATFS_INC_LFN_SUPPORT           1
 #endif
 
 // Support directory listing (1 / 0)?
@@ -58,12 +58,12 @@
 
 // Support time/date (1 / 0)?
 #ifndef FATFS_INC_TIME_DATE_SUPPORT
-    #define FATFS_INC_TIME_DATE_SUPPORT     0
+    #define FATFS_INC_TIME_DATE_SUPPORT     1
 #endif
 
 // Include support for formatting disks (1 / 0)?
 #ifndef FATFS_INC_FORMAT_SUPPORT
-    #define FATFS_INC_FORMAT_SUPPORT        0
+    #define FATFS_INC_FORMAT_SUPPORT        1
 #endif
 
 // Sector size used

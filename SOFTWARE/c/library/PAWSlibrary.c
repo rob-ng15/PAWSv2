@@ -5,8 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
-
-typedef unsigned int size_t;
+#include <stdbool.h>
+#include <unistd.h>
 
 // TOP OF SDRAM MEMORY
 unsigned char *MEMORYTOP = (unsigned char *)0x8000000;;
@@ -126,7 +126,7 @@ unsigned short rng( unsigned short range ) {
 }
 
 // SLEEP FOR counter milliseconds
-void sleep( unsigned short counter, unsigned char timer ) {
+void sleep1khz( unsigned short counter, unsigned char timer ) {
     switch( timer ) {
         case 0:
             *SLEEPTIMER0 = counter;
@@ -1386,7 +1386,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
 
             unsigned short buttons = get_buttons();
             while( buttons == 1 ) { buttons = get_buttons(); }
-            while( get_buttons() != 1 ) {} sleep( 100, 0 );
+            while( get_buttons() != 1 ) {} sleep1khz( 100, 0 );
             if( buttons & 64 ) {
                 // MOVE RIGHT
                 if( present_entry == entries ) { present_entry = 0; } else { present_entry++; }
@@ -1584,6 +1584,7 @@ unsigned char SMTSTATE( void ) {
 
 // SIMPLE CURSES LIBRARY
 // USES THE CURSES BUFFER IN THE CHARACTER MAP
+char __stdinout_init = FALSE, __sdcard_init = FALSE;
 
 unsigned char   __curses_backgroundcolours[COLOR_PAIRS], __curses_foregroundcolours[COLOR_PAIRS],
                 __curses_scroll = 1, __curses_echo = 0, __curses_bold = 0, __curses_reverse = 0, __curses_autorefresh = 0;
@@ -1592,10 +1593,10 @@ unsigned short  __curses_x = 0, __curses_y = 0, __curses_fore = WHITE, __curses_
 typedef union curses_cell {
     unsigned int bitfield;
     struct {
-        unsigned int pad : 10;
+        unsigned int pad : 9;
         unsigned int character : 9;
         unsigned int background : 7;
-        unsigned int foreground : 6;
+        unsigned int foreground : 7;
     } cell;
 } __curses_cell;
 
@@ -1632,6 +1633,7 @@ void initscr( void ) {
     while( *TPU_COMMIT );
     *TPU_COMMIT = 6;
     __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; *TPU_CURSOR = 1; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
+    __stdinout_init = TRUE;
 }
 
 int endwin( void ) {
@@ -1908,10 +1910,41 @@ int clrtoeol( void ) {
     return( true );
 }
 
+// NANO JPEG DECODER
+#include "nanojpeg.c"
+
+// FAT16/32 File IO Library from Ultra-Embedded.com
+#define FATFS_NO_DEF_TYPES
+#include "fat_io_lib/fat_filelib.c"
+
+// READ MULTIPLE SECTORS INTO MEMORY FOR fat_io_lib
+int media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
+    unsigned short i;
+
+    while( sector_count ) {
+        sdcard_wait();
+        *SDCARD_SECTOR = sector;
+        *SDCARD_START = 1;
+        sdcard_wait();
+
+        for( i = 0; i < 512; i++ ) {
+            *SDCARD_BUFFER_ADDRESS = i;
+            buffer[ i ] = *SDCARD_DATA;
+        }
+
+        // MOVE TO NEXT SECTOR
+        sector++; sector_count--; buffer += FAT_SECTOR_SIZE;
+    }
+
+    return(1);
+}
+
 // newlib support routines
 #ifndef MALLOC_MEMORY
 #define MALLOC_MEMORY ( 16384 * 1024 )
 #endif
+
+// Standard i/o directs to the curses terminal, input is from the ps_keyboard
 
 unsigned char *_heap = NULL;
 unsigned char *_sbrk( int incr ) {
@@ -1931,31 +1964,54 @@ unsigned char *_sbrk( int incr ) {
   return prev_heap;
 }
 
+// PAWS INITIALISATION FOR THE TERMNAL AND THE SDCARD for fat_io_lib
+void __start_stdinout( void ) {
+    initscr(); start_color(); autorefresh( TRUE ); ps2_keyboardmode( TRUE );
+    __stdinout_init = TRUE;
+}
+
+void __start_sdcard( void ) {
+    fl_init();
+    fl_attach_media( media_read, NULL );
+    __sdcard_init = TRUE;
+}
+
 long _write( int fd, const void *buf, size_t cnt ) {
     unsigned char *buffer = (unsigned char *)buf;
+    if( !__stdinout_init ) __start_stdinout();
     while( cnt-- ) {
         switch( fd ) {
-            case 0:
-            case 1:
-            case 2:
+            case STDOUT_FILENO:
+                addch( *buffer++ );
+                break;
+            case STDERR_FILENO:
                 outputcharacter( *buffer++ );
                 break;
-        }
-    }
-    return(0);
-}
-long _read( int fd, const void *buf, size_t cnt ) {
-    unsigned char *buffer = (unsigned char *)buf;
-    while( cnt-- ) {
-        switch( fd ) {
-            case 0:
-            case 1:
-            case 2:
-                *buffer++ = inputcharacter();
+            default:
                 break;
         }
     }
-    return(0);
+    return( cnt );
+}
+long _read( int fd, const void *buf, size_t cnt ) {
+    unsigned char *buffer = (unsigned char *)buf, input;
+    if( !__stdinout_init ) __start_stdinout();
+    while( cnt-- ) {
+        switch( fd ) {
+            case STDIN_FILENO:
+                input = ps2_inputcharacter();
+                if( input != 0x0d ) {
+                    *buffer++ = input;
+                } else {
+                    *buffer = 0;
+                    return( strlen( buf ) );
+                }
+                break;
+            default:
+                break;
+        }
+    }
+    return( strlen( buf ) );
 }
 int _open( const char *file, int flags, int mode ) {
     return( -1 );
@@ -1995,36 +2051,100 @@ int _unlink ( const char *name ) {
     return -1;
 }
 
-// NANO JPEG DECODER
-#include "nanojpeg.c"
-
-// FAT16/32 File IO Library from Ultra-Embedded.com
-#define FATFS_NO_DEF_TYPES
-#include "fat_io_lib/fat_filelib.c"
-
-// READ MULTIPLE SECTORS INTO MEMORY FOR fat_io_lib
-int media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
-    unsigned short i;
-
-    while( sector_count ) {
-        sdcard_wait();
-        *SDCARD_SECTOR = sector;
-        *SDCARD_START = 1;
-        sdcard_wait();
-
-        for( i = 0; i < 512; i++ ) {
-            *SDCARD_BUFFER_ADDRESS = i;
-            buffer[ i ] = *SDCARD_DATA;
-        }
-
-        // MOVE TO NEXT SECTOR
-        sector++; sector_count--; buffer += FAT_SECTOR_SIZE;
+// fat_io_lib COMPATABILITY LAYER
+// ENSURE THAT fat_io_lib is intialised in each function
+// Divert stdin, stdout, stderr to ps2 keyboard, curses console or uart respectively
+int paws_fl_fgetc( void *file ) {
+    if( !__sdcard_init ) __start_sdcard();
+    if( file == stdin ) {
+        return( ps2_inputcharacter() );
+    } else {
+        return( fl_fgetc( file ) );
     }
-
-    return(1);
+}
+char *paws_fl_fgets( char *s, int n, void *file ) {
+    char *buffer = s, input;
+    memset( s, n, 0 );
+    if( !__sdcard_init ) __start_sdcard();
+    if( file == stdin ) {
+        while( n-- ) {
+            input = ps2_inputcharacter(); addch( input );
+            if( input == 0x0d ) {
+                addch( '\n' );
+                *buffer = '\n';
+                return( s );
+            } else {
+                *buffer++ = input;
+            }
+        }
+        return( s );
+    } else {
+        return( fl_fgets( s, n, file ) );
+    }
+}
+int paws_fl_fputc( int c, void *file ) {
+    if( !__sdcard_init ) __start_sdcard();
+    if( ( file == stdout ) || ( file == stderr ) ) {
+        if( file == stdout ) addch( c );
+        if( file == stderr ) outputcharacter( c );
+    } else {
+        return( fl_fputc( c, file ) );
+    }
+}
+int paws_fl_fputs( const char * str, void *file ) {
+    if( !__sdcard_init ) __start_sdcard();
+    if( ( file == stdout ) || ( file == stderr ) ) {
+        if( file == stdout ) printw( "%s", str );
+        if( file == stderr ) fprintf( stderr, "%s", str );
+    } else {
+        return( fl_fputs( str, file ) );
+    }
 }
 
-// CONNECT TO SDCARD FOR fat_io_lib
-void initSDCARD( void ) {
-    fl_attach_media( media_read, NULL );
+void* paws_fl_fopen( const char *path, const char *modifiers ) {
+    if( !__sdcard_init ) __start_sdcard();
+    return ( fl_fopen( path, modifiers ) );
 }
+void paws_fl_fclose( void *file ) {
+    if( !__sdcard_init ) __start_sdcard();
+    fl_fclose( file );
+}
+int paws_fl_fflush( void *file ) {
+    if( !__sdcard_init ) __start_sdcard();
+    return( fl_fflush( file ) );
+}
+int paws_fl_fwrite( const void * data, int size, int count, void *file ) {
+    if( !__sdcard_init ) __start_sdcard();
+    return( fl_fwrite( data, size, count, file ) );
+}
+int paws_fl_fread(void * data, int size, int count, void *file ) {
+    if( !__sdcard_init ) __start_sdcard();
+    return( fl_fread( data, size, count, file ) );
+}
+int paws_fl_fseek( void *file, long offset, int origin ) {
+    if( !__sdcard_init ) __start_sdcard();
+    return( fl_fseek( file, offset, origin ) );
+}
+int paws_fl_fgetpos( void *file, uint32 * position ) {
+    if( !__sdcard_init ) __start_sdcard();
+    return( fl_fgetpos( file, position ) );
+}
+long paws_fl_ftell( void *f ) {
+    if( !__sdcard_init ) __start_sdcard();
+    return( fl_ftell( f ) );
+}
+int paws_fl_feof( void *f ) {
+    if( !__sdcard_init ) __start_sdcard();
+    return( fl_feof( f ) );
+}
+int paws_fl_remove( const char * filename ) {
+    if( !__sdcard_init ) __start_sdcard();
+    return( fl_remove( filename ) );
+}
+
+// COMPATABILITY FUNCTIONS
+// sleep from sys/unistd.h
+//unsigned int sleep( unsigned int seconds ) {
+//    sleep1khz( 1000 * seconds, 0 );
+//    return(0);
+//}

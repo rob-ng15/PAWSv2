@@ -1,4 +1,5 @@
 #include "PAWSdefinitions.h"
+#include "fat_io_lib/fat_filelib.h"
 
 // MEMORY
 extern unsigned char *MEMORYTOP;
@@ -28,7 +29,7 @@ extern unsigned short systemclock( void );
 extern unsigned short secondssincestart( int );
 extern float frng( void );
 extern unsigned short rng( unsigned short );
-extern void sleep( unsigned short, unsigned char );
+extern void sleep1khz( unsigned short, unsigned char );
 extern void set_timer1khz( unsigned short, unsigned char );
 extern unsigned short get_timer1khz( unsigned char );
 extern void wait_timer1khz( unsigned char );
@@ -190,4 +191,37 @@ extern int clrtoeol( void );
 extern unsigned char * sdcard_selectfile( char *, char *, unsigned int *, char * );
 
 // FAT16/32 File IO Library from Ultra-Embedded.com
-extern void initSDCARD( void );
+#define fopen(a,b)      paws_fl_fopen(a, b)
+#define fclose(a)       paws_fl_fclose(a)
+#define fflush(a)       paws_fl_fflush(a)
+#define fgetc(a)        paws_fl_fgetc(a)
+#define fgets(a,b,c)    paws_fl_fgets(a, b, c)
+#define fputc(a,b)      paws_fl_fputc(a, b)
+#define fputs(a,b)      paws_fl_fputs(a, b)
+#define fwrite(a,b,c,d) paws_fl_fwrite(a, b, c, d)
+#define fread(a,b,c,d)  paws_fl_fread(a, b, c, d)
+#define fseek(a,b,c)    paws_fl_fseek(a, b, c)
+#define fgetpos(a,b)    paws_fl_fgetpos(a, b)
+#define ftell(a)        paws_fl_ftell(a)
+#ifdef feof
+#undef feof
+#define feof(a)         paws_fl_feof(a)
+#endif
+#define remove(a)       paws_fl_remove(a)
+#define mkdir(a)        paws_fl_createdirectory(a)
+#define rmdir(a)        0
+
+extern void* paws_fl_fopen(const char *path, const char *modifiers);
+extern void paws_fl_fclose(void *file);
+extern int paws_fl_fflush(void *file);
+extern int paws_fl_fwrite(const void * data, int size, int count, void *file );
+extern int paws_fl_fread(void * data, int size, int count, void *file );
+extern int paws_fl_fseek(void *file , long offset , int origin );
+extern int paws_fl_fgetpos(void *file , uint32 * position);
+extern long paws_fl_ftell(void *f);
+extern int paws_fl_feof(void *f);
+extern int paws_fl_remove(const char * filename);
+extern int paws_fl_fgetc( void *file );
+extern char *paws_fl_fgets( char *s, int n, void *file );
+extern int paws_fl_fputc( int c, void *file );
+extern int paws_fl_fputs( const char * str, void *file );

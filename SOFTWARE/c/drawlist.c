@@ -22,12 +22,12 @@ int main( void ) {
     gpu_cs();
     DoDrawList2Dscale( LEFTCHEVRON, 4, 80, 120, 1 ); DoDrawList2Dscale( RIGHTCHEVRON, 4, 240, 120, 1 );
     DoDrawList2Dscale( PINETREE, 2, 160, 180, 1 );
-    sleep( 4000, 0 );
+    sleep1khz( 4000, 0 );
 
     gpu_cs();
     DoDrawList2Dscale( LEFTCHEVRON, 4, 80, 120, 0.5 ); DoDrawList2Dscale( RIGHTCHEVRON, 4, 240, 120, 0.5 );
     DoDrawList2Dscale( PINETREE, 2, 160, 180, 0.5 );
-    sleep( 4000, 0 );
+    sleep1khz( 4000, 0 );
 }
 
 // EXIT WILL RETURN TO BIOS

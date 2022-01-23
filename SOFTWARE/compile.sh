@@ -1,4 +1,6 @@
 #!/bin/bash
+OS := $(shell uname -s)
+IS_APPLE := $(shell echo $(OS)|grep -i darwin)
 
 echo "GCC compile for SDCARD (float) $1 to $2"
 ARCH="riscv64"

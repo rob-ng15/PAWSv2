@@ -58,6 +58,6 @@ int main( void ) {
             refresh();
         }
 
-        sleep( 4000, 0 );
+        sleep1khz( 4000, 0 );
     }
 }

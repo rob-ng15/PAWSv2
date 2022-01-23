@@ -22,5 +22,5 @@ int main( void ) {
         gpu_print_centre( WHITE, 160, 120, BOLD, 0, 0, "NO FILE FOUND!" );
     }
 
-    sleep( 4000, 0 );
+    sleep1khz( 4000, 0 );
 }

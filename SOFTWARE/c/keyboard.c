@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <math.h>
 
-
 int main( void ) {
     ps2_keyboardmode(PS2_KEYBOARD);
 

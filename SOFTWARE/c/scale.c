@@ -23,7 +23,7 @@ int main( void ) {
             framebuffer = !framebuffer;
             bitmap_display( framebuffer );
 
-            sleep( 250, 0 );
+            sleep1khz( 250, 0 );
         }
 
         // DIVIDER TEST
@@ -38,7 +38,7 @@ int main( void ) {
             framebuffer = !framebuffer;
             bitmap_display( framebuffer );
 
-            sleep( 250, 0 );
+            sleep1khz( 250, 0 );
         }
     }
 }

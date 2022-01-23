@@ -1,7 +1,8 @@
 // STANDARD CONSTANTS
+#ifndef NULL
 #define NULL 0
-#define true 1
-#define false 0
+#endif
+
 #define TRUE 1
 #define FALSE 0
 
@@ -232,13 +233,16 @@
 // FOR EASE OF PORTING
 typedef unsigned int size_t;
 typedef unsigned short bool;
-
 typedef unsigned char   uint8, uint8_t;
 typedef unsigned short  uint16, uint16_t;
 typedef unsigned int    uint32;
 typedef signed char     int8, int8_t;
 typedef signed short    int16, int16_t;
 typedef signed int      int32;
+
+#define bool_t unsigned char
+#define int_t int
+#define real_t float
 
 // STRUCTURE OF THE SPRITE UPDATE FLAG
 struct sprite_update_flag {

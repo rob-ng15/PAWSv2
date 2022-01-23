@@ -21,7 +21,7 @@ int main( void ) {
     copper_program( 16, COPPER_JUMP, COPPER_JUMP_ON_VBLANK_EQUAL, 0, 0, 0, 15 );
     copper_program( 17, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 1 );
     copper_startstop( 1 );
-    sleep( 4000, 0 );
+    sleep1khz( 4000, 0 );
 
     set_copper_cpuinput( 16 );
     copper_startstop( 0 );
@@ -35,7 +35,7 @@ int main( void ) {
     for( unsigned short i = 16; i < 480; i++ ) {
         await_vblank();
         set_copper_cpuinput( i );
-        sleep( 10, 0 );
+        sleep1khz( 10, 0 );
     }
 
     copper_startstop( 0 );
@@ -50,5 +50,5 @@ int main( void ) {
     copper_program( 8, COPPER_JUMP, COPPER_JUMP_ON_VBLANK_EQUAL, 0, 0, 0, 8 );
     copper_program( 9, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 0 );
     copper_startstop( 1 );
-    sleep( 4000, 0 );
+    sleep1khz( 4000, 0 );
 }

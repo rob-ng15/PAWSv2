@@ -238,5 +238,5 @@ int main() {
 
     render(spheres, NB_SPHERES, lights, NB_LIGHTS);
 
-    sleep( 4000, 0 );
+    sleep1khz( 4000, 0 );
 }

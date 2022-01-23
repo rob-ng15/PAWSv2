@@ -18,7 +18,7 @@ int main( void ) {
             }
         }
 
-        sleep( 4000, 0 );
+        sleep1khz( 4000, 0 );
 
         beep( 1, 0, 36, 16 << 4 ); await_beep( 1 );
         beep( 1, 0, 48, 16 << 4 ); await_beep( 1 );
@@ -35,12 +35,12 @@ int main( void ) {
         beep( 1, 0, 44, 24 << 4 ); await_beep( 1 );
         beep( 1, 0, 41, 32 << 4 ); await_beep( 1 );
 
-        sleep( 4000, 0 );
+        sleep1khz( 4000, 0 );
 
         for( unsigned char note = 1; note < 64; note++ ) {
             beep( 1, 0 , note, 500 );
             await_beep( 1 );
-            sleep( 250, 0 );
+            sleep1khz( 250, 0 );
         }
     }
 }
