@@ -61,6 +61,8 @@
 #include "pf_cglue.h"
 #include "pf_core.h"
 
+#include <PAWSlibrary.h>
+
 #ifdef PF_USER_INC2
 /* This could be used to undef and redefine macros. */
     #include PF_USER_INC2

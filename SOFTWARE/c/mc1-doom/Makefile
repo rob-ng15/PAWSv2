@@ -1,6 +1,9 @@
 include ../makefile.inc
 
-all: DOOM.PAW
+PROJECT=DOOM
+PROJECTTYPE=DEMO
+
+all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
 
 DOOM_OBJECTS= \
 am_map.o \
@@ -128,22 +131,16 @@ build/wi_stuff.o \
 build/w_wad.o \
 build/z_zone.o
 
-DOOM.PAW : doom.elf
+$(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW :$(BUILD_DIR)/doom.elf
 	$(ARCH)-elf-objcopy -O binary $< $@
 
-doom.elf: $(DOOM_OBJECTS) build/crt0.o $(LIBPAWS)
+$(BUILD_DIR)/doom.elf: $(DOOM_OBJECTS) build/crt0.o $(LIBPAWS)
 	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(DOOM_BUILD_OBJECTS) build/crt0.o $(LIBPAWS) $(LIBRARY)
 	chmod -x $@
 
-$(LIBPAWS) : $(LIBPAWSSOURCE)
-	$(CC) $(CFLAGS) -c ../library/PAWSlibrary.c -o $@
-
-build/crt0.o : ../crt0.c
-	$(CC) $(CFLAGS) -c ../crt0.c -o $@
-
-%.o: %.c
-	$(CC) $(INCLUDE) $(CFLAGS) -c -o build/$@ $<
+%.o: src/%.c
+	$(CC) $(INCLUDE) $(CFLAGS) -c -o $(BUILD_DIR)/$@ $<
 
 clean:
-	rm build/*.o doom.elf DOOM.PAW
+	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.elf $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
 

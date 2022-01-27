@@ -1026,7 +1026,8 @@ DBUG(("XX ah,m,l = 0x%8x,%8x,%8x - qh,l = 0x%8x,%8x\n", ah,am,al, qh,ql ));
             endcase;
 
         case ID_FILE_CLOSE: /* ( fid -- ior ) */
-            TOS = sdCloseFile( (FileStream *) TOS );
+            sdCloseFile( (FileStream *) TOS );
+            TOS = 0;
             endcase;
 
         case ID_FILE_READ: /* ( addr len fid -- u2 ior ) */

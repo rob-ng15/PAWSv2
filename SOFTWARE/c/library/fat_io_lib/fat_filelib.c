@@ -41,14 +41,6 @@
 #include "fat_cache.h"
 #include "fat_format.h"
 
-#include "fat_access.c"
-#include "fat_table.c"
-#include "fat_write.c"
-#include "fat_misc.c"
-#include "fat_string.c"
-#include "fat_cache.c"
-#include "fat_format.c"
-
 //-----------------------------------------------------------------------------
 // Locals
 //-----------------------------------------------------------------------------

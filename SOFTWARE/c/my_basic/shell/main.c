@@ -116,7 +116,7 @@ static jmp_buf mem_failure_point;
 #	define countof(__a) (sizeof(__a) / sizeof(*(__a)))
 #endif /* countof */
 
-#include "../../library/PAWSlibrary.h"
+#include <PAWSlibrary.h>
 
 /* ========================================================} */
 
@@ -1069,7 +1069,7 @@ static int _do_line(void) {
 		_kill_program(path);
 	} else if(_str_eq(line, "DIR")) {
 		char* path = line + strlen(line) + 1;
-		_list_directory(path);
+		fl_listdirectory(path);
 	} else {
 		_append_one_line(dup);
 	}

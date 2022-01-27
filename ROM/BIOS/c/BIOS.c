@@ -479,9 +479,9 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
                         } else {
                             if( fileentry[i].attributes != 0x0f ) {
                                 // SHORT FILE NAME ENTRY
-                                if( ( ( fileentry[i].ext[0] == 'P' ) || ( fileentry[i].ext[0] == 'p' ) ) ||
-                                    ( ( fileentry[i].ext[0] == 'A' ) || ( fileentry[i].ext[0] == 'a' ) ) ||
-                                    ( ( fileentry[i].ext[0] == 'W' ) || ( fileentry[i].ext[0] == 'w' ) ) ) {
+                                if( ( ( fileentry[i].ext[0] == 'P' ) || ( fileentry[i].ext[0] == 'p' ) ) &&
+                                    ( ( fileentry[i].ext[1] == 'A' ) || ( fileentry[i].ext[1] == 'a' ) ) &&
+                                    ( ( fileentry[i].ext[2] == 'W' ) || ( fileentry[i].ext[2] == 'w' ) ) ) {
                                         entries++;
                                         memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
                                         directorynames[entries].type = 1;

@@ -42,6 +42,8 @@
     #include <sioux.h>
 #endif
 
+#include <PAWSlibrary.h>
+
 #ifndef TRUE
 #define TRUE (1)
 #define FALSE (0)
@@ -60,7 +62,7 @@ int main( void )
 
 int main( int argc, char **argv )
 {
-#ifdef PF_STATIC_DIC
+ #ifdef PF_STATIC_DIC
     const char *DicName = NULL;
 #else /* PF_STATIC_DIC */
     const char *DicName = PF_DEFAULT_DICTIONARY;

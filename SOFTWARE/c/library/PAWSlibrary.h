@@ -1,5 +1,11 @@
+#ifndef __PAWSLIBRARY__
 #include "PAWSdefinitions.h"
+#define FAT_PRINTF_NOINC_STDIO
+#ifdef feof
+#undef feof
+#endif
 #include "fat_io_lib/fat_filelib.h"
+#define FILE            FL_FILE
 
 // MEMORY
 extern unsigned char *MEMORYTOP;
@@ -11,9 +17,10 @@ extern unsigned long CSRinstructions( void );
 extern unsigned long CSRtime( void );
 
 // UART INPUT / OUTPUT
-extern void outputcharacter(char);
-extern char inputcharacter( void );
-extern unsigned char character_available( void );
+extern void uart_outputcharacter(char);
+extern void uart_outputstring( char * );
+extern char uart_inputcharacter( void );
+extern unsigned char uart_character_available( void );
 
 // PS/2
 extern char ps2_character_available( void );
@@ -177,6 +184,7 @@ extern int start_color( void );
 extern bool has_colors( void );
 extern bool can_change_color( void );
 extern int init_pair( short pair, short f, short b );
+extern int init_color( short color, short r, short g, short b );
 extern int move( int y, int x );
 extern void getyx( int *y, int *x );
 extern int addch( unsigned char ch );
@@ -184,44 +192,61 @@ extern int mvaddch( int y, int x, unsigned char ch );
 extern int printw( const char *fmt,... );
 extern int mvprintw( int y, int x, const char *fmt,... );
 extern int attron( int attrs );
+extern int attroff( int attrs );
 extern int deleteln( void );
 extern int clrtoeol( void );
+extern int intrflush( void *, bool );
+extern int keypad( void *, bool );
+extern void *stdscr;
 
 // SDCARD using PAWS fat32
 extern unsigned char * sdcard_selectfile( char *, char *, unsigned int *, char * );
 
-// FAT16/32 File IO Library from Ultra-Embedded.com
-#define fopen(a,b)      paws_fl_fopen(a, b)
-#define fclose(a)       paws_fl_fclose(a)
-#define fflush(a)       paws_fl_fflush(a)
-#define fgetc(a)        paws_fl_fgetc(a)
-#define fgets(a,b,c)    paws_fl_fgets(a, b, c)
-#define fputc(a,b)      paws_fl_fputc(a, b)
-#define fputs(a,b)      paws_fl_fputs(a, b)
-#define fwrite(a,b,c,d) paws_fl_fwrite(a, b, c, d)
-#define fread(a,b,c,d)  paws_fl_fread(a, b, c, d)
-#define fseek(a,b,c)    paws_fl_fseek(a, b, c)
-#define fgetpos(a,b)    paws_fl_fgetpos(a, b)
-#define ftell(a)        paws_fl_ftell(a)
-#ifdef feof
-#undef feof
-#define feof(a)         paws_fl_feof(a)
+// SDCARD using fat_io_lib
+#ifndef	_SYS_STAT_H
+struct stat {
+    dev_t     st_dev;     /* ID of device containing file */
+    ino_t     st_ino;     /* inode number */
+    mode_t    st_mode;    /* protection */
+    nlink_t   st_nlink;   /* number of hard links */
+    uid_t     st_uid;     /* user ID of owner */
+    gid_t     st_gid;     /* group ID of owner */
+    dev_t     st_rdev;    /* device ID (if special file) */
+    off_t     st_size;    /* total size, in bytes */
+    blksize_t st_blksize; /* blocksize for file system I/O */
+    blkcnt_t  st_blocks;  /* number of 512B blocks allocated */
+    time_t    st_atime;   /* time of last access */
+    time_t    st_mtime;   /* time of last modification */
+    time_t    st_ctime;   /* time of last status change */
+};
 #endif
-#define remove(a)       paws_fl_remove(a)
-#define mkdir(a)        paws_fl_createdirectory(a)
+
+#define fopen(a,b)      paws_fopen(a, b)
+#define fclose(a)       paws_fclose(a)
+#define fstat(a,b)      paws_fstat(a,b)
+#define fgetc(a)        paws_fgetc(a)
+#define fgets(a,b,c)    paws_fgets(a, b, c)
+#define fputc(a,b)      paws_fputc(a, b)
+#define fputs(a,b)      paws_fputs(a, b)
+#define fwrite(a,b,c,d) paws_fwrite(a, b, c, d)
+#define fread(a,b,c,d)  paws_fread(a, b, c, d)
+#define fseek(a,b,c)    fl_fseek(a, b, c)
+#define fgetpos(a,b)    fl_fgetpos(a, b)
+#define ftell(a)        fl_ftell(a)
+#define feof(a)         fl_feof(a)
+#define remove(a)       fl_remove(a)
+#define mkdir(a)        fl_createdirectory(a)
 #define rmdir(a)        0
 
-extern void* paws_fl_fopen(const char *path, const char *modifiers);
-extern void paws_fl_fclose(void *file);
-extern int paws_fl_fflush(void *file);
-extern int paws_fl_fwrite(const void * data, int size, int count, void *file );
-extern int paws_fl_fread(void * data, int size, int count, void *file );
-extern int paws_fl_fseek(void *file , long offset , int origin );
-extern int paws_fl_fgetpos(void *file , uint32 * position);
-extern long paws_fl_ftell(void *f);
-extern int paws_fl_feof(void *f);
-extern int paws_fl_remove(const char * filename);
-extern int paws_fl_fgetc( void *file );
-extern char *paws_fl_fgets( char *s, int n, void *file );
-extern int paws_fl_fputc( int c, void *file );
-extern int paws_fl_fputs( const char * str, void *file );
+extern void *paws_fopen( const char *path, const char *modifiers );
+extern int paws_fclose( void *stream );
+extern int paws_fstat( void *fd, struct stat *st );
+extern int paws_fgetc( void *fd );
+extern char *paws_fgets( char *s, int cnt, void *fd );
+extern int paws_fputc( int c, void *fd );
+extern int paws_fputs( const char *s, void *fd );
+extern int paws_fwrite(const void *data, int size, int count, void *fd );
+extern int paws_fread( void *data, int size, int count, void *fd );
+
+#define __PAWSLIBRARY__
+#endif
