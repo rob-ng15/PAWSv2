@@ -29,7 +29,7 @@ static inline uint32_t color_to_argb8888 (
    return 0xff000000u | (b << 16) | (g << 8) | r;
 }
 
-static inline uint8_t color_to_argbpaws ( unsigned int r, unsigned int g, unsigned int b ) {
+static inline uint8_t color_to_argbpaws ( unsigned char r, unsigned char g, unsigned char b ) {
     uint8_t colour = 0;
 
     if( g & 128 ) colour = 64;
@@ -37,6 +37,7 @@ static inline uint8_t color_to_argbpaws ( unsigned int r, unsigned int g, unsign
     colour += ( ( g & 0x60 ) >> 3 );
     colour += ( ( b & 0xc0 ) >> 6 );
 
+    fprintf(stderr,"( %0d, %0d, %0d ) -> 0x%0x ",r,g,b,( colour == 64 ) ? 68 : colour );
     return( ( colour == 64 ) ? 68 : colour );
 }
 
@@ -80,7 +81,7 @@ void I_FinishUpdate (void) {
     gpu_printf_centre( 0x7f, 160, 231, 0, 0, 0, "(%0d x %0d) to (%0d x %0d)", SCREENWIDTH,SCREENHEIGHT,FB_WIDTH,FB_HEIGHT );
 
     gpu_pixelblock_start( 0, 20, FB_WIDTH );
-    for (int i = 0; i < SCREENHEIGHT*SCREENWIDTH; i++) {
+    for (int i = 0; i < SCREENHEIGHT*SCREENWIDTH; i++ ) {
         gpu_pixelblock_pixel7( s_palette[*src++] );
     }
     gpu_pixelblock_stop();
@@ -91,19 +92,13 @@ void I_ReadScreen (byte* scr) {
 }
 
 void I_SetPalette (byte* palette) {
-    for (int i = 0; i < 256; ++i) {
-        unsigned int r = (unsigned int)gammatable[usegamma][*palette++];
-        unsigned int g = (unsigned int)gammatable[usegamma][*palette++];
-        unsigned int b = (unsigned int)gammatable[usegamma][*palette++];
-        s_palette[i] = color_to_argbpaws (r, g, b);
-    }
-
     gpu_cs();
     gpu_printf_centre( 0x7f, 160, 0, 0, 0, 0, "NEW PALETTE LOADED" );
-
-    for( int y = 0; y < 16; y++ )
-        for( int x = 0; x < 16; x++ )
-            gpu_rectangle( s_palette[ y * 16 + x ], 32 + x * 16, 20 + y * 12, 47 + x * 16, 31 + y * 12 );
+    for (int i = 0; i < 256; ++i) {
+        s_palette[i] = color_to_argbpaws ( *palette++, *palette++, *palette++ );
+        fprintf(stderr,"palette[%0d]= %0d or 0x%0x\n",i,s_palette[i],s_palette[i]);
+        gpu_rectangle( s_palette[i], 32 + ( i & 0xf ) * 16, 20 + ( ( i & 0xf0 ) >> 4 ) * 12, 47 + ( i & 0xf ) * 16, 31 + ( ( i & 0xf0 ) >> 4 ) * 12 );
+    }
 
     sleep1khz( 2000, 0 );
 }

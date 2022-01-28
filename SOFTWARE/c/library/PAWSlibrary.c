@@ -2282,7 +2282,7 @@ int paws_fread( void *data, int size, int count, void *fd ) {
 int paws_printf(const char *restrict format, ... ) {
     if( !__stdinout_init ) __start_stdinout();
 
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, format);
     vsnprintf( buffer, 1024, format, args);
@@ -2296,7 +2296,7 @@ int paws_fprintf( void *fd, const char *restrict format, ... ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
 
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, format);
     vsnprintf( buffer, 1024, format, args);
