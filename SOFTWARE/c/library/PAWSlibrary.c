@@ -2168,8 +2168,14 @@ int _link ( const char *oldname, const char *newname ) {
 int _unlink ( const char *name ) {
     return -1;
 }
-int _fstat( int fd ) {
-    return( 0 );
+int _fstat( int fd, struct stat *st ) {
+    if( !__sdcard_init ) __start_sdmedia();
+
+    if( __filehandles[ fd ] != NULL ) {
+        st->st_size = __filehandles[ fd ]->filelength;
+        return( 0 );
+    }
+    return -1;
 }
 
 // LINK TO fat_io_lib, check sdcard is initialised
@@ -2182,16 +2188,6 @@ int paws_fclose( void *fd ) {
     if( !__sdcard_init ) __start_sdmedia();
     fl_fclose( fd );
     return( 0 );
-}
-int paws_fstat( void *fd, struct stat *st ) {
-    if( !__sdcard_init ) __start_sdmedia();
-
-    struct sFL_FILE *file = (struct sFL_FILE *)fd;
-    if( file != NULL ) {
-        st->st_size = file->filelength;
-        return( 0 );
-    }
-    return -1;
 }
 int paws_fgetc( void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
@@ -2281,4 +2277,37 @@ int paws_fread( void *data, int size, int count, void *fd ) {
     } else {
         return( fl_fread( data, size, count, fd ) );
     }
+}
+
+int paws_printf(const char *restrict format, ... ) {
+    if( !__stdinout_init ) __start_stdinout();
+
+    char *buffer = (char *)0x1000;
+    va_list args;
+    va_start (args, format);
+    vsnprintf( buffer, 1024, format, args);
+    va_end(args);
+
+    printw( "%s", buffer );
+    return( strlen( buffer ) );
+}
+
+int paws_fprintf( void *fd, const char *restrict format, ... ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
+    char *buffer = (char *)0x1000;
+    va_list args;
+    va_start (args, format);
+    vsnprintf( buffer, 1024, format, args);
+    va_end(args);
+
+    if( ( fd == stdout ) || ( fd == stderr ) ) {
+        if( fd == stdout ) printw( "%s", buffer );
+        if( fd == stderr ) uart_outputstring( buffer );
+    } else {
+        fl_fwrite( buffer, strlen( buffer ), 1, fd );
+    }
+
+    return( strlen( buffer ) );
 }

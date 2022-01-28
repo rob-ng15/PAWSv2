@@ -223,7 +223,6 @@ struct stat {
 
 #define fopen(a,b)      paws_fopen(a, b)
 #define fclose(a)       paws_fclose(a)
-#define fstat(a,b)      paws_fstat(a,b)
 #define fgetc(a)        paws_fgetc(a)
 #define fgets(a,b,c)    paws_fgets(a, b, c)
 #define fputc(a,b)      paws_fputc(a, b)
@@ -240,13 +239,18 @@ struct stat {
 
 extern void *paws_fopen( const char *path, const char *modifiers );
 extern int paws_fclose( void *stream );
-extern int paws_fstat( void *fd, struct stat *st );
 extern int paws_fgetc( void *fd );
 extern char *paws_fgets( char *s, int cnt, void *fd );
 extern int paws_fputc( int c, void *fd );
 extern int paws_fputs( const char *s, void *fd );
 extern int paws_fwrite(const void *data, int size, int count, void *fd );
 extern int paws_fread( void *data, int size, int count, void *fd );
+
+#define prinf paws_printf
+#define fprintf paws_fprintf
+
+extern int paws_printf(const char *restrict format, ... );
+extern int paws_fprintf( void *fd, const char *restrict format, ... );
 
 #define __PAWSLIBRARY__
 #endif
