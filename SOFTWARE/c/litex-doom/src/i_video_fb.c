@@ -37,7 +37,6 @@ static inline uint8_t color_to_argbpaws ( unsigned char r, unsigned char g, unsi
     colour += ( ( g & 0x60 ) >> 3 );
     colour += ( ( b & 0xc0 ) >> 6 );
 
-    fprintf(stderr,"( %0d, %0d, %0d ) -> 0x%0x ",r,g,b,( colour == 64 ) ? 68 : colour );
     return( ( colour == 64 ) ? 68 : colour );
 }
 
@@ -96,7 +95,6 @@ void I_SetPalette (byte* palette) {
     gpu_printf_centre( 0x7f, 160, 0, 0, 0, 0, "NEW PALETTE LOADED" );
     for (int i = 0; i < 256; ++i) {
         s_palette[i] = color_to_argbpaws ( *palette++, *palette++, *palette++ );
-        fprintf(stderr,"palette[%0d]= %0d or 0x%0x\n",i,s_palette[i],s_palette[i]);
         gpu_rectangle( s_palette[i], 32 + ( i & 0xf ) * 16, 20 + ( ( i & 0xf0 ) >> 4 ) * 12, 47 + ( i & 0xf ) * 16, 31 + ( ( i & 0xf0 ) >> 4 ) * 12 );
     }
 
