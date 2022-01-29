@@ -49,6 +49,8 @@
 #define FALSE (0)
 #endif
 
+#define PF_INIT_MODE
+
 #ifdef PF_EMBEDDED
 int main( void )
 {

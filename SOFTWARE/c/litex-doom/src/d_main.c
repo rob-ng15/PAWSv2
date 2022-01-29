@@ -87,7 +87,7 @@ boolean         fastparm;       // checkparm of -fast
 
 boolean         drone;
 
-boolean         singletics = false; // debug flag to cancel adaptiveness
+boolean         singletics = true; // debug flag to cancel adaptiveness
 
 //extern int soundVolume;
 //extern  int   sfxVolume;
@@ -1119,7 +1119,10 @@ void D_DoomMain (void)
 
     // RESET TERMINAL AND SET DEFAULT PALETTE
     autorefresh( FALSE ); curs_set( FALSE ); sleep1khz( 4000, 0 ); tpu_cs(); gpu_cs();
-    screen_mode( 0, MODE_RGB ); I_SetPalette (W_CacheLumpName ("PLAYPAL",PU_CACHE));
+#ifndef PAWSv2PALETTE
+    screen_mode( 0, MODE_RGB );
+#endif
+    I_SetPalette (W_CacheLumpName ("PLAYPAL",PU_CACHE));
 
     D_DoomLoop ();  // never returns
 }

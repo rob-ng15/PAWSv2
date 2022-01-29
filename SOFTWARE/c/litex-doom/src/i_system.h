@@ -24,6 +24,9 @@
 #include "d_ticcmd.h"
 #include "d_event.h"
 
+//#define PAWSv2PALETTE
+#define PAWSWHITE 127
+
 // Called by DoomMain.
 void I_Init (void);
 
