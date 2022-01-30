@@ -1,9 +1,17 @@
+#include <stdbool.h>
+
 // STANDARD CONSTANTS
+#ifndef NULL
 #define NULL 0
-#define true 1
-#define false 0
+#endif
+
+#ifndef TRUE
 #define TRUE 1
+#endif
+
+#ifndef FALSE
 #define FALSE 0
+#endif
 
 // DISPLAY LAYERS
 #define LOWER_LAYER 0
@@ -231,8 +239,7 @@
 
 // FOR EASE OF PORTING
 typedef unsigned int size_t;
-typedef unsigned short bool;
-
+//typedef unsigned short bool;
 typedef unsigned char   uint8, uint8_t;
 typedef unsigned short  uint16, uint16_t;
 typedef unsigned int    uint32;
@@ -337,7 +344,10 @@ typedef struct {
 } __attribute((packed)) DirectoryEntry;
 
 // SIMPLE CURSES
-#define COLORS 64
+typedef unsigned char chtype;
+typedef void WINDOW;
+
+#define COLORS 128
 #define A_NOACTION 1024
 #define A_NORMAL 128
 #define A_BOLD 256
@@ -350,7 +360,7 @@ typedef struct {
 #define A_INVIS A_NOACTION
 #define A_ALTCHARSET A_NOACTION
 #define A_CHARTEXT A_NOACTION
-#define COLOR_PAIRS 64
+#define COLOR_PAIRS 128
 #define COLOR_PAIR(a) a|COLORS
 
 // COLOURS

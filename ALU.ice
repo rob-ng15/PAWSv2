@@ -155,17 +155,24 @@ algorithm aluMM(
     input   uint32  abssourceReg2,
     output  uint32  result
 ) <autorun> {
-    uint2   dosigned <:: ~{ function3[0,1], function3[1,1] };
-    uint1   dosigned0 <:: ( ~|dosigned );
-    uint1   dosigned1 <:: ( dosigned != 1 );
-    uint1   productsign <:: dosigned0 ? 0 : ( dosigned1 ? sourceReg1[31,1] : ( sourceReg1[31,1] ^ sourceReg2[31,1] ) );
-    uint32  sourceReg1_unsigned <:: dosigned0 ? sourceReg1 : abssourceReg1;
-    uint32  sourceReg2_unsigned <:: dosigned1 ? sourceReg2 : abssourceReg2;
+    uint1   doupper <:: |function3;
+    uint2   dosigned = uninitialised;
+
+    uint1   productsign <:: &dosigned ? ( sourceReg1[31,1] ^ sourceReg2[31,1] ) : |dosigned ? sourceReg1[31,1] : 0;
+    uint32  sourceReg1_unsigned <:: dosigned[0,1] ? abssourceReg1 : sourceReg1;
+    uint32  sourceReg2_unsigned <:: dosigned[1,1] ? abssourceReg2 : sourceReg2;
 
     douintmul UINTMUL( factor_1 <: sourceReg1_unsigned, factor_2 <: sourceReg2_unsigned, productsign <: productsign );
 
     always_after {
+        // SELECT SIGNED/UNSIGNED OF INPUTS
+        switch( function3 ) {
+            case 2b00: { dosigned = 2b11; }
+            case 2b01: { dosigned = 2b11; }
+            case 2b10: { dosigned = 2b01; }
+            case 2b11: { dosigned = 2b00; }
+        }
         // SELECT HIGH OR LOW PART
-        result = UINTMUL.product64[ { |function3, 5b0 }, 32 ];
+        result = UINTMUL.product64[ { doupper, 5b0 }, 32 ];
     }
 }

@@ -368,13 +368,12 @@ void sdcard_wait( void ) {
 void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress ) {
     gpu_blit( RED, 256, 2, 2, 2 );
     sdcard_wait();
-    *SDCARD_SECTOR_HIGH = ( sectorAddress & 0xffff0000 ) >> 16;
-    *SDCARD_SECTOR_LOW = ( sectorAddress & 0x0000ffff );
+    *SDCARD_SECTOR = sectorAddress;
     *SDCARD_START = 1;
     sdcard_wait();
 
     for( unsigned short i = 0; i < 512; i++ ) {
-        *SDCARD_ADDRESS = i;
+        *SDCARD_BUFFER_ADDRESS = i;
         copyAddress[ i ] = *SDCARD_DATA;
     }
     gpu_blit( GREEN, 256, 2, 2, 2 );
@@ -480,9 +479,9 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
                         } else {
                             if( fileentry[i].attributes != 0x0f ) {
                                 // SHORT FILE NAME ENTRY
-                                if( ( ( fileentry[i].ext[0] == 'P' ) || ( fileentry[i].ext[0] == 'p' ) ) ||
-                                    ( ( fileentry[i].ext[0] == 'A' ) || ( fileentry[i].ext[0] == 'a' ) ) ||
-                                    ( ( fileentry[i].ext[0] == 'W' ) || ( fileentry[i].ext[0] == 'w' ) ) ) {
+                                if( ( ( fileentry[i].ext[0] == 'P' ) || ( fileentry[i].ext[0] == 'p' ) ) &&
+                                    ( ( fileentry[i].ext[1] == 'A' ) || ( fileentry[i].ext[1] == 'a' ) ) &&
+                                    ( ( fileentry[i].ext[2] == 'W' ) || ( fileentry[i].ext[2] == 'w' ) ) ) {
                                         entries++;
                                         memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
                                         directorynames[entries].type = 1;

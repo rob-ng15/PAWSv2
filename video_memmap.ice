@@ -193,6 +193,9 @@ $$end
         terminal_display <: TERMINAL.pixel_display
     );
 
+    // NUMBER OF DISPLAY FRAMES DRAWN SINCE STARTUP
+    uint32  totalframes = 0;
+
     BACKGROUND.memoryWrite := 0; BITMAP.memoryWrite := 0; CHARACTER_MAP.memoryWrite := 0; LOWER_SPRITE.memoryWrite := 0; UPPER_SPRITE.memoryWrite := 0; TERMINAL.memoryWrite := 0;
     LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0;
 
@@ -249,7 +252,13 @@ $$end
                     }
                 }
                 case 4h7: { readData = TERMINAL.terminal_active; }
-                case 4hf: { readData = vblank; }
+                case 4hf: {
+                    switch( memoryAddress[1,2] ) {
+                        case 2h0: { readData = vblank; }
+                        case 2h1: { readData = totalframes[0,16]; }
+                        case 2h2: { readData = totalframes[16,16]; }
+                    }
+                }
                 default: { readData = 0; }
             }
         }
@@ -278,6 +287,7 @@ $$end
                 default: {}
             }
         }
+        if( ( pix_x == 639 ) & ( pix_y == 479 ) ) { totalframes = totalframes + 1; }
     }
 
     if( ~reset ) {

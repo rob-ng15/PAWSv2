@@ -107,7 +107,7 @@ $$end
                 case 4h4: {
                     switch( memoryAddress[1,2] ) {
                         case 2h0: { SDCARDreadsector = 1; }
-                        default: { SDCARDsectoraddress[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        default: { SDCARDsectoraddress[ { ~memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
                     }
                 }
                 case 4h5: { SDCARDbufferaddress = writeData; }

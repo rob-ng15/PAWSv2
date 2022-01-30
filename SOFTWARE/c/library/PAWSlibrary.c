@@ -5,11 +5,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <stdbool.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#include <errno.h>
+#include <fcntl.h>
 
-typedef unsigned int size_t;
-
-// MEMORY
-unsigned char *MEMORYTOP;
+// TOP OF SDRAM MEMORY
+unsigned char *MEMORYTOP = (unsigned char *)0x8000000;;
 
 // RISC-V CSR FUNCTIONS
 unsigned int CSRisa() {
@@ -37,21 +41,26 @@ unsigned long CSRtime() {
 }
 
 // OUTPUT TO UART
-// OUTPUT INDIVIDUAL CHARACTER TO THE UART
-void outputcharacter(char c) {
+// OUTPUT INDIVIDUAL CHARACTER/STRING TO THE UART
+void uart_outputcharacter(char c) {
 	while( *UART_STATUS & 2 ) {}
     *UART_DATA = c;
     if( c == '\n' )
-        outputcharacter('\r');
+        uart_outputcharacter('\r');
+}
+void uart_outputstring( const char *s ) {
+    while( *s ) {
+        uart_outputcharacter( *s++ );
+    }
 }
 // INPUT FROM UART
 // RETURN 1 IF UART CHARACTER AVAILABLE, OTHERWISE 0
-unsigned char character_available( void ) {
+unsigned char uart_character_available( void ) {
     return( *UART_STATUS & 1 );
 }
 // RETURN CHARACTER FROM UART
-char inputcharacter( void ) {
-	while( !character_available() ) {}
+char uart_inputcharacter( void ) {
+	while( !uart_character_available() ) {}
     return *UART_DATA;
 }
 
@@ -60,6 +69,7 @@ char inputcharacter( void ) {
 char ps2_character_available( void ) {
     return *PS2_AVAILABLE;
 }
+
 // RETURN A DECODED ASCII CHARACTER
 // 0x0xx is an ascii character from the keyboard
 // 0x1xx is an escaped character from the keyboard
@@ -126,7 +136,7 @@ unsigned short rng( unsigned short range ) {
 }
 
 // SLEEP FOR counter milliseconds
-void sleep( unsigned short counter, unsigned char timer ) {
+void sleep1khz( unsigned short counter, unsigned char timer ) {
     switch( timer ) {
         case 0:
             *SLEEPTIMER0 = counter;
@@ -222,13 +232,12 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
     unsigned short i;
 
     sdcard_wait();
-    *SDCARD_SECTOR_HIGH = ( sectorAddress & 0xffff0000 ) >> 16;
-    *SDCARD_SECTOR_LOW = ( sectorAddress & 0x0000ffff );
+    *SDCARD_SECTOR = sectorAddress;
     *SDCARD_START = 1;
     sdcard_wait();
 
     for( i = 0; i < 512; i++ ) {
-        *SDCARD_ADDRESS = i;
+        *SDCARD_BUFFER_ADDRESS = i;
         copyAddress[ i ] = *SDCARD_DATA;
     }
 }
@@ -259,6 +268,11 @@ void wait_gpu_finished( void ) {
 // WAIT FOR VBLANK TO START
 void await_vblank( void ) {
     while( !*VBLANK );
+}
+
+// TOTAL NUMBER OF FRAMES DRAWN SINCE STARTUP
+unsigned int total_frames( void ) {
+    return( *FRAMES );
 }
 
 // SET THE LAYER ORDER FOR THE DISPLAY
@@ -306,8 +320,8 @@ struct copper_command {
     unsigned int condition:3;
     unsigned int coordinate:11;
     unsigned int mode:4;
-    unsigned int altcolour:6;
-    unsigned int colour:6;
+    unsigned int altcolour:7;
+    unsigned int colour:7;
 };
 
 void copper_program( unsigned char address, unsigned char command, unsigned char condition, unsigned short coordinate, unsigned char mode, unsigned char altcolour, unsigned char colour ) {
@@ -622,26 +636,6 @@ void gpu_quadrilateral( unsigned char colour, short x1, short y1, short x2, shor
     *GPU_WRITE = 15;
 }
 
-// OUTPUT A CHARACTER TO THE GPU WITH BOLD BELOW AND OVERWRITE NORMAL ON TOP
-void gpu_character_blit_shadow( unsigned char colour, unsigned char colour_alt, short x1, short y1, unsigned char tile, unsigned char blit_size, unsigned char action ) {
-    *GPU_COLOUR = colour_alt;
-    *GPU_X = x1;
-    *GPU_Y = y1;
-    *GPU_PARAM0 = tile + 256;
-    *GPU_PARAM1 = blit_size;
-    *GPU_PARAM2 = action;
-    wait_gpu();
-    *GPU_WRITE = 8;
-    *GPU_COLOUR = colour;
-    *GPU_X = x1;
-    *GPU_Y = y1;
-    *GPU_PARAM0 = tile;
-    *GPU_PARAM1 = blit_size;
-    *GPU_PARAM2 = action;
-    wait_gpu();
-    *GPU_WRITE = 8;
-}
-
 // OUTPUT A STRING TO THE GPU
 void gpu_print( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, char *s ) {
     while( *s ) {
@@ -696,7 +690,8 @@ void gpu_printf_centre( unsigned char colour, short x, short y, unsigned char bo
         gpu_character_blit( colour, x, y, ( bold ? 256:0 ) + *s++, size, action );
         x = x + ( 8 << size );
     }
-}void gpu_printf_centre_vertical( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
+}
+void gpu_printf_centre_vertical( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
     char *buffer = (char *)0x1000;
     va_list args;
     va_start (args, fmt);
@@ -773,7 +768,7 @@ void gpu_pixelblock24bw( short x, short y, unsigned short w, unsigned short h, u
 }
 
 // SET GPU TO RECEIVE A PIXEL BLOCK, SEND INDIVIDUAL PIXELS, STOP
-void gpu_pixelblock_start( short x,  short y, unsigned short w, unsigned short h ) {
+void gpu_pixelblock_start( short x,  short y, unsigned short w ) {
     wait_gpu_finished();
     *GPU_X = x;
     *GPU_Y = y;
@@ -781,7 +776,6 @@ void gpu_pixelblock_start( short x,  short y, unsigned short w, unsigned short h
     *GPU_PARAM1 = TRANSPARENT;
     *GPU_WRITE = 10;
 }
-
 void gpu_pixelblock_pixel7( unsigned char pixel ) {
     *PB_COLOUR7 = pixel;
 }
@@ -1387,7 +1381,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
 
             unsigned short buttons = get_buttons();
             while( buttons == 1 ) { buttons = get_buttons(); }
-            while( get_buttons() != 1 ) {} sleep( 100, 0 );
+            while( get_buttons() != 1 ) {} sleep1khz( 100, 0 );
             if( buttons & 64 ) {
                 // MOVE RIGHT
                 if( present_entry == entries ) { present_entry = 0; } else { present_entry++; }
@@ -1585,18 +1579,21 @@ unsigned char SMTSTATE( void ) {
 
 // SIMPLE CURSES LIBRARY
 // USES THE CURSES BUFFER IN THE CHARACTER MAP
+char __stdinout_init = FALSE, __sdcard_init = FALSE;
 
 unsigned char   __curses_backgroundcolours[COLOR_PAIRS], __curses_foregroundcolours[COLOR_PAIRS],
                 __curses_scroll = 1, __curses_echo = 0, __curses_bold = 0, __curses_reverse = 0, __curses_autorefresh = 0;
 unsigned short  __curses_x = 0, __curses_y = 0, __curses_fore = WHITE, __curses_back = BLACK;
 
+void *stdscr;
+
 typedef union curses_cell {
     unsigned int bitfield;
     struct {
-        unsigned int pad : 10;
+        unsigned int pad : 9;
         unsigned int character : 9;
         unsigned int background : 7;
-        unsigned int foreground : 6;
+        unsigned int foreground : 7;
     } cell;
 } __curses_cell;
 
@@ -1633,6 +1630,7 @@ void initscr( void ) {
     while( *TPU_COMMIT );
     *TPU_COMMIT = 6;
     __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; *TPU_CURSOR = 1; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
+    __stdinout_init = TRUE;
 }
 
 int endwin( void ) {
@@ -1702,11 +1700,16 @@ bool can_change_color( void ) {
     return( true );
 }
 
+int init_color(short color, short r, short g, short b) {
+    return( true );
+}
+
 int init_pair( short pair, short f, short b ) {
     __curses_foregroundcolours[ pair ] = f;
     __curses_backgroundcolours[ pair ] = b;
     return( true );
 }
+
 
 int move( int y, int x ) {
     __curses_x = ( unsigned short ) ( x < 0 ) ? 0 : ( x > COLS-1 ) ? COLS-1 : x;
@@ -1740,6 +1743,7 @@ void __scroll( void ) {
 
 int addch( unsigned char ch ) {
     __curses_cell temp;
+    short gonextline = 0;
 
     switch( ch ) {
         case '\b': {
@@ -1757,15 +1761,7 @@ int addch( unsigned char ch ) {
         case '\n': {
             // LINE FEED
             __curses_x = 0;
-            if( __curses_y == LINES-1 ) {
-                if( __curses_scroll ) {
-                    __scroll();
-                } else {
-                    __curses_y = 0;
-                }
-            } else {
-                __curses_y++;
-            }
+            gonextline = 1;
             break;
         }
         case '\r': {
@@ -1773,6 +1769,16 @@ int addch( unsigned char ch ) {
             __curses_x = 0;
             break;
         }
+        case '\t': {
+            // TAB
+            __curses_x = ( 1 + __curses_x / 8 ) * 8;
+            if( __curses_x >= COLS ) {
+                __curses_x = 0;
+                gonextline = 1;
+            }
+            break;
+        }
+
         default: {
             temp.cell.character = ( __curses_bold ? 256 : 0 ) + ch;
             temp.cell.background = __curses_back;
@@ -1780,20 +1786,26 @@ int addch( unsigned char ch ) {
             __write_curses_cell( __curses_x, __curses_y, temp );
             if( __curses_x == COLS-1 ) {
                 __curses_x = 0;
-                if( __curses_y == LINES-1 ) {
-                    if( __curses_scroll ) {
-                        __scroll();
-                    } else {
-                        __curses_y = 0;
-                    }
-                } else {
-                    __curses_y++;
-                }
+                gonextline = 1;
             } else {
                 __curses_x++;
             }
         }
     }
+
+    // GO TO NEXT LINE, SCROLL/WRAP IF REQUIRED
+    if( gonextline ) {
+        if( __curses_y == LINES-1 ) {
+            if( __curses_scroll ) {
+                __scroll();
+            } else {
+                __curses_y = 0;
+            }
+        } else {
+            __curses_y++;
+        }
+    }
+
     __position_curses( __curses_x, __curses_y );
     if( __curses_autorefresh )
         refresh();
@@ -1837,8 +1849,8 @@ int mvprintw( int y, int x, const char *fmt,... ) {
 
 int attron( int attrs ) {
     if( attrs & COLORS ) {
-        __curses_fore = __curses_foregroundcolours[ attrs & 0x3f ];
-        __curses_back = __curses_backgroundcolours[ attrs & 0x3f ];
+        __curses_fore = __curses_foregroundcolours[ attrs & 0x7f ];
+        __curses_back = __curses_backgroundcolours[ attrs & 0x7f ];
         __update_tpu();
     }
     if( attrs & A_NORMAL ) {
@@ -1855,6 +1867,18 @@ int attron( int attrs ) {
 
     return( true );
 }
+
+int attroff( int attrs ) {
+   if( attrs & A_BOLD ) {
+        __curses_bold = 0;
+    }
+
+    if( attrs & A_REVERSE )
+        __curses_reverse = 0;
+
+    return( true );
+}
+
 
 int deleteln( void ) {
     __curses_cell temp;
@@ -1900,12 +1924,57 @@ int clrtoeol( void ) {
     return( true );
 }
 
-// newlib support routines
+int intrflush( void *, bool bf ) {
+    return( 0 );
+}
+
+int keypad(WINDOW *win, bool bf) {
+    return( 0 );
+}
+
+// FAT16/32 File IO Library from Ultra-Embedded.com
+#define USE_FILELIB_STDIO_COMPAT_NAMES
+#define FAT_PRINTF_NOINC_STDIO
+#ifdef feof
+#undef feof
+#endif
+#include "fat_io_lib/fat_filelib.h"
+
+// READ MULTIPLE SECTORS INTO MEMORY FOR fat_io_lib
+int sd_media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
+    unsigned short i;
+
+    while( sector_count-- ) {
+        sdcard_wait();
+        *SDCARD_SECTOR = sector;
+        *SDCARD_START = 1;
+        sdcard_wait();
+
+        for( i = 0; i < 512; i++ ) {
+            *SDCARD_BUFFER_ADDRESS = i;
+            buffer[ i ] = *SDCARD_DATA;
+        }
+
+        // MOVE TO NEXT SECTOR
+        sector++; buffer += FAT_SECTOR_SIZE;
+    }
+
+    return(1);
+}
+
+int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
+    return(0);
+}
+
+
+// newlib support routines - define standard malloc memory size
 #ifndef MALLOC_MEMORY
 #define MALLOC_MEMORY ( 16384 * 1024 )
 #endif
 
-unsigned char *_heap;
+// Standard i/o directs to the curses terminal, input is from the ps_keyboard
+
+unsigned char *_heap = NULL;
 unsigned char *_sbrk( int incr ) {
   unsigned char *prev_heap;
 
@@ -1923,47 +1992,144 @@ unsigned char *_sbrk( int incr ) {
   return prev_heap;
 }
 
+// PAWS INITIALISATION FOR THE TERMNAL AND THE SDCARD for fat_io_lib
+void __start_stdinout( void ) {
+    initscr(); start_color(); autorefresh( TRUE ); ps2_keyboardmode( TRUE );
+    __stdinout_init = TRUE;
+}
+void __start_sdmedia( void ) {
+    // Initialise File IO Library
+    fl_init();
+    fl_attach_media(sd_media_read, sd_media_write);
+    __sdcard_init = TRUE;
+}
+
+// COMPATABILITY FUNCTIONS
+// sleep from sys/unistd.h
+//unsigned int sleep( unsigned int seconds ) {
+//    sleep1khz( 1000 * seconds, 0 );
+//    return(0);
+//}
+
+// LINK NEWLIB STUB FUNCTIONS TO FAT_IO_LIB FUNCTIONS
+
+#define MAXOPENFILES 4
+struct sFL_FILE *__filehandles[ MAXOPENFILES + 3 ]; // stdin, stdout, stderr
+
+int __find_filehandlespace( void ) {
+    for( int i = 3; i < MAXOPENFILES+3; i++ ) {
+        if( __filehandles[ i ] == NULL ) {
+            return i;
+        }
+    }
+    return -1;
+}
+int _open( const char *file, int flags ) {
+    if( !__sdcard_init ) __start_sdmedia();
+
+    int handle = __find_filehandlespace();
+    if( handle == -1 ) {
+        return -1;
+    } else {
+        __filehandles[ handle ] = fl_fopen( file, "r" );
+        if( __filehandles[ handle ] != NULL ) {
+            return handle;
+        } else {
+            return -1;
+        }
+    }
+}
+
+int _close( int handle ) {
+    if( !__sdcard_init ) __start_sdmedia();
+
+    if( __filehandles[ handle ] != NULL ) {
+        fl_fclose( __filehandles[ handle ] );
+        __filehandles[ handle ] = NULL;
+        return 0;
+    } else {
+        return -1;
+    }
+}
+
+int _stat( char *file, struct stat *st ) {
+    if( !__sdcard_init ) __start_sdmedia();
+
+    int handle = _open( file, 0 );
+    if( handle != -1 ) {
+        st->st_size = __filehandles[ handle ]->filelength;
+        _close( handle );
+        return( 0 );
+    } else {
+        return -1;
+    }
+}
+
 long _write( int fd, const void *buf, size_t cnt ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
     unsigned char *buffer = (unsigned char *)buf;
+
     while( cnt-- ) {
         switch( fd ) {
-            case 0:
-            case 1:
-            case 2:
-                outputcharacter( *buffer++ );
+            case STDOUT_FILENO:
+                addch( *buffer++ );
+                break;
+            case STDERR_FILENO:
+                uart_outputcharacter( *buffer++ );
+                break;
+            default:
                 break;
         }
     }
-    return(0);
+    return( cnt );
 }
-long _read( int fd, const void *buf, size_t cnt ) {
-    unsigned char *buffer = (unsigned char *)buf;
-    while( cnt-- ) {
-        switch( fd ) {
-            case 0:
-            case 1:
-            case 2:
-                *buffer++ = inputcharacter();
-                break;
-        }
+long _read( int fd, void *buf, size_t cnt ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
+    unsigned char *buffer = (unsigned char *)buf, input;
+
+    switch( fd ) {
+        case STDIN_FILENO:
+            while( cnt-- ) {
+                input = ps2_inputcharacter();
+                if( input != 0x0d ) {
+                    *buffer++ = input;
+                } else {
+                    *buffer = 0;
+                    return( strlen( buf ) );
+                }
+            }
+            break;
+        default:
+            return( fl_fread( buf, cnt, 1, __filehandles[ fd ] ) );
+            break;
     }
-    return(0);
 }
-int _open( const char *file, int flags, int mode ) {
-    return( -1 );
-}
-int _close( int fd ) {
-    return( -1 );
-}
-int _fstat( int fd ) {
-    return( 0 );
+int _lseek( int fd, int pos, int whence ) {
+    if( !__sdcard_init ) __start_sdmedia();
+
+    switch( fd ) {
+        case STDIN_FILENO:
+        case STDOUT_FILENO:
+        case STDERR_FILENO:
+            return( -1 );
+            break;
+        default:
+            if( !fl_fseek( __filehandles[ fd ], pos, whence ) ) {
+                return( fl_ftell( __filehandles[ fd ] ) );
+            } else {
+                return( -1 );
+            break;
+            }
+    }
 }
 int _isatty( int fd ) {
     return( 0 );
 }
-int _lseek( int fd, int pos, int whence ) {
-    return( 0 );
-}
+
 int _getpid() {
     return( 0 );
 }
@@ -1974,16 +2140,158 @@ void  __attribute__ ((noreturn)) _exit( int status ){
     ((void(*)(void))0x00000000)();
     while(1);
 }
+int _gettimeofday() {
+    return( 0 );
+}
+int _times() {
+    return( 0 );
+}
+int _link ( const char *oldname, const char *newname ) {
+    return -1;
+}
+int _unlink ( const char *name ) {
+    return -1;
+}
+int _fstat( int fd, struct stat *st ) {
+    if( !__sdcard_init ) __start_sdmedia();
 
-// SETUP MEMORY - CLEAR THE BSS SECTION AND INITIALISE FOR MALLOC
-extern int _bss_start, _bss_end;
-void INITIALISEMEMORY( void ) {
-    // CLEAR BSS
-    memset( &_bss_start, 0, &_bss_end - &_bss_end );
-
-    // MEMORY
-    MEMORYTOP = (unsigned char *)0x8000000;
-    _heap = NULL;
+    if( __filehandles[ fd ] != NULL ) {
+        st->st_size = __filehandles[ fd ]->filelength;
+        return( 0 );
+    }
+    return -1;
 }
 
-#include "nanojpeg.c"
+// LINK TO fat_io_lib, check sdcard is initialised
+// DIRECT to stdin, stdout, stderr or fat_io_lib as appropriate
+void *paws_fopen( const char *path, const char *modifiers ) {
+    if( !__sdcard_init ) __start_sdmedia();
+    return( fl_fopen( path, modifiers ) );
+}
+int paws_fclose( void *fd ) {
+    if( !__sdcard_init ) __start_sdmedia();
+    fl_fclose( fd );
+    return( 0 );
+}
+int paws_fgetc( void *fd ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+    char input;
+    if( fd == stdin ) {
+        input = ps2_inputcharacter();
+        addch( input );
+        return ( input );
+    } else {
+        return( fl_fgetc( fd ) );
+    }
+}
+char *paws_fgets( char *s, int cnt, void *fd ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
+    unsigned char *buffer = (unsigned char *)s, input;
+    if( fd == stdin ) {
+        while( cnt-- ) {
+            input = ps2_inputcharacter();
+            if( input != 0x0d ) {
+                *buffer++ = input;
+                addch( input );
+            } else {
+                addch( '\n' );
+                *buffer = 0;
+                return( s);
+            }
+        }
+    } else {
+        return( fl_fgets( s, cnt, fd ) );
+    }
+}
+int paws_fputc( int c, void *fd ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+    if( ( fd == stdout ) || ( fd == stderr ) )  {
+        if( fd == stdout ) addch( c );
+        if( fd == stderr ) uart_outputcharacter( c );
+        return( c );
+    } else {
+        return( fl_fputc( c, fd ) );
+    }
+}
+int paws_fputs( const char *s, void *fd ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+    if( ( fd == stdout ) || ( fd == stderr ) )  {
+        if( fd == stdout ) printw( "%s", s );
+        if( fd == stderr ) uart_outputstring( s );
+        return( strlen( s ) );
+    } else {
+        return( fl_fputs( s, fd ) );
+    }
+}
+int paws_fwrite(const void *data, int size, int count, void *fd ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
+    unsigned char *buffer;
+    if( ( fd == stdout ) || ( fd == stderr ) )  {
+        for( int i = 0; i < count; i++ ) {
+            buffer = (unsigned char *)data;
+            for( int j = 0; j < size; j++ ) {
+                if( fd == stdout ) addch( *buffer++ );
+                if( fd == stderr ) uart_outputcharacter(  *buffer++  );
+            }
+        }
+        return( count );
+    } else {
+        return( fl_fwrite( data, size, count, fd ) );
+    }
+}
+int paws_fread( void *data, int size, int count, void *fd ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
+    unsigned char *buffer = (unsigned char *)data;
+    if( fd == stdin ) {
+        for( int i = 0; i < count; i++ ) {
+            for( int j = 0; j < size; j++ ) {
+                *buffer++ = ps2_inputcharacter();
+            }
+        }
+        return( count );
+    } else {
+        return( fl_fread( data, size, count, fd ) );
+    }
+}
+
+int paws_printf(const char *restrict format, ... ) {
+    if( !__stdinout_init ) __start_stdinout();
+
+    static char buffer[1024];
+    va_list args;
+    va_start (args, format);
+    vsnprintf( buffer, 1024, format, args);
+    va_end(args);
+
+    printw( "%s", buffer );
+    return( strlen( buffer ) );
+}
+
+int paws_fprintf( void *fd, const char *restrict format, ... ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
+    static char buffer[1024];
+    va_list args;
+    va_start (args, format);
+    vsnprintf( buffer, 1024, format, args);
+    va_end(args);
+
+    if( ( fd == stdout ) || ( fd == stderr ) ) {
+        if( fd == stdout ) printw( "%s", buffer );
+        if( fd == stderr ) uart_outputstring( buffer );
+    } else {
+        fl_fwrite( buffer, strlen( buffer ), 1, fd );
+    }
+
+    return( strlen( buffer ) );
+}
