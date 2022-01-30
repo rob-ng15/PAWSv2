@@ -1,4 +1,4 @@
-#include "library/PAWSlibrary.h"
+#include <PAWSlibrary.h>
 
 // http://www.rosettacode.org/wiki/Conway%27s_Game_of_Life#C
 

@@ -1,5 +1,5 @@
-#include "library/PAWSlibrary.h"
 #include <math.h>
+#include <PAWSlibrary.h>
 
 // FOR TILEMAP DEMO
 unsigned char tilemap_bitmap[] = {

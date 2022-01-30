@@ -270,6 +270,11 @@ void await_vblank( void ) {
     while( !*VBLANK );
 }
 
+// TOTAL NUMBER OF FRAMES DRAWN SINCE STARTUP
+unsigned int total_frames( void ) {
+    return( *FRAMES );
+}
+
 // SET THE LAYER ORDER FOR THE DISPLAY
 void screen_mode( unsigned char screenmode, unsigned char colour ) {
     *SCREENMODE = screenmode;
@@ -315,8 +320,8 @@ struct copper_command {
     unsigned int condition:3;
     unsigned int coordinate:11;
     unsigned int mode:4;
-    unsigned int altcolour:6;
-    unsigned int colour:6;
+    unsigned int altcolour:7;
+    unsigned int colour:7;
 };
 
 void copper_program( unsigned char address, unsigned char command, unsigned char condition, unsigned short coordinate, unsigned char mode, unsigned char altcolour, unsigned char colour ) {
@@ -631,26 +636,6 @@ void gpu_quadrilateral( unsigned char colour, short x1, short y1, short x2, shor
     *GPU_WRITE = 15;
 }
 
-// OUTPUT A CHARACTER TO THE GPU WITH BOLD BELOW AND OVERWRITE NORMAL ON TOP
-void gpu_character_blit_shadow( unsigned char colour, unsigned char colour_alt, short x1, short y1, unsigned char tile, unsigned char blit_size, unsigned char action ) {
-    *GPU_COLOUR = colour_alt;
-    *GPU_X = x1;
-    *GPU_Y = y1;
-    *GPU_PARAM0 = tile + 256;
-    *GPU_PARAM1 = blit_size;
-    *GPU_PARAM2 = action;
-    wait_gpu();
-    *GPU_WRITE = 8;
-    *GPU_COLOUR = colour;
-    *GPU_X = x1;
-    *GPU_Y = y1;
-    *GPU_PARAM0 = tile;
-    *GPU_PARAM1 = blit_size;
-    *GPU_PARAM2 = action;
-    wait_gpu();
-    *GPU_WRITE = 8;
-}
-
 // OUTPUT A STRING TO THE GPU
 void gpu_print( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, char *s ) {
     while( *s ) {
@@ -791,7 +776,6 @@ void gpu_pixelblock_start( short x,  short y, unsigned short w ) {
     *GPU_PARAM1 = TRANSPARENT;
     *GPU_WRITE = 10;
 }
-
 void gpu_pixelblock_pixel7( unsigned char pixel ) {
     *PB_COLOUR7 = pixel;
 }

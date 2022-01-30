@@ -1,5 +1,5 @@
-#include "library/PAWSlibrary.h"
 #include <stdlib.h>
+#include <PAWSlibrary.h>
 
 int main( void ) {
     int width, height; unsigned int filesize;

@@ -11,14 +11,14 @@
 extern unsigned char *MEMORYTOP;
 
 // RISC-V CSR FUNCTIONS
-extern unsigned int CSRisa( void );
-extern unsigned long CSRcycles( void );
-extern unsigned long CSRinstructions( void );
-extern unsigned long CSRtime( void );
+//extern unsigned int CSRisa( void );
+//extern unsigned long CSRcycles( void );
+//extern unsigned long CSRinstructions( void );
+//extern unsigned long CSRtime( void );
 
 // UART INPUT / OUTPUT
 extern void uart_outputcharacter(char);
-extern void uart_outputstring( char * );
+extern void uart_outputstring( char *);
 extern char uart_inputcharacter( void );
 extern unsigned char uart_character_available( void );
 
@@ -34,7 +34,7 @@ extern unsigned char get_buttons( void );
 // TIMERS AND PSEUDO RANDOM NUMBER GENERATOR
 extern unsigned short systemclock( void );
 extern unsigned short secondssincestart( int );
-extern float frng( void );
+//extern float frng( void );
 extern unsigned short rng( unsigned short );
 extern void sleep1khz( unsigned short, unsigned char );
 extern void set_timer1khz( unsigned short, unsigned char );
@@ -50,6 +50,7 @@ extern unsigned short get_beep_active( unsigned char );
 
 // DISPLAY
 extern void await_vblank( void );
+//extern unsigned int total_frames( void );
 extern void screen_mode( unsigned char, unsigned char );
 extern void bitmap_display( unsigned char );
 extern void bitmap_draw( unsigned char );
@@ -86,26 +87,26 @@ extern void gpu_quadrilateral( unsigned char, short, short, short, short, short,
 extern void draw_vector_block( unsigned char, unsigned char, short, short, unsigned char, unsigned char );
 extern void set_vector_vertex( unsigned char, unsigned char , unsigned char, char, char );
 extern void bitmap_scrollwrap( unsigned char );
-extern void set_blitter_bitmap( unsigned char, unsigned short * );
-extern void set_blitter_chbitmap( unsigned char, unsigned char * );
-extern void set_colourblitter_bitmap( unsigned char, unsigned char * );
-extern void gpu_pixelblock7( short , short , unsigned short, unsigned short, unsigned char, unsigned char * );
-extern void gpu_pixelblock24( short , short , unsigned short, unsigned short, unsigned char * );
-extern void gpu_pixelblock24bw( short , short , unsigned short, unsigned short, unsigned char * );
+extern void set_blitter_bitmap( unsigned char, unsigned short *);
+extern void set_blitter_chbitmap( unsigned char, unsigned char *);
+extern void set_colourblitter_bitmap( unsigned char, unsigned char *);
+extern void gpu_pixelblock7( short , short , unsigned short, unsigned short, unsigned char, unsigned char *);
+extern void gpu_pixelblock24( short , short , unsigned short, unsigned short, unsigned char *);
+extern void gpu_pixelblock24bw( short , short , unsigned short, unsigned short, unsigned char *);
 extern void gpu_pixelblock_start( short , short , unsigned short );
-extern void gpu_pixelblock_pixel7( unsigned char );
-extern void gpu_pixelblock_pixel24( unsigned char, unsigned char, unsigned char );
-extern void gpu_pixelblock_pixel24bw( unsigned char, unsigned char, unsigned char );
-extern void gpu_pixelblock_stop( void );
+//extern void gpu_pixelblock_pixel7( unsigned char );
+//extern void gpu_pixelblock_pixel24( unsigned char, unsigned char, unsigned char );
+//extern void gpu_pixelblock_pixel24bw( unsigned char, unsigned char, unsigned char );
+//extern void gpu_pixelblock_stop( void );
 
 extern void gpu_printf( unsigned char, short, short, unsigned char, unsigned char, unsigned char, const char *,...  );
 extern void gpu_printf_centre( unsigned char, short, short, unsigned char, unsigned char, unsigned char, const char *,...  );
 extern void gpu_printf_vertical( unsigned char, short, short, unsigned char, unsigned char, unsigned char, const char *,...  );
 extern void gpu_printf_centre_vertical( unsigned char, short, short, unsigned char, unsigned char, unsigned char, const char *,...  );
-extern void gpu_print( unsigned char, short, short, unsigned char, unsigned char, unsigned char, char * );
-extern void gpu_print_centre( unsigned char, short, short, unsigned char, unsigned char, unsigned char, char * );
-extern void gpu_print_vertical( unsigned char, short, short, unsigned char, unsigned char, unsigned char, char * );
-extern void gpu_print_centre_vertical( unsigned char, short, short, unsigned char, unsigned char, unsigned char, char * );
+extern void gpu_print( unsigned char, short, short, unsigned char, unsigned char, unsigned char, char *);
+extern void gpu_print_centre( unsigned char, short, short, unsigned char, unsigned char, unsigned char, char *);
+extern void gpu_print_vertical( unsigned char, short, short, unsigned char, unsigned char, unsigned char, char *);
+extern void gpu_print_centre_vertical( unsigned char, short, short, unsigned char, unsigned char, unsigned char, char *);
 
 // SOFTWARE VECTOR SHAPES
 extern void DrawVectorShape2D( unsigned char, struct Point2D *, short, short, short, short, float );
@@ -130,19 +131,19 @@ extern void tpu_set(  unsigned char, unsigned char, unsigned char, unsigned char
 extern void tpu_output_character( short );
 extern void tpu_printf( char, const char *,... );
 extern void tpu_printf_centre( unsigned char, unsigned char, unsigned char, char, const char *,... );
-extern void tpu_print( char, char * );
-extern void tpu_print_centre( unsigned char, unsigned char, unsigned char, char, char * );
+extern void tpu_print( char, char *);
+extern void tpu_print_centre( unsigned char, unsigned char, unsigned char, char, char *);
 
 // TERMINAL WINDOW
 extern void terminal_cs( void );
 extern void terminal_showhide( unsigned char );
 extern void terminal_output_character( char );
-extern void terminal_print( char * );
+extern void terminal_print( char *);
 extern void terminal_printf( const char *,... );
 
 // IMAGE DECODERS
 extern void netppm_display( unsigned char *, unsigned char );
-extern void netppm_decoder( unsigned char *, unsigned char * );
+extern void netppm_decoder( unsigned char *, unsigned char *);
 
 // nanojpeg.c from https://keyj.emphy.de/nanojpeg/
 typedef enum _nj_result {
@@ -200,10 +201,11 @@ extern int keypad( void *, bool );
 extern void *stdscr;
 
 // SDCARD using PAWS fat32
-extern unsigned char * sdcard_selectfile( char *, char *, unsigned int *, char * );
+extern unsigned char *sdcard_selectfile( char *, char *, unsigned int *, char *);
 
 // SDCARD using fat_io_lib
 #ifndef	_SYS_STAT_H
+#include <sys/types.h>
 struct stat {
     dev_t     st_dev;     /* ID of device containing file */
     ino_t     st_ino;     /* inode number */
@@ -252,5 +254,61 @@ extern int paws_fread( void *data, int size, int count, void *fd );
 extern int paws_printf(const char *restrict format, ... );
 extern int paws_fprintf( void *fd, const char *restrict format, ... );
 
+// INLINE SMALL FUNCTIONS FOR SPEED
+extern unsigned int volatile *FRAMES;
+static inline unsigned int total_frames( void ) {
+    return( *FRAMES );
+}
+
+extern unsigned char volatile *PB_COLOUR7;
+extern unsigned char volatile *PB_COLOUR8R;
+extern unsigned char volatile *PB_COLOUR8G;
+extern unsigned char volatile *PB_COLOUR8B;
+extern unsigned char volatile *PB_STOP;
+static inline void gpu_pixelblock_pixel7( unsigned char pixel ) {
+    *PB_COLOUR7 = pixel;
+}
+static inline void gpu_pixelblock_pixel24( unsigned char red, unsigned char green, unsigned char blue ) {
+    *PB_COLOUR8R = red;
+    *PB_COLOUR8G= green;
+    *PB_COLOUR8B = blue;
+}
+static inline void gpu_pixelblock_pixel24bw( unsigned char red, unsigned char green, unsigned char blue ) {
+    *PB_COLOUR7 = ( ( red + blue + green ) / 3 ) >> 2;
+}
+
+static inline void gpu_pixelblock_stop( void ) {
+    *PB_STOP = 3;
+}
+
+// RISC-V CSR FUNCTIONS
+static inline unsigned int CSRisa() {
+   unsigned int isa;
+   asm volatile ("csrr %0, 0x301" : "=r"(isa));
+   return isa;
+}
+
+static inline unsigned long CSRcycles() {
+   unsigned long cycles;
+   asm volatile ("rdcycle %0" : "=r"(cycles));
+   return cycles;
+}
+
+static inline unsigned long CSRinstructions() {
+   unsigned long insns;
+   asm volatile ("rdinstret %0" : "=r"(insns));
+   return insns;
+}
+
+static inline unsigned long CSRtime() {
+  unsigned long time;
+  asm volatile ("rdtime %0" : "=r"(time));
+  return time;
+}
+
+extern float volatile *FRNG;
+static inline float frng( void ) {
+    return( *FRNG );
+}
 #define __PAWSLIBRARY__
 #endif

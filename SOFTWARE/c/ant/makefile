@@ -1,7 +1,7 @@
 include ../makefile.inc
 
-PROJECT=TEMPLATE
+PROJECT=ANT
 PROJECTTYPE=DEMO
-SOURCE=ante.c
+SOURCE=ant.c
 
 include ../makefile-paws.inc

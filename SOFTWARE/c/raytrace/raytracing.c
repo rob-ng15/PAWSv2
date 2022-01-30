@@ -3,10 +3,10 @@
 
 /* Further ported to PAWS */
 
-#include "library/PAWSlibrary.h"
 #include <stdio.h>
 #include <math.h>
 #include <fenv.h>
+#include <PAWSlibrary.h>
 
 #define GL_height 240
 #define GL_width 320

@@ -18,6 +18,7 @@ unsigned char volatile * SDCARD_DATA = (unsigned char volatile *) 0xf150;
 
 // DISPLAY UNITS
 unsigned char volatile * VBLANK = ( unsigned char volatile * ) 0xdf00;
+unsigned int volatile * FRAMES = ( unsigned int volatile * ) 0xdf02;
 unsigned char volatile * SCREENMODE = ( unsigned char volatile * ) 0xdf00;
 unsigned char volatile * COLOUR = ( unsigned char volatile * ) 0xdf01;
 

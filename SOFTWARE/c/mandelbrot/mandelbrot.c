@@ -1,5 +1,4 @@
-#include "library/PAWSlibrary.h"
-#include <stdio.h>
+#include <PAWSlibrary.h>
 
 // TRANSLATION OF http://www.rosettacode.org/wiki/Mandelbrot_set#BASIC256 to C and PAWSlibrary
 

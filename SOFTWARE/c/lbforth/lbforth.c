@@ -18,8 +18,8 @@
 /* Only a single include here; I'll define everything on the fly to keep
 * dependencies as low as possible. In this file, the only C standard functions
 * used are getchar, putchar and the EOF value. */
-#include "library/PAWSlibrary.h"
 #include <stdio.h>
+#include <PAWSlibrary.h>
 
 /* Base cell data types. Use short/long on most systems for 16 bit cells. */
 /* Experiment here if necessary. */
