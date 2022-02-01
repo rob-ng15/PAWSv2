@@ -553,7 +553,7 @@ void main( void ) {
     unsigned short selectedfile = 0;
 
     // STOP SMT AND PIXELBLOCK
-    SMTSTOP(); *PB_STOP = 1;
+    SMTSTOP(); *PB_STOP = 1; *PB_MODE = 0;
 
     // CLEAR MEMORY
     memset( &_bss_start, 0, &_bss_end - &_bss_end );

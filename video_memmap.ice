@@ -257,6 +257,7 @@ $$end
                         case 2h0: { readData = vblank; }
                         case 2h1: { readData = totalframes[0,16]; }
                         case 2h2: { readData = totalframes[16,16]; }
+                        default: { readData = 0; }
                     }
                 }
                 default: { readData = 0; }
@@ -443,11 +444,15 @@ algorithm bitmap_memmap(
     // 32 x 16 x 16 7 bit tilemap for colour
     simple_dualport_bram uint7 colourblittilemap <@video_clock,@clock> [ 16384 ] = uninitialized;
 
+    // 256 colour remapper
+    simple_dualport_bram uint8 pb_colourmap <@video_clock,@clock> [ 256 ] = uninitialized;
+
     // BITMAP WRITER AND GPU
     bitmapwriter pixel_writer <@video_clock,!video_reset> (
         blit1tilemap <:> blit1tilemap,
         characterGenerator8x8 <:> characterGenerator8x8,
         colourblittilemap <:> colourblittilemap,
+        pb_colourmap <:> pb_colourmap,
         vertex <:> vertex,
         static6bit <: static6bit,
         bitmap_0A <:> bitmap_0A,
@@ -466,7 +471,7 @@ algorithm bitmap_memmap(
     // LATCH MEMORYWRITE
     uint1   LATCHmemoryWrite = uninitialized;
 
-    blit1tilemap.wenable1 := 1; characterGenerator8x8.wenable1 := 1; colourblittilemap.wenable1 := 1; vertex.wenable1 := 1;
+    blit1tilemap.wenable1 := 1; characterGenerator8x8.wenable1 := 1; colourblittilemap.wenable1 := 1; vertex.wenable1 := 1; pb_colourmap.wenable1 := 1;
 
     always_after {
         switch( { memoryWrite, LATCHmemoryWrite } ) {
@@ -540,11 +545,14 @@ algorithm bitmap_memmap(
                     }
                     case 4h7: {
                         switch( memoryAddress[1,3] ) {
-                            case 3h0: { pixel_writer.pb_colour7 = writeData; pixel_writer.pb_newpixel = 1; }
+                            case 3h0: { pixel_writer.pb_colour = writeData; pixel_writer.pb_newpixel = 1; }
                             case 3h1: { pixel_writer.pb_colour8r = writeData; }
                             case 3h2: { pixel_writer.pb_colour8g = writeData; }
                             case 3h3: { pixel_writer.pb_colour8b = writeData; pixel_writer.pb_newpixel = 2; }
                             case 3h4: { pixel_writer.pb_newpixel = 3; }
+                            case 3h5: { pixel_writer.pb_mode = writeData; }
+                            case 3h6: { pb_colourmap.addr1 = writeData; }
+                            case 3h7: { pb_colourmap.wdata1 = writeData; }
                             default: {}
                         }
                     }
@@ -582,7 +590,7 @@ algorithm bitmap_memmap(
 
     if( ~reset ) {
         // RESET THE CROPPING RECTANGLE
-        pixel_writer.crop_left = 0; pixel_writer.crop_right = 319; pixel_writer.crop_top = 0; pixel_writer.crop_bottom = 239;
+        pixel_writer.pb_mode = 0; pixel_writer.crop_left = 0; pixel_writer.crop_right = 319; pixel_writer.crop_top = 0; pixel_writer.crop_bottom = 239;
     }
 }
 

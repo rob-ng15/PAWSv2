@@ -151,7 +151,7 @@ algorithm timers_memmap(
     output  uint1   cursor
 ) <autorun,reginputs> {
     // TIMERS and RNG
-    timers_rng timers <@clock_25mhz> ( systemclock :> cursor, g_noise_out :> static16bit );
+    timers_rng timers <@clock_25mhz> ( seconds :> cursor, g_noise_out :> static16bit );
     uint3   timerreset <:: memoryAddress[1,3] + 1;
     uint32  floatrng <:: { 1b0, 5b01111, &timers.u_noise_out[0,3] ? 3b110 : timers.u_noise_out[0,3], timers.g_noise_out[0,16], timers.u_noise_out[3,7] };
 
@@ -167,13 +167,15 @@ algorithm timers_memmap(
                 case 4h1: { readData = timers.u_noise_out; }
                 case 4h2: { readData = floatrng[0,16]; }
                 case 4h3: { readData = floatrng[16,16]; }
+                case 4h4: { readData = timers.seconds; }
+                case 4h5: { readData = timers.milliseconds[0,16]; }
+                case 4h6: { readData = timers.milliseconds[16,9]; }
                 case 4h8: { readData = timers.timer1hz0; }
                 case 4h9: { readData = timers.timer1hz1; }
                 case 4ha: { readData = timers.timer1khz0; }
                 case 4hb: { readData = timers.timer1khz1; }
                 case 4hc: { readData = timers.sleepTimer0; }
                 case 4hd: { readData = timers.sleepTimer1; }
-                case 4he: { readData = timers.systemclock; }
                 // RETURN NULL VALUE
                 default: { readData = 0; }
             }
@@ -238,7 +240,8 @@ algorithm audio_memmap(
 
 // TIMERS and RNG Controllers
 algorithm timers_rng(
-    output  uint16  systemclock,
+    output  uint16  seconds,
+    output  uint25  milliseconds,
     output  uint16  timer1hz0,
     output  uint16  timer1hz1,
     output  uint16  timer1khz0,
@@ -254,7 +257,7 @@ algorithm timers_rng(
     random rng( u_noise_out :> u_noise_out,  g_noise_out :> g_noise_out );
 
     // 1hz timers (P1 used for systemClock, T1hz0 and T1hz1 for user purposes)
-    pulse1hz P1( counter1hz :> systemclock );
+    timesinceboot P1( counter1hz :> seconds, counter1mhz :> milliseconds );
     pulse1hz T1hz0( counter1hz :> timer1hz0 );
     pulse1hz T1hz1( counter1hz :> timer1hz1 );
 
@@ -279,8 +282,6 @@ algorithm timers_rng(
             case 6: { STimer1.resetCounter = counter; }
         }
     }
-
-    P1.resetCounter = 0;
 }
 
 // AUDIO L&R Controller
@@ -334,7 +335,7 @@ algorithm fifo8(
     queue.addr0 := next; first := queue.rdata0;
     queue.wenable1 := 1;
 
-    always {
+    always_after {
         if( write ) {
             queue.addr1 = top; queue.wdata1 = last;
             update = 1;
@@ -434,15 +435,16 @@ algorithm sdcardbuffer(
     output  uint8   bufferdata
 ) <autorun> {
     // SDCARD - Code for the SDCARD from @sylefeb
-    simple_dualport_bram uint8 sdbuffer[512] = uninitialized;
-    sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, store <:> sdbuffer );
+    simple_dualport_bram uint8 sdbuffer_in[512] = uninitialized;    // READ FROM SDCARD
+    simple_dualport_bram uint8 sdbuffer_out[512] = uninitialized;   // WRITE TO SDCARD
+    sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, buffer_in <:> sdbuffer_in, buffer_out <:> sdbuffer_out );
 
     // SDCARD Commands
     always_after {
         sdcio.read_sector = readsector;
         sdcio.addr_sector = sectoraddress;
-        sdbuffer.addr0 = bufferaddress;
+        sdbuffer_in.addr0 = bufferaddress;
         ready = sdcio.ready;
-        bufferdata = sdbuffer.rdata0;
+        bufferdata = sdbuffer_in.rdata0;
     }
 }

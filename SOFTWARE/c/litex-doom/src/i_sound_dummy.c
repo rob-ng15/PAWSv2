@@ -55,10 +55,6 @@ int I_GetSfxLumpNum (sfxinfo_t* sfx)
 
 int I_StartSound (int id, int vol, int sep, int pitch, int priority)
 {
-    (void)vol;
-    (void)sep;
-    (void)pitch;
-    (void)priority;
     return id;
 }
 
@@ -69,6 +65,7 @@ void I_StopSound (int handle)
 
 void I_StopAllSounds ()
 {
+    beep( CHANNEL_BOTH, WAVE_SQUARE, 0, 0 );
 }
 
 int I_SoundIsPlaying (int handle)

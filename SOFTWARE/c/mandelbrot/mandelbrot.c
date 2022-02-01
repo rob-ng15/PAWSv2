@@ -31,7 +31,7 @@ int main( void ) {
                 if( offset ) {
                     gpu_rectangle( k, x, y, x + offset, y + offset );
                 } else {
-                    gpu_pixelblock_pixel7( k );
+                    gpu_pixelblock_pixel( k );
                 }
             }
         }

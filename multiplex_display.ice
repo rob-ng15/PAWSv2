@@ -67,7 +67,7 @@ algorithm multiplex_display(
     // DEFAULT to PAWSv1 COLOUR EXPANSIONS
     pix_red := {4{LAYER.pixel[4,2]}};               pix_green := {4{LAYER.pixel[2,2]}};                 pix_blue := {4{LAYER.pixel[0,2]}};
 
-    always {
+    always_after {
         switch( colour ) {
             case 2b00: {                                                                                // PAWSv2 PALETTE, V1 + GRADIENTS
                 if( LAYER.pixel[6,1] ) {
@@ -129,7 +129,7 @@ algorithm selectlayer(
     // CONVERT TERMINAL COLOUR TO BLUE OR WHITE
     uint7   terminalcolour <: { 1b0, {4{terminal}}, 2b11 };
 
-    always {
+    always_after {
         switch( display_order ) {
             case 0: { // BACKGROUND -> LOWER TILEMAP -> UPPER TILEMAP -> LOWER_SPRITES -> BITMAP -> UPPER_SPRITES -> CHARACTER_MAP -> TERMINAL
                 pixel = ( terminal_display ) ? terminalcolour :

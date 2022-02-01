@@ -117,7 +117,7 @@ algorithm ps2ascii(
                                 case 8h71: { newascii = numlock ? 8h2e : 9h133; }               // KEYPAD .
                                 case 8h7b: { newascii = 8h2d; }                                 // KEYPAD -
                                 case 8h79: { newascii = 8h2b; }                                 // KEYPAD +
-                                case 8h05: { newascii = { 4b1000, SHIFT, 4h1 }; }             // F1 + SHIFT F1 to F12 + SHIFT F12 map to 101-10c and 111-11c
+                                case 8h05: { newascii = { 4b1000, SHIFT, 4h1 }; }               // F1 + SHIFT F1 to F12 + SHIFT F12 map to 101-10c and 111-11c
                                 case 8h06: { newascii = { 4b1000, SHIFT, 4h2 }; }
                                 case 8h04: { newascii = { 4b1000, SHIFT, 4h3 }; }
                                 case 8h0c: { newascii = { 4b1000, SHIFT, 4h4 }; }

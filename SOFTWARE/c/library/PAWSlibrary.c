@@ -9,6 +9,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <errno.h>
 #include <fcntl.h>
 
@@ -55,7 +56,7 @@ void uart_outputstring( const char *s ) {
 }
 // INPUT FROM UART
 // RETURN 1 IF UART CHARACTER AVAILABLE, OTHERWISE 0
-unsigned char uart_character_available( void ) {
+static inline unsigned char uart_character_available( void ) {
     return( *UART_STATUS & 1 );
 }
 // RETURN CHARACTER FROM UART
@@ -188,27 +189,19 @@ void reset_timer1hz( unsigned char timer  ) {
     }
 }
 
-// RETURN SYSTEM CLOCK - 1 second pulses from startup
-unsigned short systemclock( void ) {
-    return( *SYSTEMCLOCK );
-}
-
 // AUDIO OUTPUT
 // START A note (1 == DEEP C, 25 == MIDDLE C )
 // OF duration MILLISECONDS TO THE LEFT ( channel_number == 1 ) RIGHT ( channel_number == 2 ) or BOTH ( channel_number == 3 ) AUDIO CHANNEL
 // IN waveform 0 == SQUARE, 1 == SAWTOOTH, 2 == TRIANGLE, 3 == SINE, 4 == WHITE NOISE
-unsigned short frequencytable[] = {
-    0,
-    23889, 22548, 21283, 20088, 18961, 17897, 16892, 15944, 15049, 14205, 13407, 12655,     // 1 = C 2 or Deep C
-    11945, 11274, 10641, 10044, 9480, 8948, 8446, 7972, 7525, 7102, 6704, 6327,             // 13 = C 3
-    5972, 5637, 5321, 5022, 4740, 4474, 4223, 3986, 3762, 3551, 3352, 3164,                 // 25 = C 4 or Middle C
-    2896, 2819, 2660, 2511, 2370, 2237, 2112, 1993, 1881, 1776, 1676, 1582,                 // 37 = C 5 or Tenor C
-    1493, 1409, 1330, 1256, 1185, 1119, 1056, 997, 941, 888, 838, 791,                      // 49 = C 6 or Soprano C
-    747, 705, 665                                                                           // 61 = C 7 or Double High C
-};
+// 1 = C 2 or Deep C
+// 13 = C 3
+// 25 = C 4 or Middle C
+// 37 = C 5 or Tenor C
+// 49 = C 6 or Soprano C
+// 61 = C 7 or Double High C
 void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
     *AUDIO_WAVEFORM = waveform;
-    *AUDIO_FREQUENCY = frequencytable[note];
+    *AUDIO_FREQUENCY = note;
     *AUDIO_DURATION = duration;
     *AUDIO_START = channel_number;
 }
@@ -718,8 +711,9 @@ void gpu_print_centre( unsigned char colour, short x, short y, unsigned char bol
         y = y - ( 8 << size );
     }
 }
-// COPY A ARRGGBB BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
-void gpu_pixelblock7( short x,  short y, unsigned short w, unsigned short h, unsigned char transparent, unsigned char *buffer ) {
+// PB_MODE = 0 COPY A ARRGGBB BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
+// PB_MODE = 1 COPY A 256 COLOUR BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK AND REMAPPER
+void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsigned char transparent, unsigned char *buffer ) {
     unsigned char *maxbufferpos = buffer + ( w * h );
     wait_gpu_finished();
     *GPU_X = x;
@@ -730,12 +724,13 @@ void gpu_pixelblock7( short x,  short y, unsigned short w, unsigned short h, uns
     *GPU_WRITE = 10;
 
     while( buffer < maxbufferpos ) {
-        *PB_COLOUR7 = *buffer++;
+        *PB_COLOUR = *buffer++;
     }
     *PB_STOP = 3;
 }
 
-// COPY A { RRRRRRRR GGGGGGGG BBBBBBBB } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
+// PB_MODE = 0 COPY A { RRRRRRRR GGGGGGGG BBBBBBBB } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
+// PB_MODE = 1 SAME BUT CONVERT TO GREYSCALE
 void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, unsigned char *buffer  ) {
     unsigned char *maxbufferpos = buffer + 3 * ( w * h );
     wait_gpu_finished();
@@ -751,21 +746,6 @@ void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, uns
     }
     *PB_STOP = 3;
 }
-// COPY A { RRRRRRRR GGGGGGGG BBBBBBBB } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK AS A 64 GREY SCALE
-void gpu_pixelblock24bw( short x, short y, unsigned short w, unsigned short h, unsigned char *buffer  ) {
-    unsigned char *maxbufferpos = buffer + 3 * ( w * h ), greyscale;
-    wait_gpu_finished();
-    *GPU_X = x;
-    *GPU_Y = y;
-    *GPU_PARAM0 = w;
-    *GPU_WRITE = 10;
-
-    while( buffer < maxbufferpos ) {
-        greyscale = ( ( *buffer++ + *buffer++ + *buffer++ ) / 3 ) >> 1;
-        *PB_COLOUR7 = ( greyscale == 64 ) ? 65 : greyscale;
-    }
-    *PB_STOP = 3;
-}
 
 // SET GPU TO RECEIVE A PIXEL BLOCK, SEND INDIVIDUAL PIXELS, STOP
 void gpu_pixelblock_start( short x,  short y, unsigned short w ) {
@@ -776,8 +756,8 @@ void gpu_pixelblock_start( short x,  short y, unsigned short w ) {
     *GPU_PARAM1 = TRANSPARENT;
     *GPU_WRITE = 10;
 }
-void gpu_pixelblock_pixel7( unsigned char pixel ) {
-    *PB_COLOUR7 = pixel;
+void gpu_pixelblock_pixel( unsigned char pixel ) {
+    *PB_COLOUR = pixel;
 }
 
 void gpu_pixelblock_pixel24( unsigned char red, unsigned char green, unsigned char blue ) {
@@ -785,12 +765,20 @@ void gpu_pixelblock_pixel24( unsigned char red, unsigned char green, unsigned ch
     *PB_COLOUR8G= green;
     *PB_COLOUR8B = blue;
 }
-void gpu_pixelblock_pixel24bw( unsigned char red, unsigned char green, unsigned char blue ) {
-    *PB_COLOUR7 = ( ( red + blue + green ) / 3 ) >> 2;
-}
 
 void gpu_pixelblock_stop( void ) {
     *PB_STOP = 3;
+}
+
+// SWITCH BETWEEN PAWSv2 COLOURS AND THE REMAPPER, OR GRRGGBB OR GREYSCALE
+void gpu_pixelblock_mode( unsigned char mode ) {
+    *PB_MODE = mode;
+}
+
+// SET AN ENTRY IN THE REMAPPER
+void gpu_pixelblock_remap( unsigned char from, unsigned char to ) {
+    *PB_CMNUMBER = from;
+    *PB_CMENTRY = to;
 }
 
 // GPU VECTOR BLOCK
@@ -847,7 +835,7 @@ struct Point2D MakePoint2D( short x, short y ) {
 
 // PROCESS A SOFTWARE VECTOR BLOCK AFTER SCALING AND ROTATION
 void DrawVectorShape2D( unsigned char colour, struct Point2D *points, short numpoints, short xc, short yc, short angle, float scale ) {
-    struct Point2D *NewShape  = (struct Point2D *)0x1400;
+    struct Point2D *NewShape  = (struct Point2D *)0x1800;
     for( short vertex = 0; vertex < numpoints; vertex++ ) {
         NewShape[ vertex ] = Rotate2D( points[vertex], xc, yc, angle, scale );
     }
@@ -1734,7 +1722,7 @@ void __scroll( void ) {
     }
     // BLANK THE LAST LINE
     temp.cell.character = 0;
-    temp.cell.background = __curses_back;
+    temp.cell.background = TRANSPARENT;
     temp.cell.foreground = __curses_fore;
     for( unsigned short x = 0; x < COLS; x++ ) {
         __write_curses_cell( x, LINES - 1, temp );
@@ -1780,6 +1768,10 @@ int addch( unsigned char ch ) {
         }
 
         default: {
+            if( __curses_autorefresh ) {
+                tpu_set( __curses_x, __curses_y, __curses_back, __curses_fore );
+                tpu_output_character( ( __curses_bold ? 256 : 0 ) + ch );
+            }
             temp.cell.character = ( __curses_bold ? 256 : 0 ) + ch;
             temp.cell.background = __curses_back;
             temp.cell.foreground = __curses_fore;
@@ -1798,6 +1790,8 @@ int addch( unsigned char ch ) {
         if( __curses_y == LINES-1 ) {
             if( __curses_scroll ) {
                 __scroll();
+                if( __curses_autorefresh )
+                    refresh();
             } else {
                 __curses_y = 0;
             }
@@ -1807,8 +1801,6 @@ int addch( unsigned char ch ) {
     }
 
     __position_curses( __curses_x, __curses_y );
-    if( __curses_autorefresh )
-        refresh();
     return( true );
 }
 
@@ -1886,7 +1878,7 @@ int deleteln( void ) {
     if( __curses_y == LINES-1 ) {
         // BLANK LAST LINE
         temp.cell.character = 0;
-        temp.cell.background = __curses_back;
+        temp.cell.background = TRANSPARENT;
         temp.cell.foreground = __curses_fore;
 
         for( unsigned char x = 0; x < COLS; x++ ) {
@@ -1903,7 +1895,7 @@ int deleteln( void ) {
 
         // BLANK LAST LINE
         temp.cell.character = 0;
-        temp.cell.background = __curses_back;
+        temp.cell.background = TRANSPARENT;
         temp.cell.foreground = __curses_fore;
         for( unsigned char x = 0; x < COLS; x++ ) {
             __write_curses_cell( x, LINES-1, temp );
@@ -1916,7 +1908,7 @@ int deleteln( void ) {
 int clrtoeol( void ) {
     __curses_cell temp;
     temp.cell.character = 0;
-    temp.cell.background = __curses_back;
+    temp.cell.background = TRANSPARENT;
     temp.cell.foreground = __curses_fore;
     for( int x = __curses_x; x < COLS; x++ ) {
         __write_curses_cell( x, __curses_y, temp );
@@ -2140,7 +2132,9 @@ void  __attribute__ ((noreturn)) _exit( int status ){
     ((void(*)(void))0x00000000)();
     while(1);
 }
-int _gettimeofday() {
+int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
+    tv->tv_sec = *SYSTEMSECONDS;
+    tv->tv_usec = *SYSTEMMILLISECONDS;
     return( 0 );
 }
 int _times() {
@@ -2266,7 +2260,7 @@ int paws_fread( void *data, int size, int count, void *fd ) {
 int paws_printf(const char *restrict format, ... ) {
     if( !__stdinout_init ) __start_stdinout();
 
-    static char buffer[1024];
+    char *buffer = (char *)0x1400;
     va_list args;
     va_start (args, format);
     vsnprintf( buffer, 1024, format, args);
@@ -2280,7 +2274,7 @@ int paws_fprintf( void *fd, const char *restrict format, ... ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
 
-    static char buffer[1024];
+    char *buffer = (char *)0x1400;
     va_list args;
     va_start (args, format);
     vsnprintf( buffer, 1024, format, args);

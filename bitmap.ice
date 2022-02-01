@@ -65,7 +65,8 @@ algorithm bitmapwriter(
     input   uint8   crop_bottom,
 
     // Colours for the pixelblock
-    input   uint7   pb_colour7,
+    input   uint1   pb_mode,
+    input   uint8   pb_colour,
     input   uint8   pb_colour8r,
     input   uint8   pb_colour8g,
     input   uint8   pb_colour8b,
@@ -99,7 +100,8 @@ algorithm bitmapwriter(
     simple_dualport_bram_port0 blit1tilemap,
     simple_dualport_bram_port0 characterGenerator8x8,
     simple_dualport_bram_port0 colourblittilemap,
-    simple_dualport_bram_port0 vertex
+    simple_dualport_bram_port0 vertex,
+    simple_dualport_bram_port0 pb_colourmap
 ) <autorun,reginputs> {
     // VECTOR DRAWER UNIT
     vectors vector_drawer(
@@ -135,11 +137,13 @@ algorithm bitmapwriter(
         blit1tilemap <:> blit1tilemap,
         characterGenerator8x8 <:> characterGenerator8x8,
         colourblittilemap <:> colourblittilemap,
-        pb_colour7 <: pb_colour7,
+        pb_mode <: pb_mode,
+        pb_colour <: pb_colour,
         pb_colour8r <: pb_colour8r,
         pb_colour8g <: pb_colour8g,
         pb_colour8b <: pb_colour8b,
         pb_newpixel <: pb_newpixel,
+        pb_colourmap <:> pb_colourmap,
         vector_block_colour <: vector_block_colour,
         vector_drawer_gpu_x <: vector_drawer.gpu_x,
         vector_drawer_gpu_y <: vector_drawer.gpu_y,

@@ -237,6 +237,16 @@
 #define MODE_PAWSv1 2
 #define MODE_GREY 3
 
+// SOUNDS
+#define CHANNEL_LEFT 1
+#define CHANNEL_RIGHT 2
+#define CHANNEL_BOTH 3
+#define WAVE_SQUARE 0
+#define WAVE_SAW 1
+#define WAVE_TRIANGLE 2
+#define WAVE_SINE 3
+#define WAVE_NOISE 4
+
 // FOR EASE OF PORTING
 typedef unsigned int size_t;
 //typedef unsigned short bool;
@@ -281,7 +291,7 @@ struct DrawList2D {
     struct Point2D  xy4;                // Vertex 4
 };
 
-// FAT32 File System
+// FAT32 File System for the file selector
 typedef struct {
     unsigned char first_byte;
     unsigned char start_chs[3];

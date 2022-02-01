@@ -1,17 +1,27 @@
 // Runs at 25MHz
 algorithm apu(
     input   uint3   waveform,
-    input   uint16  frequency,
+    input   uint6   frequency,
     input   uint16  duration,
     input   uint1   apu_write,
     input   uint4   staticGenerator,
     output  uint1   audio_active,
     output  uint4   audio_output
 ) <autorun,reginputs> {
+    brom uint16 frequency_table[64] = {
+        0,
+        23889, 22548, 21283, 20088, 18961, 17897, 16892, 15944, 15049, 14205, 13407, 12655,     // 1 = C 2 or Deep C
+        11945, 11274, 10641, 10044, 9480, 8948, 8446, 7972, 7525, 7102, 6704, 6327,             // 13 = C 3
+        5972, 5637, 5321, 5022, 4740, 4474, 4223, 3986, 3762, 3551, 3352, 3164,                 // 25 = C 4 or Middle C
+        2896, 2819, 2660, 2511, 2370, 2237, 2112, 1993, 1881, 1776, 1676, 1582,                 // 37 = C 5 or Tenor C
+        1493, 1409, 1330, 1256, 1185, 1119, 1056, 997, 941, 888, 838, 791,                      // 49 = C 6 or Soprano C
+        747, 705, 665                                                                           // 61 = C 7 or Double High C
+    };
+
     waveform WAVEFORM( staticGenerator <: staticGenerator );
     audiocounter COUNTER( active :> audio_active );
 
-    COUNTER.start := 0;
+    frequency_table.addr := frequency; COUNTER.start := 0;
 
     always_before {
         if( audio_active ) {
@@ -24,7 +34,7 @@ algorithm apu(
         if( apu_write ) {
             WAVEFORM.point = 0;
             WAVEFORM.selected_waveform = waveform;
-            COUNTER.selected_frequency = frequency;
+            COUNTER.selected_frequency = frequency_table.rdata;
             COUNTER.selected_duration = duration;
             COUNTER.start = 1;
         } else {

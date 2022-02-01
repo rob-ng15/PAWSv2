@@ -32,7 +32,7 @@
 //   2: float (fast on MRISC32 with an FPU, but inaccurate - demos go wrong)
 //   3: double (slow on MRISC32, accurate)
 //
-#define DIV_METHOD 1
+#define DIV_METHOD 2
 
 fixed_t FixedDiv (fixed_t a, fixed_t b)
 {

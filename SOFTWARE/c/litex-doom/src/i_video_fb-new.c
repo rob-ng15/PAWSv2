@@ -19,6 +19,9 @@
 #define FB_WIDTH 320
 #define FB_HEIGHT 200
 
+// STORAGE FOR DOOM PALETTE MAPPED TO PAWSv2 GRRGGBB PALETTE
+static uint8_t s_palette[256];
+
 // MAP DOOM PALETTE TO DEFAULT PAWSv2 PALETTE
 static uint8_t paws_palette[256] = {
      0, 96, 0, 66, 63, 0, 0, 0, 0, 96, 96, 96, 96, 65, 65, 96,        // 0 - 15
@@ -38,6 +41,14 @@ static uint8_t paws_palette[256] = {
      63, 127, 62, 62, 61, 61, 60, 60, 36, 120, 77, 76, 97, 97, 96, 96,      // 224 - 239
      1, 90, 89, 89, 88, 88, 0, 0, 57, 61, 55, 51, 111, 109, 107, 37       // 240 - 255
 };
+
+static inline uint32_t color_to_argb8888 (
+   unsigned int r,
+   unsigned int g,
+   unsigned int b
+) {
+   return 0xff000000u | (b << 16) | (g << 8) | r;
+}
 
 static inline uint8_t color_to_argbpaws ( unsigned char r, unsigned char g, unsigned char b ) {
     uint8_t colour = 0;
@@ -61,7 +72,6 @@ void I_InitGraphics (void) {
 #ifndef PAWSv2PALETTE
    screen_mode( 0, MODE_RGB );
 #endif
-   gpu_pixelblock_mode( TRUE );
    gpu_cs();
 }
 
@@ -77,7 +87,50 @@ void I_StartFrame (void) {
    // er?
 }
 
+unsigned char PAWSKEYtoDOOM( unsigned short keycode ) {
+    switch( keycode ) {
+        case 0x008: case 0x133: return KEY_BACKSPACE;
+        case 0x009:             return KEY_TAB;
+        case 0x00d:             return KEY_ENTER;
+        case 0x01b:             return KEY_ESCAPE;
+        case 0x020:             return ' ';
+        case 0x02b: case 0x03d: return KEY_EQUALS;
+        case 0x02d: case 0x5f:  return KEY_MINUS;
+        case 0x101: case 0x111: return KEY_F1;
+        case 0x102: case 0x112: return KEY_F2;
+        case 0x103: case 0x113: return KEY_F3;
+        case 0x104: case 0x114: return KEY_F4;
+        case 0x105: case 0x115: return KEY_F5;
+        case 0x106: case 0x116: return KEY_F6;
+        case 0x107: case 0x117: return KEY_F7;
+        case 0x108: case 0x118: return KEY_F8;
+        case 0x109: case 0x119: return KEY_F9;
+        case 0x10a: case 0x11a: return KEY_F10;
+        case 0x10b: case 0x11b: return KEY_F11;
+        case 0x10c: case 0x11c: return KEY_F12;
+        case 0x141:             return KEY_UPARROW;
+        case 0x142:             return KEY_DOWNARROW;
+        case 0x143:             return KEY_RIGHTARROW;
+        case 0x144:             return KEY_LEFTARROW;
+        default:    return 0;
+    }
+}
+
 void I_StartTic (void) {
+    event_t event;
+    //static unsigned short lastjoystick = 1;
+    //unsigned short thisjoystick = get_buttons();
+
+    if( ps2_character_available() ) {
+        unsigned short doomcode = PAWSKEYtoDOOM( ps2_inputcharacter() );
+        if( !doomcode ) {
+            event.data1 = doomcode;
+            event.type = ev_keydown; D_PostEvent( &event );
+            event.type = ev_keyup; D_PostEvent( &event );
+        }
+    }
+    //if( lastjoystick != thisjoystick ) {
+    //}
 }
 
 void I_UpdateNoBlit (void) {
@@ -89,7 +142,11 @@ void I_FinishUpdate (void) {
     unsigned char *src = (unsigned char*)screens[0];
     gpu_pixelblock_start( 0, 20, FB_WIDTH );
     for (int i = 0; i < SCREENHEIGHT*SCREENWIDTH; i++ ) {
-        gpu_pixelblock_pixel( *src++ );
+#ifndef PAWSv2PALETTE
+        gpu_pixelblock_pixel7( s_palette[*src++] );
+#else
+        gpu_pixelblock_pixel7( paws_palette[*src++] );
+#endif
     }
     gpu_pixelblock_stop();
 }
@@ -98,14 +155,11 @@ void I_ReadScreen (byte* scr) {
     memcpy (scr, screens[0], SCREENWIDTH * SCREENHEIGHT);
 }
 
-// SET THE PIXELBLOCK COLOUR REMAPPER
 void I_SetPalette (byte* palette) {
 #ifndef PAWSv2PALETTE
-    for (int i = 0; i < 256; i++) {
-        gpu_pixelblock_remap( i, color_to_argbpaws ( gammatable[usegamma][*palette++], gammatable[usegamma][*palette++], gammatable[usegamma][*palette++] ) );
+    for (int i = 0; i < 256; ++i) {
+        s_palette[i] = color_to_argbpaws ( gammatable[usegamma][*palette++], gammatable[usegamma][*palette++], gammatable[usegamma][*palette++] );
     }
 #else
-    for(int i = 0; i < 256; i++ )
-        gpu_pixelblock_remap( i, paws_palette[i] );
 #endif
 }
