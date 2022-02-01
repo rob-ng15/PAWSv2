@@ -51,13 +51,25 @@ $$if not SIMULATION then
     ps2buffer PS2 <@clock_25mhz> ( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn, inread <: PS2inread[0,1] );
 
     // SDCARD AND BUFFER
-    uint1   SDCARDreadsector = uninitialized;
+    simple_dualport_bram uint8 buffer_in[512] = uninitialized;    // READ FROM SDCARD
+    simple_dualport_bram uint8 buffer_out[512] = uninitialized;   // WRITE TO SDCARD
+
+    uint1   SDCARDreadsector = uninitialized;       uint1   SDCARDwritesector = uninitialized;
     uint32  SDCARDsectoraddress = uninitialized;
-    uint9   SDCARDbufferaddress = uninitialized;
-    sdcardbuffer SDCARD( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso , readsector <: SDCARDreadsector, sectoraddress <: SDCARDsectoraddress, bufferaddress <: SDCARDbufferaddress );
+    sdcardbuffer SDCARD(
+        sd_clk :> sd_clk,
+        sd_mosi :> sd_mosi,
+        sd_csn :> sd_csn,
+        sd_miso <: sd_miso,
+        readsector <: SDCARDreadsector,
+        writesector <: SDCARDwritesector,
+        sectoraddress <: SDCARDsectoraddress,
+        buffer_in <:> buffer_in,
+        buffer_out <:> buffer_out
+    );
 
     // I/O FLAGS
-    SDCARDreadsector := 0;
+    SDCARDreadsector := 0; SDCARDwritesector := 0; buffer_out.wenable1 := 0;
 $$end
      always_before {
 $$if not SIMULATION then
@@ -89,7 +101,7 @@ $$end
                 }
                 case 4h2: { readData = PS2.outputascii ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
                 case 4h4: { readData = SDCARD.ready; }
-                case 4h5: { readData = SDCARD.bufferdata; }
+                case 4h5: { readData = buffer_in.rdata0; }
                 $$end
                 case 4h3: { readData = leds; }
                 case 4hf: { readData = SMTRUNNING; }
@@ -107,10 +119,16 @@ $$end
                 case 4h4: {
                     switch( memoryAddress[1,2] ) {
                         case 2h0: { SDCARDreadsector = 1; }
-                        default: { SDCARDsectoraddress[ { ~memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 2h1: { SDCARDwritesector = 1; }
+                        default: { SDCARDsectoraddress[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
                     }
                 }
-                case 4h5: { SDCARDbufferaddress = writeData; }
+                case 4h5: {
+                    switch( memoryAddress[1,1] ) {
+                        case 0: { buffer_in.addr0 = writeData; buffer_out.addr1 = writeData; }
+                        case 1: { buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
+                    }
+                }
                 $$end
                 case 4h3: { leds = writeData; }
                 case 4hf: {
@@ -429,22 +447,22 @@ algorithm sdcardbuffer(
     input   uint1   sd_miso,
 
     input   uint1   readsector,
+    input   uint1   writesector,
     input   uint32  sectoraddress,
-    input   uint9   bufferaddress,
     output  uint1   ready,
-    output  uint8   bufferdata
+
+  simple_dualport_bram_port0 buffer_out,
+  simple_dualport_bram_port1 buffer_in
+
 ) <autorun> {
     // SDCARD - Code for the SDCARD from @sylefeb
-    simple_dualport_bram uint8 sdbuffer_in[512] = uninitialized;    // READ FROM SDCARD
-    simple_dualport_bram uint8 sdbuffer_out[512] = uninitialized;   // WRITE TO SDCARD
-    sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, buffer_in <:> sdbuffer_in, buffer_out <:> sdbuffer_out );
+    sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, buffer_in <:> buffer_in, buffer_out <:> buffer_out );
 
     // SDCARD Commands
     always_after {
         sdcio.read_sector = readsector;
+        sdcio.write_sector = writesector;
         sdcio.addr_sector = sectoraddress;
-        sdbuffer_in.addr0 = bufferaddress;
         ready = sdcio.ready;
-        bufferdata = sdbuffer_in.rdata0;
     }
 }

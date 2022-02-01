@@ -39,7 +39,7 @@ algorithm sdcard(
   // read io
   sdcardio_ctrl  io,
   // storage
-  simple_dualport_bram_port1 buffer_out,
+  simple_dualport_bram_port0 buffer_out,
   simple_dualport_bram_port1 buffer_in
 ) <autorun> {
 

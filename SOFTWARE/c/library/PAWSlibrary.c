@@ -226,7 +226,7 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
 
     sdcard_wait();
     *SDCARD_SECTOR = sectorAddress;
-    *SDCARD_START = 1;
+    *SDCARD_READSTART = 1;
     sdcard_wait();
 
     for( i = 0; i < 512; i++ ) {
@@ -1937,16 +1937,7 @@ int sd_media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
     unsigned short i;
 
     while( sector_count-- ) {
-        sdcard_wait();
-        *SDCARD_SECTOR = sector;
-        *SDCARD_START = 1;
-        sdcard_wait();
-
-        for( i = 0; i < 512; i++ ) {
-            *SDCARD_BUFFER_ADDRESS = i;
-            buffer[ i ] = *SDCARD_DATA;
-        }
-
+        sdcard_readsector( sector, buffer );
         // MOVE TO NEXT SECTOR
         sector++; buffer += FAT_SECTOR_SIZE;
     }
