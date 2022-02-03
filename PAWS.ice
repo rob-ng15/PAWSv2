@@ -183,7 +183,8 @@ $$end
         clock_25mhz <: $clock_25mhz$,
 
         memoryAddress <: CPU.address[0,12],
-        writeData <: CPU.writedata
+        writeData <: CPU.writedata,
+        DMAACTIVE <: CPU.DMAACTIVE
     );
 
 $$if SIMULATION then
@@ -227,6 +228,10 @@ $$end
         clock_CPUdecoder <: clock_decode,
         SMTRUNNING <: IO_Map.SMTRUNNING,
         SMTSTARTPC <: IO_Map.SMTSTARTPC[0,27],
+        DMASOURCE <: IO_Map.DMASOURCE,
+        DMADEST <: IO_Map.DMADEST,
+        DMACOUNT <: IO_Map.DMACOUNT,
+        DMAMODE <: IO_Map.DMAMODE,
         readdata <: readdata
     );
 

@@ -37,7 +37,14 @@ $$end
 
     // SMT STATUS
     output  uint1   SMTRUNNING(0),
-    output  uint32  SMTSTARTPC(0)
+    output  uint32  SMTSTARTPC(0),
+
+    // MINI DMA CONTROLLER
+    output  uint32  DMASOURCE,
+    output  uint32  DMADEST,
+    output  uint32  DMACOUNT,
+    output  uint2   DMAMODE(0),
+    input   uint1   DMAACTIVE
 ) <autorun,reginputs> {
 $$if not SIMULATION then
     // UART CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
@@ -131,15 +138,24 @@ $$end
                 }
                 $$end
                 case 4h3: { leds = writeData; }
+                case 4he: {
+                    switch( memoryAddress[2,2] ) {
+                        case 2b00: { DMASOURCE[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 2b01: { DMADEST[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 2b10: { DMACOUNT[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 2b11: { DMAMODE = writeData; __display("REQUEST DMA %0d", writeData); }
+                    }
+                }
                 case 4hf: {
                     switch( memoryAddress[2,1] ) {
-                        case 1b0: { SMTSTARTPC[ { ~memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 1b0: { SMTSTARTPC[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
                         case 1b1: { SMTRUNNING = writeData; }
                     }
                 }
                 default: {}
             }
         }
+        if( DMAACTIVE ) { DMAMODE = 0; }
     }
 
     // DISBLE SMT ON STARTUP, KEYBOARD DEFAULTS TO JOYSTICK MODE

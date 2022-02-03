@@ -16,8 +16,17 @@ algorithm PAWSCPU(
     input   uint16  readdata,
     output  uint1   readmemory,
     input   uint1   memorybusy,
+
+    // SMT
     input   uint1   SMTRUNNING,
-    input   uint27  SMTSTARTPC
+    input   uint27  SMTSTARTPC,
+
+    // MINI DMA CONTROLLER
+    input   uint27  DMASOURCE,
+    input   uint27  DMADEST,
+    input   uint27  DMACOUNT,
+    input   uint2   DMAMODE,
+    output  uint1   DMAACTIVE(0)
 ) <autorun,reginputs> {
     // COMMIT TO REGISTERS FLAG AND HART (0/1) SELECT
     uint1   COMMIT = uninitialized;
@@ -30,7 +39,7 @@ algorithm PAWSCPU(
 
     // RISC-V 32 BIT INSTRUCTION DECODER + MEMORY ACCESS SIZE
     decode RV32DECODER <@clock_CPUdecoder> ( instruction <: instruction );
-    memoryaccess MEMACCESS <@clock_CPUdecoder> ( cacheselect <: cacheselect, opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
+    memoryaccess MEMACCESS <@clock_CPUdecoder> ( cacheselect <: cacheselect, DMAACTIVE <: DMAACTIVE, opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
 
     // RISC-V REGISTERS
     uint1   frd <:: IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd;
@@ -141,14 +150,35 @@ algorithm PAWSCPU(
         loadAddress <: AGU.loadAddress
     );
 
+    // MINI DMA CONTROLLER
+    uint2   dmamode = uninitialized;                uint27  dmasrc = uninitialized;                     uint27  dmadest = uninitialized;
+    uint27  dmacount = uninitialized;
+
     readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
 
     if( ~reset ) {
-        SMT = 0; pc = 0;                                                                                                                            // ON RESET SET PC AND SMT TO 0
+        SMT = 0; pc = 0; dmacount = 0; DMAACTIVE = 0;                                                                                               // ON RESET SET PC AND SMT TO 0, CANCEL DMA
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
     }
 
     while(1) {
+        if( |DMAMODE ) {
+            // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE
+            DMAACTIVE = 1;
+            dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT;
+            while( |dmacount ) {
+                address = dmasrc; readmemory = 1; while( memorybusy ) {}                                                                            // DMA FETCH
+                address = dmadest; writedata = readdata[ { dmasrc[0,1], 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}                       // DMA STORE
+                switch( dmamode ) {
+                    case 0: {}                                                                                                                      // DMA INACTIVE
+                    case 1: { dmasrc = dmasrc + 1; }                                                                                                // DMA PIXEL BLOCK 7/8 bit
+                    case 2: { dmasrc = dmasrc + 1; if( dmadest == 27hd676 ) { dmadest = 27hd672; } else { dmadest = dmadest + 2; } }                // DMA PIXEL BLOCK RGB
+                    case 3: { dmasrc = dmasrc + 1; dmadest = dmadest + 1; }                                                                         // DMA MEMCPY
+                }
+                dmacount = dmacount - 1;
+            }
+            DMAACTIVE = 0;
+        }
         cacheselect = 0;
         address = PC; readmemory = 1; while( memorybusy ) {}                                                                                        // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
         compressed = ( ~&readdata[0,2] );

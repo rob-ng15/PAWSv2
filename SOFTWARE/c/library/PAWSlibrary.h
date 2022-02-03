@@ -357,16 +357,14 @@ static inline unsigned short get_buttons( void ) {
 
 //SMT
 extern unsigned char volatile *SMTSTATUS;
-extern unsigned int volatile *SMTPCH;
-extern unsigned int volatile *SMTPCL;
+extern unsigned int volatile *SMTPC;
 
 static inline void SMTSTOP( void ) {
     *SMTSTATUS = 0;
 }
 
 static inline void SMTSTART( unsigned int code ) {
-    *SMTPCH = ( code & 0xffff0000 ) >> 16;
-    *SMTPCL = ( code & 0x0000ffff );
+    *SMTPC = code;
     *SMTSTATUS = 1;
 }
 

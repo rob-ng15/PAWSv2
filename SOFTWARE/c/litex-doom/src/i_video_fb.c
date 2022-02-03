@@ -86,12 +86,7 @@ void I_UpdateNoBlit (void) {
 
 int __pb_count = 0;
 void I_FinishUpdate (void) {
-    unsigned char *src = (unsigned char*)screens[0];
-    gpu_pixelblock_start( 0, 20, FB_WIDTH );
-    for (int i = 0; i < SCREENHEIGHT*SCREENWIDTH; i++ ) {
-        gpu_pixelblock_pixel( *src++ );
-    }
-    gpu_pixelblock_stop();
+    gpu_pixelblock( 0, 20, SCREENWIDTH, SCREENHEIGHT, TRANSPARENT, screens[0] );
 }
 
 void I_ReadScreen (byte* scr) {

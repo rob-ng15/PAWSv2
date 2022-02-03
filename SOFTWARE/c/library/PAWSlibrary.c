@@ -41,6 +41,28 @@ unsigned long CSRtime() {
   return time;
 }
 
+// SMT START STOP AND STATUS
+void SMTSTOP( void ) {
+    *SMTSTATUS = 0;
+}
+
+void SMTSTART( unsigned int code ) {
+    *SMTPC = code;
+    *SMTSTATUS = 1;
+}
+
+unsigned char SMTSTATE( void ) {
+    return( *SMTSTATUS );
+}
+
+// DMA CONTROLLER
+void DMASTART( void *source, void *destination, unsigned int count, unsigned char mode ) {
+    *DMASOURCE = (unsigned int)source;
+    *DMADEST = (unsigned int)destination;
+    *DMACOUNT = count;
+    *DMAMODE = mode;
+}
+
 // OUTPUT TO UART
 // OUTPUT INDIVIDUAL CHARACTER/STRING TO THE UART
 void uart_outputcharacter(char c) {
@@ -714,7 +736,6 @@ void gpu_print_centre( unsigned char colour, short x, short y, unsigned char bol
 // PB_MODE = 0 COPY A ARRGGBB BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
 // PB_MODE = 1 COPY A 256 COLOUR BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK AND REMAPPER
 void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsigned char transparent, unsigned char *buffer ) {
-    unsigned char *maxbufferpos = buffer + ( w * h );
     wait_gpu_finished();
     *GPU_X = x;
     *GPU_Y = y;
@@ -723,27 +744,22 @@ void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsi
 
     *GPU_WRITE = 10;
 
-    while( buffer < maxbufferpos ) {
-        *PB_COLOUR = *buffer++;
-    }
+    // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
+    DMASTART( buffer, (void *)PB_COLOUR, w*h, 1 );
     *PB_STOP = 3;
 }
 
 // PB_MODE = 0 COPY A { RRRRRRRR GGGGGGGG BBBBBBBB } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
 // PB_MODE = 1 SAME BUT CONVERT TO GREYSCALE
 void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, unsigned char *buffer  ) {
-    unsigned char *maxbufferpos = buffer + 3 * ( w * h );
     wait_gpu_finished();
     *GPU_X = x;
     *GPU_Y = y;
     *GPU_PARAM0 = w;
     *GPU_WRITE = 10;
 
-    while( buffer < maxbufferpos ) {
-        *PB_COLOUR8R = *buffer++;
-        *PB_COLOUR8G= *buffer++;
-        *PB_COLOUR8B = *buffer++;
-    }
+    // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
+    DMASTART( buffer, (void *)PB_COLOUR8R, 3*w*h, 2 );
     *PB_STOP = 3;
 }
 
@@ -1548,21 +1564,6 @@ void netppm_decoder( unsigned char *netppmimagefile, unsigned char *buffer ) {
             }
         }
     }
-}
-
-// SMT START STOP AND STATUS
-void SMTSTOP( void ) {
-    *SMTSTATUS = 0;
-}
-
-void SMTSTART( unsigned int code ) {
-    *SMTPCH = ( code & 0xffff0000 ) >> 16;
-    *SMTPCL = ( code & 0x0000ffff );
-    *SMTSTATUS = 1;
-}
-
-unsigned char SMTSTATE( void ) {
-    return( *SMTSTATUS );
 }
 
 // SIMPLE CURSES LIBRARY

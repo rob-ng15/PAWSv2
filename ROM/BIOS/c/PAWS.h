@@ -178,8 +178,7 @@ unsigned short volatile *SLEEPTIMER1 = (unsigned short volatile *) 0xc01a;
 
 // HANDLE SMT - RUNNING STATUS AND POINTER TO CODE TO RUN
 unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xfffe;
-unsigned int volatile *SMTPCH = (unsigned int volatile *) 0xfff0;
-unsigned int volatile *SMTPCL = (unsigned int volatile *) 0xfff2;
+unsigned int volatile *SMTPC = (unsigned int volatile *) 0xfff0;
 
 // TYPES AND STRUCTURES
 typedef unsigned int size_t;
