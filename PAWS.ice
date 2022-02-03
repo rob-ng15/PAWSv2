@@ -387,21 +387,21 @@ algorithm cachecontroller(
     ICW.writedata := dowrite ? writethrough : SDRAM.readdata; ICW.update := 0;
 
     // 16 bit READ
-    readdata := ( ~cacheselect & Icachetagmatch ) ? Icache.rdata0 : lastdcacheaddress | cachetagmatch ? cache.rdata0 : SDRAM.readdata;
+    readdata := ( ~cacheselect & Icachetagmatch ) ? Icache.rdata0 : ( doread & lastdcacheaddress ) | cachetagmatch ? cache.rdata0 : SDRAM.readdata;
 
     while(1) {
         doread = readflag; dowrite = writeflag;
-        if( doread | dowrite ) {
-            if( doread & lastdcacheaddress ) {
-                busy = 0;                                                                                                                           // USING LAST READ DATA CACHE ADDRESS
-            } else {
+        if( doread & lastdcacheaddress ) {                                                                                                          // USING LAST READ DATA CACHE ADDRESS
+            busy = 0;
+        } else {
+            if( doread | dowrite ) {
                 busy = 1;                                                                                                                           // MARK BUSY,
                 ++:                                                                                                                                 // WAIT FOR CACHE
-                if( doread & ( ( ~cacheselect & Icachetagmatch ) | ( cacheselect & cachetagmatch ) ) ) {
-                    busy = 0;                                                                                                                           // READ IN CACHE
+                if( doread & ( ( ~cacheselect & Icachetagmatch ) | ( cacheselect & cachetagmatch ) ) ) {                                                // READ IN CACHE
+                    busy = 0;
                 } else {
-                    if( cacheselect & cachetagmatch ) {
-                        CW.update = dowrite;                                                                                                            // IN CACHE, UPDATE IF WRITE
+                    if( cacheselect & cachetagmatch ) {                                                                                                 // IN CACHE
+                        CW.update = dowrite;                                                                                                            // UPDATE IF WRITE
                         ICW.update = Icachetagmatch & dowrite;                                                                                          // UPDATE ICACHE IF NEEDED
                         busy = 0;
                     } else {
@@ -409,7 +409,7 @@ algorithm cachecontroller(
                             while( SDRAM.busy ) {} SDRAM.address = { cachetag(tags.rdata0).partaddress, address[1,$cacheaddrwidth$], 1b0 };             // EVICT FROM CACHE TO SDRAM
                             SDRAM.writeflag = 1;
                         }
-                        if( doreadsdram ) {
+                        if( doreadsdram ) {                                                                                                             // NEED TO READ SDRAM
                             while( SDRAM.busy ) {} SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                  // READ FOR READ OR 8 BIT WRITE
                             CW.update = cacheselect;                                                                                                    // UPDATE THE CACHE
                             ICW.update = ~cacheselect;                                                                                                  // UPDATE ICACHE IF NEEDED
@@ -421,6 +421,8 @@ algorithm cachecontroller(
                     }
                 }
                 if( cacheselect ) { lastaddress = address[1,25]; }                                                                                  // LATCH LAST DATA CACHE ADDRESS
+            } else {
+                busy = 0;
             }
         }
     }
