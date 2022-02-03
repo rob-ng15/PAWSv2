@@ -439,7 +439,7 @@ void D_AdvanceDemo (void)
         if ( gamemode == commercial )
             pagetic = 35 * 11;
         else
-            pagetic = 170;
+            pagetic = 16;
         gamestate = GS_DEMOSCREEN;
         pagename = "TITLEPIC";
         if ( gamemode == commercial )

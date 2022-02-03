@@ -40,6 +40,7 @@ extern unsigned short get_timer1khz( unsigned char );
 extern void wait_timer1khz( unsigned char );
 extern unsigned short get_timer1hz( unsigned char );
 extern void reset_timer1hz( unsigned char );
+extern int paws_gettimeofday( struct paws_timeval *restrict tv, void *tz );
 
 // AUDIO
 extern void beep( unsigned char, unsigned char, unsigned char, unsigned short );
@@ -223,6 +224,7 @@ struct stat {
 
 #define fopen(a,b)      paws_fopen(a, b)
 #define fclose(a)       paws_fclose(a)
+#define getc(a)         paws_fgetc(a)
 #define fgetc(a)        paws_fgetc(a)
 #define fgets(a,b,c)    paws_fgets(a, b, c)
 #define fputc(a,b)      paws_fputc(a, b)

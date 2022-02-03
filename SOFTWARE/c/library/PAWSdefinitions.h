@@ -317,7 +317,7 @@ typedef struct {
     unsigned int    hidden_sectors;
     unsigned int    total_sectors_long;
     unsigned int    fat32_size_sectors;
-    unsigned short  flags;
+    unsigned short  fat32_flags;
     unsigned short  version;
     unsigned int    startof_root;
     unsigned short  filesystem_information;
@@ -352,6 +352,12 @@ typedef struct {
     unsigned int    starting_cluster;
     unsigned int    file_size;
 } __attribute((packed)) DirectoryEntry;
+
+// PAWS SYSTEMCLOCK
+typedef struct paws_timeval {
+    unsigned short  ptv_sec;
+    unsigned int    ptv_usec;
+} paws_timeval;
 
 // SIMPLE CURSES
 typedef unsigned char chtype;

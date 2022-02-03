@@ -26,6 +26,7 @@ algorithm decode(
 // DETERMINE IF MEMORY LOAD OR STORE
 // AMO AND FLOAT LOAD/STORE ARE 32 BIT
 algorithm memoryaccess(
+    input   uint1   cacheselect,
     input   uint5   opCode,
     input   uint5   function7,
     input   uint3   function3,
@@ -38,7 +39,7 @@ algorithm memoryaccess(
     always_after {
         memoryload = ( ~|opCode ) | FLOAD | ( AMO & ( function7 != 5b00011 ) );
         memorystore = ( opCode == 5b01000 ) | FSTORE | ( AMO & ( function7 != 5b00010 ) );
-        accesssize = AMO | FLOAD | FSTORE ? 2b10 : function3[0,2];
+        accesssize = ~cacheselect ? 2b01: AMO | FLOAD | FSTORE ? 2b10 : function3[0,2];
     }
 }
 

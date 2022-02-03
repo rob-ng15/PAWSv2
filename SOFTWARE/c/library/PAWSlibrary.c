@@ -1,5 +1,3 @@
-#include "PAWS.h"
-#include "PAWSdefinitions.h"
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -12,6 +10,8 @@
 #include <sys/time.h>
 #include <errno.h>
 #include <fcntl.h>
+#include "PAWS.h"
+#include "PAWSdefinitions.h"
 
 // TOP OF SDRAM MEMORY
 unsigned char *MEMORYTOP = (unsigned char *)0x8000000;;
@@ -2279,4 +2279,11 @@ int paws_fprintf( void *fd, const char *restrict format, ... ) {
     }
 
     return( strlen( buffer ) );
+}
+
+// PAWS SYSTEMCLOCK
+int paws_gettimeofday( struct paws_timeval *restrict tv, void *tz ) {
+    tv->ptv_sec = *SYSTEMSECONDS;
+    tv->ptv_usec = *SYSTEMMILLISECONDS;
+    return( 0 );
 }

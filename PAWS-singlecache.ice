@@ -154,7 +154,6 @@ $$end
     cachecontroller DRAM <@clock_system,!reset> (
         sio <:> sio_halfrate,
         byteaccess <: byteaccess,
-        cacheselect <: CPU.cacheselect,
         address <: CPU.address[0,26],
         writedata <: CPU.writedata
     );
@@ -311,30 +310,12 @@ $$end
     }
 }
 
-// 32Mb of SDRAM using @sylefeb controller
-// Controlled by a 16bit EVICTION CACHE FOR DATA AND INSTRUCTIONS
-// Cache-coherency is maintained
-// Controller is 16bit, the natural width of the SDRAM on the ULX3s
-// An eviction cache was chosen as easy to implement as a directly mapped cache
-// Writes to SDRAM only if required when evicting a cache entry
-
-// DATA CACHE SIZE IS NUMBER OF 16bit ENTRIES
-$$ size = 4096
-$$ cacheaddrwidth = clog2(size)
-$$ partaddresswidth = 25 - cacheaddrwidth
-$$ partaddressstart = 1 + cacheaddrwidth
-bitfield cachetag{ uint1 needswrite, uint1 valid, uint$partaddresswidth$ partaddress }
-
-// INSTRUCTION CACHE IS NUMBER OF 16bit ENTRIES
-$$ Isize = 8192
-$$ Icacheaddrwidth = clog2(Isize)
-$$ Ipartaddresswidth = 25 - Icacheaddrwidth
-$$ Ipartaddressstart = 1 + Icacheaddrwidth
-bitfield Icachetag{ uint1 valid, uint$Ipartaddresswidth$ partaddress }
+// RAM - SDRAM CONTROLLER VIA EVICTION CACHE - MEMORY IS 16 BIT
+// EVICTION CACHE CONTROLLER - DIRECTLY MAPPED CACHE - WRITE TO SDRAM ONLY IF EVICTING FROM THE CACHE
+bitfield cachetag{ uint1 needswrite, uint1 valid, uint12 partaddress }
 
 algorithm cachecontroller(
     sdram_user      sio,
-    input   uint1   cacheselect,
     input   uint26  address,
     input   uint1   byteaccess,
     input   uint1   writeflag,
@@ -343,27 +324,23 @@ algorithm cachecontroller(
     output  uint16  readdata,
     output  uint1   busy(0)
 ) <autorun,reginputs> {
-    // DATA CACHE for SDRAM - CACHE SIZE DETERMINED BY size DEFINED ABOVE, MUST BE A POWER OF 2
-    // DATA CACHE ADDRESS IS LOWER bits of the address, dropping the BYTE address bit
-    // DATA CACHE TAG IS REMAINING bits of the 26 bit address + 1 bit for valid flag + 1 bit for needwritetosdram flag
-    simple_dualport_bram uint16 cache[$size$] = uninitialized;
-    simple_dualport_bram uint$partaddresswidth+2$ tags[$size$] = uninitialized;
+    // CACHE for SDRAM 16k
+    // CACHE ADDRESS IS LOWER 14 bits ( 0 - 8191 ) of address, dropping the BYTE address bit
+    // CACHE TAG IS REMAINING 12 bits of the 26 bit address + 1 bit for valid flag + 1 bit for needwritetosdram flag
+    simple_dualport_bram uint16 cache[8192] = uninitialized;
+    simple_dualport_bram uint14 tags[8192] = uninitialized;
 
-    // INSTRUCTION CACHE for SDRAM
-    // DEFINED AS ABOVE EXCEPT NO NEED FOR needwritetosdram flag
-    simple_dualport_bram uint16 Icache[$Isize$] = uninitialized;
-    simple_dualport_bram uint$Ipartaddresswidth+1$ Itags[$Isize$] = uninitialized;
-
-    // CACHE WRITERS
+    // CACHE WRITER
     cachewriter CW( cache <:> cache, tags <:> tags, address <: address );
-    Icachewriter ICW( Icache <:> Icache, Itags <:> Itags, address <: address );
 
     // SDRAM CONTROLLER
-    sdramcontroller SDRAM( sio <:> sio, writedata <: cache.rdata0 );
+    sdramcontroller SDRAM(
+        sio <:> sio,
+        writedata <: cache.rdata0
+    );
 
-    // CACHE TAG match flags
-    uint1   cachetagmatch <:: ( { cachetag(tags.rdata0).valid, cachetag(tags.rdata0).partaddress } == { 1b1, address[$partaddressstart$,$partaddresswidth$] } );
-    uint1   Icachetagmatch <:: ( Itags.rdata0 == { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] } );
+    // CACHE TAG match flag
+    uint1   cachetagmatch <:: ( { cachetag(tags.rdata0).valid, cachetag(tags.rdata0).partaddress } == { 1b1, address[14,12] } );
 
     // VALUE TO WRITE TO CACHE ( deals with correctly mapping 8 bit writes and 16 bit writes, using sdram or cache as base )
     uint16  writethrough <:: ( byteaccess ) ? ( address[0,1] ? { writedata[0,8], cachetagmatch ? cache.rdata0[0,8] : SDRAM.readdata[0,8] } :
@@ -373,60 +350,39 @@ algorithm cachecontroller(
     uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
     uint1   doreadsdram <:: ( doread | ( dowrite & byteaccess ) );
 
-    //  FOR QUICK RETURN IF READING FROM LAST DATA CACHE ADDRESS
-    uint25  lastaddress = uninitialized;            uint1   lastdcacheaddress <:: cacheselect & ( lastaddress == address[1,25] );
-
     // SDRAM ACCESS
     SDRAM.readflag := 0; SDRAM.writeflag := 0;
 
     // FLAGS FOR CACHE ACCESS
-    cache.addr0 := address[1,$cacheaddrwidth$]; tags.addr0 := address[1,$cacheaddrwidth$];
+    cache.addr0 := address[1,13]; tags.addr0 := address[1,13];
     CW.needwritetosdram := dowrite;  CW.writedata := dowrite ? writethrough : SDRAM.readdata; CW.update := 0;
 
-    Icache.addr0 := address[1,$Icacheaddrwidth$]; Itags.addr0 := address[1,$Icacheaddrwidth$];
-    ICW.writedata := dowrite ? writethrough : SDRAM.readdata; ICW.update := 0;
-
     // 16 bit READ
-    readdata := ( ~cacheselect & Icachetagmatch ) ? Icache.rdata0 : lastdcacheaddress | cachetagmatch ? cache.rdata0 : SDRAM.readdata;
+    readdata := cachetagmatch ? cache.rdata0 : SDRAM.readdata;
 
     while(1) {
         doread = readflag; dowrite = writeflag;
         if( doread | dowrite ) {
-            if( doread & lastdcacheaddress ) {
-                busy = 0;                                                                                                                           // USING LAST READ DATA CACHE ADDRESS
+            busy = 1;
+            ++:                                                                                                                                 // WAIT FOR CACHE
+            if( cachetagmatch ) {
+                CW.update = dowrite;                                                                                                            // IN CACHE, UPDATE IF WRITE
             } else {
-                busy = 1;                                                                                                                           // MARK BUSY,
-                ++:                                                                                                                                 // WAIT FOR CACHE
-                if( doread & ( ( ~cacheselect & Icachetagmatch ) | ( cacheselect & cachetagmatch ) ) ) {
-                    busy = 0;                                                                                                                           // READ IN CACHE
-                } else {
-                    if( cacheselect & cachetagmatch ) {
-                        CW.update = dowrite;                                                                                                            // IN CACHE, UPDATE IF WRITE
-                        ICW.update = Icachetagmatch & dowrite;                                                                                          // UPDATE ICACHE IF NEEDED
-                        busy = 0;
-                    } else {
-                        if( cachetag(tags.rdata0).needswrite ) {                                                                                        // CHECK IF CACHE LINE IS OCCUPIED
-                            while( SDRAM.busy ) {} SDRAM.address = { cachetag(tags.rdata0).partaddress, address[1,$cacheaddrwidth$], 1b0 };             // EVICT FROM CACHE TO SDRAM
-                            SDRAM.writeflag = 1;
-                        }
-                        if( doreadsdram ) {
-                            while( SDRAM.busy ) {} SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                  // READ FOR READ OR 8 BIT WRITE
-                            CW.update = cacheselect;                                                                                                    // UPDATE THE CACHE
-                            ICW.update = ~cacheselect;                                                                                                  // UPDATE ICACHE IF NEEDED
-                        } else {
-                            CW.update = dowrite;                                                                                                        // UPDATE CACHE FOR 16 BIT WRITE
-                            ICW.update = Icachetagmatch & dowrite;                                                                                      // UPDATE ICACHE IF NEEDED
-                        }
-                        busy = 0;
-                    }
+                if( cachetag(tags.rdata0).needswrite ) {                                                                                        // CHECK IF CACHE LINE IS OCCUPIED
+                    while( SDRAM.busy ) {} SDRAM.address = { cachetag(tags.rdata0).partaddress, address[1,13], 1b0 }; SDRAM.writeflag = 1;      // EVICT FROM CACHE TO SDRAM
                 }
-                if( cacheselect ) { lastaddress = address[1,25]; }                                                                                  // LATCH LAST DATA CACHE ADDRESS
+                if( doreadsdram ) {
+                    while( SDRAM.busy ) {} SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                  // READ FOR READ OR 8 BIT WRITE
+                    CW.update = 1;                                                                                                              // UPDATE THE CACHE
+                } else {
+                    CW.update = dowrite;                                                                                                        // UPDATE CACHE FOR 16 BIT WRITE
+                }
             }
+            busy = 0;
         }
     }
 }
 
-// WRITE TO DATA CACHE
 algorithm cachewriter(
     input   uint26  address,
     input   uint1   needwritetosdram,
@@ -435,22 +391,11 @@ algorithm cachewriter(
     simple_dualport_bram_port1 cache,
     simple_dualport_bram_port1 tags
 ) <autorun,reginputs> {
-    cache.wenable1 := update; tags.wenable1 := update;
-    cache.addr1 := address[1,$cacheaddrwidth$]; cache.wdata1 := writedata;
-    tags.addr1 := address[1,$cacheaddrwidth$]; tags.wdata1 := { needwritetosdram, 1b1, address[$partaddressstart$,$partaddresswidth$] };
-}
-
-// WRITE TO INSTRCUTION CACHE
-algorithm Icachewriter(
-    input   uint26  address,
-    input   uint16  writedata,
-    input   uint1   update,
-    simple_dualport_bram_port1 Icache,
-    simple_dualport_bram_port1 Itags
-) <autorun,reginputs> {
-    Icache.wenable1 := update; Itags.wenable1 := update;
-    Icache.addr1 := address[1,$Icacheaddrwidth$]; Icache.wdata1 := writedata;
-    Itags.addr1 := address[1,$Icacheaddrwidth$]; Itags.wdata1 := { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] };
+    always_after {
+        cache.wenable1 = update; tags.wenable1 = update;
+        cache.addr1 = address[1,13]; cache.wdata1 = writedata;
+        tags.addr1 = address[1,13]; tags.wdata1 = { needwritetosdram, 1b1, address[14,12] };
+    }
 }
 
 algorithm sdramcontroller(

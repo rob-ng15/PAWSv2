@@ -186,13 +186,13 @@ int M_strncmpi (const char* s1, const char* s2, size_t n)
 
 const char* M_GetHomeDir ()
 {
-    return "";
+    return "/DEMO";
 
 }
 
 const char* M_GetDoomWadDir ()
 {
-    return "";
+    return "/DEMO";
 }
 
 int M_FileExists (const char* name)

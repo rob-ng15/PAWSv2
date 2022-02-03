@@ -10,6 +10,7 @@ algorithm PAWSCPU(
     input   uint1   clock_CPUdecoder,
     output  uint2   accesssize,
     output  uint27  address,
+    output  uint1   cacheselect,
     output  uint16  writedata,
     output  uint1   writememory,
     input   uint16  readdata,
@@ -29,7 +30,7 @@ algorithm PAWSCPU(
 
     // RISC-V 32 BIT INSTRUCTION DECODER + MEMORY ACCESS SIZE
     decode RV32DECODER <@clock_CPUdecoder> ( instruction <: instruction );
-    memoryaccess MEMACCESS <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
+    memoryaccess MEMACCESS <@clock_CPUdecoder> ( cacheselect <: cacheselect, opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
 
     // RISC-V REGISTERS
     uint1   frd <:: IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd;
@@ -148,6 +149,7 @@ algorithm PAWSCPU(
     }
 
     while(1) {
+        cacheselect = 0;
         address = PC; readmemory = 1; while( memorybusy ) {}                                                                                        // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
         compressed = ( ~&readdata[0,2] );
         if( compressed ) {
@@ -164,6 +166,7 @@ algorithm PAWSCPU(
         }
         // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS
 
+        cacheselect = 1;
         if( MEMACCESS.memoryload ) {
             address = AGU.loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
             if( accesssize[1,1] ) {

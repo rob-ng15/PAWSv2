@@ -24,9 +24,9 @@ group sdcardio {
 }
 
 interface sdcardio_ctrl {
-  input!  addr_sector,
-  input!  read_sector,
-  input!  write_sector,
+  input   addr_sector,
+  input   read_sector,
+  input   write_sector,
   output  ready,
   input   offset,
 }
@@ -59,6 +59,27 @@ algorithm sdcard(
         if (!sd_clk) {
           sd_mosi = shift[47,1];
           shift   = {shift[0,47],1b0};
+        }
+      }
+      count = count + 1;
+    }
+    sd_mosi = 1;
+  }
+
+  subroutine sendbyte(
+    input  uint8    byte,
+    readwrites      sd_clk,
+    writes          sd_mosi
+  ) {
+    uint16 count = 0;
+    uint8  shift = uninitialized;
+    shift        = cmd;
+    while (count < $2*256*8$) { // 8 clock pulses @~400 kHz (assumes 50 MHz clock)
+      if ((count&255) == 255) {
+        sd_clk  = ~sd_clk;
+        if (!sd_clk) {
+          sd_mosi = shift[7,1];
+          shift   = {shift[0,7],1b0};
         }
       }
       count = count + 1;
@@ -203,17 +224,40 @@ algorithm sdcard(
 
     if (do_write_sector) {
       do_write_sector = 0;
-
+      //
+      // NEED A SEND A SINGLE BYTE SUBROUTINE
+      //
       // send cmd24
       // () <- send <- ({cmd24[40,8],do_addr_sector,cmd24[0,8]});
-      // wait for cmd response ( 0x00 )
-      // (status) <- read <- (8,1,3); // response
-      // if(status[0,8] == 8h00) {
-      // send data start token ( 0xfe )
-      // send 512 bytes
-      // send CRC 0xff 0xff
+      // // wait for cmd response ( 0x00 )
+      // ( status ) <- read <- (8,1,3);
+      // if (status[0,8] == 8h00) {
+      //   uint9 progress = 0;
+      //
+      //   //delay 1 second ?
+      //   //send 8 dummy clocks
+      //   () <- sendbyte <- ( 8hff );
+      //   send data start token ( 0xfe )
+      //   () <- sendbyte <- ( 8hfe );
+      //
+      //   //send 512 bytes
+      //
+      //   //send CRC = 0xff 0xff
+      //   () <- sendbyte <- ( 8hff );
+      //   () <- sendbyte <- ( 8hff );
+      //   //delay 1 second?
+      //   //send 8 dummy clocks
+      //   () <- sendbyte <- ( 8hff );
+      //
+      //   send cmd13 {0X4D,0X00000000,0XFF}
+      //   () <- send <- ( { 8h4d, 32h0, 8hff } );
+      //
+      //   //wait for cmd response ( 0x00 )
+      //   ( status ) <- read <- ( 8,1,3);
+      //   while (status[0,8] != 8h00) {
+      //     ( status ) <- read <- ( 8,1,3);
+      //   }
       // }
-      // wait for data accepted (0x05)
 
       io.ready = 1;
     }

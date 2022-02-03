@@ -932,7 +932,7 @@ algorithm pixelblock(
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
     uint1   update = uninitialised;                 uint2   toprocess = uninitialised;                  uint1   lineend <:: ( bitmap_x_write == x + width - 1 );
-    uint7   grrggbb <:: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };                 uint7   grey <:: ( ( ( colour8r + colour8g ) >> 1 ) + colour8b ) >> 2;
+    uint7   grrggbb <:: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };                 uint7   grey <:: ( ( colour8r + colour8g + colour8b ) * 341 ) >> 11;
 
     // LOOKUP THE COLOUR FROM THE REMAPPER
     colourmap.addr0 := colour;
