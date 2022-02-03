@@ -53,8 +53,8 @@ algorithm sdcard(
     uint16 count = 0;
     uint48 shift = uninitialized;
     shift        = cmd;
-    while (count < $2*256*48$) { // 48 clock pulses @~400 kHz (assumes 50 MHz clock)
-      if ((count&255) == 255) {
+    while (count != $2*256*48$) { // 48 clock pulses @~400 kHz (assumes 50 MHz clock)
+      if (&count[0,8]) {
         sd_clk  = ~sd_clk;
         if (!sd_clk) {
           sd_mosi = shift[47,1];
@@ -74,8 +74,8 @@ algorithm sdcard(
     uint16 count = 0;
     uint8  shift = uninitialized;
     shift        = cmd;
-    while (count < $2*256*8$) { // 8 clock pulses @~400 kHz (assumes 50 MHz clock)
-      if ((count&255) == 255) {
+    while (count != $2*256*8$) { // 8 clock pulses @~400 kHz (assumes 50 MHz clock)
+      if (&count[0,8]) {
         sd_clk  = ~sd_clk;
         if (!sd_clk) {
           sd_mosi = shift[7,1];
@@ -100,7 +100,7 @@ algorithm sdcard(
     uint6  n     = 0;
     answer       = 40hffffffffff;
     while ( // will only stop on sd_clk == 0
-      (wait && answer[len-1,1]) || ((!wait) && n < len)
+      (wait && answer[len-1,1]) || ((!wait) && n != len)
     ) { // read answer
       if ((count&rate) == rate) { // swap clock
         sd_clk  = ~sd_clk;
@@ -152,12 +152,12 @@ algorithm sdcard(
 
   // wait 2 msec (power up), @50 MHz
   count = 0;
-  while (count < 100000) { count = count + 1; }
+  while (count != 100000) { count = count + 1; }
 
   // request SPI mode
   count   = 0;
-  while (count < $2*256*80$) { // 74+ clock pulses @~400 kHz (assumes 50 MHz clock)
-    if ((count&255) == 255) {
+  while (count != $2*256*80$) { // 74+ clock pulses @~400 kHz (assumes 50 MHz clock)
+    if (&count[0,8]) {
       sd_clk = ~sd_clk;
     }
     count = count + 1;
@@ -199,14 +199,14 @@ algorithm sdcard(
 
       (status) <- read <- (8,1,3); // response
 
-      if (status[0,8] == 8h00) {
+      if (~|status[0,8]) {
         uint9 progress = 0;
 
         (status) <- read <- (1,1,3); // start token
 
         buffer_in.addr1 = io.offset;
         (buffer_in.wdata1) <- read <- (8,0,3); // bytes
-        while (progress < 511) {
+        while (progress != 511) {
           (buffer_in.wdata1) <- read <- (8,0,3); // bytes
           buffer_in.addr1 = buffer_in.addr1 + 1;
           progress    = progress + 1;
