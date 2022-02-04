@@ -46,7 +46,7 @@ void fightd_()
 	    goto L2050;
 	}
 /* 						!YES, VILL AWAKE? */
-	if (vill_1.vprob[i - 1] == 0 || ! prob_(vill_1.vprob[i - 1], 
+	if (vill_1.vprob[i - 1] == 0 || ! prob_(vill_1.vprob[i - 1],
 		vill_1.vprob[i - 1])) {
 	    goto L2025;
 	}
@@ -249,7 +249,7 @@ L100:
     i__1 = objcts_1.olnt;
     for (i = 1; i <= i__1; ++i) {
 /* 						!SEARCH VILLAIN. */
-	if (objcts_1.ocan[i - 1] == v && (objcts_1.oflag2[i - 1] & 
+	if (objcts_1.ocan[i - 1] == v && (objcts_1.oflag2[i - 1] &
 		WEAPBT) != 0) {
 	    dweap = i;
 	}
@@ -296,7 +296,7 @@ L1200:
     }
 /* 						!DONT ALLOW DEAD DEF. */
     od = fights_(h, 0);
-    dweap = (i__1 = fwim_(0, WEAPBT, 0, 0, h, 1), 
+    dweap = (i__1 = fwim_(0, WEAPBT, 0, 0, h, 1),
 	    abs(i__1));
 /* 						!FIND A WEAPON. */
 /* BLOW, PAGE 4 */
@@ -444,7 +444,7 @@ L3600:
 	goto L4000;
     }
 /* 						!IF HERO, DONE. */
-    dweap = (i__1 = fwim_(0, WEAPBT, 0, 0, h, 1), 
+    dweap = (i__1 = fwim_(0, WEAPBT, 0, 0, h, 1),
 	    abs(i__1));
 /* 						!GET NEW. */
     if (dweap != 0) {
@@ -589,12 +589,12 @@ integer r;
 
     if (! findex_1.endgmf) {
 	ret_val = objcts_1.oroom[oindex_1.cyclo - 1] == r || objcts_1.oroom[
-		oindex_1.troll - 1] == r || objcts_1.oroom[oindex_1.thief - 
+		oindex_1.troll - 1] == r || objcts_1.oroom[oindex_1.thief -
 		1] == r && hack_1.thfact;
     }
     else {
-	ret_val = r == rindex_1.mrg || r == rindex_1.mrge || r == 
-		rindex_1.mrgw || r == rindex_1.inmir && findex_1.mloc == 
+	ret_val = r == rindex_1.mrg || r == rindex_1.mrge || r ==
+		rindex_1.mrgw || r == rindex_1.inmir && findex_1.mloc ==
 		rindex_1.mrg;
     }
     return ret_val;

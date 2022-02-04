@@ -272,6 +272,7 @@ int main(int argc, char* argv[]) {
     #define njFreeMem  free
     #define njFillMem  memset
     #define njCopyMem  memcpy
+    #include <PAWSlibrary.h>
 #elif NJ_USE_WIN32
     #include <windows.h>
     #define njAllocMem(size) ((void*) LocalAlloc(LMEM_FIXED, (SIZE_T)(size)))

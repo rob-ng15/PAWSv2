@@ -131,13 +131,13 @@ L6000:
 	goto L6800;
     }
 /* 						!AT BOTTOM? */
-    if (state_1.bloc == rindex_1.ledg2 || state_1.bloc == rindex_1.ledg3 || 
-	    state_1.bloc == rindex_1.ledg4 || state_1.bloc == rindex_1.vlbot) 
+    if (state_1.bloc == rindex_1.ledg2 || state_1.bloc == rindex_1.ledg3 ||
+	    state_1.bloc == rindex_1.ledg4 || state_1.bloc == rindex_1.vlbot)
 	    {
 	goto L6700;
     }
 /* 						!ON LEDGE? */
-    if ((objcts_1.oflag2[oindex_1.recep - 1] & OPENBT) != 0 && 
+    if ((objcts_1.oflag2[oindex_1.recep - 1] & OPENBT) != 0 &&
 	    findex_1.binff != 0) {
 	goto L6500;
     }
@@ -156,7 +156,7 @@ L6000:
 	goto L6200;
     }
 /* 						!IN BALLOON? */
-    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 || 
+    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 ||
 	    play_1.here == rindex_1.ledg4 || play_1.here == rindex_1.vlbot) {
 	rspeak_(530);
     }
@@ -198,7 +198,7 @@ L6300:
 	goto L6400;
     }
 /* 						!IS HE IN BALLOON? */
-    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 || 
+    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 ||
 	    play_1.here == rindex_1.ledg4 || play_1.here == rindex_1.vlbot) {
 	rspeak_(533);
     }
@@ -235,7 +235,7 @@ L6500:
 	goto L6550;
     }
 /* 						!WAS HE IN IT? */
-    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 || 
+    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 ||
 	    play_1.here == rindex_1.ledg4 || play_1.here == rindex_1.vlbot) {
 	rspeak_(535);
     }
@@ -255,7 +255,7 @@ L6600:
 	goto L6650;
     }
 /* 						!IN BALLOON? */
-    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 || 
+    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 ||
 	    play_1.here == rindex_1.ledg4 || play_1.here == rindex_1.vlbot) {
 	rspeak_(537);
     }
@@ -280,7 +280,7 @@ L6700:
 	goto L6750;
     }
 /* 						!IN BALLOON? */
-    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 || 
+    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 ||
 	    play_1.here == rindex_1.ledg4 || play_1.here == rindex_1.vlbot) {
 	rspeak_(539);
     }
@@ -300,7 +300,7 @@ L6750:
 /* AT BOTTOM, GO UP IF INFLATED, DO NOTHING IF DEFLATED. */
 
 L6800:
-    if (findex_1.binff == 0 || ! ((objcts_1.oflag2[oindex_1.recep - 1] & 
+    if (findex_1.binff == 0 || ! ((objcts_1.oflag2[oindex_1.recep - 1] &
 	    OPENBT) != 0)) {
 	return;
     }
@@ -312,7 +312,7 @@ L6800:
 	goto L6850;
     }
 /* 						!IN BALLOON? */
-    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 || 
+    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 ||
 	    play_1.here == rindex_1.ledg4 || play_1.here == rindex_1.vlbot) {
 	rspeak_(541);
     }
@@ -333,7 +333,7 @@ L7000:
     i__1 = objcts_1.olnt;
     for (i = 1; i <= i__1; ++i) {
 /* 						!FIND BURNING OBJECT */
-	if (oindex_1.recep == objcts_1.ocan[i - 1] && (objcts_1.oflag1[i - 1] 
+	if (oindex_1.recep == objcts_1.ocan[i - 1] && (objcts_1.oflag1[i - 1]
 		& FLAMBT) != 0) {
 	    goto L7200;
 	}
@@ -408,7 +408,7 @@ L8200:
     i__1 = objcts_1.olnt;
     for (i = 1; i <= i__1; ++i) {
 /* 						!BLEW WRONG ROOM. */
-	if (qhere_(i, br) && (objcts_1.oflag1[i - 1] & TAKEBT) != 
+	if (qhere_(i, br) && (objcts_1.oflag1[i - 1] & TAKEBT) !=
 		0) {
 	    newsta_(i, 0, 0, 0, 0);
 	}
@@ -429,7 +429,7 @@ L8200:
     return;
 
 L8500:
-    if (qhere_(oindex_1.fuse, play_1.here) || objcts_1.oadv[oindex_1.fuse - 
+    if (qhere_(oindex_1.fuse, play_1.here) || objcts_1.oadv[oindex_1.fuse -
 	    1] == play_1.winner) {
 	rspeak_(152);
     }
@@ -515,7 +515,7 @@ L10100:
 /* CEV11--	VOLCANO GNOME */
 
 L11000:
-    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 || 
+    if (play_1.here == rindex_1.ledg2 || play_1.here == rindex_1.ledg3 ||
 	    play_1.here == rindex_1.ledg4 || play_1.here == rindex_1.vlbot) {
 	goto L11100;
     }
@@ -566,7 +566,7 @@ L15000:
 /* CEV16--	FOREST MURMURS */
 
 L16000:
-    cevent_1.cflag[cindex_1.cevfor - 1] = play_1.here == rindex_1.mtree || 
+    cevent_1.cflag[cindex_1.cevfor - 1] = play_1.here == rindex_1.mtree ||
 	    play_1.here >= rindex_1.fore1 && play_1.here < rindex_1.clear;
     if (cevent_1.cflag[cindex_1.cevfor - 1] && prob_(10, 10)) {
 	rspeak_(635);
@@ -637,7 +637,7 @@ L20200:
     i__1 = objcts_1.olnt;
     for (i = 1; i <= i__1; ++i) {
 /* 						!STRIP HIM OF OBJS. */
-	newsta_(i, 0, objcts_1.oroom[i - 1], objcts_1.ocan[i - 1], 
+	newsta_(i, 0, objcts_1.oroom[i - 1], objcts_1.ocan[i - 1],
 		0);
 /* L20300: */
     }
@@ -744,7 +744,7 @@ L24100:
     i__1 = xsrch_1.xmax;
     i__2 = xsrch_1.xmin;
     for (j = xsrch_1.xmin; i__2 < 0 ? j >= i__1 : j <= i__1; j += i__2) {
-	if (findxt_(j, advs_1.aroom[aindex_1.amastr - 1]) && curxt_1.xroom1 
+	if (findxt_(j, advs_1.aroom[aindex_1.amastr - 1]) && curxt_1.xroom1
 		== play_1.here) {
 	    i = 813;
 	}
@@ -782,16 +782,16 @@ integer tickln;
 	goto L100;
     }
 /* 						!EXPIRED? */
-    objcts_1.oflag1[obj - 1] &= ~ (LITEBT + FLAMBT + 
+    objcts_1.oflag1[obj - 1] &= ~ (LITEBT + FLAMBT +
 	    ONBT);
-    if (objcts_1.oroom[obj - 1] == play_1.here || objcts_1.oadv[obj - 1] == 
+    if (objcts_1.oroom[obj - 1] == play_1.here || objcts_1.oadv[obj - 1] ==
 	    play_1.winner) {
 	rspsub_(293, objcts_1.odesc2[obj - 1]);
     }
     return;
 
 L100:
-    if (objcts_1.oroom[obj - 1] == play_1.here || objcts_1.oadv[obj - 1] == 
+    if (objcts_1.oroom[obj - 1] == play_1.here || objcts_1.oadv[obj - 1] ==
 	    play_1.winner) {
 	rspeak_(ticks[*ctr + tickln / 2]);
     }

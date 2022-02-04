@@ -124,6 +124,24 @@ algorithm addrplus2(
         addressplus2 = address + 2;
     }
 }
+// ADD 1 TO AN ADDRESS FOR DMA
+algorithm addrplus1(
+    input   uint27  address,
+    output  uint27  addressplus1
+) <autorun> {
+    always_after {
+        addressplus1 = address + 1;
+    }
+}
+// SUB 1 TO AN ADDRESS FOR DMA
+algorithm addrsub1(
+    input   uint27  address,
+    output  uint27  addresssub1
+) <autorun> {
+    always_after {
+        addresssub1 = address - 1;
+    }
+}
 
 // RISC-V ADDRESS GENERATOR
 algorithm addressgenerator(

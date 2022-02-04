@@ -41,8 +41,12 @@ typedef int logical;
 #define FALSE_ (0)
 
 #define abs(x) ((x) >= 0 ? (x) : -(x))
+#ifndef min
 #define min(a,b) ((a) <= (b) ? (a) : (b))
+#endif
+#ifndef max
 #define max(a,b) ((a) >= (b) ? (a) : (b))
+#endif
 
 extern logical
 	protected P((void)),

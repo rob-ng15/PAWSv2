@@ -13,7 +13,7 @@ RANLIB=$(ARCH)--elf-ranlib
 BUILD_DIR=build
 OUTPUT_DIR=../../PAWS/
 
-CFLAGS=-march=rv32imafc -mabi=ilp32f -ffunction-sections -fdata-sections -Ofast -fno-pic -Wno-stringop-overread
+CFLAGS=-march=rv32imafc -mabi=ilp32f -ffunction-sections -fdata-sections -O2 -fno-pic -fno-unroll-loops -ffast-math -Wno-stringop-overread
 LFLAGS=--as-needed --gc-sections -m elf32lriscv -b elf32-littleriscv --no-relax
 LCONFIG=-T../config_c_SDRAM.ld
 
@@ -43,10 +43,10 @@ FATIOLIBOBJ=	$(PAWSBASE)library/build/fat_filelib.o \
 LIBPAWS=$(LIBPAWSOBJ) $(NANOJPEGOBJ) $(FATIOLIBOBJ)
 
 $(LIBPAWSOBJ) : $(LIBPAWSSOURCE)
-	$(CC) $(CFLAGS) -c $(PAWSBASE)library/PAWSlibrary.c -o $@
+	$(CC) $(CFLAGS) -finline -c $(PAWSBASE)library/PAWSlibrary.c -o $@
 
 $(NANOJPEGOBJ) : $(NANOJPEGSOURCE)
-	$(CC) $(CFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
 
 $(FATIOLIBOBJ) : $(FATIOLIBSOURCE)
 	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_filelib.c -o $(PAWSBASE)library/build/fat_filelib.o

@@ -67,8 +67,8 @@ integer na;
 	if (! qhere_(i, rm)) {
 	    goto L100;
 	}
-	if (objcts_1.otval[i - 1] <= 0 || (objcts_1.oflag2[i - 1] & 
-		SCRDBT) != 0 || (objcts_1.oflag1[i - 1] & 
+	if (objcts_1.otval[i - 1] <= 0 || (objcts_1.oflag2[i - 1] &
+		SCRDBT) != 0 || (objcts_1.oflag1[i - 1] &
 		VISIBT) == 0 || ! prob_(pr, pr)) {
 	    goto L50;
 	}

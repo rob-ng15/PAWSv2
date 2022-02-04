@@ -133,7 +133,7 @@ L3000:
 /* 	NOT A LOOK WORD.  REEVALUATE TROPHY CASE. */
 
 L3500:
-    if (prsvec_1.prsa != vindex_1.takew && (prsvec_1.prsa != vindex_1.putw || 
+    if (prsvec_1.prsa != vindex_1.takew && (prsvec_1.prsa != vindex_1.putw ||
 	    prsvec_1.prsi != oindex_1.tcase)) {
 	return ret_val;
     }
@@ -179,7 +179,7 @@ L4500:
 	return ret_val;
     }
 /* 						!WALKIN? */
-    if ((objcts_1.oflag2[oindex_1.door - 1] & OPENBT + 
+    if ((objcts_1.oflag2[oindex_1.door - 1] & OPENBT +
 	    TCHBT) != OPENBT) {
 	return ret_val;
     }
@@ -237,7 +237,7 @@ L6000:
 
 L6500:
     if (findex_1.rvclr != 0 || qhere_(oindex_1.leave, rindex_1.clear) && (
-	    prsvec_1.prsa != vindex_1.movew || prsvec_1.prso != 
+	    prsvec_1.prsa != vindex_1.movew || prsvec_1.prso !=
 	    oindex_1.leave)) {
 	return ret_val;
     }
@@ -355,8 +355,8 @@ L13000:
 	return ret_val;
     }
 /* 						!WALKIN? */
-    if (prob_(50, 50) || objcts_1.oadv[oindex_1.candl - 1] != 
-	    play_1.winner || ! ((objcts_1.oflag1[oindex_1.candl - 1] & 
+    if (prob_(50, 50) || objcts_1.oadv[oindex_1.candl - 1] !=
+	    play_1.winner || ! ((objcts_1.oflag1[oindex_1.candl - 1] &
 	    ONBT) != 0)) {
 	return ret_val;
     }
@@ -469,7 +469,7 @@ L17000:
     return ret_val;
 
 L17500:
-    if (prsvec_1.prsa != vindex_1.walkiw || objcts_1.oadv[oindex_1.garli - 1] 
+    if (prsvec_1.prsa != vindex_1.walkiw || objcts_1.oadv[oindex_1.garli - 1]
 	    == play_1.winner) {
 	return ret_val;
     }
@@ -728,7 +728,7 @@ L27000:
 /* 						!ASSUME NOTHING TO VANISH. */
     i__1 = objcts_1.olnt;
     for (i = 1; i <= i__1; ++i) {
-	if (i == oindex_1.chali || i == oindex_1.thief || ! qhere_(i, 
+	if (i == oindex_1.chali || i == oindex_1.thief || ! qhere_(i,
 		play_1.here)) {
 	    goto L27200;
 	}

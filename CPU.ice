@@ -151,13 +151,16 @@ algorithm PAWSCPU(
     );
 
     // MINI DMA CONTROLLER
-    uint2   dmamode = uninitialized;                uint27  dmasrc = uninitialized;                     uint27  dmadest = uninitialized;
-    uint27  dmacount = uninitialized;
+    uint2   dmamode = uninitialized;
+    uint27  dmasrc = uninitialized;                 addrplus1 dmasrc1( address <: dmasrc );
+    uint27  dmadest = uninitialized;                addrplus1 dmadest1( address <: dmadest );            addrplus2 dmadest2( address <: dmadest );
+    uint27  dmacount = uninitialized;               addrsub1 dmacount1( address <: dmacount );
+    uint1   dmadestblue <:: ( dmadest == 27hd676 );
 
     readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
 
     if( ~reset ) {
-        SMT = 0; pc = 0; dmacount = 0; DMAACTIVE = 0;                                                                                               // ON RESET SET PC AND SMT TO 0, CANCEL DMA
+        SMT = 0; pc = 0; DMAACTIVE = 0;                                                                                                             // ON RESET SET PC AND SMT TO 0, CANCEL DMA
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
     }
 
@@ -171,9 +174,9 @@ algorithm PAWSCPU(
                 address = dmadest; writedata = readdata[ { dmasrc[0,1], 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}                       // DMA STORE
                 switch( dmamode ) {
                     case 0: {}                                                                                                                      // DMA INACTIVE
-                    case 1: { dmasrc = dmasrc + 1; }                                                                                                // DMA PIXEL BLOCK 7/8 bit
-                    case 2: { dmasrc = dmasrc + 1; if( dmadest == 27hd676 ) { dmadest = 27hd672; } else { dmadest = dmadest + 2; } }                // DMA PIXEL BLOCK RGB
-                    case 3: { dmasrc = dmasrc + 1; dmadest = dmadest + 1; }                                                                         // DMA MEMCPY
+                    case 1: { dmasrc = dmasrc1.addressplus1; }                                                                                      // DMA PIXEL BLOCK 7/8 bit
+                    case 2: { dmasrc = dmasrc1.addressplus1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2.addressplus2; } }   // DMA PIXEL BLOCK RGB
+                    case 3: { dmasrc = dmasrc1.addressplus1; dmadest = dmadest1.addressplus1; }                                                     // DMA MEMCPY
                 }
                 dmacount = dmacount - 1;
             }

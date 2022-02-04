@@ -56,11 +56,17 @@ unsigned char SMTSTATE( void ) {
 }
 
 // DMA CONTROLLER
-void DMASTART( void *source, void *destination, unsigned int count, unsigned char mode ) {
+static inline void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
     *DMASOURCE = (unsigned int)source;
     *DMADEST = (unsigned int)destination;
     *DMACOUNT = count;
     *DMAMODE = mode;
+}
+
+// PAWS MEMCPY USING THE DMA ENGINE
+void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count ) {
+    DMASTART( source, destination, count, 3 );
+    return( destination );
 }
 
 // OUTPUT TO UART
@@ -1949,7 +1955,6 @@ int sd_media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
 int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
     return(0);
 }
-
 
 // newlib support routines - define standard malloc memory size
 #ifndef MALLOC_MEMORY

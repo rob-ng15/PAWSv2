@@ -16,6 +16,14 @@ extern unsigned char *MEMORYTOP;
 //extern unsigned long CSRinstructions( void );
 //extern unsigned long CSRtime( void );
 
+// SMT START AND STOP
+//extern void SMTSTOP( void );
+//extern void SMTSTART( unsigned int );
+//extern unsigned char SMTSTATE( void );
+
+// MINI DMA ENGINE
+//void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count );
+
 // UART INPUT / OUTPUT
 extern void uart_outputcharacter(char);
 extern void uart_outputstring( char *);
@@ -145,6 +153,7 @@ extern void netppm_display( unsigned char *, unsigned char );
 extern void netppm_decoder( unsigned char *, unsigned char *);
 
 // nanojpeg.c from https://keyj.emphy.de/nanojpeg/
+#ifndef _NANOJPEG_H
 typedef enum _nj_result {
     NJ_OK = 0,        // no error, decoding successful
     NJ_NO_JPEG,       // not a JPEG file
@@ -162,11 +171,7 @@ extern int njIsColor(void);
 extern unsigned char* njGetImage(void);
 extern int njGetImageSize(void);
 extern void njDone(void);
-
-// SMT START AND STOP
-//extern void SMTSTOP( void );
-//extern void SMTSTART( unsigned int );
-//extern unsigned char SMTSTATE( void );
+#endif
 
 // SIMPLE CURSES
 extern void initscr( void );
@@ -355,9 +360,13 @@ static inline unsigned short get_buttons( void ) {
     return( *BUTTONS );
 }
 
-//SMT
+// SMT AND DMA
 extern unsigned char volatile *SMTSTATUS;
 extern unsigned int volatile *SMTPC;
+extern unsigned int volatile *DMASOURCE;
+extern unsigned int volatile *DMADEST;
+extern unsigned int volatile *DMACOUNT;
+extern unsigned char volatile *DMAMODE;
 
 static inline void SMTSTOP( void ) {
     *SMTSTATUS = 0;
@@ -371,6 +380,16 @@ static inline void SMTSTART( unsigned int code ) {
 static inline unsigned char SMTSTATE( void ) {
     return( *SMTSTATUS );
 }
+
+static inline void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count ) {
+    *DMASOURCE = (unsigned int)source;
+    *DMADEST = (unsigned int)destination;
+    *DMACOUNT = count;
+    *DMAMODE = 3;
+    return( destination );
+}
+
+#define memcpy(a,b,c)   paws_memcpy(a,b,c)
 
 //TIMERS
 extern unsigned short volatile *SYSTEMSECONDS;
