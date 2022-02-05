@@ -105,7 +105,6 @@ void sleep( unsigned short counter ) {
 
 // I/O FUNCTIONS
 // READ THE ULX3S JOYSTICK BUTTONS
-inline unsigned short get_buttons( void )  __attribute__((always_inline));
 unsigned short get_buttons( void ) {
     return( *BUTTONS );
 }
@@ -124,12 +123,10 @@ void set_background( unsigned char colour, unsigned char altcolour, unsigned cha
 }
 
 // GPU AND BITMAP
-// The bitmap is 640 x 480 pixels (0,0) is ALWAYS top left even if the bitmap has been offset
-// The bitmap can be moved 1 pixel at a time LEFT, RIGHT, UP, DOWN for scrolling
+// The bitmap is 320 x 240 pixels (0,0) is top left
 // The GPU can draw pixels, filled rectangles, lines, (filled) circles, filled triangles and has a 16 x 16 pixel blitter from user definable tiles
 
 // INTERNAL FUNCTION - WAIT FOR THE GPU TO FINISH THE LAST COMMAND
-inline void wait_gpu( void )  __attribute__((always_inline));
 void wait_gpu( void ) {
     while( *GPU_STATUS );
 }
@@ -257,8 +254,7 @@ void SMTSTOP( void ) {
     *SMTSTATUS = 0;
 }
 void SMTSTART( unsigned int code ) {
-    *SMTPCH = ( code & 0xffff0000 ) >> 16;
-    *SMTPCL = ( code & 0x0000ffff );
+    *SMTPC = code;
     *SMTSTATUS = 1;
 }
 
@@ -359,7 +355,6 @@ unsigned int FAT32startsector, FAT32clustersize, FAT32clusters;
 
 // SDCARD FUNCTIONS
 // INTERNAL FUNCTION - WAIT FOR THE SDCARD TO BE READY
-inline void sdcard_wait( void )  __attribute__((always_inline));
 void sdcard_wait( void ) {
     while( !*SDCARD_READY );
 }
@@ -369,13 +364,17 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
     gpu_blit( RED, 256, 2, 2, 2 );
     sdcard_wait();
     *SDCARD_SECTOR = sectorAddress;
-    *SDCARD_START = 1;
+    *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
+    *SDCARD_READSTART = 1;
     sdcard_wait();
 
-    for( unsigned short i = 0; i < 512; i++ ) {
-        *SDCARD_BUFFER_ADDRESS = i;
-        copyAddress[ i ] = *SDCARD_DATA;
-    }
+    // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
+    // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
+    *DMASOURCE = (unsigned int)SDCARD_DATA;
+    *DMADEST = (unsigned int)copyAddress;
+    *DMACOUNT = 512;
+    *DMAMODE = 4;
+
     gpu_blit( GREEN, 256, 2, 2, 2 );
 }
 
@@ -553,7 +552,7 @@ void main( void ) {
     unsigned short selectedfile = 0;
 
     // STOP SMT AND PIXELBLOCK
-    SMTSTOP(); *PB_STOP = 1;
+    SMTSTOP(); *PB_STOP = 1; *PB_MODE = 0;
 
     // CLEAR MEMORY
     memset( &_bss_start, 0, &_bss_end - &_bss_end );

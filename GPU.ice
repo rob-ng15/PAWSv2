@@ -32,11 +32,14 @@ algorithm gpu_queue(
     simple_dualport_bram_port0 characterGenerator8x8,
     simple_dualport_bram_port0 colourblittilemap,
 
-    input   uint7   pb_colour7,
+    input   uint1   pb_mode,
+    input   uint8   pb_colour,
     input   uint8   pb_colour8r,
     input   uint8   pb_colour8g,
     input   uint8   pb_colour8b,
     input   uint2   pb_newpixel,
+
+    simple_dualport_bram_port0 pb_colourmap,
 
     input   uint7   vector_block_colour,
     input   int11   vector_drawer_gpu_x,
@@ -54,11 +57,12 @@ algorithm gpu_queue(
         blit1tilemap <:> blit1tilemap,
         characterGenerator8x8 <:> characterGenerator8x8,
         colourblittilemap <:> colourblittilemap,
+        pb_colourmap <:> pb_colourmap,
         bitmap_x_write :> bitmap_x_write, bitmap_y_write :> bitmap_y_write,
         bitmap_colour_write :> bitmap_colour_write, bitmap_colour_write_alt :> bitmap_colour_write_alt,
         bitmap_write :> bitmap_write,
         gpu_active_dithermode :> gpu_active_dithermode,
-        pb_colour7 <: pb_colour7, pb_colour8r <: pb_colour8r, pb_colour8g <: pb_colour8g, pb_colour8b <: pb_colour8b, pb_newpixel <: pb_newpixel,
+        pb_mode <: pb_mode, pb_colour <: pb_colour, pb_colour8r <: pb_colour8r, pb_colour8g <: pb_colour8g, pb_colour8b <: pb_colour8b, pb_newpixel <: pb_newpixel,
         gpu_active :> gpu_active
     );
 
@@ -133,6 +137,7 @@ algorithm gpu(
     simple_dualport_bram_port0 blit1tilemap,
     simple_dualport_bram_port0 characterGenerator8x8,
     simple_dualport_bram_port0 colourblittilemap,
+    simple_dualport_bram_port0 pb_colourmap,
 
     // GPU to SET and GET pixels
     output int11   bitmap_x_write,
@@ -160,7 +165,8 @@ algorithm gpu(
     input   uint4   gpu_write,
     input   uint4   gpu_dithermode,
 
-    input   uint7   pb_colour7,
+    input   uint1   pb_mode,
+    input   uint8   pb_colour,
     input   uint8   pb_colour8r,
     input   uint8   pb_colour8g,
     input   uint8   pb_colour8b,
@@ -192,8 +198,10 @@ algorithm gpu(
         tile <: gpu_param0[0,9], scale <: gpu_param1[0,2], action <: gpu_param2[0,3]
     );
     pixelblock GPUpixelblock(
+        colourmap <:> pb_colourmap,
         x <: gpu_x, y <: gpu_y, width <: gpu_param0,
-        ignorecolour <: gpu_param1, colour7 <: pb_colour7,
+        ignorecolour <: gpu_param1,
+        mode <: pb_mode, colour <: pb_colour,
         colour8r <: pb_colour8r, colour8g <: pb_colour8g, colour8b <: pb_colour8b,
         newpixel <: pb_newpixel
     );
@@ -731,7 +739,7 @@ algorithm drawtriangle(
 
     bitmap_x_write := px; bitmap_y_write := py; bitmap_write := busy & IS.IN;
 
-    always {
+    always_after {
         if( start ) {
             busy = 1; dx = 1; px = min_x; py = min_y;
         } else {
@@ -904,13 +912,15 @@ algorithm blit(
 algorithm pixelblock(
     input   uint1   start,
     output  uint1   busy(0),
+    simple_dualport_bram_port0 colourmap,
 
     input   int11   x,
     input   int11   y,
     input   int11   width,
     input   uint7   ignorecolour,
 
-    input   uint7   colour7,
+    input   uint1   mode,
+    input   uint8   colour,
     input   uint8   colour8r,
     input   uint8   colour8g,
     input   uint8   colour8b,
@@ -921,30 +931,38 @@ algorithm pixelblock(
     output  uint7   bitmap_colour_write,
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
-    uint1   update = uninitialised;                 uint1   lineend <:: ( bitmap_x_write == x + width - 1 );
-    uint7   grrggbb <:: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };
-    bitmap_write := ( ( newpixel == 1 ) & ( colour7 != ignorecolour ) ) | ( newpixel == 2 );
-    bitmap_colour_write := ( newpixel == 1 ) ? colour7 : ( grrggbb == 64 ) ? 80 : grrggbb;
+    uint1   update = uninitialised;                 uint2   toprocess = uninitialised;                  uint1   lineend <:: ( bitmap_x_write == x + width - 1 );
+    uint7   grrggbb <:: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };                 uint7   grey <:: ( ( colour8r + colour8g + colour8b ) * 341 ) >> 11;
+
+    // LOOKUP THE COLOUR FROM THE REMAPPER
+    colourmap.addr0 := colour;
+
+    bitmap_write := 0;
+    bitmap_colour_write := ( toprocess == 1 ) ? mode ? colourmap.rdata0 : colour :
+                            mode ? ( grey == 64 ) ? 65 : grey : ( grrggbb == 64 ) ? 80 : grrggbb;
 
     always_after {
         if( start ) {
             busy = 1; bitmap_x_write = x; bitmap_y_write = y;
         } else {
             if( busy ) {
-                if( &newpixel ) {
-                    busy = 0;
-                } else {
-                    if( update ) {
-                        if( lineend ) {
-                            bitmap_x_write = x; bitmap_y_write = bitmap_y_write + 1;
-                        } else {
-                            bitmap_x_write = bitmap_x_write + 1;
-                        }
-                        update = 0;
+                if( update ) {
+                    if( lineend ) {
+                        bitmap_x_write = x; bitmap_y_write = bitmap_y_write + 1;
                     } else {
-                        update = |newpixel;
+                        bitmap_x_write = bitmap_x_write + 1;
+                    }
+                    update = 0;
+                }
+                if( |toprocess ) {
+                    if( &toprocess ) {
+                        busy = 0;
+                    } else {
+                        bitmap_write = ( ( toprocess == 1 ) & ( colour != ignorecolour ) ) | ( toprocess == 2 );
+                        update = 1;
                     }
                 }
+                toprocess = newpixel;
             }
         }
     }

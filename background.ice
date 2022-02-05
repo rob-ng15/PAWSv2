@@ -180,7 +180,7 @@ algorithm pattern(
     uint1   tophalf <: ( pix_y < 240 );             uint1   lefthalf <: ( pix_x < 320 );                uint2   checkmode <: b_mode - 7;
     starfield STARS( pix_x <: pix_x, pix_y <: pix_y );
 
-    always {
+    always_after {
         // SELECT COLOUR OR ALT
         switch( b_mode ) {
             case 0: { condition = 1; }                                              // SOLID

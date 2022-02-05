@@ -1,11 +1,16 @@
-algorithm pulsecursor(
-    output  uint1   show
-) <autorun> {
-    uint24  counter25mhz = uninitialised;
+// Create seconds and milliseconds since boot
+// Create 1hz (1 second counter)
+algorithm timesinceboot(
+    output  uint16  counter1hz(0),
+    output  uint20  counter1mhz(0)
+) <autorun,reginputs> {
+    uint5  counter25mhz = uninitialised;
     uint1   MIN <:: ( ~|counter25mhz );
-    show := MIN ? ~show : show;
+    uint1   MAX <:: ( counter1mhz == 1000000 );
     always_after {
-        counter25mhz = MIN ? 12500000 : counter25mhz - 1;
+        counter25mhz = MIN ? 25 : counter25mhz - 1;
+        counter1mhz = MAX ? 0 : counter1mhz + MIN;
+        counter1hz = counter1hz + MAX;
     }
 }
 

@@ -98,6 +98,11 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
 
 ![BIOS](documentation/Screenshots/COLOURS.jpg)
 <br>128 Colour Display
+* 4 Colour Modes
+    * Default PAWSv2 as shown
+    * GRRGGBB mode
+    * PAWSv1 with upper 63 colours as shades of grey
+    * Greayscale with 127 shades of grey
 
 ![BIOS](documentation/Screenshots/3DMAZE.jpg)
 <br>Demonstration game for the GPU and the hardware accelerated drawing of 2D Shapes
@@ -121,4 +126,4 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
     * STEREO AUDIO
     * SDCARD via SPI
         * FAT32 read only support
-
+        * With Linux compatible file I/O or PAWS file selector

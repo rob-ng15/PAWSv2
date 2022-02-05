@@ -37,7 +37,14 @@ $$end
 
     // SMT STATUS
     output  uint1   SMTRUNNING(0),
-    output  uint32  SMTSTARTPC(0)
+    output  uint32  SMTSTARTPC(0),
+
+    // MINI DMA CONTROLLER
+    output  uint32  DMASOURCE,
+    output  uint32  DMADEST,
+    output  uint32  DMACOUNT,
+    output  uint3   DMAMODE(0),
+    input   uint1   DMAACTIVE
 ) <autorun,reginputs> {
 $$if not SIMULATION then
     // UART CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
@@ -51,13 +58,28 @@ $$if not SIMULATION then
     ps2buffer PS2 <@clock_25mhz> ( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn, inread <: PS2inread[0,1] );
 
     // SDCARD AND BUFFER
-    uint1   SDCARDreadsector = uninitialized;
+    simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                          bufferaddrplus1 INPLUS1( address <: buffer_in.addr0 );      // READ FROM SDCARD
+    simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                         bufferaddrplus1 OUTPLUS1( address <: buffer_out.addr0 );    // WRITE TO SDCARD
+
+    uint1   SDCARDreadsector = uninitialized;       uint1   SDCARDwritesector = uninitialized;
     uint32  SDCARDsectoraddress = uninitialized;
-    uint9   SDCARDbufferaddress = uninitialized;
-    sdcardbuffer SDCARD( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso , readsector <: SDCARDreadsector, sectoraddress <: SDCARDsectoraddress, bufferaddress <: SDCARDbufferaddress );
+    sdcardcontroller SDCARD(
+        sd_clk :> sd_clk,
+        sd_mosi :> sd_mosi,
+        sd_csn :> sd_csn,
+        sd_miso <: sd_miso,
+        readsector <: SDCARDreadsector,
+        writesector <: SDCARDwritesector,
+        sectoraddress <: SDCARDsectoraddress,
+        buffer_in <:> buffer_in,
+        buffer_out <:> buffer_out
+    );
+
+    // A READABLE ADDRESS AT ffee
+    uint8   DMASET = uninitialized;
 
     // I/O FLAGS
-    SDCARDreadsector := 0;
+    SDCARDreadsector := 0; SDCARDwritesector := 0; buffer_out.wenable1 := 0;
 $$end
      always_before {
 $$if not SIMULATION then
@@ -89,9 +111,10 @@ $$end
                 }
                 case 4h2: { readData = PS2.outputascii ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
                 case 4h4: { readData = SDCARD.ready; }
-                case 4h5: { readData = SDCARD.bufferdata; }
+                case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = INPLUS1.addressplus1; }
                 $$end
                 case 4h3: { readData = leds; }
+                case 4he: { readData = DMASET; }
                 case 4hf: { readData = SMTRUNNING; }
                 default: { readData = 0;}
             }
@@ -107,21 +130,36 @@ $$end
                 case 4h4: {
                     switch( memoryAddress[1,2] ) {
                         case 2h0: { SDCARDreadsector = 1; }
-                        default: { SDCARDsectoraddress[ { ~memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 2h1: { SDCARDwritesector = 1; }
+                        default: { SDCARDsectoraddress[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
                     }
                 }
-                case 4h5: { SDCARDbufferaddress = writeData; }
+                case 4h5: {
+                    switch( memoryAddress[1,1] ) {
+                        case 0: { buffer_in.addr0 = 0; buffer_out.addr1 = 511; }
+                        case 1: { buffer_out.addr1 = OUTPLUS1.addressplus1; buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
+                    }
+                }
                 $$end
                 case 4h3: { leds = writeData; }
+                case 4he: {
+                    switch( memoryAddress[2,2] ) {
+                        case 2b00: { DMASOURCE[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 2b01: { DMADEST[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 2b10: { DMACOUNT[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 2b11: { if( memoryAddress[1,1] ) { DMASET = writeData; } else { DMAMODE = writeData; } }
+                    }
+                }
                 case 4hf: {
                     switch( memoryAddress[2,1] ) {
-                        case 1b0: { SMTSTARTPC[ { ~memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 1b0: { SMTSTARTPC[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
                         case 1b1: { SMTRUNNING = writeData; }
                     }
                 }
                 default: {}
             }
         }
+        if( DMAACTIVE ) { DMAMODE = 0; }
     }
 
     // DISBLE SMT ON STARTUP, KEYBOARD DEFAULTS TO JOYSTICK MODE
@@ -151,7 +189,7 @@ algorithm timers_memmap(
     output  uint1   cursor
 ) <autorun,reginputs> {
     // TIMERS and RNG
-    timers_rng timers <@clock_25mhz> ( systemclock :> cursor, g_noise_out :> static16bit );
+    timers_rng timers <@clock_25mhz> ( seconds :> cursor, g_noise_out :> static16bit );
     uint3   timerreset <:: memoryAddress[1,3] + 1;
     uint32  floatrng <:: { 1b0, 5b01111, &timers.u_noise_out[0,3] ? 3b110 : timers.u_noise_out[0,3], timers.g_noise_out[0,16], timers.u_noise_out[3,7] };
 
@@ -167,13 +205,15 @@ algorithm timers_memmap(
                 case 4h1: { readData = timers.u_noise_out; }
                 case 4h2: { readData = floatrng[0,16]; }
                 case 4h3: { readData = floatrng[16,16]; }
+                case 4h4: { readData = timers.seconds; }
+                case 4h5: { readData = timers.milliseconds[0,16]; }
+                case 4h6: { readData = timers.milliseconds[16,9]; }
                 case 4h8: { readData = timers.timer1hz0; }
                 case 4h9: { readData = timers.timer1hz1; }
                 case 4ha: { readData = timers.timer1khz0; }
                 case 4hb: { readData = timers.timer1khz1; }
                 case 4hc: { readData = timers.sleepTimer0; }
                 case 4hd: { readData = timers.sleepTimer1; }
-                case 4he: { readData = timers.systemclock; }
                 // RETURN NULL VALUE
                 default: { readData = 0; }
             }
@@ -238,7 +278,8 @@ algorithm audio_memmap(
 
 // TIMERS and RNG Controllers
 algorithm timers_rng(
-    output  uint16  systemclock,
+    output  uint16  seconds,
+    output  uint25  milliseconds,
     output  uint16  timer1hz0,
     output  uint16  timer1hz1,
     output  uint16  timer1khz0,
@@ -254,7 +295,7 @@ algorithm timers_rng(
     random rng( u_noise_out :> u_noise_out,  g_noise_out :> g_noise_out );
 
     // 1hz timers (P1 used for systemClock, T1hz0 and T1hz1 for user purposes)
-    pulse1hz P1( counter1hz :> systemclock );
+    timesinceboot P1( counter1hz :> seconds, counter1mhz :> milliseconds );
     pulse1hz T1hz0( counter1hz :> timer1hz0 );
     pulse1hz T1hz1( counter1hz :> timer1hz1 );
 
@@ -279,8 +320,6 @@ algorithm timers_rng(
             case 6: { STimer1.resetCounter = counter; }
         }
     }
-
-    P1.resetCounter = 0;
 }
 
 // AUDIO L&R Controller
@@ -328,19 +367,20 @@ algorithm fifo8(
 ) <autorun,reginputs> {
     simple_dualport_bram uint8 queue[256] = uninitialized;
     uint1   update = uninitialized;
-    uint8   top = 0;                                uint8   next = 0;
+    uint8   top = 0;                                uint8   topplus1 <:: top + 1;
+    uint8   next = 0;
 
-    available := ( top != next ); full := ( top + 1 == next );
+    available := ( top != next ); full := ( topplus1 == next );
     queue.addr0 := next; first := queue.rdata0;
     queue.wenable1 := 1;
 
-    always {
+    always_after {
         if( write ) {
             queue.addr1 = top; queue.wdata1 = last;
             update = 1;
         } else {
             if( update ) {
-                top = top + 1;
+                top = topplus1;
                 update = 0;
             }
         }
@@ -419,8 +459,8 @@ algorithm ps2buffer(
     ps2ascii PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn, outputascii <: outputascii, joystick :> joystick );
 }
 
-// SDCARD AND BUFFER CONTROLLER
-algorithm sdcardbuffer(
+// SDCARD CONTROLLER
+algorithm sdcardcontroller(
     // SDCARD
     output  uint1   sd_clk,
     output  uint1   sd_mosi,
@@ -428,21 +468,22 @@ algorithm sdcardbuffer(
     input   uint1   sd_miso,
 
     input   uint1   readsector,
+    input   uint1   writesector,
     input   uint32  sectoraddress,
-    input   uint9   bufferaddress,
     output  uint1   ready,
-    output  uint8   bufferdata
+
+  simple_dualport_bram_port0 buffer_out,
+  simple_dualport_bram_port1 buffer_in
+
 ) <autorun> {
     // SDCARD - Code for the SDCARD from @sylefeb
-    simple_dualport_bram uint8 sdbuffer[512] = uninitialized;
-    sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, store <:> sdbuffer );
+    sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, buffer_in <:> buffer_in, buffer_out <:> buffer_out );
 
     // SDCARD Commands
     always_after {
         sdcio.read_sector = readsector;
+        sdcio.write_sector = writesector;
         sdcio.addr_sector = sectoraddress;
-        sdbuffer.addr0 = bufferaddress;
         ready = sdcio.ready;
-        bufferdata = sdbuffer.rdata0;
     }
 }

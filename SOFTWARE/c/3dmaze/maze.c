@@ -56,7 +56,7 @@ unsigned short ghosteyes[4][4] = { { 0, 1, 2, 3 }, { 3, 0, 1, 2 }, { 2, 3, 0, 1 
 // DRAW WELCOME SCREEN
 void drawwelcome( void ) {
     // DISPLAY ULX3 BITMAP
-    gpu_pixelblock7( 0, 10, 320, 219, TRANSPARENT, ulx3sbitmap );
+    gpu_pixelblock( 0, 10, 320, 219, TRANSPARENT, ulx3sbitmap );
     gpu_printf_centre( YELLOW, 160, 8, BOLD, 1, 0, "3D MONSTER MAZE" );
 
     // DRAW JOYSTICK AND LABEL
@@ -802,7 +802,7 @@ int main( void ) {
             firstrun = 0;
         } else {
             // DISPLAY 3D PACMAN BITMAP
-            gpu_pixelblock7( 0, 0, 320, 240, TRANSPARENT, pacman3dbitmap );
+            gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, pacman3dbitmap );
         }
 
         // RESET POWER PILL STATUS
@@ -852,7 +852,7 @@ int main( void ) {
             // DISPLAY TOMBSTONE BITMAP AND RESET TO BEGINNING
             bitmap_draw( 1 - framebuffer );
             gpu_cs();
-            gpu_pixelblock7( 37, 0, 246, 240, TRANSPARENT, tombstonebitmap );
+            gpu_pixelblock( 37, 0, 246, 240, TRANSPARENT, tombstonebitmap );
             framebuffer = 1 - framebuffer;
             bitmap_display( framebuffer );
             level = 0;

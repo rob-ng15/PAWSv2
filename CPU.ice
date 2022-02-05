@@ -10,13 +10,23 @@ algorithm PAWSCPU(
     input   uint1   clock_CPUdecoder,
     output  uint2   accesssize,
     output  uint27  address,
+    output  uint1   cacheselect,
     output  uint16  writedata,
     output  uint1   writememory,
     input   uint16  readdata,
     output  uint1   readmemory,
     input   uint1   memorybusy,
+
+    // SMT
     input   uint1   SMTRUNNING,
-    input   uint27  SMTSTARTPC
+    input   uint27  SMTSTARTPC,
+
+    // MINI DMA CONTROLLER
+    input   uint27  DMASOURCE,
+    input   uint27  DMADEST,
+    input   uint27  DMACOUNT,
+    input   uint3   DMAMODE,
+    output  uint1   DMAACTIVE(0)
 ) <autorun,reginputs> {
     // COMMIT TO REGISTERS FLAG AND HART (0/1) SELECT
     uint1   COMMIT = uninitialized;
@@ -29,7 +39,7 @@ algorithm PAWSCPU(
 
     // RISC-V 32 BIT INSTRUCTION DECODER + MEMORY ACCESS SIZE
     decode RV32DECODER <@clock_CPUdecoder> ( instruction <: instruction );
-    memoryaccess MEMACCESS <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
+    memoryaccess MEMACCESS <@clock_CPUdecoder> ( cacheselect <: cacheselect, DMAACTIVE <: DMAACTIVE, opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
 
     // RISC-V REGISTERS
     uint1   frd <:: IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd;
@@ -140,14 +150,40 @@ algorithm PAWSCPU(
         loadAddress <: AGU.loadAddress
     );
 
+    // MINI DMA CONTROLLER
+    uint3   dmamode = uninitialized;
+    uint27  dmasrc = uninitialized;                 addrplus1 dmasrc1( address <: dmasrc );
+    uint27  dmadest = uninitialized;                addrplus1 dmadest1( address <: dmadest );            addrplus2 dmadest2( address <: dmadest );
+    uint27  dmacount = uninitialized;               addrsub1 dmacount1( address <: dmacount );
+    uint1   dmadestblue <:: ( dmadest == 27hd676 );
+
     readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
 
     if( ~reset ) {
-        SMT = 0; pc = 0;                                                                                                                            // ON RESET SET PC AND SMT TO 0
+        SMT = 0; pc = 0; DMAACTIVE = 0;                                                                                                             // ON RESET SET PC AND SMT TO 0, CANCEL DMA
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
     }
 
     while(1) {
+        if( |DMAMODE ) {
+            // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE
+            DMAACTIVE = 1;
+            dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT;
+            while( |dmacount ) {
+                address = dmasrc; readmemory = 1; while( memorybusy ) {}                                                                            // DMA FETCH
+                address = dmadest; writedata = readdata[ { dmasrc[0,1], 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}                       // DMA STORE
+                switch( dmamode ) {
+                    default: {}                                                                                                                     // DMA INACTIVE + UNDEFINED
+                    case 1: { dmasrc = dmasrc1.addressplus1; }                                                                                      // DMA PIXEL BLOCK 7/8 bit + SDCARD WRITE
+                    case 2: { dmasrc = dmasrc1.addressplus1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2.addressplus2; } }   // DMA PIXEL BLOCK RGB
+                    case 3: { dmasrc = dmasrc1.addressplus1; dmadest = dmadest1.addressplus1; }                                                     // DMA MEMCPY
+                    case 4: { dmadest = dmadest1.addressplus1; }                                                                                    // DMA MEMSET + SDCARD WRITE
+                }
+                dmacount = dmacount - 1;
+            }
+            DMAACTIVE = 0;
+        }
+        cacheselect = 0;
         address = PC; readmemory = 1; while( memorybusy ) {}                                                                                        // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
         compressed = ( ~&readdata[0,2] );
         if( compressed ) {
@@ -164,6 +200,7 @@ algorithm PAWSCPU(
         }
         // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS
 
+        cacheselect = 1;
         if( MEMACCESS.memoryload ) {
             address = AGU.loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
             if( accesssize[1,1] ) {

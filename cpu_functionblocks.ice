@@ -26,6 +26,8 @@ algorithm decode(
 // DETERMINE IF MEMORY LOAD OR STORE
 // AMO AND FLOAT LOAD/STORE ARE 32 BIT
 algorithm memoryaccess(
+    input   uint1   cacheselect,
+    input   uint1   DMAACTIVE,
     input   uint5   opCode,
     input   uint5   function7,
     input   uint3   function3,
@@ -38,7 +40,7 @@ algorithm memoryaccess(
     always_after {
         memoryload = ( ~|opCode ) | FLOAD | ( AMO & ( function7 != 5b00011 ) );
         memorystore = ( opCode == 5b01000 ) | FSTORE | ( AMO & ( function7 != 5b00010 ) );
-        accesssize = AMO | FLOAD | FSTORE ? 2b10 : function3[0,2];
+        accesssize = DMAACTIVE ? 2b00: ~cacheselect ? 2b01: AMO | FLOAD | FSTORE ? 2b10 : function3[0,2];
     }
 }
 
@@ -120,6 +122,34 @@ algorithm addrplus2(
 ) <autorun> {
     always_after {
         addressplus2 = address + 2;
+    }
+}
+// ADD 1 TO AN ADDRESS FOR DMA
+algorithm addrplus1(
+    input   uint27  address,
+    output  uint27  addressplus1
+) <autorun> {
+    always_after {
+        addressplus1 = address + 1;
+    }
+}
+// SUB 1 TO AN ADDRESS FOR DMA
+algorithm addrsub1(
+    input   uint27  address,
+    output  uint27  addresssub1
+) <autorun> {
+    always_after {
+        addresssub1 = address - 1;
+    }
+}
+
+// ADD 1 TO A 9 BIT BUFFER POINTER FOR DMA
+algorithm bufferaddrplus1(
+    input   uint9  address,
+    output  uint9  addressplus1
+) <autorun> {
+    always_after {
+        addressplus1 = address + 1;
     }
 }
 

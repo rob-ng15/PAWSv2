@@ -16,24 +16,31 @@ extern unsigned char *MEMORYTOP;
 //extern unsigned long CSRinstructions( void );
 //extern unsigned long CSRtime( void );
 
+// SMT START AND STOP
+//extern void SMTSTOP( void );
+//extern void SMTSTART( unsigned int );
+//extern unsigned char SMTSTATE( void );
+
+// MINI DMA ENGINE
+extern void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count );
+extern void *paws_memset( void *restrict destination, int value, size_t count );
+
 // UART INPUT / OUTPUT
 extern void uart_outputcharacter(char);
 extern void uart_outputstring( char *);
 extern char uart_inputcharacter( void );
-extern unsigned char uart_character_available( void );
+//extern unsigned char uart_character_available( void );
 
 // PS/2
-extern char ps2_character_available( void );
+//extern char ps2_character_available( void );
 extern short ps2_inputcharacter( void );
-extern void ps2_keyboardmode( unsigned char );
+//extern void ps2_keyboardmode( unsigned char );
 
 // BASIC I/O
-extern void set_leds( unsigned char );
-extern unsigned char get_buttons( void );
+//extern void set_leds( unsigned char );
+//extern unsigned char get_buttons( void );
 
 // TIMERS AND PSEUDO RANDOM NUMBER GENERATOR
-extern unsigned short systemclock( void );
-extern unsigned short secondssincestart( int );
 //extern float frng( void );
 extern unsigned short rng( unsigned short );
 extern void sleep1khz( unsigned short, unsigned char );
@@ -42,6 +49,7 @@ extern unsigned short get_timer1khz( unsigned char );
 extern void wait_timer1khz( unsigned char );
 extern unsigned short get_timer1hz( unsigned char );
 extern void reset_timer1hz( unsigned char );
+extern int paws_gettimeofday( struct paws_timeval *restrict tv, void *tz );
 
 // AUDIO
 extern void beep( unsigned char, unsigned char, unsigned char, unsigned short );
@@ -49,9 +57,9 @@ extern void await_beep( unsigned char );
 extern unsigned short get_beep_active( unsigned char );
 
 // DISPLAY
-extern void await_vblank( void );
+//extern void await_vblank( void );
 //extern unsigned int total_frames( void );
-extern void screen_mode( unsigned char, unsigned char );
+//extern void screen_mode( unsigned char, unsigned char );
 extern void bitmap_display( unsigned char );
 extern void bitmap_draw( unsigned char );
 
@@ -59,7 +67,7 @@ extern void bitmap_draw( unsigned char );
 extern void set_background( unsigned char, unsigned char, unsigned char );
 extern void copper_startstop( unsigned char ) ;
 extern void copper_program( unsigned char, unsigned char, unsigned char, unsigned short, unsigned char, unsigned char, unsigned char );
-extern void set_copper_cpuinput( unsigned short );
+//extern void set_copper_cpuinput( unsigned short );
 
 // TILEMAP
 extern void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action );
@@ -90,14 +98,14 @@ extern void bitmap_scrollwrap( unsigned char );
 extern void set_blitter_bitmap( unsigned char, unsigned short *);
 extern void set_blitter_chbitmap( unsigned char, unsigned char *);
 extern void set_colourblitter_bitmap( unsigned char, unsigned char *);
-extern void gpu_pixelblock7( short , short , unsigned short, unsigned short, unsigned char, unsigned char *);
+extern void gpu_pixelblock( short , short , unsigned short, unsigned short, unsigned char, unsigned char *);
 extern void gpu_pixelblock24( short , short , unsigned short, unsigned short, unsigned char *);
-extern void gpu_pixelblock24bw( short , short , unsigned short, unsigned short, unsigned char *);
 extern void gpu_pixelblock_start( short , short , unsigned short );
-//extern void gpu_pixelblock_pixel7( unsigned char );
+extern void gpu_pixelblock_mode( unsigned char mode );
+//extern void gpu_pixelblock_pixel( unsigned char );
 //extern void gpu_pixelblock_pixel24( unsigned char, unsigned char, unsigned char );
-//extern void gpu_pixelblock_pixel24bw( unsigned char, unsigned char, unsigned char );
 //extern void gpu_pixelblock_stop( void );
+//extern void gpu_pixelblock_remap( unsigned char from, unsigned char to );
 
 extern void gpu_printf( unsigned char, short, short, unsigned char, unsigned char, unsigned char, const char *,...  );
 extern void gpu_printf_centre( unsigned char, short, short, unsigned char, unsigned char, unsigned char, const char *,...  );
@@ -146,6 +154,7 @@ extern void netppm_display( unsigned char *, unsigned char );
 extern void netppm_decoder( unsigned char *, unsigned char *);
 
 // nanojpeg.c from https://keyj.emphy.de/nanojpeg/
+#ifndef _NANOJPEG_H
 typedef enum _nj_result {
     NJ_OK = 0,        // no error, decoding successful
     NJ_NO_JPEG,       // not a JPEG file
@@ -163,11 +172,7 @@ extern int njIsColor(void);
 extern unsigned char* njGetImage(void);
 extern int njGetImageSize(void);
 extern void njDone(void);
-
-// SMT START AND STOP
-extern void SMTSTOP( void );
-extern void SMTSTART( unsigned int );
-extern unsigned char SMTSTATE( void );
+#endif
 
 // SIMPLE CURSES
 extern void initscr( void );
@@ -225,6 +230,7 @@ struct stat {
 
 #define fopen(a,b)      paws_fopen(a, b)
 #define fclose(a)       paws_fclose(a)
+#define getc(a)         paws_fgetc(a)
 #define fgetc(a)        paws_fgetc(a)
 #define fgets(a,b,c)    paws_fgets(a, b, c)
 #define fputc(a,b)      paws_fputc(a, b)
@@ -255,30 +261,52 @@ extern int paws_printf(const char *restrict format, ... );
 extern int paws_fprintf( void *fd, const char *restrict format, ... );
 
 // INLINE SMALL FUNCTIONS FOR SPEED
-extern unsigned int volatile *FRAMES;
-static inline unsigned int total_frames( void ) {
-    return( *FRAMES );
-}
 
-extern unsigned char volatile *PB_COLOUR7;
+// DISPLAY
+extern unsigned char volatile *VBLANK;
+extern unsigned int volatile *FRAMES;
+extern unsigned char volatile *SCREENMODE;
+extern unsigned char volatile *COLOUR;
+extern unsigned char volatile *PB_COLOUR;
 extern unsigned char volatile *PB_COLOUR8R;
 extern unsigned char volatile *PB_COLOUR8G;
 extern unsigned char volatile *PB_COLOUR8B;
 extern unsigned char volatile *PB_STOP;
-static inline void gpu_pixelblock_pixel7( unsigned char pixel ) {
-    *PB_COLOUR7 = pixel;
+extern unsigned char volatile *PB_CMNUMBER;
+extern unsigned char volatile *PB_CMENTRY;
+extern unsigned short volatile *BACKGROUND_COPPER_CPUINPUT;
+
+static inline void await_vblank( void ) {
+    while( !*VBLANK );
+}
+
+static inline unsigned int total_frames( void ) {
+    return( *FRAMES );
+}
+
+static inline void screen_mode( unsigned char screenmode, unsigned char colour ) {
+    *SCREENMODE = screenmode;
+    *COLOUR = colour;
+}
+
+static inline void gpu_pixelblock_pixel( unsigned char pixel ) {
+    *PB_COLOUR = pixel;
 }
 static inline void gpu_pixelblock_pixel24( unsigned char red, unsigned char green, unsigned char blue ) {
     *PB_COLOUR8R = red;
     *PB_COLOUR8G= green;
     *PB_COLOUR8B = blue;
 }
-static inline void gpu_pixelblock_pixel24bw( unsigned char red, unsigned char green, unsigned char blue ) {
-    *PB_COLOUR7 = ( ( red + blue + green ) / 3 ) >> 2;
-}
-
 static inline void gpu_pixelblock_stop( void ) {
     *PB_STOP = 3;
+}
+static inline void gpu_pixelblock_remap( unsigned char from, unsigned char to ) {
+    *PB_CMNUMBER = from;
+    *PB_CMENTRY = to;
+}
+
+static inline void set_copper_cpuinput( unsigned short value ) {
+    *BACKGROUND_COPPER_CPUINPUT = value;
 }
 
 // RISC-V CSR FUNCTIONS
@@ -310,5 +338,77 @@ extern float volatile *FRNG;
 static inline float frng( void ) {
     return( *FRNG );
 }
+
+// I/O
+extern unsigned char volatile *UART_STATUS;
+extern unsigned char volatile *PS2_AVAILABLE;
+extern unsigned char volatile *PS2_MODE;
+extern unsigned short volatile *BUTTONS;
+extern unsigned char volatile *LEDS;
+static inline unsigned char uart_character_available( void ) {
+    return( *UART_STATUS & 1 );
+}
+static inline char ps2_character_available( void ) {
+    return *PS2_AVAILABLE;
+}
+static inline void ps2_keyboardmode( unsigned char mode ) {
+    *PS2_MODE = mode;
+}
+static inline void set_leds( unsigned char value ) {
+    *LEDS = value;
+}
+static inline unsigned short get_buttons( void ) {
+    return( *BUTTONS );
+}
+
+// SMT AND DMA
+extern unsigned char volatile *SMTSTATUS;
+extern unsigned int volatile *SMTPC;
+extern unsigned int volatile *DMASOURCE;
+extern unsigned int volatile *DMADEST;
+extern unsigned int volatile *DMACOUNT;
+extern unsigned char volatile *DMAMODE;
+extern unsigned char volatile *DMASET;
+
+static inline void SMTSTOP( void ) {
+    *SMTSTATUS = 0;
+}
+
+static inline void SMTSTART( unsigned int code ) {
+    *SMTPC = code;
+    *SMTSTATUS = 1;
+}
+
+static inline unsigned char SMTSTATE( void ) {
+    return( *SMTSTATUS );
+}
+
+//static inline void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count ) {
+//    *DMASOURCE = (unsigned int)source;
+//    *DMADEST = (unsigned int)destination;
+//    *DMACOUNT = count;
+//    *DMAMODE = 3;
+//    return( destination );
+//}
+
+//static inline void *paws_memset( void *restrict destination, int value, size_t count ) {
+//    *DMASET = value;
+//   *DMASOURCE = (unsigned int)DMASET;
+//    *DMADEST = (unsigned int)destination;
+//    *DMACOUNT = count;
+//    *DMAMODE = 4;
+//    return( destination );
+//}
+
+#define memcpy(a,b,c)   paws_memcpy(a,b,c)
+#define memset(a,b,c)   paws_memset(a,b,c)
+
+//TIMERS
+extern unsigned short volatile *SYSTEMSECONDS;
+extern unsigned int volatile *SYSTEMMILLISECONDS;
+static inline unsigned short systemclock( void ) {
+    return( *SYSTEMSECONDS );
+}
+
 #define __PAWSLIBRARY__
 #endif
