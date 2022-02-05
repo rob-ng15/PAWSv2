@@ -56,16 +56,23 @@ unsigned char SMTSTATE( void ) {
 }
 
 // DMA CONTROLLER
-static inline void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
+void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
     *DMASOURCE = (unsigned int)source;
     *DMADEST = (unsigned int)destination;
     *DMACOUNT = count;
     *DMAMODE = mode;
 }
 
-// PAWS MEMCPY USING THE DMA ENGINE
+// PAWS MEMCPY USING THE DMA ENGINE - MODE 3 IS READ INCREMENT TO WRITE INCREMENT
 void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count ) {
     DMASTART( source, destination, count, 3 );
+    return( destination );
+}
+
+// PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
+void *paws_memset( void *restrict destination, int value, size_t count ) {
+    *DMASET = (unsigned char)value;
+    DMASTART( (const void *restrict)DMASET, destination, count, 4 );
     return( destination );
 }
 
@@ -84,7 +91,7 @@ void uart_outputstring( const char *s ) {
 }
 // INPUT FROM UART
 // RETURN 1 IF UART CHARACTER AVAILABLE, OTHERWISE 0
-static inline unsigned char uart_character_available( void ) {
+unsigned char uart_character_available( void ) {
     return( *UART_STATUS & 1 );
 }
 // RETURN CHARACTER FROM UART
@@ -250,17 +257,15 @@ void sdcard_wait( void ) {
 
 // READ A SECTOR FROM THE SDCARD AND COPY TO MEMORY
 void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress ) {
-    unsigned short i;
-
     sdcard_wait();
     *SDCARD_SECTOR = sectorAddress;
+    *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
     *SDCARD_READSTART = 1;
     sdcard_wait();
 
-    for( i = 0; i < 512; i++ ) {
-        *SDCARD_BUFFER_ADDRESS = i;
-        copyAddress[ i ] = *SDCARD_DATA;
-    }
+    // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
+    // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
+    DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, 4 );
 }
 
 // I/O FUNCTIONS
@@ -1296,9 +1301,9 @@ void readfile( unsigned int starting_cluster, unsigned char *copyAddress ) {
 void swapentries( short i, short j ) {
     DirectoryEntry temporary;
 
-    memcpy( &temporary, &directorynames[i], sizeof( DirectoryEntry ) );
-    memcpy( &directorynames[i], &directorynames[j], sizeof( DirectoryEntry ) );
-    memcpy( &directorynames[j], &temporary, sizeof( DirectoryEntry ) );
+    paws_memcpy( &temporary, &directorynames[i], sizeof( DirectoryEntry ) );
+    paws_memcpy( &directorynames[i], &directorynames[j], sizeof( DirectoryEntry ) );
+    paws_memcpy( &directorynames[j], &temporary, sizeof( DirectoryEntry ) );
 }
 
 void sortdirectoryentries( unsigned short entries ) {
@@ -1334,7 +1339,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
         if( rereaddirectory ) {
             entries = 0xffff; present_entry = 0;
             fileentry = (FAT32DirectoryEntry *) directorycluster;
-            memset( &directorynames[0], 0, sizeof( DirectoryEntry ) * 256 );
+            paws_memset( &directorynames[0], 0, sizeof( DirectoryEntry ) * 256 );
         }
 
         while( rereaddirectory ) {
@@ -1347,7 +1352,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
                         // DIRECTORY, IGNORING "." and ".."
                         if( fileentry[i].filename[0] != '.' ) {
                             entries++;
-                            memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
+                            paws_memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
                             directorynames[entries].type = 2;
                             directorynames[entries].starting_cluster = ( fileentry[i].starting_cluster_high << 16 )+ fileentry[i].starting_cluster_low;
                         }
@@ -1359,7 +1364,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
                                 // SHORT FILE NAME ENTRY
                                 if( ( fileentry[i].ext[0] == extension[0] ) && ( fileentry[i].ext[1] == extension[1] ) && ( fileentry[i].ext[2] == extension[2] ) ) {
                                     entries++;
-                                    memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
+                                    paws_memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
                                     directorynames[entries].type = 1;
                                     directorynames[entries].starting_cluster = ( fileentry[i].starting_cluster_high << 16 )+ fileentry[i].starting_cluster_low;
                                     directorynames[entries].file_size = fileentry[i].file_size;

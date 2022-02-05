@@ -14,7 +14,7 @@ unsigned char volatile *SDCARD_READY = (unsigned char volatile *) 0xf140;
 unsigned char volatile *SDCARD_READSTART = (unsigned char volatile *) 0xf140;
 unsigned char volatile *SDCARD_WRITESTART = (unsigned char volatile *) 0xf142;
 unsigned int volatile *SDCARD_SECTOR = (unsigned int *) 0xf144;
-unsigned short volatile *SDCARD_BUFFER_ADDRESS = (unsigned short volatile *) 0xf150;
+unsigned char volatile *SDCARD_RESET_BUFFERADDRESS = (unsigned char volatile *) 0xf150;
 unsigned char volatile *SDCARD_DATA = (unsigned char volatile *) 0xf152;
 
 // DISPLAY UNITS
@@ -185,4 +185,5 @@ unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xffe0;
 unsigned int volatile *DMADEST = (unsigned int volatile *) 0xffe4;
 unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xffe8;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xffec;
+unsigned char volatile *DMASET = (unsigned char volatile *) 0xffee;
 

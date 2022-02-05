@@ -43,7 +43,7 @@ $$end
     output  uint32  DMASOURCE,
     output  uint32  DMADEST,
     output  uint32  DMACOUNT,
-    output  uint2   DMAMODE(0),
+    output  uint3   DMAMODE(0),
     input   uint1   DMAACTIVE
 ) <autorun,reginputs> {
 $$if not SIMULATION then
@@ -58,12 +58,12 @@ $$if not SIMULATION then
     ps2buffer PS2 <@clock_25mhz> ( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn, inread <: PS2inread[0,1] );
 
     // SDCARD AND BUFFER
-    simple_dualport_bram uint8 buffer_in[512] = uninitialized;    // READ FROM SDCARD
-    simple_dualport_bram uint8 buffer_out[512] = uninitialized;   // WRITE TO SDCARD
+    simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                          bufferaddrplus1 INPLUS1( address <: buffer_in.addr0 );      // READ FROM SDCARD
+    simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                         bufferaddrplus1 OUTPLUS1( address <: buffer_out.addr0 );    // WRITE TO SDCARD
 
     uint1   SDCARDreadsector = uninitialized;       uint1   SDCARDwritesector = uninitialized;
     uint32  SDCARDsectoraddress = uninitialized;
-    sdcardbuffer SDCARD(
+    sdcardcontroller SDCARD(
         sd_clk :> sd_clk,
         sd_mosi :> sd_mosi,
         sd_csn :> sd_csn,
@@ -74,6 +74,9 @@ $$if not SIMULATION then
         buffer_in <:> buffer_in,
         buffer_out <:> buffer_out
     );
+
+    // A READABLE ADDRESS AT ffee
+    uint8   DMASET = uninitialized;
 
     // I/O FLAGS
     SDCARDreadsector := 0; SDCARDwritesector := 0; buffer_out.wenable1 := 0;
@@ -108,9 +111,10 @@ $$end
                 }
                 case 4h2: { readData = PS2.outputascii ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
                 case 4h4: { readData = SDCARD.ready; }
-                case 4h5: { readData = buffer_in.rdata0; }
+                case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = INPLUS1.addressplus1; }
                 $$end
                 case 4h3: { readData = leds; }
+                case 4he: { readData = DMASET; }
                 case 4hf: { readData = SMTRUNNING; }
                 default: { readData = 0;}
             }
@@ -132,8 +136,8 @@ $$end
                 }
                 case 4h5: {
                     switch( memoryAddress[1,1] ) {
-                        case 0: { buffer_in.addr0 = writeData; buffer_out.addr1 = writeData; }
-                        case 1: { buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
+                        case 0: { buffer_in.addr0 = 0; buffer_out.addr1 = 511; }
+                        case 1: { buffer_out.addr1 = OUTPLUS1.addressplus1; buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
                     }
                 }
                 $$end
@@ -143,7 +147,7 @@ $$end
                         case 2b00: { DMASOURCE[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
                         case 2b01: { DMADEST[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
                         case 2b10: { DMACOUNT[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
-                        case 2b11: { DMAMODE = writeData; __display("REQUEST DMA %0d", writeData); }
+                        case 2b11: { if( memoryAddress[1,1] ) { DMASET = writeData; } else { DMAMODE = writeData; } }
                     }
                 }
                 case 4hf: {
@@ -363,9 +367,10 @@ algorithm fifo8(
 ) <autorun,reginputs> {
     simple_dualport_bram uint8 queue[256] = uninitialized;
     uint1   update = uninitialized;
-    uint8   top = 0;                                uint8   next = 0;
+    uint8   top = 0;                                uint8   topplus1 <:: top + 1;
+    uint8   next = 0;
 
-    available := ( top != next ); full := ( top + 1 == next );
+    available := ( top != next ); full := ( topplus1 == next );
     queue.addr0 := next; first := queue.rdata0;
     queue.wenable1 := 1;
 
@@ -375,7 +380,7 @@ algorithm fifo8(
             update = 1;
         } else {
             if( update ) {
-                top = top + 1;
+                top = topplus1;
                 update = 0;
             }
         }
@@ -454,8 +459,8 @@ algorithm ps2buffer(
     ps2ascii PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn, outputascii <: outputascii, joystick :> joystick );
 }
 
-// SDCARD AND BUFFER CONTROLLER
-algorithm sdcardbuffer(
+// SDCARD CONTROLLER
+algorithm sdcardcontroller(
     // SDCARD
     output  uint1   sd_clk,
     output  uint1   sd_mosi,

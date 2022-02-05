@@ -143,6 +143,16 @@ algorithm addrsub1(
     }
 }
 
+// ADD 1 TO A 9 BIT BUFFER POINTER FOR DMA
+algorithm bufferaddrplus1(
+    input   uint9  address,
+    output  uint9  addressplus1
+) <autorun> {
+    always_after {
+        addressplus1 = address + 1;
+    }
+}
+
 // RISC-V ADDRESS GENERATOR
 algorithm addressgenerator(
     input   uint32  instruction,

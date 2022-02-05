@@ -22,7 +22,8 @@ extern unsigned char *MEMORYTOP;
 //extern unsigned char SMTSTATE( void );
 
 // MINI DMA ENGINE
-//void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count );
+extern void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count );
+extern void *paws_memset( void *restrict destination, int value, size_t count );
 
 // UART INPUT / OUTPUT
 extern void uart_outputcharacter(char);
@@ -367,6 +368,7 @@ extern unsigned int volatile *DMASOURCE;
 extern unsigned int volatile *DMADEST;
 extern unsigned int volatile *DMACOUNT;
 extern unsigned char volatile *DMAMODE;
+extern unsigned char volatile *DMASET;
 
 static inline void SMTSTOP( void ) {
     *SMTSTATUS = 0;
@@ -381,15 +383,25 @@ static inline unsigned char SMTSTATE( void ) {
     return( *SMTSTATUS );
 }
 
-static inline void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count ) {
-    *DMASOURCE = (unsigned int)source;
-    *DMADEST = (unsigned int)destination;
-    *DMACOUNT = count;
-    *DMAMODE = 3;
-    return( destination );
-}
+//static inline void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count ) {
+//    *DMASOURCE = (unsigned int)source;
+//    *DMADEST = (unsigned int)destination;
+//    *DMACOUNT = count;
+//    *DMAMODE = 3;
+//    return( destination );
+//}
+
+//static inline void *paws_memset( void *restrict destination, int value, size_t count ) {
+//    *DMASET = value;
+//   *DMASOURCE = (unsigned int)DMASET;
+//    *DMADEST = (unsigned int)destination;
+//    *DMACOUNT = count;
+//    *DMAMODE = 4;
+//    return( destination );
+//}
 
 #define memcpy(a,b,c)   paws_memcpy(a,b,c)
+#define memset(a,b,c)   paws_memset(a,b,c)
 
 //TIMERS
 extern unsigned short volatile *SYSTEMSECONDS;

@@ -25,7 +25,7 @@ algorithm PAWSCPU(
     input   uint27  DMASOURCE,
     input   uint27  DMADEST,
     input   uint27  DMACOUNT,
-    input   uint2   DMAMODE,
+    input   uint3   DMAMODE,
     output  uint1   DMAACTIVE(0)
 ) <autorun,reginputs> {
     // COMMIT TO REGISTERS FLAG AND HART (0/1) SELECT
@@ -151,7 +151,7 @@ algorithm PAWSCPU(
     );
 
     // MINI DMA CONTROLLER
-    uint2   dmamode = uninitialized;
+    uint3   dmamode = uninitialized;
     uint27  dmasrc = uninitialized;                 addrplus1 dmasrc1( address <: dmasrc );
     uint27  dmadest = uninitialized;                addrplus1 dmadest1( address <: dmadest );            addrplus2 dmadest2( address <: dmadest );
     uint27  dmacount = uninitialized;               addrsub1 dmacount1( address <: dmacount );
@@ -173,10 +173,11 @@ algorithm PAWSCPU(
                 address = dmasrc; readmemory = 1; while( memorybusy ) {}                                                                            // DMA FETCH
                 address = dmadest; writedata = readdata[ { dmasrc[0,1], 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}                       // DMA STORE
                 switch( dmamode ) {
-                    case 0: {}                                                                                                                      // DMA INACTIVE
-                    case 1: { dmasrc = dmasrc1.addressplus1; }                                                                                      // DMA PIXEL BLOCK 7/8 bit
+                    default: {}                                                                                                                     // DMA INACTIVE + UNDEFINED
+                    case 1: { dmasrc = dmasrc1.addressplus1; }                                                                                      // DMA PIXEL BLOCK 7/8 bit + SDCARD WRITE
                     case 2: { dmasrc = dmasrc1.addressplus1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2.addressplus2; } }   // DMA PIXEL BLOCK RGB
                     case 3: { dmasrc = dmasrc1.addressplus1; dmadest = dmadest1.addressplus1; }                                                     // DMA MEMCPY
+                    case 4: { dmadest = dmadest1.addressplus1; }                                                                                    // DMA MEMSET + SDCARD WRITE
                 }
                 dmacount = dmacount - 1;
             }
