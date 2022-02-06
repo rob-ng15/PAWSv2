@@ -74,13 +74,15 @@ $$if not SIMULATION then
         buffer_in <:> buffer_in,
         buffer_out <:> buffer_out
     );
-
+$$end
     // A READABLE ADDRESS AT ffee
     uint8   DMASET = uninitialized;
 
+$$if not SIMULATION then
     // I/O FLAGS
     SDCARDreadsector := 0; SDCARDwritesector := 0; buffer_out.wenable1 := 0;
 $$end
+
      always_before {
 $$if not SIMULATION then
         // UPDATE LATCHES

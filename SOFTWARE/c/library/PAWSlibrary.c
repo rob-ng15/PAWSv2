@@ -463,19 +463,14 @@ unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char act
 }
 
 // GPU AND BITMAP
-// The bitmap is 640 x 480 pixels (0,0) is ALWAYS top left even if the bitmap has been offset
-// The bitmap can be moved 1 pixel at a time LEFT, RIGHT, UP, DOWN for scrolling
+// The bitmap is 320 x 4240 pixels (0,0) is top left
 // The GPU can draw pixels, filled rectangles, lines, (filled) circles, filled triangles and has a 16 x 16 pixel blitter from user definable tiles
 
 // SET GPU DITHER MODE AND ALTERNATIVE COLOUR
-unsigned char __last_mode = 0xff, __last_colour = 0xff;
 void gpu_dither( unsigned char mode, unsigned char colour ) {
-    if( ~( ( mode == __last_mode ) && ( colour == __last_colour ) ) ) {
-        wait_gpu();
-        *GPU_COLOUR_ALT = colour;
-        *GPU_DITHERMODE = mode;
-        __last_mode = mode; __last_colour = colour;
-    }
+    wait_gpu();
+    *GPU_COLOUR_ALT = colour;
+    *GPU_DITHERMODE = mode;
 }
 
 // SET GPU CROPPING RECTANGLE
@@ -541,9 +536,9 @@ void gpu_rectangle( unsigned char colour, short x1, short y1, short x2, short y2
     *GPU_WRITE = 3;
 }
 
-// CLEAR THE BITMAP by drawing a transparent rectangle from (0,0) to (639,479) and resetting the bitamp scroll position
+// CLEAR THE BITMAP by drawing a transparent rectangle from (0,0) to (319,239) and resetting the dither pattern
 void gpu_cs( void ) {
-    gpu_dither( 0, 64 ); gpu_rectangle( 64, 0, 0, 319, 239 );
+    gpu_dither( 0, TRANSPARENT ); gpu_rectangle( TRANSPARENT, 0, 0, 319, 239 );
 }
 
 
