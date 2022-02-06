@@ -1720,20 +1720,8 @@ int getyx( int *y, int *x ) {
 }
 
 void __scroll( void ) {
-    __curses_cell temp;
-    for( unsigned short y = 0; y < LINES-1; y++ ) {
-        for( unsigned short x = 0; x < COLS; x++ ) {
-            temp = __read_curses_cell( x, y + 1 );
-            __write_curses_cell( x, y, temp );
-        }
-    }
-    // BLANK THE LAST LINE
-    temp.cell.character = 0;
-    temp.cell.background = TRANSPARENT;
-    temp.cell.foreground = __curses_fore;
-    for( unsigned short x = 0; x < COLS; x++ ) {
-        __write_curses_cell( x, LINES - 1, temp );
-    }
+    while( *TPU_COMMIT );
+    *TPU_COMMIT = 8;
 }
 
 int addch( unsigned char ch ) {
@@ -1880,46 +1868,23 @@ int attroff( int attrs ) {
 
 
 int deleteln( void ) {
-    __curses_cell temp;
-
-    if( __curses_y == LINES-1 ) {
-        // BLANK LAST LINE
-        temp.cell.character = 0;
-        temp.cell.background = TRANSPARENT;
-        temp.cell.foreground = __curses_fore;
-
-        for( unsigned char x = 0; x < COLS; x++ ) {
-            __write_curses_cell( x, LINES-1, temp );
-         }
-    } else {
-        // MOVE LINES UP
-        for( unsigned char y = __curses_y; y < LINES-1; y++ ) {
-            for( unsigned char x = 0; x < COLS; x++ ) {
-                temp = __read_curses_cell( x, y + 1 );
-                __write_curses_cell( x, y, temp );
-            }
-        }
-
-        // BLANK LAST LINE
-        temp.cell.character = 0;
-        temp.cell.background = TRANSPARENT;
-        temp.cell.foreground = __curses_fore;
-        for( unsigned char x = 0; x < COLS; x++ ) {
-            __write_curses_cell( x, LINES-1, temp );
-        }
-    }
+     while( *TPU_COMMIT );
+    *TPU_COMMIT = 9;
 
     return( true );
 }
 
 int clrtoeol( void ) {
-    __curses_cell temp;
-    temp.cell.character = 0;
-    temp.cell.background = TRANSPARENT;
-    temp.cell.foreground = __curses_fore;
-    for( int x = __curses_x; x < COLS; x++ ) {
-        __write_curses_cell( x, __curses_y, temp );
-    }
+     while( *TPU_COMMIT );
+    *TPU_COMMIT = 10;
+
+    return( true );
+}
+
+int clrtobot( void ) {
+     while( *TPU_COMMIT );
+    *TPU_COMMIT = 11;
+
     return( true );
 }
 
@@ -1956,7 +1921,7 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
     return(0);
 }
 
-// newlib support routines - define standard malloc memory size
+// newlib support routines - define standard malloc memory size 16MB
 #ifndef MALLOC_MEMORY
 #define MALLOC_MEMORY ( 16384 * 1024 )
 #endif

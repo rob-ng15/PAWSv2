@@ -197,6 +197,7 @@ extern int attron( int attrs );
 extern int attroff( int attrs );
 extern int deleteln( void );
 extern int clrtoeol( void );
+extern int clrtobot( void );
 extern int intrflush( void *, bool );
 extern int keypad( void *, bool );
 extern void *stdscr;

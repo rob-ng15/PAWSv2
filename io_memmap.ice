@@ -369,10 +369,10 @@ algorithm fifo8(
 ) <autorun,reginputs> {
     simple_dualport_bram uint8 queue[256] = uninitialized;
     uint1   update = uninitialized;
-    uint8   top = 0;                                uint8   topplus1 <:: top + 1;
+    uint8   top = 0;
     uint8   next = 0;
 
-    available := ( top != next ); full := ( topplus1 == next );
+    available := ( top != next ); full := ( top + 1 == next );
     queue.addr0 := next; first := queue.rdata0;
     queue.wenable1 := 1;
 
@@ -382,7 +382,7 @@ algorithm fifo8(
             update = 1;
         } else {
             if( update ) {
-                top = topplus1;
+                top = top + 1;
                 update = 0;
             }
         }

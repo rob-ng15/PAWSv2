@@ -142,61 +142,7 @@ static integer coutput;
 
 void more_init()
 {
-#ifdef MORE_NONE
-
-    crows = 0;
-
-#else /* ! MORE_NONE */
-#ifdef MORE_24
-
-    crows = 24;
-
-#else /* ! MORE_24 */
-#ifdef MORE_TERMCAP
-
-    char buf[2048];
-    char *term;
-
-    term = getenv("TERM");
-    if (term == NULL)
-	crows = 0;
-    else {
-	tgetent(buf, term);
-	crows = tgetnum("li");
-    }
-
-#else /* ! MORE_TERMCAP */
-#ifdef MORE_TERMINFO
-
-    int i;
-
-    setupterm(NULL, 1, &i);
-    if (i != 1)
-        crows = 0;
-    else
-	crows = lines;
-
-#else /* ! MORE_TERMINFO */
-#ifdef MORE_AMOS
-
-    trm_char st;
-
-    if (isatty(fileno(stdin)) == 0)
-	crows = 0;
-    else {
-	    trmchr(&st, 0);
-	    crows = st.row;
-    }
-
-#else /* ! MORE_AMOS */
-
-    This should be impossible
-
-#endif /* ! MORE_AMOS */
-#endif /* ! MORE_TERMINFO */
-#endif /* ! MORE_TERMCAP */
-#endif /* ! MORE_24 */
-#endif /* ! MORE_NONE */
+    crows = 60;
 }
 
 /* The program wants to output a line to the terminal.  If z is not
@@ -209,16 +155,12 @@ void more_init()
 void more_output(z)
 const char *z;
 {
-/* pager code remarked out to allow streamed input and output */
-/*
-     if (crows > 0  &&  coutput > crows - 2) {
-	printf("Press return to continue: ");
-	(void) fflush(stdout);
-	while (getchar() != '\n')
-	    ;
-	coutput = 0;
+    // PAUSE 8 SECONDS WHEN OUTPUTTING A LOT OF TEXT
+    if (crows > 0  &&  coutput > crows - 2) {
+    sleep1khz( 8000, 0 );
+    coutput = 0;
     }
-*/
+
     if (z != NULL)
 	printf("%s\n", z);
 
