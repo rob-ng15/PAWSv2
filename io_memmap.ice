@@ -74,13 +74,15 @@ $$if not SIMULATION then
         buffer_in <:> buffer_in,
         buffer_out <:> buffer_out
     );
-
+$$end
     // A READABLE ADDRESS AT ffee
     uint8   DMASET = uninitialized;
 
+$$if not SIMULATION then
     // I/O FLAGS
     SDCARDreadsector := 0; SDCARDwritesector := 0; buffer_out.wenable1 := 0;
 $$end
+
      always_before {
 $$if not SIMULATION then
         // UPDATE LATCHES
@@ -367,10 +369,10 @@ algorithm fifo8(
 ) <autorun,reginputs> {
     simple_dualport_bram uint8 queue[256] = uninitialized;
     uint1   update = uninitialized;
-    uint8   top = 0;                                uint8   topplus1 <:: top + 1;
+    uint8   top = 0;
     uint8   next = 0;
 
-    available := ( top != next ); full := ( topplus1 == next );
+    available := ( top != next ); full := ( top + 1 == next );
     queue.addr0 := next; first := queue.rdata0;
     queue.wenable1 := 1;
 
@@ -380,7 +382,7 @@ algorithm fifo8(
             update = 1;
         } else {
             if( update ) {
-                top = topplus1;
+                top = top + 1;
                 update = 0;
             }
         }

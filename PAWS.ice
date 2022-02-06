@@ -253,7 +253,7 @@ $$end
                 IO? IO_Map.readData : 0;
 
     // SDRAM -> CPU BUSY STATE
-    CPU.memorybusy := DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & ( BRAM | SDRAM ) );
+    CPU.memorybusy := DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM );
 
     always_before {
         DRAM.readflag = SDRAM & CPU.readmemory;
@@ -353,6 +353,7 @@ algorithm cachecontroller(
     // DATA CACHE TAG IS REMAINING bits of the 26 bit address + 1 bit for valid flag + 1 bit for needwritetosdram flag
     simple_dualport_bram uint16 cache[$size$] = uninitialized;
     simple_dualport_bram uint$partaddresswidth+2$ tags[$size$] = uninitialized;
+    uint26  addressfromcache <:: { cachetag(tags.rdata0).partaddress, address[1,$cacheaddrwidth$], 1b0 };
 
     // INSTRUCTION CACHE for SDRAM
     // DEFINED AS ABOVE EXCEPT NO NEED FOR needwritetosdram flag
@@ -405,13 +406,13 @@ algorithm cachecontroller(
                 if( doread & ( ( ~cacheselect & Icachetagmatch ) | ( cacheselect & cachetagmatch ) ) ) {                                                // READ IN CACHE
                     busy = 0;
                 } else {
-                    if( cacheselect & cachetagmatch ) {                                                                                                 // IN CACHE
-                        CW.update = dowrite;                                                                                                            // UPDATE IF WRITE
-                        ICW.update = Icachetagmatch & dowrite;                                                                                          // UPDATE ICACHE IF NEEDED
+                    if( cacheselect & cachetagmatch ) {                                                                                                 // WRITE IN CACHE
+                        CW.update = 1;                                                                                                                  // UPDATE CACHE
+                        ICW.update = Icachetagmatch;                                                                                                    // UPDATE ICACHE IF NEEDED
                         busy = 0;
                     } else {
                         if( cachetag(tags.rdata0).needswrite ) {                                                                                        // CHECK IF CACHE LINE IS OCCUPIED
-                            while( SDRAM.busy ) {} SDRAM.address = { cachetag(tags.rdata0).partaddress, address[1,$cacheaddrwidth$], 1b0 };             // EVICT FROM CACHE TO SDRAM
+                            while( SDRAM.busy ) {} SDRAM.address = addressfromcache;                                                                    // EVICT FROM CACHE TO SDRAM
                             SDRAM.writeflag = 1;
                         }
                         if( doreadsdram ) {                                                                                                             // NEED TO READ SDRAM

@@ -36,7 +36,7 @@ PROJECTTYPE=GAMES
 # Uncomment the following line if you want to have access to the game
 # debugging tool.  This is invoked by typing "gdt".  It is not much
 # use except for debugging.
-GDTFLAG = -DALLOW_GDT
+#GDTFLAG = -DALLOW_GDT
 
 # Compilation flags
 # On SCO Unix Development System 3.2.2a, the const type qualifier does

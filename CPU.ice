@@ -174,10 +174,11 @@ algorithm PAWSCPU(
                 address = dmadest; writedata = readdata[ { dmasrc[0,1], 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}                       // DMA STORE
                 switch( dmamode ) {
                     default: {}                                                                                                                     // DMA INACTIVE + UNDEFINED
-                    case 1: { dmasrc = dmasrc1.addressplus1; }                                                                                      // DMA PIXEL BLOCK 7/8 bit + SDCARD WRITE
-                    case 2: { dmasrc = dmasrc1.addressplus1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2.addressplus2; } }   // DMA PIXEL BLOCK RGB
-                    case 3: { dmasrc = dmasrc1.addressplus1; dmadest = dmadest1.addressplus1; }                                                     // DMA MEMCPY
-                    case 4: { dmadest = dmadest1.addressplus1; }                                                                                    // DMA MEMSET + SDCARD WRITE
+                    case 1: { dmasrc = dmasrc1.addressplus1; }                                                                                      // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
+                    case 2: { dmasrc = dmasrc1.addressplus1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2.addressplus2; } }   // DMA SPECIAL PIXEL BLOCK RGB
+                    case 3: { dmasrc = dmasrc1.addressplus1; dmadest = dmadest1.addressplus1; }                                                     // DMA multi-src to multi-dest MEMCPY
+                    case 4: { dmadest = dmadest1.addressplus1; }                                                                                    // DMA single-src to multi-dest MEMSET + SDCARD WRITE
+                    // case 5: {}                                                                                                                   // DMA single-src to single-dest SET TILE/CBLITTER to single value
                 }
                 dmacount = dmacount - 1;
             }

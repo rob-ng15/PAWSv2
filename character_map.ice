@@ -84,9 +84,9 @@ algorithm character_map_writer(
     input   uint9   tpu_character,
     input   uint7   tpu_foreground,
     input   uint7   tpu_background,
-    input   uint3   tpu_write,
+    input   uint4   tpu_write,
 
-    output  uint3   tpu_active,
+    output  uint5   tpu_active,
     output  uint9   curses_character,
     output  uint7   curses_background,
     output  uint6   curses_foreground,
@@ -99,7 +99,8 @@ algorithm character_map_writer(
 
     // Counter for clearscreen
     uint13  tpu_start_cs_addr = uninitialized;      uint13  tpu_cs_addr = uninitialized;                    uint13  tpu_cs_addr_next <:: tpu_cs_addr + 1;
-    uint13  tpu_max_count = uninitialized;
+    uint13  tpu_max_count = uninitialized;          uint13  tpu_cs_addr_nextline <:: tpu_cs_addr + 80;      uint13  tpu_cs_addr_prevline <:: tpu_cs_addr - 80;
+    uint1   tpu_cs_addr_lastline <:: ( tpu_cs_addr > 4719 );
 
     // TPU character position
     uint7   tpu_active_x = 0;                       cmcursorx TPUX( tpu_active_x <: tpu_active_x );
@@ -114,7 +115,7 @@ algorithm character_map_writer(
     cursor_x := tpu_active_x; cursor_y := tpu_active_y;
 
     // CURSES COPY ADDRESS
-    charactermap_copy.addr0 := ( tpu_active[2,1] ) ? tpu_cs_addr : TPUA.WRITEADDR;
+    charactermap_copy.addr0 := ( |tpu_active[2,2] ) ? tpu_cs_addr : TPUA.WRITEADDR;
 
     always_after {
         switch( tpu_write ) {
@@ -139,6 +140,10 @@ algorithm character_map_writer(
             }
             case 6: { tpu_active = 2; tpu_start_cs_addr = 0; }                                                                                          // Start curses wipe
             case 7: { tpu_active = 4; tpu_start_cs_addr = 0; }                                                                                          // Start curses copy
+            case 8: { tpu_active = 8; tpu_start_cs_addr = 80; }                                                                                         // Start curses scroll up
+            case 9: { tpu_active = 8; tpu_start_cs_addr = TPUA.YSTARTADDR; }                                                                            // Start curses deleteln
+            case 10: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; tpu_max_count = TPUA.YENDADDR; }                                            // Start curses clear to eol
+            case 11: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; tpu_max_count = 4800; }                                                     // Start curses clear to bot
         }
     }
 
@@ -166,6 +171,23 @@ algorithm character_map_writer(
                         ++:
                         charactermap.addr1 = tpu_cs_addr; charactermap.wdata1 = charactermap_copy.rdata0[0,9];
                         colourmap.addr1 = tpu_cs_addr; colourmap.wdata1 = { charactermap_copy.rdata0[16,7], charactermap_copy.rdata0[9,7] };
+                        tpu_cs_addr = tpu_cs_addr_next;
+                    }
+                }
+                case 3: {                                                                                                                               // CURSES SCROLL UP / DELETELN
+                    while( tpu_cs_addr != 4800 ) {
+                        ++:
+                        charactermap_copy.addr1 = tpu_cs_addr_prevline; charactermap_copy.wdata1 = charactermap_copy.rdata0;                            // MOVE CHARACTERS UP
+                        if( tpu_cs_addr_lastline ) {
+                            ++:
+                            charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = 23b10000001000000000000000;                               // WIPE LAST LINE
+                        }
+                        tpu_cs_addr = tpu_cs_addr_next;
+                    }
+                }
+                case 4: {                                                                                                                               // CURSES CLEAR TO EOL/BOT
+                    while( tpu_cs_addr != tpu_max_count ) {
+                        charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = 23b10000001000000000000000;
                         tpu_cs_addr = tpu_cs_addr_next;
                     }
                 }
