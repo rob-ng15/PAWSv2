@@ -210,21 +210,25 @@ algorithm spritebitmapwriter(
         simple_dualport_bram_port1 tiles_$i$,
     $$end
     input   uint4   sprite_writer_sprite,
-    input   uint7   sprite_writer_line,
-    input   uint4   sprite_writer_pixel,
+    input   uint1   sprite_writer_reset,
     input   uint7   sprite_writer_colour,
     input   uint1   commit
 ) <autorun,reginputs> {
+    uint12  pixel = uninitialised;                  uint12  pixelNEXT <:: pixel + 1;
+
     $$for i=0,15 do
+        tiles_$i$.wdata1 := sprite_writer_colour;
         tiles_$i$.wenable1 := 0;
     $$end
 
     always_after {
+        if( sprite_writer_reset ) { pixel = 0; }
         // WRITE BITMAP TO SPRITE TILE
         switch( sprite_writer_sprite ) {
             $$for i=0,15 do
-                case $i$: { tiles_$i$.addr1 = { sprite_writer_line, sprite_writer_pixel }; tiles_$i$.wdata1 = sprite_writer_colour; tiles_$i$.wenable1 = commit; }
+                case $i$: { tiles_$i$.addr1 = pixel; tiles_$i$.wenable1 = commit; }
             $$end
         }
+        if( commit ) { pixel = pixelNEXT; }
     }
 }

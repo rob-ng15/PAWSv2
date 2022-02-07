@@ -171,12 +171,20 @@ unsigned int CSRisa() {
    asm volatile ("csrr %0, 0x301" : "=r"(isa));
    return isa;
 }
+
+// DMA CONTROLLER
+void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
+    *DMASOURCE = (unsigned int)source;
+    *DMADEST = (unsigned int)destination;
+    *DMACOUNT = count;
+    *DMAMODE = mode;
+}
+
 // STANDARD C FUNCTIONS ( from @sylefeb mylibc )
 void * memset(void *dest, int val, size_t len) {
-  unsigned char *ptr = dest;
-  while (len-- > 0)
-    *ptr++ = val;
-  return dest;
+    *DMASET = val;
+    DMASTART( (const void *restrict)DMASET, dest, len, 4 );
+    return dest;
 }
 
 short strlen( char *s ) {
@@ -288,7 +296,6 @@ void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
 
     for( short i = 0; i < 16; i ++ ) {
-        *BLIT_WRITER_LINE = i;
         *BLIT_WRITER_BITMAP = bitmap[i];
     }
 }
@@ -345,26 +352,8 @@ unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char act
 
 // SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 pixel bitmaps ( 2048 ARRGGBB pixels )
 void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
-    switch( sprite_layer ) {
-        case 0:
-            *LOWER_SPRITE_WRITER_NUMBER = sprite_number;
-            break;
-        case 1:
-            *UPPER_SPRITE_WRITER_NUMBER = sprite_number;
-            break;
-    }
-    for( short y = 0; y < 128; y++ ) {
-        switch( sprite_layer ) {
-            case 0:
-                *LOWER_SPRITE_WRITER_Y = y;
-                for( short x = 0; x < 16; x++ ) { *LOWER_SPRITE_WRITER_X = x; *LOWER_SPRITE_WRITER_COLOUR = sprite_bitmaps[y*16+x]; }
-                break;
-            case 1:
-                *UPPER_SPRITE_WRITER_Y = y;
-                for( short x = 0; x < 16; x++ ) { *UPPER_SPRITE_WRITER_X = x; *UPPER_SPRITE_WRITER_COLOUR = sprite_bitmaps[y*16+x]; }
-                break;
-        }
-    }
+    *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = sprite_number;
+    DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, 1 );
 }
 
 // SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
@@ -552,18 +541,10 @@ void main( void ) {
     gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 66, 34, "Risc-V RV32IMAFC CPU", 0 );
 
-    // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD
+    // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
-        *LOWER_TM_WRITER_TILE_NUMBER = i + 1;
-        *UPPER_TM_WRITER_TILE_NUMBER = i + 1;
-        for( y = 0; y < 16; y++ ) {
-            *LOWER_TM_WRITER_Y = y;
-            *UPPER_TM_WRITER_Y = y;
-            for( x = 0; x < 16; x++ ) {
-                *LOWER_TM_WRITER_X = x; *LOWER_TM_WRITER_COLOUR = i;
-                *UPPER_TM_WRITER_X = x; *UPPER_TM_WRITER_COLOUR = 63 - i;
-            }
-        }
+        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
+        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 63 - i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
         set_tilemap_tile( 0, i, 15, i+1, 0 );
         set_tilemap_tile( 1, i, 29, i+1, 0 );
     }

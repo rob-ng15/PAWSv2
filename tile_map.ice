@@ -185,19 +185,3 @@ algorithm tile_map_writer(
         }
     }
 }
-
-algorithm tilebitmapwriter(
-    input   uint6   tile_writer_tile,
-    input   uint4   tile_writer_line,
-    input   uint4   tile_writer_pixel,
-    input   uint7   tile_writer_colour,
-    input   uint1   commit,
-
-    simple_dualport_bram_port1 tiles16x16
-) <autorun,reginputs> {
-    tiles16x16.wenable1 := |tile_writer_tile & commit;
-    always_after {
-        tiles16x16.addr1 = { tile_writer_tile, tile_writer_line, tile_writer_pixel };
-        tiles16x16.wdata1 = tile_writer_colour;
-    }
-}

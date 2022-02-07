@@ -393,45 +393,23 @@ void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y,
 
 // SET THE TILE BITMAP for tile to the 16 x 16 pixel bitmap
 void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap ) {
-    switch( tm_layer ) {
-        case 0:
-            *LOWER_TM_WRITER_TILE_NUMBER = tile;
-            for( short y = 0; y < 16; y++ ) {
-                *LOWER_TM_WRITER_Y = y;
-                for( short x = 0; x < 16; x++ ) { *LOWER_TM_WRITER_X = x; *LOWER_TM_WRITER_COLOUR = bitmap[y*16+x]; }
-            }
-            break;
-        case 1:
-            *UPPER_TM_WRITER_TILE_NUMBER = tile;
-            for( short y = 0; y < 16; y++ ) {
-                *UPPER_TM_WRITER_Y = y;
-                for( short x = 0; x < 16; x++ ) { *UPPER_TM_WRITER_X = x; *UPPER_TM_WRITER_COLOUR = bitmap[y*16+x]; }
-            }
-            break;
-    }
+    *( tm_layer ? UPPER_TM_WRITER_TILE_NUMBER : LOWER_TM_WRITER_TILE_NUMBER ) = tile;
+    DMASTART( bitmap, (void *restrict)( tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR ), 256, 1 );
 }
 
 // SET THE TILE BITMAP for 4 tiles to the 32 x 32 pixel bitmap
 void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap ) {
-    switch( tm_layer ) {
-        case 0:
-            for( short i = 0; i < 4; i++ ) {
-                *LOWER_TM_WRITER_TILE_NUMBER = tile + i;
-                for( short y = 0; y < 16; y++ ) {
-                    *LOWER_TM_WRITER_Y = y;
-                    for( short x = 0; x < 16; x++ ) { *LOWER_TM_WRITER_X = x; *LOWER_TM_WRITER_COLOUR = bitmap[ ( y + (i&1 ? 16 : 0) )* 32 + ( x + ( i>1 ? 16 : 0 ) ) ]; }
-                }
+    for( short i = 0; i < 4; i++ ) {
+        if( tm_layer ) {
+            *UPPER_TM_WRITER_TILE_NUMBER = tile + i;
+        } else {
+            *LOWER_TM_WRITER_TILE_NUMBER = tile + i;
+        }
+        for( short y = 0; y < 16; y++ ) {
+            for( short x = 0; x < 16; x++ ) {
+                *( tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR ) = bitmap[ ( y + (i&1 ? 16 : 0) )* 32 + ( x + ( i>1 ? 16 : 0 ) ) ];
             }
-            break;
-        case 1:
-            for( short i = 0; i < 4; i++ ) {
-                *UPPER_TM_WRITER_TILE_NUMBER = tile + i;
-                for( short y = 0; y < 16; y++ ) {
-                    *UPPER_TM_WRITER_Y = y;
-                    for( short x = 0; x < 16; x++ ) { *UPPER_TM_WRITER_X = x; *UPPER_TM_WRITER_COLOUR = bitmap[ ( y + (i&1 ? 16 : 0) )* 32 + ( x + ( i>1 ? 16 : 0 ) ) ]; }
-                }
-            }
-            break;
+        }
     }
 }
 
@@ -599,7 +577,6 @@ void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
 
     for( int i = 0; i < 16; i ++ ) {
-        *BLIT_WRITER_LINE = i;
         *BLIT_WRITER_BITMAP = bitmap[i];
     }
 }
@@ -609,7 +586,6 @@ void set_blitter_chbitmap( unsigned char tile, unsigned char *bitmap ) {
     *BLIT_CHWRITER_TILE = tile;
 
     for( int i = 0; i < 8; i ++ ) {
-        *BLIT_CHWRITER_LINE = i;
         *BLIT_CHWRITER_BITMAP = bitmap[i];
     }
 }
@@ -617,14 +593,7 @@ void set_blitter_chbitmap( unsigned char tile, unsigned char *bitmap ) {
 // SET THE COLOURBLITTER TILE to the 16 x 16 pixel bitmap
 void set_colourblitter_bitmap( unsigned char tile, unsigned char *bitmap ) {
     *COLOURBLIT_WRITER_TILE = tile;
-
-    for( int i = 0; i < 16; i ++ ) {
-        *COLOURBLIT_WRITER_LINE = i;
-        for( int j = 0; j < 16; j ++ ) {
-            *COLOURBLIT_WRITER_PIXEL = j;
-            *COLOURBLIT_WRITER_COLOUR = bitmap[ i * 16 + j ];
-        }
-    }
+    DMASTART( bitmap, (void *restrict)COLOURBLIT_WRITER_COLOUR, 256, 1 );
 }
 
 // DRAW A FILLED TRIANGLE with vertices (x1,y1) (x2,y2) (x3,y3) in colour
@@ -959,26 +928,8 @@ void DoDrawList2Dscale( struct DrawList2D *list, short numentries, short xc, sho
 
 // SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 pixel bitmaps ( 2048 ARRGGBB pixels )
 void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
-    switch( sprite_layer ) {
-        case 0:
-            *LOWER_SPRITE_WRITER_NUMBER = sprite_number;
-            break;
-        case 1:
-            *UPPER_SPRITE_WRITER_NUMBER = sprite_number;
-            break;
-    }
-    for( short y = 0; y < 128; y++ ) {
-        switch( sprite_layer ) {
-            case 0:
-                *LOWER_SPRITE_WRITER_Y = y;
-                for( short x = 0; x < 16; x++ ) { *LOWER_SPRITE_WRITER_X = x; *LOWER_SPRITE_WRITER_COLOUR = sprite_bitmaps[y*16+x]; }
-                break;
-            case 1:
-                *UPPER_SPRITE_WRITER_Y = y;
-                for( short x = 0; x < 16; x++ ) { *UPPER_SPRITE_WRITER_X = x; *UPPER_SPRITE_WRITER_COLOUR = sprite_bitmaps[y*16+x]; }
-                break;
-        }
-    }
+    *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = sprite_number;
+    DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, 1 );
 }
 
 // SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
@@ -1093,12 +1044,12 @@ short get_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_num
 // RETURN THE COLLISION STATUS for sprite_number in sprite_layer to other in layer sprites
 //  bit is 1 if sprite is in collision with { in layer sprite 15, in layer sprite 14 .. in layer sprite 0 }
 unsigned short get_sprite_collision( unsigned char sprite_layer, unsigned char sprite_number ) {
-    return( ( sprite_layer == 0 ) ? LOWER_SPRITE_COLLISION_BASE[sprite_number] : UPPER_SPRITE_COLLISION_BASE[sprite_number] );
+    return( sprite_layer ? UPPER_SPRITE_COLLISION_BASE[sprite_number] : LOWER_SPRITE_COLLISION_BASE[sprite_number] );
 }
 // RETURN THE COLLISION STATUS for sprite number in sprite layer to other layers
 // bit is 1 if sprite is in collision with { bitmap, tilemap L, tilemap U, other sprite layer }
 unsigned short get_sprite_layer_collision( unsigned char sprite_layer, unsigned char sprite_number ) {
-    return( ( sprite_layer == 0 ) ? LOWER_SPRITE_LAYER_COLLISION_BASE[sprite_number] : UPPER_SPRITE_LAYER_COLLISION_BASE[sprite_number] );
+    return( sprite_layer ? UPPER_SPRITE_LAYER_COLLISION_BASE[sprite_number] : LOWER_SPRITE_LAYER_COLLISION_BASE[sprite_number] );
 }
 
 // UPDATE A SPITE moving by x and y deltas, with optional wrap/kill and optional changing of the tile

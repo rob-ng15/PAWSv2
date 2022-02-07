@@ -203,8 +203,8 @@ $$end
         // READ IO Memory
         if( memoryRead ) {
             switch( memoryAddress[8,4] ) {
-                case 4h1: { readData = memoryAddress[1,1] ? LOWER_TILE.tm_active : LOWER_TILE.tm_lastaction; }
-                case 4h2: { readData = memoryAddress[1,1] ? UPPER_TILE.tm_active : UPPER_TILE.tm_lastaction; }
+                case 4h1: { readData = memoryAddress[1,1] ? LOWER_TILE.tm_lastaction : LOWER_TILE.tm_active; }
+                case 4h2: { readData = memoryAddress[1,1] ? UPPER_TILE.tm_lastaction : UPPER_TILE.tm_active; }
                 case 4h3: {
                     switch( memoryAddress[1,7] ) {
                         $$for i=0,15 do
@@ -434,14 +434,14 @@ algorithm bitmap_memmap(
     // 32 vector blocks each of 16 vertices
     simple_dualport_bram uint13 vertex <@video_clock,@clock> [1024] = uninitialised;
 
-    // 32 x 16 x 16 1 bit tilemap for blit1tilemap
+    // 64 x 16 x 16 1 bit tilemap for blit1tilemap
     simple_dualport_bram uint16 blit1tilemap <@video_clock,@clock> [ 1024 ] = uninitialized;
-    // Character ROM 8x8 x 256 for character blitter
+    // Character ROM 8x8 x 512 for character blitter
     simple_dualport_bram uint8 characterGenerator8x8 <@video_clock,@clock> [] = {
         $include('ROM/characterROM8x8.inc')
     };
 
-    // 32 x 16 x 16 7 bit tilemap for colour
+    // 64 x 16 x 16 7 bit tilemap for colour
     simple_dualport_bram uint7 colourblittilemap <@video_clock,@clock> [ 16384 ] = uninitialized;
 
     // 256 colour remapper
@@ -471,7 +471,15 @@ algorithm bitmap_memmap(
     // LATCH MEMORYWRITE
     uint1   LATCHmemoryWrite = uninitialized;
 
-    blit1tilemap.wenable1 := 1; characterGenerator8x8.wenable1 := 1; colourblittilemap.wenable1 := 1; vertex.wenable1 := 1; pb_colourmap.wenable1 := 1;
+    // BLITTER TILEBITMAP WRITERS - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT
+    uint6   BTWtile = uninitialized;                uint4   BTWline = uninitialised;                    uint4   BTWlineNEXT <:: BTWline + 1;
+    uint9   CTWtile = uninitialized;                uint3   CTWline = uninitialised;                    uint3   CTWlineNEXT <:: CTWline + 1;
+    uint6   CBTWtile = uninitialized;               uint8   CBTWpixel = uninitialised;                  uint8   CBTWpixelNEXT <:: CBTWpixel + 1;
+
+    blit1tilemap.wdata1 := writeData; blit1tilemap.wenable1 := 0;
+    characterGenerator8x8.wdata1 := writeData; characterGenerator8x8.wenable1 := 0;
+    colourblittilemap.wdata1 := writeData; colourblittilemap.wenable1 := 0;
+    vertex.wenable1 := 1; pb_colourmap.wenable1 := 1;
 
     always_after {
         switch( { memoryWrite, LATCHmemoryWrite } ) {
@@ -520,27 +528,21 @@ algorithm bitmap_memmap(
                         }
                     }
                     case 4h4: {
-                        switch( memoryAddress[1,2] ) {
-                            case 2h0: { blit1tilemap.addr1[4,6] = writeData; }
-                            case 2h1: { blit1tilemap.addr1[0,4] = writeData; }
-                            case 2h2: { blit1tilemap.wdata1 = writeData; }
-                            default: {}
+                        switch( memoryAddress[1,1] ) {
+                            case 0: { BTWtile = writeData; BTWline = 0; }
+                            case 1: { blit1tilemap.addr1 = { BTWtile, BTWline }; blit1tilemap.wenable1 = 1; BTWline = BTWlineNEXT; }
                         }
                     }
                     case 4h5: {
-                        switch( memoryAddress[1,2] ) {
-                            case 2h0: { characterGenerator8x8.addr1[3,9] = writeData; }
-                            case 2h1: { characterGenerator8x8.addr1[0,3] = writeData; }
-                            case 2h2: { characterGenerator8x8.wdata1 = writeData; }
-                            default: {}
+                        switch( memoryAddress[1,1] ) {
+                            case 0: { CTWtile = writeData; CTWline = 0; }
+                            case 1: { characterGenerator8x8.addr1 = { CTWtile, CTWline }; characterGenerator8x8.wenable1 = 1; CTWline = CTWlineNEXT; }
                         }
                     }
                     case 4h6: {
-                        switch( memoryAddress[1,2] ) {
-                            case 2h0: { colourblittilemap.addr1[8,6] = writeData; }
-                            case 2h1: { colourblittilemap.addr1[4,4] = writeData; }
-                            case 2h2: { colourblittilemap.addr1[0,4] = writeData; }
-                            case 2h3: { colourblittilemap.wdata1 = writeData; }
+                        switch( memoryAddress[1,1] ) {
+                            case 0: { CBTWtile = writeData; CBTWpixel = 0; }
+                            case 1: { colourblittilemap.addr1 = { CBTWtile, CBTWpixel }; colourblittilemap.wenable1 = 1; CBTWpixel = CBTWpixelNEXT; }
                         }
                     }
                     case 4h7: {
@@ -770,18 +772,16 @@ algorithm sprite_memmap(
         switch( { memoryWrite, LATCHmemoryWrite } ) {
             case 2b10: {
                 if( bitmapwriter ) {
-                    switch( memoryAddress[1,2] ) {
-                        case 2h0: { SBMW.sprite_writer_sprite = writeData; }
-                        case 2h1: { SBMW.sprite_writer_line = writeData; }
-                        case 2h2: { SBMW.sprite_writer_pixel = writeData; }
-                        case 2h3: { SBMW.sprite_writer_colour = writeData; SBMW.commit = 1; }
+                    switch( memoryAddress[1,1] ) {
+                        case 0: { SBMW.sprite_writer_sprite = writeData; SBMW.sprite_writer_reset = 1; }
+                        case 1: { SBMW.sprite_writer_colour = writeData; SBMW.commit = 1; }
                     }
                 } else {
                     // SET SPRITE ATTRIBUTE
                     SLW.sprite_layer_write = memoryAddress[5,3] + 1;
                 }
             }
-            case 2b00: { SLW.sprite_layer_write = 0; SBMW.commit = 0; }
+            case 2b00: { SLW.sprite_layer_write = 0; SBMW.sprite_writer_reset = 0; SBMW.commit = 0; }
             default: {}
         }
         LATCHmemoryWrite = memoryWrite;
@@ -870,7 +870,7 @@ algorithm tilemap_memmap(
     output  uint2   tm_active
 ) <autorun,reginputs> {
     // Tiles 64 x 16 x 16 ARRGGBB ( first tile defaults to transparent )
-    simple_dualport_bram uint7 tiles16x16 <@video_clock,@video_clock> [ 16384 ] = {
+    simple_dualport_bram uint7 tiles16x16 <@video_clock,@clock> [ 16384 ] = {
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
@@ -907,29 +907,29 @@ algorithm tilemap_memmap(
     );
 
     tile_map_writer TMW <@video_clock,!video_reset> ( tiles <:> tiles );
-    tilebitmapwriter TBMW <@video_clock,!video_reset> ( tiles16x16 <:> tiles16x16 );
 
      // LATCH MEMORYWRITE
     uint1   LATCHmemoryWrite = uninitialized;
 
+    // TILEBITMAP WRITER - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
+    uint6   TBMWtile = uninitialised;               uint8   TBMWpixel = uninitialised;                  uint8   TBMWpixelNEXT <:: TBMWpixel + 1;
+    tiles16x16.wdata1 := writeData; tiles16x16.wenable1 := 0;
+
     always_after {
         switch( { memoryWrite, LATCHmemoryWrite } ) {
             case 2b10: {
-                switch( memoryAddress[1,5] ) {
-                    case 5h00: { TMW.tm_x = writeData; }
-                    case 5h01: { TMW.tm_y = writeData; }
-                    case 5h02: { TMW.tm_character = writeData; }
-                    case 5h05: { TMW.tm_actions = writeData; }
-                    case 5h06: { TMW.tm_write = 1; }
-                    case 5h08: { TBMW.tile_writer_tile = writeData; }
-                    case 5h09: { TBMW.tile_writer_line = writeData; }
-                    case 5h0a: { TBMW.tile_writer_pixel = writeData; }
-                    case 5h0b: { TBMW.tile_writer_colour = writeData; TBMW.commit = 1; }
-                    case 5h10: { TMW.tm_scrollwrap = writeData; }
-                    default: {}
+                switch( memoryAddress[1,3] ) {
+                    case 3h0: { TMW.tm_x = writeData; }
+                    case 3h1: { TMW.tm_y = writeData; }
+                    case 3h2: { TMW.tm_character = writeData; }
+                    case 3h3: { TMW.tm_actions = writeData; }
+                    case 3h4: { TMW.tm_write = 1; }
+                    case 3h5: { TBMWtile = writeData; TBMWpixel = 0; }
+                    case 3h6: { tiles16x16.addr1 = { TBMWtile, TBMWpixel }; tiles16x16.wenable1 = 1; TBMWpixel = TBMWpixelNEXT; }
+                    case 3h7: { TMW.tm_scrollwrap = writeData; }
                 }
             }
-            case 2b00: { TMW.tm_write = 0; TMW.tm_scrollwrap = 0; TBMW.commit = 0; }
+            case 2b00: { TMW.tm_write = 0; TMW.tm_scrollwrap = 0; }
             default: {}
         }
         LATCHmemoryWrite = memoryWrite;

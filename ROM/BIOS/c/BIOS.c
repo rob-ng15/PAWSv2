@@ -72,25 +72,30 @@ unsigned int CSRisa() {
    asm volatile ("csrr %0, 0x301" : "=r"(isa));
    return isa;
 }
+
+// DMA CONTROLLER
+void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
+    *DMASOURCE = (unsigned int)source;
+    *DMADEST = (unsigned int)destination;
+    *DMACOUNT = count;
+    *DMAMODE = mode;
+}
+
 // STANDARD C FUNCTIONS ( from @sylefeb mylibc )
 void *memset(void *dest, int val, size_t len) {
-  unsigned char *ptr = dest;
-  while (len-- > 0)
-    *ptr++ = val;
-  return dest;
+    *DMASET = val;
+    DMASTART( (const void *restrict)DMASET, dest, len, 4 );
+    return dest;
 }
 
 void *memcpy( void *dest, void *src, size_t len ) {
-  unsigned char *ptr = dest, *ptr2 = src;
-  while (len-- > 0)
-    *ptr++ = *ptr2++;
-  return dest;
+    DMASTART( src, dest, len, 3 );
+    return dest;
 }
 
 short strlen( char *s ) {
     short i = 0;
-    while( *s ) {
-        s++;
+    while( *s++ ) {
         i++;
     }
     return(i);
@@ -192,8 +197,7 @@ void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
 
     for( short i = 0; i < 16; i ++ ) {
-        *BLIT_WRITER_LINE = i;
-        *BLIT_WRITER_BITMAP = bitmap[i];
+        *BLIT_WRITER_BITMAP = *bitmap++;
     }
 }
 
@@ -204,7 +208,6 @@ void gpu_pixelblock_stop( void ) {
 
 // CLEAR THE CHARACTER MAP
 void tpu_cs( void ) {
-    while( *TPU_COMMIT );
     *TPU_COMMIT = 3;
 }
 
@@ -370,10 +373,7 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
-    *DMASOURCE = (unsigned int)SDCARD_DATA;
-    *DMADEST = (unsigned int)copyAddress;
-    *DMACOUNT = 512;
-    *DMAMODE = 4;
+    DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, 4 );
 
     gpu_blit( GREEN, 256, 2, 2, 2 );
 }
@@ -566,18 +566,10 @@ void main( void ) {
     // DRAW LOGO AND SDCARD
      draw_paws_logo(); draw_sdcard();
 
-    // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD
+    // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
-        *LOWER_TM_WRITER_TILE_NUMBER = i + 1;
-        *UPPER_TM_WRITER_TILE_NUMBER = i + 1;
-        for( y = 0; y < 16; y++ ) {
-            *LOWER_TM_WRITER_Y = y;
-            *UPPER_TM_WRITER_Y = y;
-            for( x = 0; x < 16; x++ ) {
-                *LOWER_TM_WRITER_X = x; *LOWER_TM_WRITER_COLOUR = i;
-                *UPPER_TM_WRITER_X = x; *UPPER_TM_WRITER_COLOUR = 63 - i;
-            }
-        }
+        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
+        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 63 - i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
         set_tilemap_tile( 0, i, 21, i+1, 0 );
         set_tilemap_tile( 1, i, 27, i+1, 0 );
     }
@@ -597,14 +589,14 @@ void main( void ) {
     sdcard_readsector( 0, BOOTRECORD );
     PARTITIONS = (PartitionTable *) &BOOTRECORD[ 0x1BE ];
 
-    gpu_outputstringcentre( GREEN, 72, 0, "SDCARD Ready", 0 );
+    gpu_outputstringcentre( GREEN, 72, 0, "Ready", 0 );
     gpu_outputstringcentre( RED, 80, 0, "", 0 );
 
     // NO FAT16 PARTITION FOUND
     if( ( PARTITIONS[0].partition_type != 0x0b ) && ( PARTITIONS[0].partition_type != 0x0c ) ) {
         gpu_outputstringcentre( RED, 72, 1, "ERROR", 2 );
-        gpu_outputstringcentre( RED, 120, 1, "Please Insert AN SDCARD", 0 );
-        gpu_outputstringcentre( RED, 128, 1, "WITH A FAT32 PARTITION", 0 );
+        gpu_outputstringcentre( RED, 120, 1, "Please Insert SDCARD", 0 );
+        gpu_outputstringcentre( RED, 128, 1, "WITH FAT32 PARTITION", 0 );
         gpu_outputstringcentre( RED, 136, 1, "Press RESET", 0 );
         while(1) {}
     }
@@ -616,11 +608,11 @@ void main( void ) {
     FAT32clustersize = VOLUMEID -> sectors_per_cluster;
 
     // FILE SELECTOR
-    gpu_outputstringcentre( WHITE, 72, 1, "Select PAW File", 0 );
+    gpu_outputstringcentre( WHITE, 72, 1, "Select File", 0 );
     gpu_outputstringcentre( WHITE, 88, 0, "SELECT USING FIRE 1", 0 );
     gpu_outputstringcentre( WHITE, 96, 0, "SCROLL USING LEFT & RIGHT", 0 );
-    gpu_outputstringcentre( WHITE, 104, 0, "RETURN FROM SUBDIRECTORY USING UP", 0 );
-    gpu_outputstringcentre( RED, 144, 1, "No PAW Files Found", 0 );
+    gpu_outputstringcentre( WHITE, 104, 0, "RETURN FROM DIRECTORY USING UP", 0 );
+    gpu_outputstringcentre( RED, 144, 1, "No Files Found", 0 );
 
     // CALL FILEBROWSER
     unsigned int starting_cluster = filebrowser( VOLUMEID -> startof_root, VOLUMEID -> startof_root );
