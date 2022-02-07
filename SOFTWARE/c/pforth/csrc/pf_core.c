@@ -392,7 +392,7 @@ cell_t pfIncludeFile( const char *FileName )
 ***************************************************************/
 void pfDebugMessage( const char *CString )
 {
-#if 0
+#if 1
     while( *CString )
     {
         char c = *CString++;

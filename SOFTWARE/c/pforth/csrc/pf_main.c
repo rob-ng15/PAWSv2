@@ -28,7 +28,7 @@
     #define ERR(msg) /* { printf msg; } */
 #else
     #include <stdio.h>
-    #define ERR(msg) { printf msg; }
+    #define ERR(msg) { fprintf (stderr,msg); }
 #endif
 
 #include "pforth.h"
