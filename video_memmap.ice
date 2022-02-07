@@ -297,8 +297,9 @@ $$end
     }
 }
 
-// ALL DISPLAY GENERATOR UNITS RUN AT 25MHz, 640 x 480 @ 60fps
-// WRITING TO THE DISPLAY GENERATOR UNITS THEREFORE
+// ALL DISPLAY GENERATOR UNITS RUN AT 25MHz, 640 x 480 @ 60fps ( bitmap outputs 320 x 240 double sized pixels )
+// DISPLAY CONTROL UNITS RUN AT 50MHz - except GPU and BACKGROUND which run at 25MHz
+// WRITING TO THE GPU AND BACKGROUND THEREFORE
 // LATCHES THE OUTPUT FOR 2 x 50MHz clock cycles
 // AND THEN RESETS ANY CONTROLS
 //
@@ -622,18 +623,8 @@ algorithm charactermap_memmap(
 ) <autorun,reginputs> {
     // 80 x 30 character buffer
     // Setting background to 40 (ALPHA) allows the bitmap/background to show through, charactermap { BOLD, character }
-    simple_dualport_bram uint9 charactermap <@video_clock,@video_clock> [4800] = uninitialized;
-    simple_dualport_bram uint14 colourmap <@video_clock,@video_clock> [4800] = uninitialized;
-
-    // CHARACTER MAP WRITER
-    character_map_writer CMW <@video_clock,!video_reset> (
-        charactermap <:> charactermap,
-        colourmap <:> colourmap,
-        tpu_active :> tpu_active,
-        curses_character :> curses_character,
-        curses_background :> curses_background,
-        curses_foreground :> curses_foreground,
-    );
+    simple_dualport_bram uint9 charactermap <@video_clock,@clock> [4800] = uninitialized;
+    simple_dualport_bram uint14 colourmap <@video_clock,@clock> [4800] = uninitialized;
 
     // CHARACTER MAP DISPLAY
     uint1   tpu_showcursor = uninitialized;
@@ -651,27 +642,30 @@ algorithm charactermap_memmap(
         cursor_y <: CMW.cursor_y
     );
 
-    // LATCH MEMORYWRITE
-    uint1   LATCHmemoryWrite = uninitialized;
+    // CHARACTER MAP WRITER
+    character_map_writer CMW(
+        charactermap <:> charactermap,
+        colourmap <:> colourmap,
+        tpu_active :> tpu_active,
+        curses_character :> curses_character,
+        curses_background :> curses_background,
+        curses_foreground :> curses_foreground,
+    );
+    CMW.tpu_write := 0;
 
     always_after {
-        switch( { memoryWrite, LATCHmemoryWrite } ) {
-            case 2b10: {
-                switch( memoryAddress[1,3] ) {
-                    case 3h0: { CMW.tpu_x = writeData; }
-                    case 3h1: { CMW.tpu_y = writeData; }
-                    case 3h2: { CMW.tpu_character = writeData; }
-                    case 3h3: { CMW.tpu_background = writeData; character_map_window.tpu_background = writeData; }
-                    case 3h4: { CMW.tpu_foreground = writeData; character_map_window.tpu_foreground = writeData; }
-                    case 3h5: { CMW.tpu_write = writeData; }
-                    case 3h6: { character_map_window.tpu_showcursor = writeData; }
-                    case 3h7: { if( memoryAddress[0,1] ) { CMW.curses_wipe_foreground = writeData; } else { CMW.curses_wipe_background = writeData; } }
-                }
+        if( memoryWrite ) {
+            switch( memoryAddress[1,3] ) {
+                case 3h0: { CMW.tpu_x = writeData; }
+                case 3h1: { CMW.tpu_y = writeData; }
+                case 3h2: { CMW.tpu_character = writeData; }
+                case 3h3: { CMW.tpu_background = writeData; character_map_window.tpu_background = writeData; }
+                case 3h4: { CMW.tpu_foreground = writeData; character_map_window.tpu_foreground = writeData; }
+                case 3h5: { CMW.tpu_write = writeData; }
+                case 3h6: { character_map_window.tpu_showcursor = writeData; }
+                case 3h7: { if( memoryAddress[0,1] ) { CMW.curses_wipe_foreground = writeData; } else { CMW.curses_wipe_background = writeData; } }
             }
-            case 2b00: { CMW.tpu_write = 0; }
-            default: {}
         }
-        LATCHmemoryWrite = memoryWrite;
     }
 
     // HIDE CURSOR AT RESET + SET CURESES INITIAL TERMINAL TO WHITE ON BLACK
@@ -718,7 +712,7 @@ algorithm sprite_memmap(
 ) <autorun,reginputs> {
     $$for i=0,15 do
         // Sprite Tiles - 16 x 16 x 8 in ARRGGBB colour
-        simple_dualport_bram uint7 tiles_$i$ <@video_clock,@video_clock> [2048] = uninitialised;
+        simple_dualport_bram uint7 tiles_$i$ <@video_clock,@clock> [2048] = uninitialised;
     $$end
 
     sprite_layer sprites <@video_clock,!video_reset> (
@@ -745,7 +739,7 @@ algorithm sprite_memmap(
             tiles_$i$ <:> tiles_$i$,
         $$end
     );
-    sprite_layer_writer SLW <@video_clock,!video_reset> (
+    sprite_layer_writer SLW(
         $$for i=0,15 do
             sprite_read_active_$i$ :> sprite_read_active_$i$,
             sprite_read_actions_$i$ :> sprite_read_actions_$i$,
@@ -758,33 +752,36 @@ algorithm sprite_memmap(
         sprite_write_value <: writeData
     );
 
-    // UPDATE THE SPRITE TILE BITMAPS
-    spritebitmapwriter SBMW <@video_clock,!video_reset> (
-        $$for i=0,15 do
-            tiles_$i$ <:> tiles_$i$,
-        $$end
-    );
+    // SPRITE BITMAP WRITER - SETTING THE SPRITE NUMBER RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
+    uint12  writerpixel = uninitialised;            uint12  writerpixelNEXT <:: writerpixel + 1;
+    uint4   writerspritenumber = uninitialised;
 
-    // LATCH MEMORYWRITE
-    uint1   LATCHmemoryWrite = uninitialized;
+    $$for i=0,15 do
+        tiles_$i$.wdata1 := writeData;
+        tiles_$i$.wenable1 := 0;
+    $$end
+
+    SLW.sprite_layer_write := 0;
 
     always_after {
-        switch( { memoryWrite, LATCHmemoryWrite } ) {
-            case 2b10: {
-                if( bitmapwriter ) {
-                    switch( memoryAddress[1,1] ) {
-                        case 0: { SBMW.sprite_writer_sprite = writeData; SBMW.sprite_writer_reset = 1; }
-                        case 1: { SBMW.sprite_writer_colour = writeData; SBMW.commit = 1; }
+        if( memoryWrite ) {
+            if( bitmapwriter ) {
+                switch( memoryAddress[1,1] ) {
+                    case 0: { writerspritenumber = writeData; writerpixel = 0; }
+                    case 1: {
+                        switch( writerspritenumber ) {
+                            $$for i=0,15 do
+                                case $i$: { tiles_$i$.addr1 = writerpixel; tiles_$i$.wenable1 = 1; }
+                            $$end
+                        }
+                        writerpixel = writerpixelNEXT;
                     }
-                } else {
-                    // SET SPRITE ATTRIBUTE
-                    SLW.sprite_layer_write = memoryAddress[5,3] + 1;
                 }
+            } else {
+                // SET SPRITE ATTRIBUTE
+                SLW.sprite_layer_write = memoryAddress[5,3] + 1;
             }
-            case 2b00: { SLW.sprite_layer_write = 0; SBMW.sprite_writer_reset = 0; SBMW.commit = 0; }
-            default: {}
         }
-        LATCHmemoryWrite = memoryWrite;
     }
 }
 
@@ -810,7 +807,7 @@ algorithm terminal_memmap(
     output  uint2   terminal_active
 ) <autorun,reginputs> {
     // 80 x 4 character buffer for the input/output terminal
-    simple_dualport_bram uint8 terminal <@video_clock,@video_clock> [640] = uninitialized;
+    simple_dualport_bram uint8 terminal <@video_clock,@clock> [640] = uninitialized;
 
     terminal terminal_window <@video_clock,!video_reset> (
         terminal <:> terminal,
@@ -824,28 +821,21 @@ algorithm terminal_memmap(
         terminal_x <: TW.terminal_x
     );
 
-    terminal_writer TW <@video_clock,!video_reset> (
+    terminal_writer TW(
         terminal <:> terminal,
         terminal_active :> terminal_active
     );
-
-    // LATCH MEMORYWRITE
-    uint1   LATCHmemoryWrite = uninitialized;
+    TW.terminal_write := 0;
 
     always_after {
-        switch( { memoryWrite, LATCHmemoryWrite } ) {
-            case 2b10: {
-                switch( memoryAddress[1,2] ) {
-                    case 2h0: { TW.terminal_character = writeData; TW.terminal_write = 1; }
-                    case 2h1: { terminal_window.showterminal = writeData; }
-                    case 2h2: { TW.terminal_write = 2; }
-                    default: {}
-                }
+        if( memoryWrite) {
+            switch( memoryAddress[1,2] ) {
+                case 2h0: { TW.terminal_character = writeData; TW.terminal_write = 1; }
+                case 2h1: { terminal_window.showterminal = writeData; }
+                case 2h2: { TW.terminal_write = 2; }
+                default: {}
             }
-            case 2b00: { TW.terminal_write = 0; }
-            default: {}
         }
-        LATCHmemoryWrite = memoryWrite;
     }
 }
 
@@ -891,7 +881,7 @@ algorithm tilemap_memmap(
     };
 
     // 42 x 32 tile map, allows for pixel scrolling with border { 2 bit rotation/reflection, 6 bits tile number }
-    simple_dualport_bram uint9 tiles <@video_clock,@video_clock> [1344] = uninitialized;
+    simple_dualport_bram uint9 tiles <@video_clock,@clock> [1344] = uninitialized;
 
     tilemap tile_map <@video_clock,!video_reset> (
         tiles16x16 <:> tiles16x16,
@@ -906,32 +896,25 @@ algorithm tilemap_memmap(
         tilemap_display :> pixel_display
     );
 
-    tile_map_writer TMW <@video_clock,!video_reset> ( tiles <:> tiles );
-
-     // LATCH MEMORYWRITE
-    uint1   LATCHmemoryWrite = uninitialized;
+    tile_map_writer TMW( tiles <:> tiles );
 
     // TILEBITMAP WRITER - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
     uint6   TBMWtile = uninitialised;               uint8   TBMWpixel = uninitialised;                  uint8   TBMWpixelNEXT <:: TBMWpixel + 1;
-    tiles16x16.wdata1 := writeData; tiles16x16.wenable1 := 0;
+
+    tiles16x16.wdata1 := writeData; tiles16x16.wenable1 := 0; TMW.tm_write := 0; TMW.tm_scrollwrap := 0;
 
     always_after {
-        switch( { memoryWrite, LATCHmemoryWrite } ) {
-            case 2b10: {
-                switch( memoryAddress[1,3] ) {
-                    case 3h0: { TMW.tm_x = writeData; }
-                    case 3h1: { TMW.tm_y = writeData; }
-                    case 3h2: { TMW.tm_character = writeData; }
-                    case 3h3: { TMW.tm_actions = writeData; }
-                    case 3h4: { TMW.tm_write = 1; }
-                    case 3h5: { TBMWtile = writeData; TBMWpixel = 0; }
-                    case 3h6: { tiles16x16.addr1 = { TBMWtile, TBMWpixel }; tiles16x16.wenable1 = 1; TBMWpixel = TBMWpixelNEXT; }
-                    case 3h7: { TMW.tm_scrollwrap = writeData; }
-                }
+        if( memoryWrite ) {
+            switch( memoryAddress[1,3] ) {
+                case 3h0: { TMW.tm_x = writeData; }
+                case 3h1: { TMW.tm_y = writeData; }
+                case 3h2: { TMW.tm_character = writeData; }
+                case 3h3: { TMW.tm_actions = writeData; }
+                case 3h4: { TMW.tm_write = 1; }
+                case 3h5: { TBMWtile = writeData; TBMWpixel = 0; }
+                case 3h6: { tiles16x16.addr1 = { TBMWtile, TBMWpixel }; tiles16x16.wenable1 = 1; TBMWpixel = TBMWpixelNEXT; }
+                case 3h7: { TMW.tm_scrollwrap = writeData; }
             }
-            case 2b00: { TMW.tm_write = 0; TMW.tm_scrollwrap = 0; }
-            default: {}
         }
-        LATCHmemoryWrite = memoryWrite;
     }
 }
