@@ -186,7 +186,7 @@ int main( void ) {
     }
 #endif
     game.screenCols = COLS;
-
+    bkgdset( COLOR_PAIR(4) );
     initGame();
     paintIntro();
     game.state = STATE_INTRO;
