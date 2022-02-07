@@ -85,11 +85,13 @@ algorithm character_map_writer(
     input   uint7   tpu_foreground,
     input   uint7   tpu_background,
     input   uint4   tpu_write,
-
     output  uint5   tpu_active,
+
     output  uint9   curses_character,
     output  uint7   curses_background,
-    output  uint6   curses_foreground,
+    output  uint7   curses_foreground,
+    input   uint7   curses_wipe_background,
+    input   uint7   curses_wipe_foreground,
 
     output  uint7   cursor_x,
     output  uint6   cursor_y
@@ -97,10 +99,10 @@ algorithm character_map_writer(
     // COPY OF CHARCTER MAP FOR THE CURSES BUFFER
     simple_dualport_bram uint23 charactermap_copy[4800] = uninitialized;
 
-    // Counter for clearscreen
+    // Counter for clearscreen/copyscreen/scroll
     uint13  tpu_start_cs_addr = uninitialized;      uint13  tpu_cs_addr = uninitialized;                    uint13  tpu_cs_addr_next <:: tpu_cs_addr + 1;
     uint13  tpu_max_count = uninitialized;          uint13  tpu_cs_addr_nextline <:: tpu_cs_addr + 80;      uint13  tpu_cs_addr_prevline <:: tpu_cs_addr - 80;
-    uint1   tpu_cs_addr_lastline <:: ( tpu_cs_addr > 4719 );
+    uint1   tpu_cs_addr_lastline <:: ( tpu_cs_addr > 4719 );                                                uint23  curses_wipe <:: { curses_wipe_background, curses_wipe_foreground, 9h0 };
 
     // TPU character position
     uint7   tpu_active_x = 0;                       cmcursorx TPUX( tpu_active_x <: tpu_active_x );
@@ -160,7 +162,7 @@ algorithm character_map_writer(
                     }
                 }
                 case 1: {                                                                                                                               // CURSES WIPE
-                    charactermap_copy.wdata1 = 23b10000001000000000000000;
+                    charactermap_copy.wdata1 = curses_wipe;
                     while( tpu_cs_addr != 4800 ) {
                         charactermap_copy.addr1 = tpu_cs_addr;
                         tpu_cs_addr = tpu_cs_addr_next;
@@ -180,14 +182,14 @@ algorithm character_map_writer(
                         charactermap_copy.addr1 = tpu_cs_addr_prevline; charactermap_copy.wdata1 = charactermap_copy.rdata0;                            // MOVE CHARACTERS UP
                         if( tpu_cs_addr_lastline ) {
                             ++:
-                            charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = 23b10000001000000000000000;                               // WIPE LAST LINE
+                            charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe;                                              // WIPE LAST LINE
                         }
                         tpu_cs_addr = tpu_cs_addr_next;
                     }
                 }
                 case 4: {                                                                                                                               // CURSES CLEAR TO EOL/BOT
                     while( tpu_cs_addr != tpu_max_count ) {
-                        charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = 23b10000001000000000000000;
+                        charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe;
                         tpu_cs_addr = tpu_cs_addr_next;
                     }
                 }

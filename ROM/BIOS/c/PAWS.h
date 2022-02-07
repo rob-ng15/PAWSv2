@@ -151,6 +151,8 @@ unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd506;
 unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd508;
 unsigned char volatile *TPU_COMMIT = (unsigned char volatile *) 0xd50a;
 unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd50c;
+unsigned char volatile *CURSES_BACKGROUND = (unsigned char volatile *) 0xd50e;
+unsigned char volatile *CURSES_FOREGROUND = (unsigned char volatile *) 0xd50f;
 
 unsigned char volatile *TERMINAL_COMMIT = (unsigned char volatile *) 0xd700;
 unsigned char volatile *TERMINAL_STATUS = (unsigned char volatile *) 0xd700;
