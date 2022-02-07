@@ -54,7 +54,7 @@ int             scaledviewwidth;
 int             viewheight;
 int             viewwindowx;
 int             viewwindowy;
-byte*           ylookup[SCREENHEIGHT];
+byte**          ylookup = (byte **)0x2300; // moved to BRAM from //byte* ylookup[SCREENHEIGHT]; (800 bytes)
 int             *columnofs = (int *)0x1a00; // moved to BRAM from int columnofs[SCREENWIDTH];
 
 // Color tables for different players,

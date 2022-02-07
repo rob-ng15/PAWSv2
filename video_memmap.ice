@@ -663,7 +663,7 @@ algorithm charactermap_memmap(
                     case 3h4: { CMW.tpu_foreground = writeData; character_map_window.tpu_foreground = writeData; }
                     case 3h5: { CMW.tpu_write = writeData; }
                     case 3h6: { character_map_window.tpu_showcursor = writeData; }
-                    default: {}
+                    case 3h7: { if( memoryAddress[0,1] ) { CMW.curses_wipe_foreground = writeData; } else { CMW.curses_wipe_background = writeData; } }
                 }
             }
             case 2b00: { CMW.tpu_write = 0; }
@@ -672,8 +672,11 @@ algorithm charactermap_memmap(
         LATCHmemoryWrite = memoryWrite;
     }
 
-    // HIDE CURSOR AT RESET
-    if( ~reset ) { character_map_window.tpu_showcursor = 0; }
+    // HIDE CURSOR AT RESET + SET CURESES INITIAL TERMINAL TO WHITE ON BLACK
+    if( ~reset ) {
+        character_map_window.tpu_showcursor = 0;
+        CMW.curses_wipe_background = 0; CMW.curses_wipe_foreground = 63;
+    }
 }
 
 algorithm sprite_memmap(

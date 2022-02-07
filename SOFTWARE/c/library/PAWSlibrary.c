@@ -1622,6 +1622,7 @@ void __write_curses_cell( unsigned short x, unsigned short y, __curses_cell writ
 }
 
 void initscr( void ) {
+    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE;
     while( *TPU_COMMIT );
     *TPU_COMMIT = 6;
     __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; *TPU_CURSOR = 1; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
@@ -1866,6 +1867,10 @@ int attroff( int attrs ) {
     return( true );
 }
 
+void bkgdset( int attrs ) {
+    __curses_fore = __curses_foregroundcolours[ attrs & 0x7f ]; *CURSES_FOREGROUND = __curses_foregroundcolours[ attrs & 0x7f ];
+    __curses_back = __curses_backgroundcolours[ attrs & 0x7f ]; *CURSES_BACKGROUND = __curses_backgroundcolours[ attrs & 0x7f ];
+}
 
 int deleteln( void ) {
      while( *TPU_COMMIT );

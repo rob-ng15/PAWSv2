@@ -195,6 +195,7 @@ extern int printw( const char *fmt,... );
 extern int mvprintw( int y, int x, const char *fmt,... );
 extern int attron( int attrs );
 extern int attroff( int attrs );
+extern void bkgdset( int attrs );
 extern int deleteln( void );
 extern int clrtoeol( void );
 extern int clrtobot( void );
