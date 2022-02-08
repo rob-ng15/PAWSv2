@@ -421,27 +421,20 @@ void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned c
     set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
 }
 
-// SCROLL WRAP or CLEAR the TILEMAP
-//  action == 1 to 4 move the tilemap 1 pixel LEFT, UP, RIGHT, DOWN and SCROLL at limit
-//  action == 5 to 8 move the tilemap 1 pixel LEFT, UP, RIGHT, DOWN and WRAP at limit
+// SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
+//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN and SCROLL at limit
+//  action == 5 to 8 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN and WRAP at limit
 //  action == 9 clear the tilemap
 //  RETURNS 0 if no action taken other than pixel shift, action if SCROLL WRAP or CLEAR was actioned
-unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action ) {
-    switch( tm_layer ) {
-        case 0:
-            while( *LOWER_TM_STATUS );
-            *LOWER_TM_SCROLLWRAPCLEAR = action;
-            break;
-        case 1:
-            while( *UPPER_TM_STATUS );
-            *UPPER_TM_SCROLLWRAPCLEAR = action;
-            break;
-    }
+unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
+    while( *( tm_layer ? UPPER_TM_STATUS : LOWER_TM_STATUS ) );
+    *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
+    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = action;
     return( tm_layer ? *UPPER_TM_SCROLLWRAPCLEAR : *LOWER_TM_SCROLLWRAPCLEAR );
 }
 
 // GPU AND BITMAP
-// The bitmap is 320 x 4240 pixels (0,0) is top left
+// The bitmap is 320 x 240 pixels (0,0) is top left
 // The GPU can draw pixels, filled rectangles, lines, (filled) circles, filled triangles and has a 16 x 16 pixel blitter from user definable tiles
 
 // SET GPU DITHER MODE AND ALTERNATIVE COLOUR
@@ -495,7 +488,7 @@ void gpu_wideline( unsigned char colour, short x1, short y1, short x2, short y2,
     }
 }
 
-// DRAW AN OUTLINE RECTANGLE from (x1,y1) to (x2,y2) in colour
+// DRAW AN OUTLINE RECTANGLE from (x1,y1) to (x2,y2) in colour with width pixel lines
 void gpu_box( unsigned char colour, short x1, short y1, short x2, short y2, unsigned short width ) {
     gpu_wideline( colour, x1, y1, x2, y1, width );
     gpu_wideline( colour, x2, y1, x2, y2, width );
@@ -503,7 +496,7 @@ void gpu_box( unsigned char colour, short x1, short y1, short x2, short y2, unsi
     gpu_wideline( colour, x1, y2, x1, y1, width );
 }
 
-// DRAW AN OUTLINE BOX from (x1,y1) to (x2,y2) in colour
+// DRAW AN FILLED RECTANGLE from (x1,y1) to (x2,y2) in colour
 void gpu_rectangle( unsigned char colour, short x1, short y1, short x2, short y2 ) {
     *GPU_COLOUR = colour;
     *GPU_X = x1;

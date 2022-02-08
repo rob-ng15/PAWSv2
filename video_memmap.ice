@@ -896,7 +896,7 @@ algorithm tilemap_memmap(
         tilemap_display :> pixel_display
     );
 
-    tile_map_writer TMW( tiles <:> tiles );
+    tile_map_writer TMW( tiles <:> tiles, tm_lastaction :> tm_lastaction, tm_active :> tm_active );
 
     // TILEBITMAP WRITER - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
     uint6   TBMWtile = uninitialised;               uint8   TBMWpixel = uninitialised;                  uint8   TBMWpixelNEXT <:: TBMWpixel + 1;
@@ -913,7 +913,7 @@ algorithm tilemap_memmap(
                 case 3h4: { TMW.tm_write = 1; }
                 case 3h5: { TBMWtile = writeData; TBMWpixel = 0; }
                 case 3h6: { tiles16x16.addr1 = { TBMWtile, TBMWpixel }; tiles16x16.wenable1 = 1; TBMWpixel = TBMWpixelNEXT; }
-                case 3h7: { TMW.tm_scrollwrap = writeData; }
+                case 3h7: { if( memoryAddress[0,1] ) { TMW.tm_adjust = writeData; } else { TMW.tm_scrollwrap = writeData; } }
             }
         }
     }
