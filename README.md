@@ -75,21 +75,22 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
         * STACK POINTER AT TOP OF BRAM
     * 32K ( 8K x 32 bit ) of I/O Registers with 16 bit read / write
     * 32MB of SDRAM
-        * 16K Instruction and Data Cache
+        * 16K Instruction and 8K Data Cache
 
 * DISPLAY
     * HDMI 640 x 480 ouput with 127 colours + transparency
         * Background with pattern generator
             * Co-Processor to switch pattern generator parameters mid-frame
         * 2 x Tilemap Layers ( full colour )
-            * 42 x 32 ( 40 x 30 visible ) with pixel scrolling
+            * 42 x 32 ( 40 x 30 visible ) with ( 0 - 15 ) pixel scrolling
             * Tiles can be reflected or rotated
         * 2 x Sprite Layers ( full colour )
             * 16 sprites per layer
             * Sprites can be reflected or rotated, and doubled in size
-        * Bitmap with GPU
-            * Accelerated drawing of lines, rectangles, circles ( optional fill ), triangles
-            * Single and full colour blitters
+        * Bitmap ( 320 x 240 double sized pixels ) with GPU
+            * Accelerated drawing of lines, rectangles, circles ( optional fill ), triangles, quadrilaterals
+            * Single and full colour hardware blitters
+            * DMA assisted software blitter
             * Vector block drawer
         * Character Map
             * 80 x 60 with normal/bold font
@@ -127,3 +128,4 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
     * SDCARD via SPI
         * FAT32 read only support
         * With Linux compatible file I/O or PAWS file selector
+    * MINI-DMA CONTROLLER

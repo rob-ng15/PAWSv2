@@ -205,8 +205,8 @@ void initialise_graphics( void ) {
     // SET THE BACKGROUND - MULTICOLOURED STARFIELD VIA COPPER
     program_background();
     // CLEAR THE TILEMAPS
-    tilemap_scrollwrapclear( LOWER_LAYER, 9 );
-    tilemap_scrollwrapclear( UPPER_LAYER, 9 );
+    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
+    tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
 
     // SET BLITTER OBJECTS - ALIENS, EXPLOSIONS, UFO AND BUNKERS
     for( short i = 0; i < 15; i++ ) {

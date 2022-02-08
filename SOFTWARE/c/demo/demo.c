@@ -827,8 +827,8 @@ void displayreset( void ) {
     screen_mode( 0, 0 );
     gpu_cs();
     tpu_cs();
-    tilemap_scrollwrapclear( LOWER_LAYER, 9 );
-    tilemap_scrollwrapclear( UPPER_LAYER, 9 );
+    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
+    tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
     set_background( BLACK, BLACK, BKG_SOLID );
     for( short i = 0; i < 16; i++ ) {
         set_sprite_attribute( LOWER_LAYER, i, SPRITE_ACTIVE, 0 );
@@ -912,8 +912,8 @@ void tilemapdemo( void ) {
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Tilemap Scroll With Wrap Test" );
 
     unsigned char x, y, count, colour, actionflag;
-    (void)tilemap_scrollwrapclear( LOWER_LAYER, 9 );
-    (void)tilemap_scrollwrapclear( UPPER_LAYER, 9 );
+    (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
+    (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
 
     for( unsigned char tile_number = 0; tile_number < 10; tile_number++ ) {
         set_tilemap_bitmap( LOWER_LAYER, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
@@ -935,12 +935,12 @@ void tilemapdemo( void ) {
 
     for( unsigned short i = 0; i < 512; i++ ) {
         await_vblank();
-        // LOWER LEFT AND UP
-        (void)tilemap_scrollwrapclear( LOWER_LAYER, 5 );
-        (void)tilemap_scrollwrapclear( LOWER_LAYER, 6 );
-        // UPPER RIGHT AND DOWN
-        (void)tilemap_scrollwrapclear( UPPER_LAYER, 7 );
-        (void)tilemap_scrollwrapclear( UPPER_LAYER, 8 );
+        // LOWER LEFT AND UP 1 PIXEL AT A TIME
+        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_LEFT, 1 );
+        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_UP, 1 );
+        // UPPER RIGHT AND DOWN 2 PIXELS AT A TIME
+        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_RIGHT, 2 );
+        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_DOWN, 2 );
         sleep1khz( 10, 0 );
     }
 }

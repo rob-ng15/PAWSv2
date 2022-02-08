@@ -47,6 +47,7 @@ unsigned char volatile *LOWER_TM_STATUS = (unsigned char volatile *) 0xd108;
 unsigned char volatile *LOWER_TM_WRITER_TILE_NUMBER = (unsigned char volatile *) 0xd10a;
 unsigned char volatile *LOWER_TM_WRITER_COLOUR = (unsigned char volatile *) 0xd10c;
 unsigned char volatile *LOWER_TM_SCROLLWRAPCLEAR = (unsigned char volatile *) 0xd10e;
+unsigned char volatile *LOWER_TM_SCROLLAMOUNT = (unsigned char volatile *) 0xd10f;
 
 unsigned char volatile *UPPER_TM_X = (unsigned char volatile *) 0xd200;
 unsigned char volatile *UPPER_TM_Y = (unsigned char volatile *) 0xd202;
@@ -57,6 +58,7 @@ unsigned char volatile *UPPER_TM_STATUS = (unsigned char volatile *) 0xd208;
 unsigned char volatile *UPPER_TM_WRITER_TILE_NUMBER = (unsigned char volatile *) 0xd20a;
 unsigned char volatile *UPPER_TM_WRITER_COLOUR = (unsigned char volatile *) 0xd20c;
 unsigned char volatile *UPPER_TM_SCROLLWRAPCLEAR = (unsigned char volatile *) 0xd20e;
+unsigned char volatile *UPPER_TM_SCROLLWRAPAMOUNT = (unsigned char volatile *) 0xd20f;
 
 short volatile *GPU_X = (short volatile *) 0xd600;
 short volatile *GPU_Y = (short volatile *) 0xd602;

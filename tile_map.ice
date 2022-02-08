@@ -41,16 +41,19 @@ algorithm tilemap(
     pixel := tiles16x16.rdata0;
 }
 
+// CALCULATE NEW OFFSETS AND IF AT MIN/MAX
 algorithm   calcoffset(
     input   int5    offset,
+    input   uint4   adjust,
     output  uint1   MIN,
     output  int5    PREV,
     output  uint1   MAX,
     output  int5    NEXT
 ) <autorun> {
+    int6    offsetPLUS <:: { offset[4,1], offset } + adjust;         int6    offsetMINUS <:: { offset[4,1], offset } - adjust;
     always_after {
-        MIN = ( offset == -15 );                    PREV = ( offset - 1 );
-        MAX = ( offset == 15 );                     NEXT = ( offset + 1 );
+        MIN = ( offsetMINUS < -15 );                PREV = offsetMINUS + ( MIN ? 16 : 0 );
+        MAX = ( offsetPLUS > 15 );                  NEXT = offsetPLUS - ( MAX ? 16 : 0 );
     }
 }
 
@@ -69,6 +72,7 @@ algorithm tile_map_writer(
     output  int5    tm_offset_y(0),
 
     input   uint4   tm_scrollwrap,
+    input   uint4   tm_adjust,
     output  uint4   tm_lastaction,
     output  uint3   tm_active
 ) <autorun,reginputs> {
@@ -76,7 +80,7 @@ algorithm tile_map_writer(
     simple_dualport_bram uint9 tiles_copy[1344] = uninitialized;
 
     // OFFSET CALCULATIONS
-    calcoffset TMOX( offset <: tm_offset_x );       calcoffset TMOY( offset <: tm_offset_y );
+    calcoffset TMOX( offset <: tm_offset_x, adjust <: tm_adjust );       calcoffset TMOY( offset <: tm_offset_y, adjust <: tm_adjust );
 
     // Scroller/Wrapper FLAGS
     uint1   tm_scroll = uninitialized;              uint1   tm_sw <:: ( tm_scrollwrap < 5 );                uint2   tm_action <:: ( tm_scrollwrap - 1 ) & 3;
@@ -114,10 +118,10 @@ algorithm tile_map_writer(
             default: {                                                                                                      // SCROLL / WRAP
                 tm_scroll = tm_sw;
                 switch( tm_action ) {
-                    case 0: { if( TMOX.MAX ) { tm_dodir = 1; tm_active = 1; } else { tm_offset_x = TMOX.NEXT; } }           // LEFT
-                    case 1: { if( TMOY.MAX ) { tm_dodir = 1; tm_active = 2; } else { tm_offset_y = TMOY.NEXT; } }           // UP
-                    case 2: { if( TMOX.MIN ) { tm_dodir = 0; tm_active = 1; } else { tm_offset_x = TMOX.PREV; } }           // RIGHT
-                    case 3: { if( TMOY.MIN ) { tm_dodir = 0; tm_active = 2; } else { tm_offset_y = TMOY.PREV; } }           // DOWN
+                    case 0: { if( TMOX.MAX ) { tm_dodir = 1; tm_active = 1; } tm_offset_x = TMOX.NEXT; }                    // LEFT
+                    case 1: { if( TMOY.MAX ) { tm_dodir = 1; tm_active = 2; } tm_offset_y = TMOY.NEXT; }                    // UP
+                    case 2: { if( TMOX.MIN ) { tm_dodir = 0; tm_active = 1; } tm_offset_x = TMOX.PREV; }                    // RIGHT
+                    case 3: { if( TMOY.MIN ) { tm_dodir = 0; tm_active = 2; } tm_offset_y = TMOY.PREV; }                    // DOWN
                 }
                 tm_lastaction = ( |tm_active ) ? tm_scrollwrap : 0;
             }
@@ -146,7 +150,6 @@ algorithm tile_map_writer(
                         tiles_copy.addr1 = ySAVED; tiles_copy.wdata1 = new_tile;
                         y_cursor_addr = yNEXT;
                     }
-                    tm_offset_x = 0;
                 }
                 case 1: {                                                                                                   // SCROLL/WRAP UP/DOWN
                     while( x_cursor != 42 ) {                                                                                   // REPEAT UNTIL AT RIGHT OF THE SCREEN
@@ -167,7 +170,6 @@ algorithm tile_map_writer(
                         tiles_copy.addr1 = xSAVED; tiles_copy.wdata1 = new_tile;
                         x_cursor = xNEXT;
                     }
-                    tm_offset_y = 0;
                 }
                 case 2: {                                                                                                   // CLEAR
                     tiles.wdata1 = 0; tiles_copy.wdata1 = 0;

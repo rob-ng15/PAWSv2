@@ -218,7 +218,7 @@
 #define TM_WRAP_UP 6
 #define TM_WRAP_RIGHT 7
 #define TM_WRAP_DOWN 8
-#define TM_CLEAR 9
+#define TM_CLEAR 9,0
 
 // CROP RECTANGLE
 #define CROPFULLSCREEN 0,0,319,239

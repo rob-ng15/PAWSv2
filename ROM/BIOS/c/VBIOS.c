@@ -331,22 +331,15 @@ void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y,
             break;
     }
 }
-// SCROLL WRAP or CLEAR the TILEMAP
-//  action == 1 to 4 move the tilemap 1 pixel LEFT, UP, RIGHT, DOWN and SCROLL at limit
-//  action == 5 to 8 move the tilemap 1 pixel LEFT, UP, RIGHT, DOWN and WRAP at limit
+// SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
+//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN and SCROLL at limit
+//  action == 5 to 8 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN and WRAP at limit
 //  action == 9 clear the tilemap
 //  RETURNS 0 if no action taken other than pixel shift, action if SCROLL WRAP or CLEAR was actioned
-unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action ) {
-    switch( tm_layer ) {
-        case 0:
-            while( *LOWER_TM_STATUS );
-            *LOWER_TM_SCROLLWRAPCLEAR = action;
-            break;
-        case 1:
-            while( *UPPER_TM_STATUS );
-            *UPPER_TM_SCROLLWRAPCLEAR = action;
-            break;
-    }
+unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
+    while( *( tm_layer ? UPPER_TM_STATUS : LOWER_TM_STATUS ) );
+    *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
+    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = action;
     return( tm_layer ? *UPPER_TM_SCROLLWRAPCLEAR : *LOWER_TM_SCROLLWRAPCLEAR );
 }
 
@@ -563,8 +556,8 @@ void main( void ) {
 
     while(1) {
         await_vblank();
-        tilemap_scrollwrapclear( 0, 7 );
-        tilemap_scrollwrapclear( 1, 5 );
+        tilemap_scrollwrapclear( 0, 7, 1 );
+        tilemap_scrollwrapclear( 1, 5, 1 );
         for( i = 0; i < 2; i++ ) update_sprite( 1, i, 1 );
         set_sprite_attribute( 1, 1, 1, ( j & 128 ) >> 7 );
         set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
