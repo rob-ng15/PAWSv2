@@ -153,6 +153,9 @@ unsigned char volatile *AUDIO_WAVEFORM = (unsigned char volatile *) 0xe000;
 unsigned short volatile *AUDIO_FREQUENCY = (unsigned short volatile *) 0xe002;
 unsigned short volatile *AUDIO_DURATION = (unsigned short volatile *) 0xe004;
 unsigned char volatile *AUDIO_START = (unsigned char volatile *) 0xe006;
+unsigned char volatile *AUDIO_NEW_SAMPLE = (unsigned char volatile *) 0xe008;
+unsigned char volatile *AUDIO_LEFT_SAMPLE = (unsigned char volatile *) 0xe009;
+unsigned char volatile *AUDIO_RIGHT_SAMPLE = (unsigned char volatile *) 0xe00a;
 unsigned char volatile *AUDIO_L_ACTIVE = (unsigned char volatile *) 0xe010;
 unsigned char volatile *AUDIO_R_ACTIVE = (unsigned char volatile *) 0xe012;
 

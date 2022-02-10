@@ -227,7 +227,7 @@ void reset_timer1hz( unsigned char timer  ) {
 // AUDIO OUTPUT
 // START A note (1 == DEEP C, 25 == MIDDLE C )
 // OF duration MILLISECONDS TO THE LEFT ( channel_number == 1 ) RIGHT ( channel_number == 2 ) or BOTH ( channel_number == 3 ) AUDIO CHANNEL
-// IN waveform 0 == SQUARE, 1 == SAWTOOTH, 2 == TRIANGLE, 3 == SINE, 4 == WHITE NOISE
+// IN waveform 0 == SQUARE, 1 == SAWTOOTH, 2 == TRIANGLE, 3 == SINE, 4 == WHITE NOISE, 7 == SAMPLE MODE
 // 1 = C 2 or Deep C
 // 13 = C 3
 // 25 = C 4 or Middle C
@@ -247,6 +247,13 @@ void await_beep( unsigned char channel_number ) {
 
 unsigned short get_beep_active( unsigned char channel_number ) {
     return( ( ( channel_number & 1) && *AUDIO_L_ACTIVE ) | ( ( channel_number & 2) && *AUDIO_R_ACTIVE ) );
+}
+
+// USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
+void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
+    *AUDIO_NEW_SAMPLE = channel_number;
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
 }
 
 // SDCARD FUNCTIONS

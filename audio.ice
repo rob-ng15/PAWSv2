@@ -49,18 +49,18 @@ algorithm waveform(
     input   uint4   staticGenerator,
     output  uint4   audio_output
 ) <autorun,reginputs> {
-    brom uint4 level[128] = {
+    brom uint4 level[] = {
         15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15, 15,     // SQUARE WAVE ( 0 )
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
 
-        0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7,                     // SAWTOOTH WAVE ( 1 )
+        1, 1, 1, 2, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7,                     // SAWTOOTH WAVE ( 1 )
         8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15,
 
-        0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,               // TRIANGLE WAVE ( 2 )
-        15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
+        1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,               // TRIANGLE WAVE ( 2 )
+        15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 1,
 
-        8, 9, 10, 12, 13, 14, 14, 15, 15, 15, 14, 14, 13, 12, 10, 9,        // SINE WAVE ( 3 )
-        8, 6, 5, 4, 2, 1, 1, 0, 0, 0, 1, 1, 2, 3, 5, 6
+        8, 9, 11, 12, 13, 14, 14, 15, 15, 15, 14, 14, 13, 12, 11, 9,        // SINE WAVE ( 3 )
+        8, 7, 5, 4, 3, 2, 2, 1, 1, 1, 2, 2, 3, 4, 5, 7
     };
     level.addr := { selected_waveform[0,2], point };
 
@@ -78,7 +78,7 @@ algorithm audiocounter(
     input   uint16  selected_frequency,
     input   uint16  selected_duration,
     output  uint1   updatepoint,
-    output  uint1   active
+    output  uint1   active(0)
 ) <autorun,reginputs> {
     uint16  counter25mhz = uninitialised;           uint16  counter1khz = uninitialised;                uint16  duration = uninitialised;
     uint1   updateduration <:: active & ( ~|counter1khz );

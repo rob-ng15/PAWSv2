@@ -51,6 +51,7 @@ extern int paws_gettimeofday( struct paws_timeval *restrict tv, void *tz );
 extern void beep( unsigned char, unsigned char, unsigned char, unsigned short );
 extern void await_beep( unsigned char );
 extern unsigned short get_beep_active( unsigned char );
+extern void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
 
 // DISPLAY
 //extern void await_vblank( void );

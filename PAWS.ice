@@ -199,7 +199,7 @@ $$end
 
     audio_memmap AUDIO_Map <@clock_io,!reset> (
         clock_25mhz <: $clock_25mhz$,
-        memoryAddress <: CPU.address[0,3],
+        memoryAddress <: CPU.address[0,4],
         writeData <: CPU.writedata,
         audio_l :> audio_l,
         audio_r :> audio_r,

@@ -246,6 +246,7 @@
 #define WAVE_TRIANGLE 2
 #define WAVE_SINE 3
 #define WAVE_NOISE 4
+#define WAVE_SAMPLE 7
 
 // FOR EASE OF PORTING
 typedef unsigned int size_t;
