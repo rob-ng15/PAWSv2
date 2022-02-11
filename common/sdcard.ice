@@ -73,7 +73,7 @@ algorithm sdcard(
   ) {
     uint16 count = 0;
     uint8  shift = uninitialized;
-    shift        = cmd;
+    shift        = byte;
     while (count != $2*256*8$) { // 8 clock pulses @~400 kHz (assumes 50 MHz clock)
       if (&count[0,8]) {
         sd_clk  = ~sd_clk;
@@ -122,6 +122,7 @@ algorithm sdcard(
   uint48 cmd16  = 48b010100000000000000000000000000100000000000010101;
   uint48 cmd17  = 48b010100010000000000000000000000000000000001010101;  // SINGLE BLOCK READ
   uint48 cmd24  = 48b010110000000000000000000000000000000000001010101;  // SINGLE BLOCK WRITE
+  uint48 cmd13  = 48b010011010000000000000000000000000000000011111111;  // SEND STATUS
   //                 01ccccccaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaarrrrrrr1
 
   uint1  do_read_sector = 0;
@@ -223,40 +224,47 @@ algorithm sdcard(
     }
 
     if (do_write_sector) {
+      uint10 progress = 0;
       do_write_sector = 0;
       //
       // NEED A SEND A SINGLE BYTE SUBROUTINE
       //
       // send cmd24
-      // () <- send <- ({cmd24[40,8],do_addr_sector,cmd24[0,8]});
-      // // wait for cmd response ( 0x00 )
-      // ( status ) <- read <- (8,1,3);
-      // if (status[0,8] == 8h00) {
-      //   uint9 progress = 0;
-      //
-      //   //await response bytes
-      //   //send 8 dummy clocks
-      //   () <- sendbyte <- ( 8hff );
-      //   send data start token ( 0xfe )
-      //   () <- sendbyte <- ( 8hfe );
-      //
-      //   //send 512 bytes
-      //
-      //   //send CRC = 0xff 0xff
-      //   () <- sendbyte <- ( 8hff );
-      //   () <- sendbyte <- ( 8hff );
-      //   //send 8 dummy clocks
-      //   () <- sendbyte <- ( 8hff );
-      //
-      //   send cmd13 {0X4D,0X00000000,0XFF}
-      //   () <- send <- ( { 8h4d, 32h0, 8hff } );
-      //
-      //   //wait for cmd response ( 0x00 )
-      //   ( status ) <- read <- ( 8,1,3);
-      //   while (status[0,8] != 8h00) {
-      //     ( status ) <- read <- ( 8,1,3);
-      //   }
-      // }
+      () <- send <- ({cmd24[40,8],do_addr_sector,cmd24[0,8]});
+
+      // wait for cmd response ( 0x00 )
+      ( status ) <- read <- (8,1,3);
+      while( |status ) {
+          ( status ) <- read <- (8,1,3);
+      }
+
+      //send 8 dummy clocks and start token
+      () <- sendbyte <- ( 8hff );
+      () <- sendbyte <- ( 8hfe );
+
+      // send 512 bytes
+      buffer_out.addr0 = io.offset;
+      while( progress != 512 ) {
+          () <- sendbyte <- ( buffer_out.rdata0 );
+          buffer_out.addr0 = buffer_out.addr0 + 1;
+          progress = progress + 1;
+      }
+
+      //send CRC = 0xff 0xff
+      () <- sendbyte <- ( 8hff );
+      () <- sendbyte <- ( 8hff );
+
+      //send 8 dummy clocks
+      () <- sendbyte <- ( 8hff );
+
+      // Request status
+      //() <- send <- ( cmd13 );
+
+      // wait for cmd response ( 0x00 )
+      ( status ) <- read <- ( 8,1,3);
+      while (status[0,8] != 8h00) {
+        ( status ) <- read <- ( 8,1,3);
+      }
 
       io.ready = 1;
     }

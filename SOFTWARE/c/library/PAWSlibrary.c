@@ -274,6 +274,19 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
     DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, 4 );
 }
+// READ A SECTOR FROM THE SDCARD AND COPY TO MEMORY
+void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress ) {
+    sdcard_wait();
+
+    // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
+    // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
+    *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
+    DMASTART( copyAddress, (void *restrict)SDCARD_DATA, 512, 1 );
+
+    *SDCARD_SECTOR = sectorAddress;
+    *SDCARD_WRITESTART = 1;
+    sdcard_wait();
+}
 
 // I/O FUNCTIONS
 // SET THE LEDS
@@ -1874,7 +1887,14 @@ int sd_media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
 }
 
 int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
-    return(0);
+    unsigned short i;
+
+    while( sector_count-- ) {
+        sdcard_writesector( sector, buffer );
+        // MOVE TO NEXT SECTOR
+        sector++; buffer += FAT_SECTOR_SIZE;
+    }
+    return(1);
 }
 
 // newlib support routines - define standard malloc memory size 16MB
