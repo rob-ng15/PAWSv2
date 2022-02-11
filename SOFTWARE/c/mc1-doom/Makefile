@@ -3,6 +3,9 @@ include ../makefile.inc
 PROJECT=DOOM
 PROJECTTYPE=DEMO
 
+# OVERRIDE C-FLAGS
+CFLAGS=-march=rv32imafc -mabi=ilp32f -ffunction-sections -fdata-sections -Ofast -finline -fno-pic -fno-unroll-loops -ffast-math -Wno-stringop-overread
+
 all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
 
 DOOM_OBJECTS= \

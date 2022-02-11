@@ -234,7 +234,7 @@ algorithm sdcard(
       // if (status[0,8] == 8h00) {
       //   uint9 progress = 0;
       //
-      //   //delay 1 second ?
+      //   //await response bytes
       //   //send 8 dummy clocks
       //   () <- sendbyte <- ( 8hff );
       //   send data start token ( 0xfe )
@@ -245,7 +245,6 @@ algorithm sdcard(
       //   //send CRC = 0xff 0xff
       //   () <- sendbyte <- ( 8hff );
       //   () <- sendbyte <- ( 8hff );
-      //   //delay 1 second?
       //   //send 8 dummy clocks
       //   () <- sendbyte <- ( 8hff );
       //
