@@ -68,23 +68,41 @@ algorithm sdcard(
 
   subroutine sendbyte(
     input  uint8    byte,
+    input  uint8    rate,
     readwrites      sd_clk,
     writes          sd_mosi
   ) {
-    uint16 count = 0;
-    uint8  shift = uninitialized;
+    uint16  count = 0;
+    uint8   shift = uninitialized;
+    uint6   n = 0;
     shift        = byte;
-    while (count != $2*256*8$) { // 8 clock pulses @~400 kHz (assumes 50 MHz clock)
-      if (&count[0,8]) {
+    while( n != 8 ) {
+      if ( (count&rate)==rate ) { // swap clock
         sd_clk  = ~sd_clk;
         if (!sd_clk) {
-          sd_mosi = shift[7,1];
-          shift   = {shift[0,7],1b0};
+            sd_mosi = shift[7,1];
+            shift = { shift[0,7], 1b0 };
+            n = n + 1;
         }
       }
       count = count + 1;
     }
-    sd_mosi = 1;
+  }
+
+  subroutine waitbusy(
+    input  uint8    rate,
+    readwrites      sd_clk,
+    writes          sd_mosi,
+    reads           sd_miso
+  ) {
+    uint16 count = 0;
+    while( ~sd_miso ) {
+        if( (count&rate)==rate ) {
+            sd_clk = ~sd_clk;
+        }
+        count = count + 1;
+    }
+    sd_clk = 0;
   }
 
   subroutine read(
@@ -238,38 +256,35 @@ algorithm sdcard(
       }
 
       //send dummy clocks and start token
-      () <- sendbyte <- ( 8hff );
-      () <- sendbyte <- ( 8hfe );
+      () <- sendbyte <- ( 8hff, 3 );
+      () <- sendbyte <- ( 8hfe, 3 );
 
       // send 512 bytes
       while( progress != 512 ) {
-          () <- sendbyte <- ( buffer_out.rdata0 );
+          () <- sendbyte <- ( buffer_out.rdata0, 3 );
           buffer_out.addr0 = buffer_out.addr0 + 1;
           progress = progress + 1;
       }
 
       //send CRC = 0xff 0xff
-      () <- sendbyte <- ( 8hff );
-      () <- sendbyte <- ( 8hff );
+      () <- sendbyte <- ( 8hff, 3 );
+      () <- sendbyte <- ( 8hff, 3 );
 
       //send dummy clocks
-      () <- sendbyte <- ( 8hff );
+      //() <- sendbyte <- ( 8hff, 3 );
 
       // Wait for response ( should be 0x05 )
       ( status ) <- read <- ( 8,1,3);
 
       // wait for card to return from busy
-      ( status ) <- read <- (8,1,3);
-      while( ~&status[0,8] ) {
-          ( status ) <- read <- (8,1,3);
-      }
+      () <- waitbusy <- ( 3 );
 
       // Request status
-      //() <- send <- ( cmd13 );
+      () <- send <- ( cmd13 );
 
       // Read R1 & R2 response bytes
-      //( status ) <- read <- ( 8,1,3);
-      //( status ) <- read <- ( 8,1,3);
+      ( status ) <- read <- ( 8,1,3);
+      ( status ) <- read <- ( 8,1,3);
 
       io.ready = 1;
     }
