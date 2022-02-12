@@ -225,25 +225,23 @@ algorithm sdcard(
 
     if (do_write_sector) {
       uint10 progress = 0;
+      buffer_out.addr0 = io.offset;
       do_write_sector = 0;
-      //
-      // NEED A SEND A SINGLE BYTE SUBROUTINE
-      //
+
       // send cmd24
       () <- send <- ({cmd24[40,8],do_addr_sector,cmd24[0,8]});
 
       // wait for cmd response ( 0x00 )
       ( status ) <- read <- (8,1,3);
-      while( |status ) {
+      while( |status[0,8] ) {
           ( status ) <- read <- (8,1,3);
       }
 
-      //send 8 dummy clocks and start token
+      //send dummy clocks and start token
       () <- sendbyte <- ( 8hff );
       () <- sendbyte <- ( 8hfe );
 
       // send 512 bytes
-      buffer_out.addr0 = io.offset;
       while( progress != 512 ) {
           () <- sendbyte <- ( buffer_out.rdata0 );
           buffer_out.addr0 = buffer_out.addr0 + 1;
@@ -254,17 +252,24 @@ algorithm sdcard(
       () <- sendbyte <- ( 8hff );
       () <- sendbyte <- ( 8hff );
 
-      //send 8 dummy clocks
+      //send dummy clocks
       () <- sendbyte <- ( 8hff );
+
+      // Wait for response ( should be 0x05 )
+      ( status ) <- read <- ( 8,1,3);
+
+      // wait for card to return from busy
+      ( status ) <- read <- (8,1,3);
+      while( ~&status[0,8] ) {
+          ( status ) <- read <- (8,1,3);
+      }
 
       // Request status
       //() <- send <- ( cmd13 );
 
-      // wait for cmd response ( 0x00 )
-      ( status ) <- read <- ( 8,1,3);
-      while (status[0,8] != 8h00) {
-        ( status ) <- read <- ( 8,1,3);
-      }
+      // Read R1 & R2 response bytes
+      //( status ) <- read <- ( 8,1,3);
+      //( status ) <- read <- ( 8,1,3);
 
       io.ready = 1;
     }

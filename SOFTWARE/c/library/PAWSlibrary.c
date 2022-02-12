@@ -274,12 +274,12 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
     DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, 4 );
 }
-// READ A SECTOR FROM THE SDCARD AND COPY TO MEMORY
+// WRITE A SECTOR TO THE SDCARD COPIED FROM MEMORY
 void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress ) {
     sdcard_wait();
 
-    // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
-    // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
+    // USE DMA CONTROLLER TO COPY THE DATA, MODE 1 COPIES FROM MULTIPLE-ADDRESSES TO SINGLE ADDRESS
+    // EACH WRITE OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
     *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
     DMASTART( copyAddress, (void *restrict)SDCARD_DATA, 512, 1 );
 
@@ -1875,8 +1875,6 @@ int keypad(WINDOW *win, bool bf) {
 
 // READ MULTIPLE SECTORS INTO MEMORY FOR fat_io_lib
 int sd_media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
-    unsigned short i;
-
     while( sector_count-- ) {
         sdcard_readsector( sector, buffer );
         // MOVE TO NEXT SECTOR
@@ -1887,8 +1885,6 @@ int sd_media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
 }
 
 int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
-    unsigned short i;
-
     while( sector_count-- ) {
         sdcard_writesector( sector, buffer );
         // MOVE TO NEXT SECTOR
@@ -1934,6 +1930,40 @@ void __start_sdmedia( void ) {
     __sdcard_init = TRUE;
 }
 
+// PAWS redirection of printf/fprintf to console/uart/fat_io_lib as needed
+int paws_printf(const char *restrict format, ... ) {
+    if( !__stdinout_init ) __start_stdinout();
+
+    char *buffer = (char *)0x1400;
+    va_list args;
+    va_start (args, format);
+    vsnprintf( buffer, 1024, format, args);
+    va_end(args);
+
+    printw( "%s", buffer );
+    return( strlen( buffer ) );
+}
+
+int paws_fprintf( void *fd, const char *restrict format, ... ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
+    char *buffer = (char *)0x1400;
+    va_list args;
+    va_start (args, format);
+    vsnprintf( buffer, 1024, format, args);
+    va_end(args);
+
+    if( ( fd == stdout ) || ( fd == stderr ) ) {
+        if( fd == stdout ) printw( "%s", buffer );
+        if( fd == stderr ) uart_outputstring( buffer );
+    } else {
+        fl_fwrite( buffer, strlen( buffer ), 1, fd );
+    }
+
+    return( strlen( buffer ) );
+}
+
 // COMPATABILITY FUNCTIONS
 // sleep from sys/unistd.h
 //unsigned int sleep( unsigned int seconds ) {
@@ -1946,6 +1976,7 @@ void __start_sdmedia( void ) {
 #define MAXOPENFILES 4
 struct sFL_FILE *__filehandles[ MAXOPENFILES + 3 ]; // stdin, stdout, stderr
 
+// FIND AN UNUSED FILE HANDLE FROM 3, 0 = stdin, 1 = stdout, 2 = stderr
 int __find_filehandlespace( void ) {
     for( int i = 3; i < MAXOPENFILES+3; i++ ) {
         if( __filehandles[ i ] == NULL ) {
@@ -1954,19 +1985,35 @@ int __find_filehandlespace( void ) {
     }
     return -1;
 }
+
 int _open( const char *file, int flags ) {
     if( !__sdcard_init ) __start_sdmedia();
 
-    int handle = __find_filehandlespace();
+    static char *__openmodes[] = { "r", "r+", "w", "w+", "a", "a+" };
+    int handle = __find_filehandlespace(), mode;
     if( handle == -1 ) {
         return -1;
     } else {
-        __filehandles[ handle ] = fl_fopen( file, "r" );
-        if( __filehandles[ handle ] != NULL ) {
-            return handle;
-        } else {
-            return -1;
+        // DETERMINE OPENING MODE
+        switch( flags ) {
+            case O_RDONLY:                      mode = 0; break;
+            case O_WRONLY | O_CREAT | O_TRUNC:  mode = 2; break;
+            case O_WRONLY | O_CREAT | O_APPEND: mode = 4; break;
+            case O_RDWR:                        mode = 1; break;
+            case O_RDWR | O_CREAT | O_TRUNC:    mode = 3; break;
+            case O_RDWR | O_CREAT | O_APPEND:   mode = 5; break;
+            default: mode = -1;
         }
+        fprintf(stderr,"Opening file %s into handle %0d using mode %s : ",file,handle,(mode == -1 ) ? "err" : __openmodes[mode]);
+        if( mode != -1 ) {
+            __filehandles[ handle ] = fl_fopen( file, __openmodes[ mode ] );
+            if( __filehandles[ handle ] != NULL ) {
+                fprintf(stderr,"Success\n");
+                return handle;
+            }
+        }
+        fprintf(stderr,"Failed\n");
+        return( -1 );
     }
 }
 
@@ -2193,39 +2240,6 @@ int paws_fread( void *data, int size, int count, void *fd ) {
     } else {
         return( fl_fread( data, size, count, fd ) );
     }
-}
-
-int paws_printf(const char *restrict format, ... ) {
-    if( !__stdinout_init ) __start_stdinout();
-
-    char *buffer = (char *)0x1400;
-    va_list args;
-    va_start (args, format);
-    vsnprintf( buffer, 1024, format, args);
-    va_end(args);
-
-    printw( "%s", buffer );
-    return( strlen( buffer ) );
-}
-
-int paws_fprintf( void *fd, const char *restrict format, ... ) {
-    if( !__stdinout_init ) __start_stdinout();
-    if( !__sdcard_init ) __start_sdmedia();
-
-    char *buffer = (char *)0x1400;
-    va_list args;
-    va_start (args, format);
-    vsnprintf( buffer, 1024, format, args);
-    va_end(args);
-
-    if( ( fd == stdout ) || ( fd == stderr ) ) {
-        if( fd == stdout ) printw( "%s", buffer );
-        if( fd == stderr ) uart_outputstring( buffer );
-    } else {
-        fl_fwrite( buffer, strlen( buffer ), 1, fd );
-    }
-
-    return( strlen( buffer ) );
 }
 
 // PAWS SYSTEMCLOCK
