@@ -32,8 +32,6 @@
 #include "doomstat.h"
 #include "r_state.h"
 
-#include <PAWSlibrary.h>
-
 //#include "r_local.h"
 
 seg_t*          curline;

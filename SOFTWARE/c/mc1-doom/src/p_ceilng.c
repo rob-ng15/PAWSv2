@@ -30,8 +30,6 @@
 // Data.
 #include "sounds.h"
 
-#include <PAWSlibrary.h>
-
 //
 // CEILINGS
 //

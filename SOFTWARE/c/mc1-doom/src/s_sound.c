@@ -34,8 +34,6 @@
 
 #include "doomstat.h"
 
-#include <PAWSlibrary.h>
-
 // Purpose?
 const char snd_prefixen[]
 = { 'P', 'P', 'A', 'S', 'S', 'S', 'M', 'M', 'M', 'S', 'S', 'S' };

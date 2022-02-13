@@ -273,8 +273,6 @@ more memory.
 #include <setjmp.h>
 #include <time.h>
 
-#include <PAWSlibrary.h>
-
 /**
 Traditionally Forth implementations were the only program running on the
 (micro)computer, running on processors orders of magnitude slower than

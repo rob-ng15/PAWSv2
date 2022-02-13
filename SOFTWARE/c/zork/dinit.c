@@ -5,7 +5,6 @@
 /* WRITTEN BY R. M. SUPNIK */
 
 #include <stdio.h>
-#include <PAWSlibrary.h>
 
 #ifdef __AMOS__
 #include <amos.h>

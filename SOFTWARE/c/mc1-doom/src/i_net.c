@@ -40,8 +40,6 @@
 
 #include "i_net.h"
 
-#include <PAWSlibrary.h>
-
 // For some odd reason...
 #ifndef ntohl
 #define ntohl(x) \

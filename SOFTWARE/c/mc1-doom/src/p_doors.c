@@ -31,8 +31,6 @@
 #include "dstrings.h"
 #include "sounds.h"
 
-#include <PAWSlibrary.h>
-
 #if 0
 //
 // Sliding door frame information

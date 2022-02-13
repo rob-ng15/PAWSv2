@@ -33,8 +33,6 @@
 
 #include "doomstat.h"
 
-#include <PAWSlibrary.h>
-
 void G_PlayerReborn (int player);
 void P_SpawnMapThing (mapthing_t*       mthing);
 

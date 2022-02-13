@@ -37,8 +37,6 @@
 #include "dstrings.h"
 #include "sounds.h"
 
-#include <PAWSlibrary.h>
-
 //
 // Locally used constants, shortcuts.
 //

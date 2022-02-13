@@ -18,7 +18,7 @@ LFLAGS=--as-needed --gc-sections -m elf32lriscv -b elf32-littleriscv --no-relax
 LCONFIG=-T../config_c_SDRAM.ld
 
 PAWSBASE=../
-INCLUDE=-I/usr/riscv32-elf/include/ -I$(PAWSBASE)/library/
+INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I/usr/riscv32-elf/include/
 
 LIBRARY=/usr/riscv64-elf/lib/rv32imafc/ilp32f/libc.a \
 	/usr/riscv64-elf/lib/rv32imafc/ilp32f/libm.a \

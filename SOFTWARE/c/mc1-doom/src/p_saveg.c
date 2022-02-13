@@ -28,8 +28,6 @@
 #include "doomstat.h"
 #include "r_state.h"
 
-#include <PAWSlibrary.h>
-
 byte*           save_p;
 
 // Pads save_p to a 4-byte boundary

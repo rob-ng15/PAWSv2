@@ -27,8 +27,6 @@ extern unsigned char forth_core_data[];
 extern forth_cell_t forth_core_size;
 #endif
 
-#include <PAWSlibrary.h>
-
 /**
 Although multiple instances of a libforth environment can be active in a single
 C application, this test program only has one active. This is stored in a

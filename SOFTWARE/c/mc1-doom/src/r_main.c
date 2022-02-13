@@ -32,8 +32,6 @@
 
 #include "st_stuff.h"
 
-#include <PAWSlibrary.h>
-
 // Fineangles in the SCREENWIDTH wide window.
 #define FIELDOFVIEW             2048
 

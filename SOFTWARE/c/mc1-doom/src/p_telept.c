@@ -30,8 +30,6 @@
 // State.
 #include "r_state.h"
 
-#include <PAWSlibrary.h>
-
 //
 // TELEPORTATION
 //

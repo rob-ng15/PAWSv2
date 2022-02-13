@@ -1,11 +1,5 @@
 #ifndef __PAWSLIBRARY__
 #include "PAWSdefinitions.h"
-#define FAT_PRINTF_NOINC_STDIO
-#ifdef feof
-#undef feof
-#endif
-#include "fat_io_lib/fat_filelib.h"
-#define FILE            FL_FILE
 
 // MEMORY
 extern unsigned char *MEMORYTOP;
@@ -206,58 +200,6 @@ extern void *stdscr;
 
 // SDCARD using PAWS fat32
 extern unsigned char *sdcard_selectfile( char *, char *, unsigned int *, char *);
-
-// SDCARD using fat_io_lib
-#ifndef	_SYS_STAT_H
-#include <sys/types.h>
-struct stat {
-    dev_t     st_dev;     /* ID of device containing file */
-    ino_t     st_ino;     /* inode number */
-    mode_t    st_mode;    /* protection */
-    nlink_t   st_nlink;   /* number of hard links */
-    uid_t     st_uid;     /* user ID of owner */
-    gid_t     st_gid;     /* group ID of owner */
-    dev_t     st_rdev;    /* device ID (if special file) */
-    off_t     st_size;    /* total size, in bytes */
-    blksize_t st_blksize; /* blocksize for file system I/O */
-    blkcnt_t  st_blocks;  /* number of 512B blocks allocated */
-    time_t    st_atime;   /* time of last access */
-    time_t    st_mtime;   /* time of last modification */
-    time_t    st_ctime;   /* time of last status change */
-};
-#endif
-
-#define fopen(a,b)      paws_fopen(a, b)
-#define fclose(a)       paws_fclose(a)
-#define getc(a)         paws_fgetc(a)
-#define fgetc(a)        paws_fgetc(a)
-#define fgets(a,b,c)    paws_fgets(a, b, c)
-#define fputc(a,b)      paws_fputc(a, b)
-#define fputs(a,b)      paws_fputs(a, b)
-#define fwrite(a,b,c,d) paws_fwrite(a, b, c, d)
-#define fread(a,b,c,d)  paws_fread(a, b, c, d)
-#define fseek(a,b,c)    fl_fseek(a, b, c)
-#define fgetpos(a,b)    fl_fgetpos(a, b)
-#define ftell(a)        fl_ftell(a)
-#define feof(a)         fl_feof(a)
-#define remove(a)       fl_remove(a)
-#define mkdir(a)        fl_createdirectory(a)
-#define rmdir(a)        0
-
-extern void *paws_fopen( const char *path, const char *modifiers );
-extern int paws_fclose( void *stream );
-extern int paws_fgetc( void *fd );
-extern char *paws_fgets( char *s, int cnt, void *fd );
-extern int paws_fputc( int c, void *fd );
-extern int paws_fputs( const char *s, void *fd );
-extern int paws_fwrite(const void *data, int size, int count, void *fd );
-extern int paws_fread( void *data, int size, int count, void *fd );
-
-#define prinf paws_printf
-#define fprintf paws_fprintf
-
-extern int paws_printf(const char *restrict format, ... );
-extern int paws_fprintf( void *fd, const char *restrict format, ... );
 
 // INLINE SMALL FUNCTIONS FOR SPEED
 

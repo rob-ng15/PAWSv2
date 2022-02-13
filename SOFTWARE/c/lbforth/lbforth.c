@@ -19,7 +19,6 @@
 * dependencies as low as possible. In this file, the only C standard functions
 * used are getchar, putchar and the EOF value. */
 #include <stdio.h>
-#include <PAWSlibrary.h>
 
 /* Base cell data types. Use short/long on most systems for 16 bit cells. */
 /* Experiment here if necessary. */
@@ -187,21 +186,21 @@ const char *initScript =
 * to e.g. output data on a microcontroller via a serial interface. */
 void putkey(char c)
 {
-    addch(c);
+    putchar(c);
 }
 
 /* The primary data input function. This is where you place the code to e.g.
 * read from a serial line. */
 int llkey()
 {
-    if (*initscript_pos) { putkey(*(initscript_pos)); return *(initscript_pos++); }
-    return ps2_inputcharacter();
+    if (*initscript_pos) return *(initscript_pos++);
+    return getchar();
 }
 
 /* Anything waiting in the keyboard buffer? */
 int keyWaiting()
 {
-    return ps2_character_available();
+    return positionInLineBuffer < charsInLineBuffer ? -1 : 0;
 }
 
 /* Line buffered character input. We're duplicating the functionality of the
@@ -1019,11 +1018,6 @@ void addBuiltin(cell code, const char* name, const byte flags, builtin f)
 /* Program setup and jump to outer interpreter */
 int main()
 {
-    // INITIALISE THE TERMINAL AND SET KEYBOARD TO KEYBOARD MODE
-    initscr(); autorefresh( TRUE ); ps2_keyboardmode( PS2_KEYBOARD );
-    printw("PAWSv2 Port Of lbforth By Leif Bruder <leifbruder@gmail.com>\n");
-    printw("\tCELL = %0d bytes\n\tDCELL = %0d bytes\n\tMEMORY = %d\n\n",CELL_SIZE,DCELL_SIZE,MEM_SIZE);
-
     errorFlag = 0;
 
     if (DCELL_SIZE != 2*CELL_SIZE)
@@ -1124,7 +1118,6 @@ int main()
 
     if (errorFlag) return 1;
 
-    printw("Initialising\n\n");
     initscript_pos = (char*)initScript;
     quit();
     return 0;

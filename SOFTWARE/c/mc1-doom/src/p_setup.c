@@ -36,8 +36,6 @@
 
 #include "doomstat.h"
 
-#include <PAWSlibrary.h>
-
 void    P_SpawnMapThing (mapthing_t*    mthing);
 
 //

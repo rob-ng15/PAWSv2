@@ -40,8 +40,6 @@
 
 #include "am_map.h"
 
-#include <PAWSlibrary.h>
-
 // For use if I do walls with outsides/insides
 #define REDS            (256-5*16)
 #define REDRANGE        16

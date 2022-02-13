@@ -20,8 +20,6 @@ extern "C" {
 #include <stdint.h>
 #include <inttypes.h>
 
-#include <PAWSlibrary.h>
-
 /**
 @brief This is the absolute minimum size the Forth virtual machine can be in
 Forth cells, not bytes.

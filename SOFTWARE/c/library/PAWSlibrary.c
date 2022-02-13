@@ -1964,6 +1964,22 @@ int paws_fprintf( void *fd, const char *restrict format, ... ) {
     return( strlen( buffer ) );
 }
 
+int paws_vfprintf( void *fd, const char *format, va_list args ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
+    char *buffer = (char *)0x1400;
+    vsnprintf( buffer, 1024, format, args);
+    if( ( fd == stdout ) || ( fd == stderr ) ) {
+        if( fd == stdout ) printw( "%s", buffer );
+        if( fd == stderr ) uart_outputstring( buffer );
+    } else {
+        fl_fwrite( buffer, strlen( buffer ), 1, fd );
+    }
+
+    return( strlen( buffer ) );
+}
+
 // COMPATABILITY FUNCTIONS
 // sleep from sys/unistd.h
 //unsigned int sleep( unsigned int seconds ) {
@@ -2118,8 +2134,8 @@ void  __attribute__ ((noreturn)) _exit( int status ){
     while(1);
 }
 int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
-    tv->tv_sec = *SYSTEMSECONDS;
-    tv->tv_usec = *SYSTEMMILLISECONDS;
+    tv->tv_sec = (time_t)*SYSTEMSECONDS;
+    tv->tv_usec = (suseconds_t)*SYSTEMMILLISECONDS;
     return( 0 );
 }
 int _times() {
@@ -2151,6 +2167,23 @@ int paws_fclose( void *fd ) {
     if( !__sdcard_init ) __start_sdmedia();
     fl_fclose( fd );
     return( 0 );
+}
+void *paws_freopen( const char *path, const char *mode, FILE *fd ) {
+    char filename[FATFS_MAX_LONG_FILENAME];
+
+    if( fd ) {
+        // FILE IS PRESENTLY OPEN
+        paws_memcpy( filename, fd -> filename, FATFS_MAX_LONG_FILENAME );
+        paws_fclose( fd );
+    } else {
+        // FILE IS NOT OPEN
+        paws_memcpy( filename, path, strlen(path) );
+    }
+    return( paws_fopen( filename, mode ) );
+}
+void *paws_tmpfile( void ) {
+    sprintf( (char * restrict)0x1800, "%0d%0d.tmp", rng(65535), *SYSTEMSECONDS );
+    return( paws_fopen( (const char *)0x1800, "w+b" ) );
 }
 int paws_fgetc( void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
@@ -2242,9 +2275,31 @@ int paws_fread( void *data, int size, int count, void *fd ) {
     }
 }
 
+int paws_fflush( void *fd ) {
+    if( !__stdinout_init ) __start_stdinout();
+    return(0);
+}
+
+void paws_clearerr( void *fd ) {
+}
+
+int paws_ungetc( int c, void *fd ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( fd == stdin ) {
+        // MECHANISM TO RETURN A CHARACTER TO STDIN
+    } else {
+        fseek( fd, -1L, SEEK_CUR );
+    }
+}
+
+int paws_rmdir (const char *__path) {
+    return(0);
+}
+
 // PAWS SYSTEMCLOCK
-int paws_gettimeofday( struct paws_timeval *restrict tv, void *tz ) {
-    tv->ptv_sec = *SYSTEMSECONDS;
-    tv->ptv_usec = *SYSTEMMILLISECONDS;
+int paws_clock_gettime( clockid_t clk_id, void *tz ) {
+    struct timespec *tv = tz;
+    tv->tv_sec = (time_t)*SYSTEMSECONDS;
+    tv->tv_nsec = (long)(*SYSTEMMILLISECONDS/1000);
     return( 0 );
 }

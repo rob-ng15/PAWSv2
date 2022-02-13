@@ -34,8 +34,6 @@
 // Data.
 #include "sounds.h"
 
-#include <PAWSlibrary.h>
-
 plat_t*         activeplats[MAXPLATS];
 
 //

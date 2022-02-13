@@ -60,8 +60,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <PAWSlibrary.h>
-
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */

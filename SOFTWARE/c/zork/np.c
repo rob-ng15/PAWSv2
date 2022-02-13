@@ -6,7 +6,6 @@
 
 #include <stdio.h>
 #include <ctype.h>
-#include <PAWSlibrary.h>
 
 #include "funcs.h"
 #include "vars.h"

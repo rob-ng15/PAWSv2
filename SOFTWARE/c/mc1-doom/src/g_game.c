@@ -62,8 +62,6 @@
 
 #include "g_game.h"
 
-#include <PAWSlibrary.h>
-
 #define SAVEGAMESIZE    0x2c000
 #define SAVESTRINGSIZE  24
 

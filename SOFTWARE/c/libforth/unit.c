@@ -18,8 +18,6 @@
 #include <string.h>
 #include <time.h>
 
-#include <PAWSlibrary.h>
-
 /*** very minimal test framework ***/
 
 /**

@@ -36,8 +36,6 @@
 // Data.
 #include "sounds.h"
 
-#include <PAWSlibrary.h>
-
 fixed_t         tmbbox[4];
 mobj_t*         tmthing;
 int             tmflags;

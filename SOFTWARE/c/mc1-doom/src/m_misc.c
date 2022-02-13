@@ -54,8 +54,6 @@
 
 #include "m_misc.h"
 
-#include <PAWSlibrary.h>
-
 //
 // M_DrawText
 // Returns the final X coordinate

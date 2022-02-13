@@ -28,8 +28,6 @@
 #include "r_local.h"
 #include "r_draw.h"
 
-#include <PAWSlibrary.h>
-
 // boolean : whether the screen is always erased
 #define noterased viewwindowx
 

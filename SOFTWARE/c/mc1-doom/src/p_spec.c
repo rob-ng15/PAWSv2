@@ -46,8 +46,6 @@
 // Data.
 #include "sounds.h"
 
-#include <PAWSlibrary.h>
-
 //
 // Animating textures and planes
 // There is another anim_t used in wi_stuff, unrelated.

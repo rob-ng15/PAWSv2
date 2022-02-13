@@ -26,8 +26,6 @@
 // State.
 #include "r_state.h"
 
-#include <PAWSlibrary.h>
-
 //
 // P_CheckSight
 //

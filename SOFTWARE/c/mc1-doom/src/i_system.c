@@ -35,8 +35,6 @@
 
 #include "i_system.h"
 
-#include <PAWSlibrary.h>
-
 int     mb_used = 6;
 
 void

@@ -31,8 +31,6 @@
 // State.
 #include "r_state.h"
 
-#include <PAWSlibrary.h>
-
 //
 // P_AproxDistance
 // Gives an estimation of distance (not exact)

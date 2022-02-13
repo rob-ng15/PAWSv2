@@ -42,8 +42,6 @@
     #include <sioux.h>
 #endif
 
-#include <PAWSlibrary.h>
-
 #ifndef TRUE
 #define TRUE (1)
 #define FALSE (0)
