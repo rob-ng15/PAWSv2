@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <PAWSlibrary.h>
 
 extern void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress );

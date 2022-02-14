@@ -62,8 +62,8 @@ dungeon: dungeon.o dtextc.dat
 	$(ARCH)-elf-objcopy -O binary $< $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
 	cp dtextc.dat $(OUTPUT_DIR)$(PROJECTTYPE)/
 
-dungeon.o: $(OBJS) dtextc.dat $(LIBPAWSOBJ) $(BUILD_DIR)/crt0.o
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/crt0.o $(OBJS) $(LIBPAWS) $(LIBRARY)
+dungeon.o: $(OBJS) dtextc.dat $(LIBPAWSOBJ)
+	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(OBJS) $(LIBPAWS) $(LIBRARY)
 
 %.o : %.c
 	$(CC) $(CFLAGS) $(INCLUDE) $(GDTFLAG) -DTEXTFILE=\"/GAMES/dtextc.dat\" -c $< -o $@

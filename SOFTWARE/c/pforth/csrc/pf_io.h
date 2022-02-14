@@ -126,8 +126,12 @@ void ioTerm( void );
     #else
         typedef FILE FileStream;
 
-        #define sdOpenFile      fopen
-        #define sdDeleteFile    remove
+        FileStream *sdOpenFile( const char *FileName, const char *Mode );
+        cell_t sdRenameFile( const char *OldName, const char *NewName );
+        cell_t sdDeleteFile( const char *FileName );
+
+        //#define sdOpenFile      fopen
+        //#define sdDeleteFile    remove
         #define sdFlushFile     fflush
         #define sdReadFile      fread
         #define sdWriteFile     fwrite
@@ -144,7 +148,7 @@ void ioTerm( void );
         #define sdTellFile      ftell
 
         #define sdCloseFile     fclose
-        #define sdRenameFile    rename
+        //#define sdRenameFile    rename
         #define sdInputChar     fgetc
 
         #define PF_STDIN  ((FileStream *) stdin)

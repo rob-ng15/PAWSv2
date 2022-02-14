@@ -9,8 +9,8 @@ all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
 $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW : $(BUILD_DIR)/main.elf
 	$(ARCH)-elf-objcopy -O binary $< $@
 
-$(BUILD_DIR)/main.elf : $(BUILD_DIR)/crt0.o $(LIBPAWS) $(BUILD_DIR)/main.o
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/crt0.o $(BUILD_DIR)/main.o $(BUILD_DIR)/libforth.o $(BUILD_DIR)/unit.o $(LIBPAWS) $(LIBRARY)
+$(BUILD_DIR)/main.elf : $(LIBPAWS) $(BUILD_DIR)/main.o
+	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/libforth.o $(BUILD_DIR)/unit.o $(LIBPAWS) $(LIBRARY)
 
 $(BUILD_DIR)/main.o : $(SOURCE) $(BUILD_DIR)/libforth.o $(BUILD_DIR)/unit.o
 	$(CC) $(CFLAGS) $(INCLUDE) -c $(SOURCE) -o $@

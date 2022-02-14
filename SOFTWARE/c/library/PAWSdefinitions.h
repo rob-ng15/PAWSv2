@@ -248,16 +248,6 @@
 #define WAVE_NOISE 4
 #define WAVE_SAMPLE 7
 
-// FOR EASE OF PORTING
-typedef unsigned int size_t;
-//typedef unsigned short bool;
-typedef unsigned char   uint8, uint8_t;
-typedef unsigned short  uint16, uint16_t;
-typedef unsigned int    uint32;
-typedef signed char     int8, int8_t;
-typedef signed short    int16, int16_t;
-typedef signed int      int32;
-
 // STRUCTURE OF THE SPRITE UPDATE FLAG
 struct sprite_update_flag {
     unsigned int padding:3;

@@ -392,21 +392,8 @@ cell_t pfIncludeFile( const char *FileName )
 ***************************************************************/
 void pfDebugMessage( const char *CString )
 {
-#if 1
-    while( *CString )
-    {
-        char c = *CString++;
-        if( c == '\n' )
-        {
-            sdTerminalOut( 0x0D );
-            sdTerminalOut( 0x0A );
-            pfDebugMessage( "DBG: " );
-        }
-        else
-        {
-            sdTerminalOut( c );
-        }
-    }
+#ifdef PFORTH_DEBUG
+    fprintf( stderr, "DBG: %s\n", CString );
 #else
     (void)CString;
 #endif

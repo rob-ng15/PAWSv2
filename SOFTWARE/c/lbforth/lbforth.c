@@ -19,6 +19,7 @@
 * dependencies as low as possible. In this file, the only C standard functions
 * used are getchar, putchar and the EOF value. */
 #include <stdio.h>
+#include <PAWSlibrary.h>
 
 /* Base cell data types. Use short/long on most systems for 16 bit cells. */
 /* Experiment here if necessary. */
@@ -186,7 +187,7 @@ const char *initScript =
 * to e.g. output data on a microcontroller via a serial interface. */
 void putkey(char c)
 {
-    putchar(c);
+    addch(c);
 }
 
 /* The primary data input function. This is where you place the code to e.g.
@@ -194,7 +195,8 @@ void putkey(char c)
 int llkey()
 {
     if (*initscript_pos) return *(initscript_pos++);
-    return getchar();
+    int c = ps2_inputcharacter();
+    return ( c == 13 ) ? '\n' : c;
 }
 
 /* Anything waiting in the keyboard buffer? */
@@ -215,6 +217,7 @@ int getkey()
     charsInLineBuffer = 0;
     while ((c = llkey()) != EOF)
     {
+        putkey(c);
         if (charsInLineBuffer == sizeof(lineBuffer)) break;
         lineBuffer[charsInLineBuffer++] = c;
         if (c == '\n') break;
@@ -1018,6 +1021,9 @@ void addBuiltin(cell code, const char* name, const byte flags, builtin f)
 /* Program setup and jump to outer interpreter */
 int main()
 {
+    // SETUP KEYBOARD AND CURSES
+    ps2_keyboardmode( PS2_KEYBOARD ); initscr(); start_color(); autorefresh( TRUE );
+
     errorFlag = 0;
 
     if (DCELL_SIZE != 2*CELL_SIZE)

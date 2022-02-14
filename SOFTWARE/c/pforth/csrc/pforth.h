@@ -30,6 +30,8 @@ typedef void *PForthTask;
 typedef void *PForthDictionary;
 
 #include <stdint.h>
+#include <sys/unistd.h>
+
 /* Integer types for Forth cells, signed and unsigned: */
 typedef intptr_t cell_t;
 typedef uintptr_t ucell_t;

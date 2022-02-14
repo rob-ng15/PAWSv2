@@ -22,24 +22,26 @@
 ***************************************************************/
 
 #include "pf_all.h"
+#include <PAWSlibrary.h>
 
 /* Default portable terminal I/O. */
 int  sdTerminalOut( char c )
 {
-    return putchar(c);
+    return addch(c);
 }
 /* We don't need to echo because getchar() echos. */
 int  sdTerminalEcho( char c )
 {
-    return 0;
+    return sdTerminalOut( c );
 }
 int  sdTerminalIn( void )
 {
-    return getchar();
+    int c = ps2_inputcharacter();
+    return ( c == 13 ) ? '\n' : c;
 }
 int  sdQueryTerminal( void )
 {
-    return 0;
+    return ps2_character_available();
 }
 
 int  sdTerminalFlush( void )
@@ -53,6 +55,7 @@ int  sdTerminalFlush( void )
 
 void sdTerminalInit( void )
 {
+    ps2_keyboardmode(PS2_KEYBOARD); initscr(); start_color(); autorefresh( TRUE );
 }
 void sdTerminalTerm( void )
 {

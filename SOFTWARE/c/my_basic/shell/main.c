@@ -55,6 +55,8 @@
 #include <string.h>
 #include <time.h>
 
+#include <PAWSlibrary.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
@@ -117,7 +119,7 @@ static jmp_buf mem_failure_point;
 #endif /* countof */
 
 #ifndef _printf
-#	define _printf printf
+#	define _printf printw
 #endif /* _printf */
 
 /* ========================================================} */
@@ -963,16 +965,7 @@ static void _kill_program(const char* path) {
 }
 
 static void _list_directory(const char* path) {
-	char line[_MAX_LINE_LENGTH];
-
-#ifdef MB_OS_WIN
-	if(path && *path) sprintf(line, "dir %s", path);
-	else sprintf(line, "dir");
-#else /* MB_OS_WIN */
-	if(path && *path) sprintf(line, "ls %s", path);
-	else sprintf(line, "ls");
-#endif /* MB_OS_WIN */
-	system(line);
+	fl_listdirectory(path);
 }
 
 static void _show_tip(void) {
@@ -1418,7 +1411,7 @@ static int gc(struct mb_interpreter_t* s, void** l) {
 	return result;
 }
 
-static int beep(struct mb_interpreter_t* s, void** l) {
+static int do_beep(struct mb_interpreter_t* s, void** l) {
 	int result = MB_FUNC_OK;
 
 	mb_assert(s && l);
@@ -1533,7 +1526,7 @@ static void _on_startup(void) {
 	mb_reg_fun(bas, trace);
 	mb_reg_fun(bas, raise);
 	mb_reg_fun(bas, gc);
-	mb_reg_fun(bas, beep);
+	mb_reg_fun(bas, do_beep);
 }
 
 static void _on_exit(void) {
@@ -1567,6 +1560,9 @@ static void _on_exit(void) {
 int main(int argc, char* argv[]) {
 	int status = 0;
 
+    // INITIALISE THE TERMINAL
+    initscr(); start_color(); autorefresh( TRUE ); ps2_keyboardmode( TRUE );
+
 #ifdef MB_CP_VC
 	_CrtSetBreakAlloc(0);
 #endif /* MB_CP_VC */
@@ -1585,7 +1581,7 @@ int main(int argc, char* argv[]) {
 		if(!_process_parameters(argc, argv))
 			argc = 1;
 	}
-	if(argc == 1) {
+	if(argc <= 1) {
 		_show_tip();
 		do {
 			status = _do_line();

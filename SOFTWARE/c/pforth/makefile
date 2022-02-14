@@ -27,9 +27,16 @@ all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
 
 $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW : $(BUILD_DIR)/pforth.elf
 	$(ARCH)-elf-objcopy -O binary $< $@
+	@echo ""
+	@echo "Copy the files in fth/ to the SDCARD"
+	@echo "in folder /COMPUTER/PFORTH/"
+	@echo ""
+	@echo "PFORTH.PAW loads files from /COMPUTER/PFORTH/"
+	@echo "and will build the system on startup"
+	@echo ""
 
-$(BUILD_DIR)/pforth.elf : $(BUILD_DIR)/crt0.o $(LIBPAWS) $(PFORTH_OBJECTS)
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/crt0.o $(PFORTH_BUILD_OBJECTS) $(LIBPAWS) $(LIBRARY)
+$(BUILD_DIR)/pforth.elf : $(LIBPAWS) $(PFORTH_OBJECTS)
+	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(PFORTH_BUILD_OBJECTS) $(LIBPAWS) $(LIBRARY)
 
 %.o: csrc/%.c
 	$(CC) $(INCLUDE) $(CFLAGS) -c -o $(BUILD_DIR)/$@ $<

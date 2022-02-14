@@ -28,10 +28,11 @@
     #define ERR(msg) /* { printf msg; } */
 #else
     #include <stdio.h>
-    #define ERR(msg) { fprintf (stderr,msg); }
+    #define ERR(msg) { printf msg; }
 #endif
 
 #include "pforth.h"
+#define PF_INIT_MODE 1
 
 #ifndef PF_DEFAULT_DICTIONARY
 #define PF_DEFAULT_DICTIONARY "pforth.dic"
@@ -47,8 +48,6 @@
 #define FALSE (0)
 #endif
 
-#define PF_INIT_MODE
-
 #ifdef PF_EMBEDDED
 int main( void )
 {
@@ -62,7 +61,7 @@ int main( void )
 
 int main( int argc, char **argv )
 {
- #ifdef PF_STATIC_DIC
+#ifdef PF_STATIC_DIC
     const char *DicName = NULL;
 #else /* PF_STATIC_DIC */
     const char *DicName = PF_DEFAULT_DICTIONARY;
@@ -132,6 +131,7 @@ int main( int argc, char **argv )
 #ifdef PF_INIT_MODE
     IfInit = TRUE;
     DicName = NULL;
+    SourceName = "system.fth";
 #endif
 
 #ifdef PF_UNIT_TEST
@@ -143,6 +143,7 @@ int main( int argc, char **argv )
 #endif
 
     Result = pfDoForth( DicName, SourceName, IfInit);
+    sleep( 8 );
 
 on_error:
     return (int)Result;

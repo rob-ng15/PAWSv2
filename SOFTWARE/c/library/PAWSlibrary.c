@@ -1866,11 +1866,11 @@ int keypad(WINDOW *win, bool bf) {
 }
 
 // FAT16/32 File IO Library from Ultra-Embedded.com
-#define USE_FILELIB_STDIO_COMPAT_NAMES
-#define FAT_PRINTF_NOINC_STDIO
 #ifdef feof
 #undef feof
 #endif
+#define FAT_PRINTF_NOINC_STDIO
+#define USE_FILELIB_STDIO_COMPAT_NAMES
 #include "fat_io_lib/fat_filelib.h"
 
 // READ MULTIPLE SECTORS INTO MEMORY FOR fat_io_lib
@@ -1980,12 +1980,6 @@ int paws_vfprintf( void *fd, const char *format, va_list args ) {
     return( strlen( buffer ) );
 }
 
-// COMPATABILITY FUNCTIONS
-// sleep from sys/unistd.h
-//unsigned int sleep( unsigned int seconds ) {
-//    sleep1khz( 1000 * seconds, 0 );
-//    return(0);
-//}
 
 // LINK NEWLIB STUB FUNCTIONS TO FAT_IO_LIB FUNCTIONS
 
@@ -2277,7 +2271,13 @@ int paws_fread( void *data, int size, int count, void *fd ) {
 
 int paws_fflush( void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
-    return(0);
+    if( !__sdcard_init ) __start_sdmedia();
+
+    if( ( fd == stdin ) || ( fd == stdout ) || ( fd == stderr ) ) {
+        return(0);
+    } else {
+        return( fl_fflush( fd ) );
+    }
 }
 
 void paws_clearerr( void *fd ) {
@@ -2302,4 +2302,12 @@ int paws_clock_gettime( clockid_t clk_id, void *tz ) {
     tv->tv_sec = (time_t)*SYSTEMSECONDS;
     tv->tv_nsec = (long)(*SYSTEMMILLISECONDS/1000);
     return( 0 );
+}
+
+// PAWS SLEEP FOR sys/unistd.h
+unsigned int paws_sleep( unsigned int seconds ) {
+    // WAIT FOR A FREE TIMER
+    while( *SLEEPTIMER0 && *SLEEPTIMER1 );
+    sleep1khz( 1000 * seconds, ( !*SLEEPTIMER0 ) ? 0 : 1 );
+    return(0);
 }

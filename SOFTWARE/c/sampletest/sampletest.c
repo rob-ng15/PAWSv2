@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <PAWSlibrary.h>
 
 unsigned char samplesLEFT[] = { 50, 52, 54, 56, 58, 60, 62, 64 };
