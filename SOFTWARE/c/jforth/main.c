@@ -232,12 +232,15 @@ static void help(void)
 }
 
 static int eval_file(forth_t *o, const char *file, enum forth_debug_level verbose) {
+	// EXPAND filename to include /COMPUTER/JFORTH/
+	char path[1024];
+	sprintf( path, "/COMPUTER/JFORTH/%s",file);
 	FILE *in = NULL;
 	int c = 0, rval = 0;
-	assert(file);
+	//assert(file);
 	if (verbose >= FORTH_DEBUG_NOTE)
-		note("reading from file '%s'", file);
-	forth_set_file_input(o, in = forth_fopen_or_die(file, "rb"));
+		note("reading from file '%s'", path);
+	forth_set_file_input(o, in = forth_fopen_or_die(path, "rb"));
 	/* shebang line '#!', core files could also be detected */
 	if ((c = fgetc(in)) == '#')
 		while (((c = fgetc(in)) > 0) && (c != '\n'));
@@ -268,7 +271,7 @@ static forth_t *forth_initial_enviroment(forth_t **o, forth_cell_t size,
 		int argc, char **argv)
 {
 	errno = 0;
-	assert(input && output && argv);
+	//assert(input && output && argv);
 	if (*o)
 		goto finished;
 
@@ -310,7 +313,7 @@ int main(int argc, char **argv)
 	int rval = 0, i = 1;
        	int save = 0,            /* attempt to save core if true */
 	    eval = 0,            /* have we evaluated anything? */
-	    readterm = 0,        /* read from standard in */
+	    readterm = 1,        /* read from standard in */
 	    use_line_editor = 0, /* use a line editor, *if* one exists */
 	    mset = 0;            /* memory size specified */
 	enum forth_debug_level verbose = FORTH_DEBUG_OFF; /* verbosity level */
@@ -338,116 +341,10 @@ int main(int argc, char **argv)
 	_setmode(_fileno(stdout), _O_BINARY);
 	_setmode(_fileno(stderr), _O_BINARY);
 #endif
-/**
-This loop processes any options that may have been passed to the program, it
-looks for arguments beginning with '-' and attempts to process that option,
-if the argument does not start with '-' the option processing stops. It is
-a simple mechanism for processing program arguments and there are better
-ways of doing it (such as "getopt" and "getopts"), but by using them we
-sacrifice portability.
-**/
-
-	for (i = 1; i < argc && argv[i][0] == '-'; i++) {
-		if (strlen(argv[i]) > 2) {
-			fatal("Only one option allowed at a time (got %s)", argv[i]);
-			goto fail;
-		}
-		switch (argv[i][1]) {
-		case '\0': goto done; /* stop processing options */
-		case 'h':  usage(argv[0]);
-			   help();
-			   return -1;
-		case 'n':  use_line_editor = 1;
-			   /* fall-through */
-		case 't':  readterm = 1;
-			   if (verbose >= FORTH_DEBUG_NOTE)
-				   note("stdin on. line editor %s", use_line_editor ? "on" : "off");
-			   break;
-		case 'u':
-			   return libforth_unit_tests(0, 0, 0);
-		case 'e':
-			if (i >= (argc - 1))
-				goto fail;
-			forth_initial_enviroment(&o, core_size, stdin, stdout, verbose, orig_argc, orig_argv);
-			optarg = argv[++i];
-			if (verbose >= FORTH_DEBUG_NOTE)
-				note("evaluating '%s'", optarg);
-			if (forth_eval(o, optarg) < 0)
-				goto end;
-			eval = 1;
-			break;
-		case 'f':
-			if (i >= (argc - 1))
-				goto fail;
-			forth_initial_enviroment(&o, core_size, stdin, stdout, verbose, orig_argc, orig_argv);
-			optarg = argv[++i];
-			if (verbose >= FORTH_DEBUG_NOTE)
-				note("reading from file '%s'", optarg);
-			if (eval_file(o, optarg, verbose) < 0)
-				goto end;
-			break;
-		case 's':
-			if (i >= (argc - 1))
-				goto fail;
-			dump_name = argv[++i];
-			/* fall-through */
-		case 'S':  /*use default name */
-			if (verbose >= FORTH_DEBUG_NOTE)
-				note("saving core file to '%s' (on exit)", dump_name);
-			save = 1;
-			break;
-		case 'm':
-			if (o || (i >= argc - 1) || forth_string_to_cell(10, &core_size, argv[++i]))
-				goto fail;
-			if ((core_size *= kbpc) < MINIMUM_CORE_SIZE) {
-				fatal("-m too small (minimum %zu)", MINIMUM_CORE_SIZE / kbpc);
-				return -1;
-			}
-			if (verbose >= FORTH_DEBUG_NOTE)
-				note("memory size set to %zu", core_size);
-			mset = 1;
-			break;
-		case 'l':
-			if (o || mset || (i >= argc - 1))
-				goto fail;
-			dump_name = argv[++i];
-			/* fall-through */
-		case 'L':
-			if (verbose >= FORTH_DEBUG_NOTE)
-				note("loading core file '%s'", dump_name);
-			if (!(o = forth_load_core_file(dump = forth_fopen_or_die(dump_name, "rb")))) {
-				fatal("%s, core load failed", dump_name);
-				return -1;
-			}
-			forth_set_debug_level(o, verbose);
-			fclose(dump);
-			break;
-		case 'v':
-			verbose++;
-			break;
-		case 'V':
-			version();
-			return EXIT_SUCCESS;
-			break;
-		case 'x':
-			enable_signal_handling = 1;
-			break;
-		default:
-		fail:
-			fatal("invalid argument '%s'", argv[i]);
-			usage(argv[0]);
-			return -1;
-		}
-	}
 
 done:
-	/* if no files are given, read stdin */
-	readterm = (!eval && i == argc) || readterm;
+	version();
 	forth_initial_enviroment(&o, core_size, stdin, stdout, verbose, orig_argc, orig_argv);
-
-	for (; i < argc; i++) /* process all files on command line */
-		if (eval_file(o, argv[i], verbose) < 0)
-			goto end;
 
 	if (readterm) { /* if '-t' or no files given, read from stdin */
 		if (verbose >= FORTH_DEBUG_NOTE)

@@ -56,6 +56,18 @@ int  sdTerminalFlush( void )
 void sdTerminalInit( void )
 {
     ps2_keyboardmode(PS2_KEYBOARD); initscr(); start_color(); autorefresh( TRUE );
+    attron( COLOR_PAIR(3) | A_BOLD );
+    printw( "PForth by Phil Burk\n" );
+    printw( "Copyright 1994 3DO, Phil Burk, Larry Polansky, David Rosenboom\n" );
+    printw( "Source Code https://github.com/philburk/pforth\n" );
+    printw( "Documentation http://www.softsynth.com/pforth/\n\n" );
+
+    attron( COLOR_PAIR(1) | A_BOLD );
+    printw( "Ported to PAWSv2 by Rob S\n" );
+    printw( "TO load the PForth system:" );
+    attron( COLOR_PAIR(2) | A_BOLD );
+    printw( "loadsys\n\n" );
+    attron( COLOR_PAIR(7) | A_NORMAL );
 }
 void sdTerminalTerm( void )
 {

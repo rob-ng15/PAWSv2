@@ -1,13 +1,19 @@
 include ../makefile.inc
 
 PROJECT=JFORTH
-PROJECTTYPE=COMPUTER
+PROJECTTYPE=COMPUTER/JFORTH
 SOURCE=main.c
 
 all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
 
 $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW : $(BUILD_DIR)/main.elf
 	$(ARCH)-elf-objcopy -O binary $< $@
+	@echo ""
+	@echo "Copy the files editor.fth forth.fth unit.fth to the SDCARD"
+	@echo "in folder /COMPUTER/JFORTH/"
+	@echo ""
+	@echo "JFORTH.PAW loads files from /COMPUTER/JFORTH/"
+	@echo ""
 
 $(BUILD_DIR)/main.elf : $(LIBPAWS) $(BUILD_DIR)/main.o
 	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/libforth.o $(BUILD_DIR)/unit.o $(LIBPAWS) $(LIBRARY)

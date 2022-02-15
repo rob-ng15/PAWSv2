@@ -22,26 +22,26 @@
 **
 ***************************************************************/
 
-typedef double PF_FLOAT;
+typedef float PF_FLOAT;
 
 /* Define pForth specific math functions. */
 
-#define fp_acos   acos
-#define fp_asin   asin
-#define fp_atan   atan
-#define fp_atan2  atan2
-#define fp_cos    cos
-#define fp_cosh   cosh
-#define fp_fabs   fabs
-#define fp_floor  floor
-#define fp_log    log
-#define fp_log10  log10
-#define fp_pow    pow
-#define fp_sin    sin
-#define fp_sinh   sinh
-#define fp_sqrt   sqrt
-#define fp_tan    tan
-#define fp_tanh   tanh
-#define fp_round  round
+#define fp_acos   acosf
+#define fp_asin   asinf
+#define fp_atan   atanf
+#define fp_atan2  atan2f
+#define fp_cos    cosf
+#define fp_cosh   coshf
+#define fp_fabs   fabsf
+#define fp_floor  floorf
+#define fp_log    logf
+#define fp_log10  log10f
+#define fp_pow    powf
+#define fp_sin    sinf
+#define fp_sinh   sinhf
+#define fp_sqrt   sqrtf
+#define fp_tan    tanf
+#define fp_tanh   tanhf
+#define fp_round  roundf
 
 #endif

@@ -1,7 +1,7 @@
 include ../makefile.inc
 
 PROJECT=PFORTH
-PROJECTTYPE=COMPUTER
+PROJECTTYPE=COMPUTER/PFORTH
 
 PFORTH_HEADERS= pf_all.h pf_cglue.h pf_clib.h pf_core.h pf_float.h \
 		pf_guts.h pf_host.h pf_inc1.h pf_io.h pf_mem.h pf_save.h \
@@ -31,8 +31,7 @@ $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW : $(BUILD_DIR)/pforth.elf
 	@echo "Copy the files in fth/ to the SDCARD"
 	@echo "in folder /COMPUTER/PFORTH/"
 	@echo ""
-	@echo "PFORTH.PAW loads files from /COMPUTER/PFORTH/"
-	@echo "and will build the system on startup"
+	@echo "FORTH.PAW loads files from /COMPUTER/PFORTH/"
 	@echo ""
 
 $(BUILD_DIR)/pforth.elf : $(LIBPAWS) $(PFORTH_OBJECTS)

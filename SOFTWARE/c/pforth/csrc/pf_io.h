@@ -124,6 +124,7 @@ void ioTerm( void );
         #include PF_USER_FILEIO
 
     #else
+        // MODIFIED TO REDIRECT TO pf_fileio_stdio.h for correct PAWS PATHS
         typedef FILE FileStream;
 
         FileStream *sdOpenFile( const char *FileName, const char *Mode );

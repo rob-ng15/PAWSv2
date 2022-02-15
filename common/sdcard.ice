@@ -80,6 +80,7 @@ algorithm sdcard(
       if ( (count&rate)==rate ) { // swap clock
         sd_clk  = ~sd_clk;
         if (!sd_clk) {
+            // send bit
             sd_mosi = shift[7,1];
             shift = { shift[0,7], 1b0 };
             n = n + 1;
@@ -97,7 +98,7 @@ algorithm sdcard(
   ) {
     uint16 count = 0;
     while( ~sd_miso ) {
-        if( (count&rate)==rate ) {
+        if( (count&rate) == rate ) {
             sd_clk = ~sd_clk;
         }
         count = count + 1;
@@ -256,10 +257,10 @@ algorithm sdcard(
       }
 
       //send dummy clocks and start token
-      () <- sendbyte <- ( 8hff, 3 );
-      () <- sendbyte <- ( 8hfe, 3 );
+      () <- sendbyte <- ( 8hff, 3 ); () <- sendbyte <- ( 8hff, 3 ); () <- sendbyte <- ( 8hff, 3 ); () <- sendbyte <- ( 8hfe, 3 );
 
-      // send 512 bytes
+      // send 512 bytes, starting at position 0 in the buffer
+      buffer_out.addr0 = 0;
       while( progress != 512 ) {
           () <- sendbyte <- ( buffer_out.rdata0, 3 );
           buffer_out.addr0 = buffer_out.addr0 + 1;
@@ -269,9 +270,6 @@ algorithm sdcard(
       //send CRC = 0xff 0xff
       () <- sendbyte <- ( 8hff, 3 );
       () <- sendbyte <- ( 8hff, 3 );
-
-      //send dummy clocks
-      //() <- sendbyte <- ( 8hff, 3 );
 
       // Wait for response ( should be 0x05 )
       ( status ) <- read <- ( 8,1,3);
