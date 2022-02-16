@@ -124,7 +124,7 @@ algorithm aluextend(
     output  uint32  result
 ) {
     always_after {
-        result = shiftcount[2,1] ? shiftcount[1,1] ? { {16{sourceReg1[15,1]}}, sourceReg1[0,16] } : { {24{sourceReg1[7,1]}}, sourceReg1[0,8] } :
+        result = shiftcount[2,1] ? shiftcount[0,1] ? { {16{sourceReg1[15,1]}}, sourceReg1[0,16] } : { {24{sourceReg1[7,1]}}, sourceReg1[0,8] } :
                                     sourceReg1[0,16];
     }
 }
