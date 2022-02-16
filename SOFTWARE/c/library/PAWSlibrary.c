@@ -1209,7 +1209,7 @@ void gpu_outputstringcentre( unsigned char colour, short y, unsigned char bold, 
 }
 
 void displayfilename( unsigned char *filename, unsigned char type ) {
-    unsigned char displayname[10], i, j;
+    char displayname[10], i, j;
     gpu_outputstringcentre( WHITE, 144, 0, "Current File:", 0 );
     for( i = 0; i < 10; i++ ) {
         displayname[i] = 0;
@@ -1287,12 +1287,13 @@ void sortdirectoryentries( unsigned short entries ) {
     } while( changes );
 }
 
-unsigned int filebrowser( char *message, char *extension, int startdirectorycluster, int rootdirectorycluster, int *filesize ) {
+unsigned int filebrowser( char *message, char *extension, int startdirectorycluster, int rootdirectorycluster, unsigned int *filesize ) {
     unsigned int thisdirectorycluster = startdirectorycluster;
     FAT32DirectoryEntry *fileentry;
 
     unsigned char rereaddirectory = 1;
     unsigned short entries, present_entry;
+    int temp;
 
     while( 1 ) {
         if( rereaddirectory ) {
@@ -1376,7 +1377,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
                         return( directorynames[present_entry].starting_cluster );
                         break;
                     case 2:
-                        int temp = filebrowser( message, extension, directorynames[present_entry].starting_cluster, rootdirectorycluster, filesize );
+                        temp = filebrowser( message, extension, directorynames[present_entry].starting_cluster, rootdirectorycluster, filesize );
                         if( temp ) {
                             return( temp );
                         } else {
@@ -1857,11 +1858,11 @@ int clrtobot( void ) {
     return( true );
 }
 
-int intrflush( void *, bool bf ) {
+int intrflush( WINDOW *win, bool bf ) {
     return( 0 );
 }
 
-int keypad(WINDOW *win, bool bf) {
+int keypad( WINDOW *win, bool bf ) {
     return( 0 );
 }
 
@@ -2094,6 +2095,7 @@ long _read( int fd, void *buf, size_t cnt ) {
             return( fl_fread( buf, cnt, 1, __filehandles[ fd ] ) );
             break;
     }
+    buffer[ cnt - 1 ] = 0; return( strlen( buf ) );
 }
 int _lseek( int fd, int pos, int whence ) {
     if( !__sdcard_init ) __start_sdmedia();
@@ -2211,6 +2213,7 @@ char *paws_fgets( char *s, int cnt, void *fd ) {
     } else {
         return( fl_fgets( s, cnt, fd ) );
     }
+    *buffer = 0; return( s );
 }
 int paws_fputc( int c, void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
@@ -2287,8 +2290,9 @@ int paws_ungetc( int c, void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
     if( fd == stdin ) {
         // MECHANISM TO RETURN A CHARACTER TO STDIN
+        return( c );
     } else {
-        fseek( fd, -1L, SEEK_CUR );
+        return( fseek( fd, -1L, SEEK_CUR ) );
     }
 }
 

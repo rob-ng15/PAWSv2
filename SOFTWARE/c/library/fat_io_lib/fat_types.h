@@ -1,7 +1,12 @@
 #ifndef __FAT_TYPES_H__
 #define __FAT_TYPES_H__
 
-#define FATFS_DEF_UINT32_AS_INT
+// Detect 64-bit compilation on GCC
+#if defined(__GNUC__) && defined(__SIZEOF_LONG__)
+    #if __SIZEOF_LONG__ == 8
+        #define FATFS_DEF_UINT32_AS_INT
+    #endif
+#endif
 
 //-------------------------------------------------------------
 // System specific types

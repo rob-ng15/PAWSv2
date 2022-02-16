@@ -96,7 +96,10 @@ algorithm PAWSCPU(
     uint16  storeHIGH <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[16,16] : EXECUTESLOW.memoryoutput[16,16];
 
     // CLASSIFY THE INSTRUCTION TO FAST/SLOW
-    Iclass IFASTSLOW <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, isALUM <: RV32DECODER.function7[0,1] );
+    uint1   isALUM <:: RV32DECODER.opCode[3,1] & ( RV32DECODER.function7[0,1] == 7b0000001 );
+    uint1   isALUCLM <:: RV32DECODER.opCode[3,1] & ~RV32DECODER.function3[2,1] & ( RV32DECODER.function7[0,1] == 7b0000101 );
+
+    Iclass IFASTSLOW <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, isALUM <: isALUM, isALUCLM <: isALUCLM );
 
     // EXECUTE MULTICYCLE INSTRUCTIONS, INTEGER DIVIDE, FPU, CSR AND ALU-A
     cpuexecuteSLOWPATH EXECUTESLOW(
@@ -235,17 +238,17 @@ algorithm cpuexecuteSLOWPATH(
     input   uint7   function7,
     input   uint5   rs1,
     input   uint5   rs2,
-    input   int32  sourceReg1,
-    input   int32  sourceReg2,
-    input   int32  abssourceReg1,
-    input   int32  abssourceReg2,
+    input   int32   sourceReg1,
+    input   int32   sourceReg2,
+    input   int32   abssourceReg1,
+    input   int32   abssourceReg2,
     input   uint32  sourceReg1F,
     input   uint32  sourceReg2F,
     input   uint32  sourceReg3F,
-    input   int32  memoryinput,
+    input   int32   memoryinput,
     output  uint1   frd,
-    output  int32  memoryoutput,
-    output  int32  result,
+    output  int32   memoryoutput,
+    output  int32   result,
     input   uint1   incCSRinstret
 ) <autorun,reginputs> {
     // M EXTENSION - DIVISION
@@ -253,6 +256,9 @@ algorithm cpuexecuteSLOWPATH(
 
     // ATOMIC MEMORY OPERATIONS
     aluA ALUA( function7 <: function7, memoryinput <: memoryinput, sourceReg2 <: sourceReg2 );
+
+    // B EXTENSION - CLMUL
+    aluCLMUL ALUBCLMUL( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
     // FLOATING POINT INSTRUCTION CLASSIFICATION
     Fclass FCLASS( is2FPU <: opCode[2,1], isFPUFAST <: function7[4,1] );
@@ -290,7 +296,7 @@ algorithm cpuexecuteSLOWPATH(
     );
 
     // START FLAGS
-    ALUMD.start := 0; FPUSLOW.start := 0; CSR.start := 0; CSR.updateFPUflags := 0;
+    ALUMD.start := 0; ALUBCLMUL.start := 0; FPUSLOW.start := 0; CSR.start := 0; CSR.updateFPUflags := 0;
 
     while(1) {
         if( start ) {
@@ -314,12 +320,14 @@ algorithm cpuexecuteSLOWPATH(
                 }
                 default: {
                     if( opCode[4,1] & FCLASS.FASTPATHFPU ) {
-                        frd = FPUFAST.frd; result = FPUFAST.result;                         // COMPARISONS, MIN/MAX, SIGN MANIPULATION, CLASSIFICTIONS AND MOVE F-> and I->F
+                        frd = FPUFAST.frd; result = FPUFAST.result;                         // FPU COMPARISONS, MIN/MAX, SIGN MANIPULATION, CLASSIFICTIONS AND MOVE F-> and I->F
                     } else {
-                        FPUSLOW.start = opCode[4,1]; ALUMD.start = ~opCode[4,1];            // FPU AND INTEGER DIVISION
-                        while( FPUSLOW.busy | ALUMD.busy ) {}
+                        FPUSLOW.start = opCode[4,1];                                        // FPU CALCULATIONS AND CONVERSIONS, INTEGER DIVISION, CARRYLESS MULTIPLY
+                        ALUMD.start = ~opCode[4,1] & function3[2,1];
+                        ALUBCLMUL.start = ~opCode[4,1] & ~function3[2,1];
+                        while( FPUSLOW.busy | ALUMD.busy | ALUBCLMUL.busy ) {}
                         frd = opCode[4,1] & FPUSLOW.frd;
-                        result = opCode[4,1] ? FPUSLOW.result : ALUMD.result;
+                        result = opCode[4,1] ? FPUSLOW.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result;
                     }
                     CSR.updateFPUflags = opCode[4,1];
                 }
@@ -363,7 +371,7 @@ algorithm cpuexecuteFASTPATH(
     aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, abssourceReg1 <: abssourceReg1, abssourceReg2 <: abssourceReg2 );
 
     // CLASSIFY THE TYPE FOR INSTRUCTIONS THAT WRITE TO REGISTER
-    uint1   isALUMM <:: ( opCode[3,1] & function7[0,1] );
+    uint1   isALUMM <:: ( opCode[3,1] & function7 == 7b0000001 );
     uint1   isAUIPCLUI <:: ( opCode[0,3] == 3b101 );
     uint1   isJAL <:: ( opCode[2,3] == 3b110 ) & opCode[0,1];
     uint1   isLOAD <:: ~|opCode[1,4];

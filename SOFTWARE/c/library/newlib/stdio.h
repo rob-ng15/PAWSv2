@@ -876,6 +876,6 @@ extern void *paws_tmpfile(void);
 
 extern int paws_printf(const char *restrict format, ... );
 extern int paws_fprintf( void *fd, const char *restrict format, ... );
-extern int paws_vfprintf(FILE *stream, const char *format, va_list ap);
+extern int paws_vfprintf( void *stream, const char *format, va_list ap);
 
 #endif /* _STDIO_H_ */

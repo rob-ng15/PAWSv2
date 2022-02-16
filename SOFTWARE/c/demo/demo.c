@@ -1108,7 +1108,7 @@ void ditherdemo( void ) {
 }
 
 
-unsigned char tune_treble[] = {  36, 48, 43, 40, 48, 42, 41, 37, 49, 44, 41, 49, 44, 41, 0xff };
+unsigned char tune_treble[] = {  36, 47, 42, 39, 47, 41, 40, 37, 49, 47, 40, 49, 47, 40, 0xff };
 unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 32, 24, 16, 16, 16, 32, 24, 32, 0xff };
 
 void spritedemo( void ) {
