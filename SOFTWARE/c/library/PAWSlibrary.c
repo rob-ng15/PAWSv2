@@ -274,6 +274,19 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
     DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, 4 );
 }
+// WRITE A SECTOR TO THE SDCARD COPIED FROM MEMORY
+void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress ) {
+    sdcard_wait();
+
+    // USE DMA CONTROLLER TO COPY THE DATA, MODE 1 COPIES FROM MULTIPLE-ADDRESSES TO SINGLE ADDRESS
+    // EACH WRITE OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
+    *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
+    DMASTART( copyAddress, (void *restrict)SDCARD_DATA, 512, 1 );
+
+    *SDCARD_SECTOR = sectorAddress;
+    *SDCARD_WRITESTART = 1;
+    sdcard_wait();
+}
 
 // I/O FUNCTIONS
 // SET THE LEDS
@@ -1196,7 +1209,7 @@ void gpu_outputstringcentre( unsigned char colour, short y, unsigned char bold, 
 }
 
 void displayfilename( unsigned char *filename, unsigned char type ) {
-    unsigned char displayname[10], i, j;
+    char displayname[10], i, j;
     gpu_outputstringcentre( WHITE, 144, 0, "Current File:", 0 );
     for( i = 0; i < 10; i++ ) {
         displayname[i] = 0;
@@ -1274,12 +1287,13 @@ void sortdirectoryentries( unsigned short entries ) {
     } while( changes );
 }
 
-unsigned int filebrowser( char *message, char *extension, int startdirectorycluster, int rootdirectorycluster, int *filesize ) {
+unsigned int filebrowser( char *message, char *extension, int startdirectorycluster, int rootdirectorycluster, unsigned int *filesize ) {
     unsigned int thisdirectorycluster = startdirectorycluster;
     FAT32DirectoryEntry *fileentry;
 
     unsigned char rereaddirectory = 1;
     unsigned short entries, present_entry;
+    int temp;
 
     while( 1 ) {
         if( rereaddirectory ) {
@@ -1363,7 +1377,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
                         return( directorynames[present_entry].starting_cluster );
                         break;
                     case 2:
-                        int temp = filebrowser( message, extension, directorynames[present_entry].starting_cluster, rootdirectorycluster, filesize );
+                        temp = filebrowser( message, extension, directorynames[present_entry].starting_cluster, rootdirectorycluster, filesize );
                         if( temp ) {
                             return( temp );
                         } else {
@@ -1844,26 +1858,24 @@ int clrtobot( void ) {
     return( true );
 }
 
-int intrflush( void *, bool bf ) {
+int intrflush( WINDOW *win, bool bf ) {
     return( 0 );
 }
 
-int keypad(WINDOW *win, bool bf) {
+int keypad( WINDOW *win, bool bf ) {
     return( 0 );
 }
 
 // FAT16/32 File IO Library from Ultra-Embedded.com
-#define USE_FILELIB_STDIO_COMPAT_NAMES
-#define FAT_PRINTF_NOINC_STDIO
 #ifdef feof
 #undef feof
 #endif
+#define FAT_PRINTF_NOINC_STDIO
+#define USE_FILELIB_STDIO_COMPAT_NAMES
 #include "fat_io_lib/fat_filelib.h"
 
 // READ MULTIPLE SECTORS INTO MEMORY FOR fat_io_lib
 int sd_media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
-    unsigned short i;
-
     while( sector_count-- ) {
         sdcard_readsector( sector, buffer );
         // MOVE TO NEXT SECTOR
@@ -1874,7 +1886,12 @@ int sd_media_read( uint32 sector, uint8 *buffer, uint32 sector_count ) {
 }
 
 int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
-    return(0);
+    while( sector_count-- ) {
+        sdcard_writesector( sector, buffer );
+        // MOVE TO NEXT SECTOR
+        sector++; buffer += FAT_SECTOR_SIZE;
+    }
+    return(1);
 }
 
 // newlib support routines - define standard malloc memory size 16MB
@@ -1914,18 +1931,63 @@ void __start_sdmedia( void ) {
     __sdcard_init = TRUE;
 }
 
-// COMPATABILITY FUNCTIONS
-// sleep from sys/unistd.h
-//unsigned int sleep( unsigned int seconds ) {
-//    sleep1khz( 1000 * seconds, 0 );
-//    return(0);
-//}
+// PAWS redirection of printf/fprintf to console/uart/fat_io_lib as needed
+int paws_printf(const char *restrict format, ... ) {
+    if( !__stdinout_init ) __start_stdinout();
+
+    char *buffer = (char *)0x1400;
+    va_list args;
+    va_start (args, format);
+    vsnprintf( buffer, 1024, format, args);
+    va_end(args);
+
+    printw( "%s", buffer );
+    return( strlen( buffer ) );
+}
+
+int paws_fprintf( void *fd, const char *restrict format, ... ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
+    char *buffer = (char *)0x1400;
+    va_list args;
+    va_start (args, format);
+    vsnprintf( buffer, 1024, format, args);
+    va_end(args);
+
+    if( ( fd == stdout ) || ( fd == stderr ) ) {
+        if( fd == stdout ) printw( "%s", buffer );
+        if( fd == stderr ) uart_outputstring( buffer );
+    } else {
+        fl_fwrite( buffer, strlen( buffer ), 1, fd );
+    }
+
+    return( strlen( buffer ) );
+}
+
+int paws_vfprintf( void *fd, const char *format, va_list args ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( !__sdcard_init ) __start_sdmedia();
+
+    char *buffer = (char *)0x1400;
+    vsnprintf( buffer, 1024, format, args);
+    if( ( fd == stdout ) || ( fd == stderr ) ) {
+        if( fd == stdout ) printw( "%s", buffer );
+        if( fd == stderr ) uart_outputstring( buffer );
+    } else {
+        fl_fwrite( buffer, strlen( buffer ), 1, fd );
+    }
+
+    return( strlen( buffer ) );
+}
+
 
 // LINK NEWLIB STUB FUNCTIONS TO FAT_IO_LIB FUNCTIONS
 
 #define MAXOPENFILES 4
 struct sFL_FILE *__filehandles[ MAXOPENFILES + 3 ]; // stdin, stdout, stderr
 
+// FIND AN UNUSED FILE HANDLE FROM 3, 0 = stdin, 1 = stdout, 2 = stderr
 int __find_filehandlespace( void ) {
     for( int i = 3; i < MAXOPENFILES+3; i++ ) {
         if( __filehandles[ i ] == NULL ) {
@@ -1934,19 +1996,35 @@ int __find_filehandlespace( void ) {
     }
     return -1;
 }
+
 int _open( const char *file, int flags ) {
     if( !__sdcard_init ) __start_sdmedia();
 
-    int handle = __find_filehandlespace();
+    static char *__openmodes[] = { "r", "r+", "w", "w+", "a", "a+" };
+    int handle = __find_filehandlespace(), mode;
     if( handle == -1 ) {
         return -1;
     } else {
-        __filehandles[ handle ] = fl_fopen( file, "r" );
-        if( __filehandles[ handle ] != NULL ) {
-            return handle;
-        } else {
-            return -1;
+        // DETERMINE OPENING MODE
+        switch( flags ) {
+            case O_RDONLY:                      mode = 0; break;
+            case O_WRONLY | O_CREAT | O_TRUNC:  mode = 2; break;
+            case O_WRONLY | O_CREAT | O_APPEND: mode = 4; break;
+            case O_RDWR:                        mode = 1; break;
+            case O_RDWR | O_CREAT | O_TRUNC:    mode = 3; break;
+            case O_RDWR | O_CREAT | O_APPEND:   mode = 5; break;
+            default: mode = -1;
         }
+        fprintf(stderr,"Opening file %s into handle %0d using mode %s : ",file,handle,(mode == -1 ) ? "err" : __openmodes[mode]);
+        if( mode != -1 ) {
+            __filehandles[ handle ] = fl_fopen( file, __openmodes[ mode ] );
+            if( __filehandles[ handle ] != NULL ) {
+                fprintf(stderr,"Success\n");
+                return handle;
+            }
+        }
+        fprintf(stderr,"Failed\n");
+        return( -1 );
     }
 }
 
@@ -2017,6 +2095,7 @@ long _read( int fd, void *buf, size_t cnt ) {
             return( fl_fread( buf, cnt, 1, __filehandles[ fd ] ) );
             break;
     }
+    buffer[ cnt - 1 ] = 0; return( strlen( buf ) );
 }
 int _lseek( int fd, int pos, int whence ) {
     if( !__sdcard_init ) __start_sdmedia();
@@ -2051,8 +2130,8 @@ void  __attribute__ ((noreturn)) _exit( int status ){
     while(1);
 }
 int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
-    tv->tv_sec = *SYSTEMSECONDS;
-    tv->tv_usec = *SYSTEMMILLISECONDS;
+    tv->tv_sec = (time_t)*SYSTEMSECONDS;
+    tv->tv_usec = (suseconds_t)*SYSTEMMILLISECONDS;
     return( 0 );
 }
 int _times() {
@@ -2084,6 +2163,23 @@ int paws_fclose( void *fd ) {
     if( !__sdcard_init ) __start_sdmedia();
     fl_fclose( fd );
     return( 0 );
+}
+void *paws_freopen( const char *path, const char *mode, FILE *fd ) {
+    char filename[FATFS_MAX_LONG_FILENAME];
+
+    if( fd ) {
+        // FILE IS PRESENTLY OPEN
+        paws_memcpy( filename, fd -> filename, FATFS_MAX_LONG_FILENAME );
+        paws_fclose( fd );
+    } else {
+        // FILE IS NOT OPEN
+        paws_memcpy( filename, path, strlen(path) );
+    }
+    return( paws_fopen( filename, mode ) );
+}
+void *paws_tmpfile( void ) {
+    sprintf( (char * restrict)0x1800, "%0d%0d.tmp", rng(65535), *SYSTEMSECONDS );
+    return( paws_fopen( (const char *)0x1800, "w+b" ) );
 }
 int paws_fgetc( void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
@@ -2117,6 +2213,7 @@ char *paws_fgets( char *s, int cnt, void *fd ) {
     } else {
         return( fl_fgets( s, cnt, fd ) );
     }
+    *buffer = 0; return( s );
 }
 int paws_fputc( int c, void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
@@ -2175,42 +2272,46 @@ int paws_fread( void *data, int size, int count, void *fd ) {
     }
 }
 
-int paws_printf(const char *restrict format, ... ) {
-    if( !__stdinout_init ) __start_stdinout();
-
-    char *buffer = (char *)0x1400;
-    va_list args;
-    va_start (args, format);
-    vsnprintf( buffer, 1024, format, args);
-    va_end(args);
-
-    printw( "%s", buffer );
-    return( strlen( buffer ) );
-}
-
-int paws_fprintf( void *fd, const char *restrict format, ... ) {
+int paws_fflush( void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
 
-    char *buffer = (char *)0x1400;
-    va_list args;
-    va_start (args, format);
-    vsnprintf( buffer, 1024, format, args);
-    va_end(args);
-
-    if( ( fd == stdout ) || ( fd == stderr ) ) {
-        if( fd == stdout ) printw( "%s", buffer );
-        if( fd == stderr ) uart_outputstring( buffer );
+    if( ( fd == stdin ) || ( fd == stdout ) || ( fd == stderr ) ) {
+        return(0);
     } else {
-        fl_fwrite( buffer, strlen( buffer ), 1, fd );
+        return( fl_fflush( fd ) );
     }
+}
 
-    return( strlen( buffer ) );
+void paws_clearerr( void *fd ) {
+}
+
+int paws_ungetc( int c, void *fd ) {
+    if( !__stdinout_init ) __start_stdinout();
+    if( fd == stdin ) {
+        // MECHANISM TO RETURN A CHARACTER TO STDIN
+        return( c );
+    } else {
+        return( fseek( fd, -1L, SEEK_CUR ) );
+    }
+}
+
+int paws_rmdir (const char *__path) {
+    return(0);
 }
 
 // PAWS SYSTEMCLOCK
-int paws_gettimeofday( struct paws_timeval *restrict tv, void *tz ) {
-    tv->ptv_sec = *SYSTEMSECONDS;
-    tv->ptv_usec = *SYSTEMMILLISECONDS;
+int paws_clock_gettime( clockid_t clk_id, void *tz ) {
+    struct timespec *tv = tz;
+    tv->tv_sec = (time_t)*SYSTEMSECONDS;
+    tv->tv_nsec = (long)(*SYSTEMMILLISECONDS/1000);
     return( 0 );
+}
+
+// PAWS SLEEP FOR sys/unistd.h
+unsigned int paws_sleep( unsigned int seconds ) {
+    // WAIT FOR A FREE TIMER
+    while( *SLEEPTIMER0 && *SLEEPTIMER1 );
+    sleep1khz( 1000 * seconds, ( !*SLEEPTIMER0 ) ? 0 : 1 );
+    return(0);
 }

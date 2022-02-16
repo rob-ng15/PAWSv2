@@ -32,8 +32,6 @@
 
 #include "doomstat.h"
 
-#include <PAWSlibrary.h>
-
 #define MINZ                            (FRACUNIT*4)
 #define BASEXCENTER                     (BASE_WIDTH/2)
 #define BASEYCENTER                     (BASE_HEIGHT/2)

@@ -29,8 +29,6 @@
 
 #include "r_sky.h"
 
-#include <PAWSlibrary.h>
-
 //
 // sky mapping
 //

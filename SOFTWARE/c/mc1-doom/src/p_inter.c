@@ -36,8 +36,6 @@
 
 #include "p_inter.h"
 
-#include <PAWSlibrary.h>
-
 #define BONUSADD        6
 
 // a weapon is found with two clip loads,

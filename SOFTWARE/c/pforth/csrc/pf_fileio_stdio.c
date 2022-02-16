@@ -23,6 +23,19 @@
 
 #include <limits.h>		/* For LONG_MAX */
 
+// MODIFIED FILE OPERATIONS TO INCLUDE THE EXTENDED PATH
+FileStream *sdOpenFile( const char *FileName, const char *Mode ) {
+	static char path[1024];
+	sprintf(path,"/COMPUTER/PFORTH/%s",FileName);
+	return fopen( path, Mode );
+}
+
+cell_t sdRenameFile( const char *OldName, const char *NewName ) {
+}
+
+cell_t sdDeleteFile( const char *FileName ) {
+}
+
 typedef int bool_t;
 
 /* Copy SIZE bytes from File FROM to File TO.  Return non-FALSE on error. */

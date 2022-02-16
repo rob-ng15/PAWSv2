@@ -841,9 +841,9 @@ void colourtable( void ) {
     displayreset();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Colour Test" );
 
-    uint8 colour = 0;
-    for( uint16 y = 0; y < 16; y++ ) {
-        for( uint16 x = 0; x < 8; x++ ) {
+    unsigned char colour = 0;
+    for( unsigned short y = 0; y < 16; y++ ) {
+        for( unsigned short x = 0; x < 8; x++ ) {
             gpu_rectangle( colour, x * 40, y * 15, 39 + x * 40, 14 + y * 15 );
             colour++;
         }
@@ -861,7 +861,7 @@ void backgrounddemo( void ) {
     displayreset();
     tpu_print_centre( 58, TRANSPARENT, WHITE, 1, "Background Generator Test" );
 
-    for( uint8 bkg = 0; bkg < 16; bkg++ ) {
+    for( unsigned char bkg = 0; bkg < 16; bkg++ ) {
         set_background( PURPLE, ORANGE, bkg );
         tpu_print_centre( 59, TRANSPARENT, WHITE, 0, backgroundnames[bkg] );
         sleep1khz( 1000, 0 );
@@ -1108,7 +1108,7 @@ void ditherdemo( void ) {
 }
 
 
-unsigned char tune_treble[] = {  36, 48, 43, 40, 48, 42, 41, 37, 49, 44, 41, 49, 44, 41, 0xff };
+unsigned char tune_treble[] = {  36, 47, 42, 39, 47, 41, 40, 37, 49, 47, 40, 49, 47, 40, 0xff };
 unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 32, 24, 16, 16, 16, 32, 24, 32, 0xff };
 
 void spritedemo( void ) {

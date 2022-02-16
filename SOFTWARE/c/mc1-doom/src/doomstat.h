@@ -37,8 +37,6 @@
 // We need the playr data structure as well.
 #include "d_player.h"
 
-#include <PAWSlibrary.h>
-
 // ------------------------
 // Command line parameters.
 //

@@ -1,0 +1,96 @@
+#!/usr/bin/gawk -f
+
+# This converts a specially formatted C program into markdown, the syntax is
+# simple, any line beginning with "/**" puts the converting into a pass through
+# state, the C comments get put into the output file directly, until "**/" is
+# encountered. Then the converter goes into a "indent everything" state, where
+# the code after the "**/" gets indented before being printed out, this has the
+# effect of making the text quoted.
+#
+# Various Doxygen tags are also processed and removed.
+#
+# Example input:
+#   .---------------------------------.
+#   |/**                              |
+#   |## program that returns true     |
+#   |This program always returns true |
+#   |**/                              |
+#   |int main(void)                   |
+#   |{                                |
+#   |	return -1; /** fix this */    |
+#   |}                                |
+#   .---------------------------------.
+# Output:
+#   .---------------------------------.
+#   |## program that returns true     |
+#   |This program always returns true |
+#   |                                 |
+#   |    int main(void)               |
+#   |    {                            |
+#   |	    return -1; /** fix this */|
+#   |    }                            |
+#   .---------------------------------.
+#
+
+BEGIN {
+
+help="usage: convert [-H] file.c \n\
+Convert a specially formatted C program into markdown, this\n\
+is not a general purpose utility, it is designed to convert\n\
+a very strictly formatted version of C into documentation.\n\
+\n\
+Options:\n\
+	-h print out this help message and exit\n\
+	-H convert @param and @return lines\n\
+";
+
+	state = 0
+	lines = 1
+
+	for (i = 1; i < ARGC; i++) {
+		if (ARGV[i] == "-H")
+			headers = 1
+		else if (ARGV[i] == "-h") {
+			print help;
+			exit 1;
+		} else if (ARGV[i] ~ /^-./) {
+			e = sprintf("%s: unrecognized option -- %c", ARGV[0], substr(ARGV[i], 2, 1))
+			print e > "/dev/stderr"
+		} else {
+			break
+		}
+		delete ARGV[i]
+	}
+}
+
+/^\/\*\*/ { state = 1; gsub(/^\/\*\*/, "") }
+
+/^\*\*\// { state = 0; gsub(/^\*\*\//, "\n") }
+
+/^@(file|author|copyright|license|email)/ { gsub(/^@[a-z]+ +/, " * ") }
+
+/^@brief/ { gsub(/^@[a-z]+ +/, "") }
+
+/@(param|return)/ { 
+	if(headers == 0) {
+		$0 = ""
+	} else {
+		gsub(/@param +/, " * ");
+		gsub(/@return +/, "Returns: ");
+	}
+}
+
+{
+	if(state) {
+		if(!($0 ~/^[ \t]/)) {
+			gsub(/_/, "\\_") # escape _ in text, occurs often
+		}
+		print $0
+	} else if($0 ~ /^[ \t\n\r]*$/) {
+		printf "\n"
+	} else {
+		printf "\t%04u %s\n", lines, $0 # print code block with line
+		lines++
+	}
+}
+

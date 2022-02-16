@@ -57,8 +57,6 @@
 
 #include "m_menu.h"
 
-#include <PAWSlibrary.h>
-
 typedef void (*msgroutine_t)(int response);
 
 extern patch_t*         hu_font[HU_FONTSIZE];

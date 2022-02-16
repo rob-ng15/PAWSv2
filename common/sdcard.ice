@@ -68,23 +68,42 @@ algorithm sdcard(
 
   subroutine sendbyte(
     input  uint8    byte,
+    input  uint8    rate,
     readwrites      sd_clk,
     writes          sd_mosi
   ) {
-    uint16 count = 0;
-    uint8  shift = uninitialized;
-    shift        = cmd;
-    while (count != $2*256*8$) { // 8 clock pulses @~400 kHz (assumes 50 MHz clock)
-      if (&count[0,8]) {
+    uint16  count = 0;
+    uint8   shift = uninitialized;
+    uint6   n = 0;
+    shift        = byte;
+    while( n != 8 ) {
+      if ( (count&rate)==rate ) { // swap clock
         sd_clk  = ~sd_clk;
         if (!sd_clk) {
-          sd_mosi = shift[7,1];
-          shift   = {shift[0,7],1b0};
+            // send bit
+            sd_mosi = shift[7,1];
+            shift = { shift[0,7], 1b0 };
+            n = n + 1;
         }
       }
       count = count + 1;
     }
-    sd_mosi = 1;
+  }
+
+  subroutine waitbusy(
+    input  uint8    rate,
+    readwrites      sd_clk,
+    writes          sd_mosi,
+    reads           sd_miso
+  ) {
+    uint16 count = 0;
+    while( ~sd_miso ) {
+        if( (count&rate) == rate ) {
+            sd_clk = ~sd_clk;
+        }
+        count = count + 1;
+    }
+    sd_clk = 0;
   }
 
   subroutine read(
@@ -122,6 +141,7 @@ algorithm sdcard(
   uint48 cmd16  = 48b010100000000000000000000000000100000000000010101;
   uint48 cmd17  = 48b010100010000000000000000000000000000000001010101;  // SINGLE BLOCK READ
   uint48 cmd24  = 48b010110000000000000000000000000000000000001010101;  // SINGLE BLOCK WRITE
+  uint48 cmd13  = 48b010011010000000000000000000000000000000011111111;  // SEND STATUS
   //                 01ccccccaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaarrrrrrr1
 
   uint1  do_read_sector = 0;
@@ -223,40 +243,46 @@ algorithm sdcard(
     }
 
     if (do_write_sector) {
+      uint10 progress = 0;
+      buffer_out.addr0 = io.offset;
       do_write_sector = 0;
-      //
-      // NEED A SEND A SINGLE BYTE SUBROUTINE
-      //
+
       // send cmd24
-      // () <- send <- ({cmd24[40,8],do_addr_sector,cmd24[0,8]});
-      // // wait for cmd response ( 0x00 )
-      // ( status ) <- read <- (8,1,3);
-      // if (status[0,8] == 8h00) {
-      //   uint9 progress = 0;
-      //
-      //   //await response bytes
-      //   //send 8 dummy clocks
-      //   () <- sendbyte <- ( 8hff );
-      //   send data start token ( 0xfe )
-      //   () <- sendbyte <- ( 8hfe );
-      //
-      //   //send 512 bytes
-      //
-      //   //send CRC = 0xff 0xff
-      //   () <- sendbyte <- ( 8hff );
-      //   () <- sendbyte <- ( 8hff );
-      //   //send 8 dummy clocks
-      //   () <- sendbyte <- ( 8hff );
-      //
-      //   send cmd13 {0X4D,0X00000000,0XFF}
-      //   () <- send <- ( { 8h4d, 32h0, 8hff } );
-      //
-      //   //wait for cmd response ( 0x00 )
-      //   ( status ) <- read <- ( 8,1,3);
-      //   while (status[0,8] != 8h00) {
-      //     ( status ) <- read <- ( 8,1,3);
-      //   }
-      // }
+      () <- send <- ({cmd24[40,8],do_addr_sector,cmd24[0,8]});
+
+      // wait for cmd response ( 0x00 )
+      ( status ) <- read <- (8,1,3);
+      while( |status[0,8] ) {
+          ( status ) <- read <- (8,1,3);
+      }
+
+      //send dummy clocks and start token
+      () <- sendbyte <- ( 8hff, 3 ); () <- sendbyte <- ( 8hff, 3 ); () <- sendbyte <- ( 8hff, 3 ); () <- sendbyte <- ( 8hfe, 3 );
+
+      // send 512 bytes, starting at position 0 in the buffer
+      buffer_out.addr0 = 0;
+      while( progress != 512 ) {
+          () <- sendbyte <- ( buffer_out.rdata0, 3 );
+          buffer_out.addr0 = buffer_out.addr0 + 1;
+          progress = progress + 1;
+      }
+
+      //send CRC = 0xff 0xff
+      () <- sendbyte <- ( 8hff, 3 );
+      () <- sendbyte <- ( 8hff, 3 );
+
+      // Wait for response ( should be 0x05 )
+      ( status ) <- read <- ( 8,1,3);
+
+      // wait for card to return from busy
+      () <- waitbusy <- ( 3 );
+
+      // Request status
+      () <- send <- ( cmd13 );
+
+      // Read R1 & R2 response bytes
+      ( status ) <- read <- ( 8,1,3);
+      ( status ) <- read <- ( 8,1,3);
 
       io.ready = 1;
     }

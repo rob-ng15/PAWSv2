@@ -23,8 +23,6 @@
 #include "i_net.h"
 #include "doomstat.h"
 
-#include <PAWSlibrary.h>
-
 ticcmd_t        netcmds[MAXPLAYERS][BACKUPTICS];
 int             maketic;
 int             ticdup;

@@ -194,14 +194,15 @@ void putkey(char c)
 * read from a serial line. */
 int llkey()
 {
-    if (*initscript_pos) { putkey(*(initscript_pos)); return *(initscript_pos++); }
-    return ps2_inputcharacter();
+    if (*initscript_pos) return *(initscript_pos++);
+    int c = ps2_inputcharacter();
+    return ( c == 13 ) ? '\n' : c;
 }
 
 /* Anything waiting in the keyboard buffer? */
 int keyWaiting()
 {
-    return ps2_character_available();
+    return positionInLineBuffer < charsInLineBuffer ? -1 : 0;
 }
 
 /* Line buffered character input. We're duplicating the functionality of the
@@ -216,6 +217,7 @@ int getkey()
     charsInLineBuffer = 0;
     while ((c = llkey()) != EOF)
     {
+        putkey(c);
         if (charsInLineBuffer == sizeof(lineBuffer)) break;
         lineBuffer[charsInLineBuffer++] = c;
         if (c == '\n') break;
@@ -1019,10 +1021,8 @@ void addBuiltin(cell code, const char* name, const byte flags, builtin f)
 /* Program setup and jump to outer interpreter */
 int main()
 {
-    // INITIALISE THE TERMINAL AND SET KEYBOARD TO KEYBOARD MODE
-    initscr(); autorefresh( TRUE ); ps2_keyboardmode( PS2_KEYBOARD );
-    printw("PAWSv2 Port Of lbforth By Leif Bruder <leifbruder@gmail.com>\n");
-    printw("\tCELL = %0d bytes\n\tDCELL = %0d bytes\n\tMEMORY = %d\n\n",CELL_SIZE,DCELL_SIZE,MEM_SIZE);
+    // SETUP KEYBOARD AND CURSES
+    ps2_keyboardmode( PS2_KEYBOARD ); initscr(); start_color(); autorefresh( TRUE );
 
     errorFlag = 0;
 
@@ -1124,7 +1124,6 @@ int main()
 
     if (errorFlag) return 1;
 
-    printw("Initialising\n\n");
     initscript_pos = (char*)initScript;
     quit();
     return 0;

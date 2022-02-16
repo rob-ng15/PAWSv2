@@ -33,8 +33,6 @@
 #include "doomstat.h"
 #include "r_state.h"
 
-#include <PAWSlibrary.h>
-
 //
 // CHANGE THE TEXTURE OF A WALL SWITCH TO ITS OPPOSITE
 //

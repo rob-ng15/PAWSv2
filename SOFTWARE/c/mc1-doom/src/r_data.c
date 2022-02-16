@@ -40,8 +40,6 @@
 
 #include "r_data.h"
 
-#include <PAWSlibrary.h>
-
 //
 // Graphics.
 // DOOM graphics for walls and sprites

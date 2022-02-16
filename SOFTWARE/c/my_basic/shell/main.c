@@ -55,6 +55,8 @@
 #include <string.h>
 #include <time.h>
 
+#include <PAWSlibrary.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
@@ -116,7 +118,9 @@ static jmp_buf mem_failure_point;
 #	define countof(__a) (sizeof(__a) / sizeof(*(__a)))
 #endif /* countof */
 
-#include <PAWSlibrary.h>
+#ifndef _printf
+#	define _printf printw
+#endif /* _printf */
 
 /* ========================================================} */
 
@@ -783,11 +787,11 @@ static void _list_one_line(bool_t nl, long l, const char* ln) {
 	wchar_t wstr[16];
 	wchar_t* wstrp = wstr;
 	_bytes_to_wchar(ln, &wstrp, countof(wstr));
-	printw(nl ? "%ld]%ls\n" : "%ld]%ls", l, wstrp);
+	_printf(nl ? "%ld]%ls\n" : "%ld]%ls", l, wstrp);
 	if(wstrp != wstr)
 		free(wstrp);
 #else /* MB_CP_VC && MB_ENABLE_UNICODE */
-	printw(nl ? "%ld]%s\n" : "%ld]%s", l, ln);
+	_printf(nl ? "%ld]%s\n" : "%ld]%s", l, ln);
 #endif /* MB_CP_VC && MB_ENABLE_UNICODE */
 }
 
@@ -811,12 +815,12 @@ static void _list_program(const char* sn, const char* cn) {
 		long i = 0;
 		long e = 0;
 		if(lsn < 1 || lsn > _code()->count) {
-			printw("Line number %ld out of bound.\n", lsn);
+			_printf("Line number %ld out of bound.\n", lsn);
 
 			return;
 		}
 		if(lcn < 0) {
-			printw("Invalid line count %ld.\n", lcn);
+			_printf("Invalid line count %ld.\n", lcn);
 
 			return;
 		}
@@ -842,13 +846,13 @@ static void _edit_program(const char* no) {
 
 	lno = atoi(no);
 	if(lno < 1 || lno > _code()->count) {
-		printw("Line number %ld out of bound.\n", lno);
+		_printf("Line number %ld out of bound.\n", lno);
 
 		return;
 	}
 	--lno;
 	memset(line, 0, _MAX_LINE_LENGTH);
-	printw("%ld]", lno + 1);
+	_printf("%ld]", lno + 1);
 	mb_gets(0, line, _MAX_LINE_LENGTH);
 	l = (int)strlen(line);
 	_code()->lines[lno] = (char*)realloc(_code()->lines[lno], l + 2);
@@ -867,13 +871,13 @@ static void _insert_program(const char* no) {
 
 	lno = atoi(no);
 	if(lno < 1 || lno > _code()->count) {
-		printw("Line number %ld out of bound.\n", lno);
+		_printf("Line number %ld out of bound.\n", lno);
 
 		return;
 	}
 	--lno;
 	memset(line, 0, _MAX_LINE_LENGTH);
-	printw("%ld]", lno + 1);
+	_printf("%ld]", lno + 1);
 	mb_gets(0, line, _MAX_LINE_LENGTH);
 	if(_code()->count + 1 == _code()->size) {
 		_code()->size += _REALLOC_INC_STEP;
@@ -897,7 +901,7 @@ static void _alter_program(const char* no) {
 
 	lno = atoi(no);
 	if(lno < 1 || lno > _code()->count) {
-		printw("Line number %ld out of bound.\n", lno);
+		_printf("Line number %ld out of bound.\n", lno);
 
 		return;
 	}
@@ -919,12 +923,12 @@ static void _load_program(const char* path) {
 		_set_code(txt);
 		free(txt);
 		if(_code()->count == 1) {
-			printw("Load done. %d line loaded.\n", _code()->count);
+			_printf("Load done. %d line loaded.\n", _code()->count);
 		} else {
-			printw("Load done. %d lines loaded.\n", _code()->count);
+			_printf("Load done. %d lines loaded.\n", _code()->count);
 		}
 	} else {
-		printw("Cannot load file \"%s\".\n", path);
+		_printf("Cannot load file \"%s\".\n", path);
 	}
 }
 
@@ -935,12 +939,12 @@ static void _save_program(const char* path) {
 
 	txt = _get_code();
 	if(!_save_file(path, txt)) {
-		printw("Cannot save file \"%s\".\n", path);
+		_printf("Cannot save file \"%s\".\n", path);
 	} else {
 		if(_code()->count == 1) {
-			printw("Save done. %d line saved.\n", _code()->count);
+			_printf("Save done. %d line saved.\n", _code()->count);
 		} else {
-			printw("Save done. %d lines saved.\n", _code()->count);
+			_printf("Save done. %d lines saved.\n", _code()->count);
 		}
 	}
 	free(txt);
@@ -948,60 +952,62 @@ static void _save_program(const char* path) {
 
 static void _kill_program(const char* path) {
 	if(!unlink(path)) {
-		printw("Delete file \"%s\" successfully.\n", path);
+		_printf("Delete file \"%s\" successfully.\n", path);
 	} else {
 		FILE* fp = fopen(path, "rb");
 		if(fp) {
 			fclose(fp);
-			printw("Delete file \"%s\" failed.\n", path);
+			_printf("Delete file \"%s\" failed.\n", path);
 		} else {
-			printw("File \"%s\" not found.\n", path);
+			_printf("File \"%s\" not found.\n", path);
 		}
 	}
 }
 
 static void _list_directory(const char* path) {
-	char line[_MAX_LINE_LENGTH];
-
-#ifdef MB_OS_WIN
-	if(path && *path) sprintf(line, "dir %s", path);
-	else sprintf(line, "dir");
-#else /* MB_OS_WIN */
-	if(path && *path) sprintf(line, "ls %s", path);
-	else sprintf(line, "ls");
-#endif /* MB_OS_WIN */
-	system(line);
+	fl_listdirectory(path);
 }
 
 static void _show_tip(void) {
-	printw("MY-BASIC Interpreter Shell - %s\n", mb_ver_string());
-	printw("Copyright (C) 2011 - 2021 Tony Wang. All Rights Reserved.\n");
-	printw("For more information, see https://github.com/paladin-t/my_basic/.\n");
-	printw("Input HELP and hint enter to view help information.\n");
+	_printf("MY-BASIC Interpreter Shell - %s\n", mb_ver_string());
+	_printf("Copyright (C) 2011 - 2021 Tony Wang. All Rights Reserved.\n");
+	_printf("For more information, see https://github.com/paladin-t/my_basic/.\n");
+	_printf("Input HELP and hint enter to view help information.\n");
 }
 
 static void _show_help(void) {
-	printw("\n");
-	printw("Interactive commands:\n");
-	printw("  HELP  - View help information\n");
-	printw("  CLS   - Clear the screen\n");
-	printw("  NEW   - Clear the current program\n");
-	printw("  RUN   - Run the current program\n");
-	printw("  BYE   - Quit the interpreter\n");
-	printw("  LIST  - List the current program\n");
-	printw("          Usage: LIST [l [n]], l is start line number, n is line count\n");
-	printw("  EDIT  - Edit (modify/insert/remove) a line in current program\n");
-	printw("          Usage: EDIT n, n is line number\n");
-	printw("                 EDIT -i n, insert a line before a given line\n");
-	printw("                 EDIT -r n, remove a line\n");
-	printw("  LOAD  - Load a file to the current program\n");
-	printw("          Usage: LOAD *.*\n");
-	printw("  SAVE  - Save the current program to a file\n");
-	printw("          Usage: SAVE *.*\n");
-	printw("  KILL  - Delete a file\n");
-	printw("          Usage: KILL *.*\n");
-	printw("  DIR   - List all files in a directory\n");
-	printw("          Usage: DIR [p], p is a directory path\n");
+	_printf("Modes:\n");
+	_printf("  %s           - Launch interactive mode\n", _BIN_FILE_NAME);
+	_printf("  %s *.*       - Load and run a file\n", _BIN_FILE_NAME);
+	_printf("  %s -e \"expr\" - Evaluate an expression\n", _BIN_FILE_NAME);
+	_printf("\n");
+	_printf("Options:\n");
+	_printf("  -h         - Show help information\n");
+#if _USE_MEM_POOL
+	_printf("  -p n       - Set memory pool threashold, n is size in bytes\n");
+#endif /* _USE_MEM_POOL */
+	_printf("  -f \"dirs\"  - Set importing directories, separated by \";\" with more than one\n");
+	_printf("\n");
+	_printf("Interactive commands:\n");
+	_printf("  HELP  - View help information\n");
+	_printf("  CLS   - Clear the screen\n");
+	_printf("  NEW   - Clear the current program\n");
+	_printf("  RUN   - Run the current program\n");
+	_printf("  BYE   - Quit the interpreter\n");
+	_printf("  LIST  - List the current program\n");
+	_printf("          Usage: LIST [l [n]], l is start line number, n is line count\n");
+	_printf("  EDIT  - Edit (modify/insert/remove) a line in current program\n");
+	_printf("          Usage: EDIT n, n is line number\n");
+	_printf("                 EDIT -i n, insert a line before a given line\n");
+	_printf("                 EDIT -r n, remove a line\n");
+	_printf("  LOAD  - Load a file to the current program\n");
+	_printf("          Usage: LOAD *.*\n");
+	_printf("  SAVE  - Save the current program to a file\n");
+	_printf("          Usage: SAVE *.*\n");
+	_printf("  KILL  - Delete a file\n");
+	_printf("          Usage: KILL *.*\n");
+	_printf("  DIR   - List all files in a directory\n");
+	_printf("          Usage: DIR [p], p is a directory path\n");
 }
 
 static int _do_line(void) {
@@ -1012,9 +1018,9 @@ static int _do_line(void) {
 	mb_assert(bas);
 
 	memset(line, 0, _MAX_LINE_LENGTH);
-	printw("]");
+	_printf("]");
 	mb_gets(0, line, _MAX_LINE_LENGTH);
-    printw("EXECUTING");
+
 	memcpy(dup, line, _MAX_LINE_LENGTH);
 	strtok(line, " ");
 
@@ -1038,7 +1044,7 @@ static int _do_line(void) {
 		}
 		if(result == MB_FUNC_OK)
 			result = mb_run(bas, true);
-		printw("\n");
+		_printf("\n");
 	} else if(_str_eq(line, "BYE")) {
 		result = MB_FUNC_BYE;
 	} else if(_str_eq(line, "LIST")) {
@@ -1069,7 +1075,7 @@ static int _do_line(void) {
 		_kill_program(path);
 	} else if(_str_eq(line, "DIR")) {
 		char* path = line + strlen(line) + 1;
-		fl_listdirectory(path);
+		_list_directory(path);
 	} else {
 		_append_one_line(dup);
 	}
@@ -1087,7 +1093,7 @@ static int _do_line(void) {
 #define _CHECK_ARG(__c, __i, __e) \
 	do { \
 		if(__c <= __i + 1) { \
-			printw(__e); \
+			_printf(__e); \
 			return true; \
 		} \
 	} while(0)
@@ -1096,7 +1102,7 @@ static void _run_file(char* path) {
 	if(mb_load_file(bas, path) == MB_FUNC_OK) {
 		mb_run(bas, true);
 	} else {
-		printw("Invalid file or wrong program.\n");
+		_printf("Invalid file or wrong program.\n");
 	}
 }
 
@@ -1110,7 +1116,7 @@ static void _evaluate_expression(char* p) {
 	const char* const print = "PRINT ";
 
 	if(!p) {
-		printw("Invalid expression.\n");
+		_printf("Invalid expression.\n");
 
 		return;
 	}
@@ -1134,7 +1140,7 @@ static void _evaluate_expression(char* p) {
 	if(mb_load_string(bas, p, true) == MB_FUNC_OK) {
 		mb_run(bas, true);
 	} else {
-		printw("Invalid expression.\n");
+		_printf("Invalid expression.\n");
 	}
 	if(a)
 		free(e);
@@ -1167,7 +1173,7 @@ static bool_t _process_parameters(int argc, char* argv[]) {
 				_CHECK_ARG(argc, i, "-f: Importing directories expected.\n");
 				diri = argv[++i];
 			} else {
-				printw("Unknown argument: %s.\n", argv[i]);
+				_printf("Unknown argument: %s.\n", argv[i]);
 			}
 		} else {
 			prog = argv[i];
@@ -1254,7 +1260,7 @@ static int_t _ticks(void) {
 static int_t _ticks(void) {
 	struct timespec ts;
 
-	//clock_gettime(CLOCK_MONOTONIC, &ts);
+	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	return (int_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 }
@@ -1357,10 +1363,10 @@ static int trace(struct mb_interpreter_t* s, void** l) {
 
 	for(i = 1; i < countof(frames); ) {
 		if(frames[i]) {
-			printw("%s", frames[i]);
+			_printf("%s", frames[i]);
 		}
 		if(++i < countof(frames) && frames[i]) {
-			printw(" <- ");
+			_printf(" <- ");
 		}
 	}
 
@@ -1405,7 +1411,7 @@ static int gc(struct mb_interpreter_t* s, void** l) {
 	return result;
 }
 
-static int mb_beep(struct mb_interpreter_t* s, void** l) {
+static int do_beep(struct mb_interpreter_t* s, void** l) {
 	int result = MB_FUNC_OK;
 
 	mb_assert(s && l);
@@ -1444,14 +1450,14 @@ static void _on_error(struct mb_interpreter_t* s, mb_error_e e, const char* m, c
 	if(e != SE_NO_ERR) {
 		if(f) {
 			if(e == SE_RN_WRONG_FUNCTION_REACHED) {
-				printw(
+				_printf(
 					"Error:\n    Ln %d, Col %d in Func: %s\n    Code %d, Abort Code %d\n    Message: %s.\n",
 					row, col, f,
 					e, abort_code,
 					m
 				);
 			} else {
-				printw(
+				_printf(
 					"Error:\n    Ln %d, Col %d in File: %s\n    Code %d, Abort Code %d\n    Message: %s.\n",
 					row, col, f,
 					e, e == SE_EA_EXTENDED_ABORT ? abort_code - MB_EXTENDED_ABORT : abort_code,
@@ -1459,7 +1465,7 @@ static void _on_error(struct mb_interpreter_t* s, mb_error_e e, const char* m, c
 				);
 			}
 		} else {
-			printw(
+			_printf(
 				"Error:\n    Ln %d, Col %d\n    Code %d, Abort Code %d\n    Message: %s.\n",
 				row, col,
 				e, e == SE_EA_EXTENDED_ABORT ? abort_code - MB_EXTENDED_ABORT : abort_code,
@@ -1520,7 +1526,7 @@ static void _on_startup(void) {
 	mb_reg_fun(bas, trace);
 	mb_reg_fun(bas, raise);
 	mb_reg_fun(bas, gc);
-	mb_reg_fun(bas, mb_beep);
+	mb_reg_fun(bas, do_beep);
 }
 
 static void _on_exit(void) {
@@ -1551,7 +1557,7 @@ static void _on_exit(void) {
 ** Entry
 */
 
-int main() {
+int main(int argc, char* argv[]) {
 	int status = 0;
 
     // INITIALISE THE TERMINAL
@@ -1564,16 +1570,23 @@ int main() {
 	atexit(_on_exit);
 
 	if(setjmp(mem_failure_point)) {
-		printw("Error: out of memory.\n");
+		_printf("Error: out of memory.\n");
 
 		exit(1);
 	}
 
 	_on_startup();
-    _show_tip();
-    do {
-        status = _do_line();
-    } while(_NOT_FINISHED(status));
+
+	if(argc >= 2) {
+		if(!_process_parameters(argc, argv))
+			argc = 1;
+	}
+	if(argc <= 1) {
+		_show_tip();
+		do {
+			status = _do_line();
+		} while(_NOT_FINISHED(status));
+	}
 
 	return 0;
 }

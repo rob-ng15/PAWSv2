@@ -7,7 +7,7 @@ ENTRY(_start)
 
 SECTIONS {
   .text 0x4000000 : {
-        build/crt0.o (.text)
+        ../library/build/crt0.o (.text)
         *(.text*)
     } > ram
     .bss (NOLOAD) :

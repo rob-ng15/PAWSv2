@@ -12,9 +12,10 @@
 #include <time.h>
 #endif /* ! BSD4_2 */
 
-#include <PAWSlibrary.h>
-
 #include "funcs.h"
+
+// FOR sleep1khz function
+#include <PAWSlibrary.h>
 
 /* Define these here to avoid using <stdlib.h> */
 
@@ -157,8 +158,8 @@ const char *z;
 {
     // PAUSE 8 SECONDS WHEN OUTPUTTING A LOT OF TEXT
     if (crows > 0  &&  coutput > crows - 2) {
-    sleep1khz( 8000, 0 );
-    coutput = 0;
+    sleep1khz( 500, 0 );
+    coutput--;
     }
 
     if (z != NULL)

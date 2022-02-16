@@ -32,8 +32,6 @@
 #include "r_local.h"
 #include "r_sky.h"
 
-#include <PAWSlibrary.h>
-
 planefunction_t         floorfunc;
 planefunction_t         ceilingfunc;
 

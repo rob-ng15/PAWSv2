@@ -54,8 +54,6 @@
 #include "dstrings.h"
 #include "sounds.h"
 
-#include <PAWSlibrary.h>
-
 //
 // STATUS BAR DATA
 //

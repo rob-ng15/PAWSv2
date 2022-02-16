@@ -248,16 +248,6 @@
 #define WAVE_NOISE 4
 #define WAVE_SAMPLE 7
 
-// FOR EASE OF PORTING
-typedef unsigned int size_t;
-//typedef unsigned short bool;
-typedef unsigned char   uint8, uint8_t;
-typedef unsigned short  uint16, uint16_t;
-typedef unsigned int    uint32;
-typedef signed char     int8, int8_t;
-typedef signed short    int16, int16_t;
-typedef signed int      int32;
-
 // STRUCTURE OF THE SPRITE UPDATE FLAG
 struct sprite_update_flag {
     unsigned int padding:3;
@@ -395,17 +385,15 @@ typedef void WINDOW;
 #define LINES 60
 
 // MIN MAX MACROS
+#ifndef min
 #define min(a,b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
      _a < _b ? _a : _b; })
+#endif
+#ifndef max
 #define max(a,b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
      _a > _b ? _a : _b; })
-
-// MINI DMA ENGINE
-extern void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count );
-extern void *paws_memset( void *restrict destination, int value, size_t count );
-#define memcpy(a,b,c)   paws_memcpy(a,b,c)
-#define memset(a,b,c)   paws_memset(a,b,c)
+#endif

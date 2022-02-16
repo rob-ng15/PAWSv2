@@ -38,6 +38,9 @@
     #define PF_SUPPORT_FP    (1)
 #endif
 
+// PAWS Support floating point numbers
+#define PF_SUPPORT_FP    (1)
+
 #ifdef WIN32
     #define PF_USER_INC2     "pf_win32.h"
 #endif
@@ -60,8 +63,6 @@
 #include "pf_mem.h"
 #include "pf_cglue.h"
 #include "pf_core.h"
-
-#include <PAWSlibrary.h>
 
 #ifdef PF_USER_INC2
 /* This could be used to undef and redefine macros. */

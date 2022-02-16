@@ -11,8 +11,8 @@ CFLAGS:=$(CFLAGS) -Wno-strict-prototypes -Wno-missing-prototypes -Wno-old-style-
 $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW : $(BUILD_DIR)/my_basic.elf
 	$(ARCH)-elf-objcopy -O binary $< $@
 
-$(BUILD_DIR)/my_basic.elf : $(BUILD_DIR)/crt0.o $(LIBPAWS) $(BUILD_DIR)/main.o $(BUILD_DIR)/my_basic.o
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/crt0.o $(BUILD_DIR)/main.o $(BUILD_DIR)/my_basic.o $(LIBPAWS) $(LIBRARY)
+$(BUILD_DIR)/my_basic.elf : $(LIBPAWS) $(BUILD_DIR)/main.o $(BUILD_DIR)/my_basic.o
+	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/my_basic.o $(LIBPAWS) $(LIBRARY)
 
 $(BUILD_DIR)/main.o : shell/main.c core/my_basic.h $(BUILD_DIR)/my_basic.o
 	$(CC) $(CFLAGS) $(INCLUDE) -c shell/main.c -o $@

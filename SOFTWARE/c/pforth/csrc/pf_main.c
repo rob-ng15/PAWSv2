@@ -28,7 +28,7 @@
     #define ERR(msg) /* { printf msg; } */
 #else
     #include <stdio.h>
-    #define ERR(msg) { fprintf (stderr,msg); }
+    #define ERR(msg) { printf msg; }
 #endif
 
 #include "pforth.h"
@@ -42,13 +42,12 @@
     #include <sioux.h>
 #endif
 
-#include <PAWSlibrary.h>
-
 #ifndef TRUE
 #define TRUE (1)
 #define FALSE (0)
 #endif
 
+// FORCE BOOT TO PROMPT
 #define PF_INIT_MODE
 
 #ifdef PF_EMBEDDED
@@ -64,7 +63,7 @@ int main( void )
 
 int main( int argc, char **argv )
 {
- #ifdef PF_STATIC_DIC
+#ifdef PF_STATIC_DIC
     const char *DicName = NULL;
 #else /* PF_STATIC_DIC */
     const char *DicName = PF_DEFAULT_DICTIONARY;
@@ -134,6 +133,8 @@ int main( int argc, char **argv )
 #ifdef PF_INIT_MODE
     IfInit = TRUE;
     DicName = NULL;
+    SourceName = NULL;
+    //SourceName = "system.fth"; // WILL BOOTSTRAP THE SYSTEM - MODIFIED TO NOT SAVE THE COMPILED DICTIONARY
 #endif
 
 #ifdef PF_UNIT_TEST
@@ -144,7 +145,8 @@ int main( int argc, char **argv )
     }
 #endif
 
-    Result = pfDoForth( DicName, SourceName, IfInit);
+    Result = pfDoForth( DicName, SourceName, IfInit );
+    sleep( 4 );
 
 on_error:
     return (int)Result;

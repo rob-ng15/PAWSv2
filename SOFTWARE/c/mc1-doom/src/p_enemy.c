@@ -39,8 +39,6 @@
 // Data.
 #include "sounds.h"
 
-#include <PAWSlibrary.h>
-
 typedef enum
 {
     DI_EAST,

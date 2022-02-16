@@ -50,6 +50,7 @@ algorithm Iclass(
     input   uint5   opCode,
     input   uint3   function3,
     input   uint1   isALUM,
+    input   uint1   isALUCLM,
     output  uint1   frd,
     output  uint1   writeRegister,
     output  uint1   incPC,
@@ -71,7 +72,7 @@ algorithm Iclass(
             case 5b00011: {}                        // FENCE[I]
             case 5b11100: { FASTPATH = 0; }         // CSR
             case 5b01011: { FASTPATH = 0; }         // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
-            default: { FASTPATH = ~( opCode[4,1] | ( opCode[3,1] & isALUM & function3[2,1]) ); }    // FPU OR INTEGER DIVIDE -> SLOWPATH ALL ELSE TO FASTPATH
+            default: { FASTPATH = ~( opCode[4,1] | isALUCLM | ( isALUM & function3[2,1]) ); }    // FPU, CARRYLESS MULTIPLY OR INTEGER DIVIDE -> SLOWPATH ALL ELSE TO FASTPATH
         }
     }
 }
@@ -527,27 +528,3 @@ algorithm CSRblock(
     }
 }
 
-// ATOMIC A EXTENSION ALU
-algorithm aluA (
-    input   uint7   function7,
-    input   uint32  memoryinput,
-    input   uint32  sourceReg2,
-    output  uint32  result
-) <autorun> {
-    uint1   comparison <:: function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) : ( __signed(memoryinput) < __signed(sourceReg2) );
-    alulogic LOGIC( sourceReg1 <: memoryinput, operand2 <: sourceReg2 );
-
-    always_after {
-        if( function7[4,1] ) {
-            result = ( function7[2,1] ^ comparison ) ? memoryinput : sourceReg2;    // AMOMAX[U] AMOMIN[U]
-        } else {
-            switch( function7[0,4] ) {
-                default: { result = memoryinput + sourceReg2; }                     // AMOADD
-                case 4b0001: { result = sourceReg2; }                               // AMOSWAP
-                case 4b0100: { result = LOGIC.XOR; }                                // AMOXOR
-                case 4b1000: { result = LOGIC.OR; }                                 // AMOOR
-                case 4b1100: { result = LOGIC.AND; }                                // AMOAND
-            }
-        }
-    }
-}

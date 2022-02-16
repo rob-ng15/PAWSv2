@@ -28,8 +28,6 @@
 #include "r_local.h"
 #include "r_sky.h"
 
-#include <PAWSlibrary.h>
-
 // OPTIMIZE: closed two sided lines as single sided
 
 // True if any of the segs textures might be visible.

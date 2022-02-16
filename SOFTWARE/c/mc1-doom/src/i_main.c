@@ -23,8 +23,6 @@
 #include "m_argv.h"
 #include "d_main.h"
 
-#include <PAWSlibrary.h>
-
 int
 main
 ( int           argc,

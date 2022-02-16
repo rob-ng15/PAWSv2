@@ -127,5 +127,5 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
     * STEREO AUDIO
     * SDCARD via SPI
         * FAT32 read only support
-        * With Linux compatible file I/O or PAWS file selector
+        * With Linux compatible file I/O plus PAWS file selector
     * MINI-DMA CONTROLLER

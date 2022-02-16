@@ -27,8 +27,6 @@
 
 #include "f_wipe.h"
 
-#include <PAWSlibrary.h>
-
 //
 //                       SCREEN WIPE PACKAGE
 //

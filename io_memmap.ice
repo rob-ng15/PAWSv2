@@ -59,7 +59,7 @@ $$if not SIMULATION then
 
     // SDCARD AND BUFFER
     simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                          bufferaddrplus1 INPLUS1( address <: buffer_in.addr0 );      // READ FROM SDCARD
-    simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                         bufferaddrplus1 OUTPLUS1( address <: buffer_out.addr0 );    // WRITE TO SDCARD
+    simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                         bufferaddrplus1 OUTPLUS1( address <: buffer_out.addr1 );    // WRITE TO SDCARD
 
     uint1   SDCARDreadsector = uninitialized;       uint1   SDCARDwritesector = uninitialized;
     uint32  SDCARDsectoraddress = uninitialized;

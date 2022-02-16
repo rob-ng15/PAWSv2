@@ -39,8 +39,6 @@
 
 #include "w_wad.h"
 
-#include <PAWSlibrary.h>
-
 //
 // GLOBALS
 //

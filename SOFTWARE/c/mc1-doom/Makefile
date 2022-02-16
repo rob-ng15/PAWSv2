@@ -140,8 +140,8 @@ $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW :$(BUILD_DIR)/doom.elf
 	@echo "Please copy doom1.wad to the /DEMO directory of the SDCARD"
 	@echo "When copying DOOM.PAW"
 
-$(BUILD_DIR)/doom.elf: $(DOOM_OBJECTS) build/crt0.o $(LIBPAWS)
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(DOOM_BUILD_OBJECTS) build/crt0.o $(LIBPAWS) $(LIBRARY)
+$(BUILD_DIR)/doom.elf: $(DOOM_OBJECTS) $(LIBPAWS)
+	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(DOOM_BUILD_OBJECTS) $(LIBPAWS) $(LIBRARY)
 	chmod -x $@
 
 %.o: src/%.c

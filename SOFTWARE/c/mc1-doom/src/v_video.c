@@ -31,8 +31,6 @@
 
 #include "v_video.h"
 
-#include <PAWSlibrary.h>
-
 // Each screen is [SCREENWIDTH*SCREENHEIGHT];
 byte*                           screens[5];
 

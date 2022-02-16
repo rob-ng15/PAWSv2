@@ -24,8 +24,6 @@
 
 #include "doomstat.h"
 
-#include <PAWSlibrary.h>
-
 int     leveltime;
 
 //

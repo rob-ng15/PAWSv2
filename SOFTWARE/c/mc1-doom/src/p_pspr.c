@@ -34,8 +34,6 @@
 
 #include "p_pspr.h"
 
-#include <PAWSlibrary.h>
-
 #define LOWERSPEED              FRACUNIT*6
 #define RAISESPEED              FRACUNIT*6
 
