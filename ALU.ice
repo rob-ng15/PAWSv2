@@ -110,10 +110,7 @@ algorithm aluminmax(
     output  uint32  result
 ) <autorun> {
     always_after {
-        switch( function3[1,1] ) {
-            case 0: { result = ( function3[0,1] ? unsignedcompare : signedcompare ) ? sourceReg1 : sourceReg2; }
-            case 1: { result = ( function3[0,1] ? unsignedcompare : signedcompare ) ? sourceReg2 : sourceReg1; }
-        }
+        result = function3[1,1] ^ ( function3[0,1] ? unsignedcompare : signedcompare ) ? sourceReg1 : sourceReg2;
     }
 }
 // CALCULATES SEXT.B SEXT.H ZEXT.H
@@ -208,9 +205,9 @@ algorithm douintdivide(
     output  uint32  quotient,
     output  uint32  remainder
 ) <autorun,reginputs> {
+    uint6   bit(63);                                                                                    uint6 bitMINUS1 <:: bit - 1;
     uint32  temporary <:: { remainder[0,31], dividend[bit,1] };
     uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
-    uint6   bit(63);
 
     busy := start | ( ~&bit );
     always_after {
@@ -220,7 +217,7 @@ algorithm douintdivide(
             if( ~&bit ) {
                 quotient[bit,1] = bitresult;
                 remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
-                bit = bit - 1;
+                bit = bitMINUS1;
             }
         }
     }
@@ -271,25 +268,14 @@ algorithm aluMM(
     input   int32   sourceReg2,
     output  int32   result
 ) <autorun> {
-    uint1   doupper <:: |function3;
-    uint2   dosigned = uninitialised;
+    douintmul UINTMUL( factor_1 <: factor_1, factor_2 <: factor_2 );
 
+    uint1   doupper <:: |function3;
+    uint2   dosigned <:: function3[1,1] ? function3[0,1] ? 2b00 : 2b01 : 2b11;
     int33   factor_1 <:: { dosigned[0,1] ? sourceReg1[ 31, 1 ] : 1b0, sourceReg1 }; // SIGN EXTEND IF SIGNED MULTIPLY
     int33   factor_2 <:: { dosigned[1,1] ? sourceReg2[ 31, 1 ] : 1b0, sourceReg2 }; // SIGN EXTEND IF SIGNED MULTIPLY
 
-    douintmul UINTMUL( factor_1 <: factor_1, factor_2 <: factor_2 );
-
-    always_after {
-        // SELECT SIGNED/UNSIGNED OF INPUTS
-        switch( function3 ) {
-            case 2b00: { dosigned = 2b11; } // MUL ( for both signed x signed and unsigned x unsigned )
-            case 2b01: { dosigned = 2b11; } // MULH ( upper 32 bits for signed x signed )
-            case 2b10: { dosigned = 2b01; } // MULHSU ( upper 32 bits for signed x unsigned )
-            case 2b11: { dosigned = 2b00; } // MULHU ( upper 32 bits for unsigned x unsigned )
-        }
-        // SELECT HIGH OR LOW PART
-        result = UINTMUL.product[ { doupper, 5b0 }, 32 ];
-    }
+    result := UINTMUL.product[ { doupper, 5b0 }, 32 ];
 }
 
 // ALU FOR CARRYLESS MULTIPLY FROM B-EXTENSION
@@ -318,7 +304,7 @@ algorithm doclmul(
                     }
                 }
                 result = result ^ shift;
-                count = count + countPLUS1;
+                count = countPLUS1;
             }
 
             busy = 0;

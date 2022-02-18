@@ -695,11 +695,11 @@ algorithm dofloatdivide(
     input   uint50  sigB,
     output  uint50  quotient
 ) <autorun> {
+    uint6   bit(63);                                                                                    uint6 bitMINUS1 <:: bit - 1;
     uint50  remainder = uninitialised;
     uint50  temporary <:: { remainder[0,49], sigA[bit,1] };
     uint1   bitresult <:: __unsigned(temporary) >= __unsigned(sigB);
     uint2   normalshift <:: quotient[49,1] ? 2 : quotient[48,1];
-    uint6   bit(63);
 
     busy := start | ( ~&bit ) | ( quotient[48,2] != 0 );
     always_after {
@@ -710,7 +710,7 @@ algorithm dofloatdivide(
             if( ~&bit ) {
                 remainder = __unsigned(temporary) - ( bitresult ? __unsigned(sigB) : 0 );
                 quotient[bit,1] = bitresult;
-                bit = bit - 1;
+                bit = bitMINUS1;
             } else {
                 quotient = quotient[ normalshift, 48 ];
             }
@@ -763,10 +763,9 @@ algorithm floatdivide(
     prepdivide PREP( a <: a, b <: b, quotientsign :> quotientsign, quotientexp :> quotientexp );
     dofloatdivide DODIVIDE( sigA <: PREP.sigA, sigB <: PREP.sigB, quotient :> tonormalisebitstream );
 
-    DODIVIDE.start := 0; flags := { IF, NN, 1b0, classB[0,1], OF, UF, 1b0};
+    DODIVIDE.start := 0; flags := { IF, NN, 1b0, classB[0,1], OF, UF, 1b0}; busy := start | DODIVIDE.busy;
     while(1) {
         if( start ) {
-            busy = 1;
             OF = 0; UF = 0;
             switch( { IF | NN,classA[0,1] | classB[0,1] } ) {
                 case 2b00: {
@@ -776,7 +775,6 @@ algorithm floatdivide(
                 case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 32hffc00000 : { PREP.quotientsign, classB[0,1] ? 31h7f800000 : 31h0 }; }
                 default: { result = ( classA[3,1] & classB[3,1] ) | NN | classB[0,1] ? 32hffc00000 : { PREP.quotientsign, (classA[0,1] | classB[3,1] ) ? 31b0 : 31h7f800000 }; }
             }
-            busy = 0;
         }
     }
 }
@@ -812,10 +810,10 @@ algorithm dofloatsqrt(
     input   uint48  start_x,
     output  uint48  squareroot
 ) <autorun> {
+    uint6   i(47);                                                                                      uint6   iPLUS1 <:: i + 1;
     uint50  test_res <:: ac - { squareroot, 2b01 };
     uint50  ac = uninitialised;
     uint48  x = uninitialised;
-    uint6   i(47);
 
     busy := start | ( i != 47 );
     always_after {
@@ -826,7 +824,7 @@ algorithm dofloatsqrt(
                 ac = { test_res[49,1] ? ac[0,47] : test_res[0,47], x[46,2] };
                 squareroot = { squareroot[0,47], ~test_res[49,1] };
                 x = { x[0,46], 2b00 };
-                i = i + 1;
+                i = iPLUS1;
             }
         }
     }
@@ -871,10 +869,9 @@ algorithm floatsqrt(
     dofloatsqrt DOSQRT( start_ac <: PREP.start_ac, start_x <: PREP.start_x );
     fastnormal24 NORMAL( tonormal <: DOSQRT.squareroot, normalfraction :> normalfraction );
 
-    DOSQRT.start := 0; flags := { classA[3,1], NN, NV, 1b0, OF, UF, 1b0 };
+    DOSQRT.start := 0; flags := { classA[3,1], NN, NV, 1b0, OF, UF, 1b0 }; busy := start | DOSQRT.busy;
     while(1) {
         if( start ) {
-            busy = 1;
             OF = 0; UF = 0;
             switch( { classA[3,1] | NN,classA[0,1] | fp32( a ).sign } ) {
                 case 2b00: {
@@ -885,7 +882,6 @@ algorithm floatsqrt(
                 // DETECT sNAN, qNAN, -INF, -x -> qNAN AND  INF -> INF, 0 -> 0
                 default: { result = fp32( a ).sign ? 32hffc00000 : a; }
             }
-            busy = 0;
         }
     }
 }
