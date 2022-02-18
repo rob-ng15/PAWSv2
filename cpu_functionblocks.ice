@@ -11,17 +11,15 @@ algorithm decode(
     output  int32   immediateValue,
     output  uint1   AMO
 ) <autorun> {
-    always_after {
-        opCode = instruction[2,5];
-        AMO = ( instruction[2,5] == 5b01011 );
-        function3 = Rtype(instruction).function3;
-        function7 = Rtype(instruction).function7;
-        rs1 = Rtype(instruction).sourceReg1;
-        rs2 = Rtype(instruction).sourceReg2;
-        rs3 = R4type(instruction).sourceReg3;
-        rd = Rtype(instruction).destReg;
-        immediateValue = { {20{instruction[31,1]}}, Itype(instruction).immediate };
-    }
+    opCode := instruction[2,5];
+    AMO := ( instruction[2,5] == 5b01011 );
+    function3 := Rtype(instruction).function3;
+    function7 := Rtype(instruction).function7;
+    rs1 := Rtype(instruction).sourceReg1;
+    rs2 := Rtype(instruction).sourceReg2;
+    rs3 := R4type(instruction).sourceReg3;
+    rd := Rtype(instruction).destReg;
+    immediateValue := { {20{instruction[31,1]}}, Itype(instruction).immediate };
 }
 // DETERMINE IF MEMORY LOAD OR STORE
 // AMO AND FLOAT LOAD/STORE ARE 32 BIT
@@ -40,7 +38,7 @@ algorithm memoryaccess(
     always_after {
         memoryload = ( ~|opCode ) | FLOAD | ( AMO & ( function7 != 5b00011 ) );
         memorystore = ( opCode == 5b01000 ) | FSTORE | ( AMO & ( function7 != 5b00010 ) );
-        accesssize = DMAACTIVE ? 2b00: ~cacheselect ? 2b01: AMO | FLOAD | FSTORE ? 2b10 : function3[0,2];
+        accesssize = DMAACTIVE ? 2b00 : ~cacheselect ? 2b01: AMO | FLOAD | FSTORE ? 2b10 : function3[0,2];
     }
 }
 
@@ -85,9 +83,7 @@ algorithm Fclass(
 ) <autorun> {
     // FUSED OPERATIONS + CALCULATIONS & CONVERSIONS GO VIA SLOW PATH
     // SIGN MANIPULATION, COMPARISONS + MIN/MAX, MOVE AND CLASSIFICATION GO VIA FAST PATH
-    always_after {
-        FASTPATHFPU = is2FPU & isFPUFAST;           // is2FPU DETERMINES IF NORMAL OR FUSED, THEN isFPUFAST DETERMINES IF FAST OR SLOW
-    }
+    FASTPATHFPU := is2FPU & isFPUFAST;           // is2FPU DETERMINES IF NORMAL OR FUSED, THEN isFPUFAST DETERMINES IF FAST OR SLOW
 }
 
 // PERFORM SIGN EXTENSION FOR 8 AND 16 BIT LOADS
@@ -111,9 +107,7 @@ algorithm absolute(
     input   int32   negative,
     output  int32  value
 ) <autorun> {
-    always_after {
-        value = number[31,1] ? negative : number;
-    }
+    value := number[31,1] ? negative : number;
 }
 
 // ADD 2 TO AN ADDRESS FOR 32 BIT LOAD/STORES
@@ -121,27 +115,21 @@ algorithm addrplus2(
     input   uint27  address,
     output  uint27  addressplus2
 ) <autorun> {
-    always_after {
-        addressplus2 = address + 2;
-    }
+    addressplus2 := address + 2;
 }
 // ADD 1 TO AN ADDRESS FOR DMA
 algorithm addrplus1(
     input   uint27  address,
     output  uint27  addressplus1
 ) <autorun> {
-    always_after {
-        addressplus1 = address + 1;
-    }
+    addressplus1 := address + 1;
 }
 // SUB 1 TO AN ADDRESS FOR DMA
 algorithm addrsub1(
     input   uint27  address,
     output  uint27  addresssub1
 ) <autorun> {
-    always_after {
-        addresssub1 = address - 1;
-    }
+    addresssub1 := address - 1;
 }
 
 // ADD 1 TO A 9 BIT BUFFER POINTER FOR DMA
@@ -149,9 +137,7 @@ algorithm bufferaddrplus1(
     input   uint9  address,
     output  uint9  addressplus1
 ) <autorun> {
-    always_after {
-        addressplus1 = address + 1;
-    }
+    addressplus1 := address + 1;
 }
 
 // RISC-V ADDRESS GENERATOR
@@ -167,13 +153,11 @@ algorithm addressgenerator(
     output  uint27  storeAddress,
     input   uint1   AMO
 ) <autorun> {
-    always_after {
-        AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
-        branchAddress = { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
-        jumpAddress = { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
-        loadAddress = ( AMO ? 0 : immediateValue ) + sourceReg1;
-        storeAddress = ( AMO ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1;
-    }
+    AUIPCLUI := { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
+    branchAddress := { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
+    jumpAddress := { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
+    loadAddress := ( AMO ? 0 : immediateValue ) + sourceReg1;
+    storeAddress := ( AMO ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1;
 }
 
 // RISC-V SELECT THE NEXT INSTRUCTION BASED ON CPU STATE FLAGS
@@ -189,8 +173,8 @@ algorithm newpc(
     output  uint27  nextPC,
     output  uint27  newPC
 ) <autorun> {
+    nextPC := PC + ( compressed ? 2 : 4 );
     always_after {
-        nextPC = PC + ( compressed ? 2 : 4 );
         newPC = ( incPC ) ? ( takeBranch ? branchAddress : nextPC ) : ( opCode[1,1] ? jumpAddress : loadAddress );
     }
 }
@@ -244,14 +228,32 @@ algorithm registersF(
     registers RS3F( SMT <: SMT, rs <: rs3, rd <: rd, write <: write, result <: result, contents :> sourceReg3 );
 }
 
+// COMPARISONS
+algorithm compare(
+    input   int32   sourceReg1,
+    input   int32   sourceReg2,
+    input   int32   immediateValue,
+    input   uint1   regimm,
+    output  uint1   LT,
+    output  uint1   LTU,
+    output  uint1   EQ
+) <autorun> {
+    LT := __signed(sourceReg1) < __signed( regimm ? sourceReg2 : immediateValue );
+    LTU := __unsigned(sourceReg1) < __unsigned( regimm ? sourceReg2 : immediateValue );
+    EQ := sourceReg1 == ( regimm ? sourceReg2 : immediateValue );
+}
+
 // BRANCH COMPARISIONS
 algorithm branchcomparison(
     input   uint3   function3,
     input   int32   sourceReg1,
     input   int32   sourceReg2,
+    input   uint1   LT,
+    input   uint1   LTU,
+    input   uint1   EQ,
     output  uint1   takeBranch
 ) <autorun> {
-    uint4   flags <:: { ( __unsigned(sourceReg1) < __unsigned(sourceReg2) ), ( __signed(sourceReg1) < __signed(sourceReg2) ), 1b0, ( sourceReg1 == sourceReg2 ) };
+    uint4   flags <:: { LTU, LT, 1b0, EQ };
     always_after {
         takeBranch = function3[0,1] ^ flags[ function3[1,2], 1 ];
     }
@@ -383,16 +385,12 @@ algorithm counter40(
     input   uint1   update,
     output  uint40  counter(0)
 ) <autorun,reginputs> {
-    always_after {
-        counter = counter + update;
-    }
+    counter := counter + update;
 }
 algorithm counter40always(
     output  uint40  counter(0)
 ) <autorun,reginputs> {
-    always_after {
-        counter = counter + 1;
-    }
+    counter := counter + 1;
 }
 algorithm csrf(
     output  uint8   CSRf(0),

@@ -18,14 +18,13 @@ algorithm alushift(
 algorithm alurotate(
     input   uint32  sourceReg1,
     input   uint5   shiftcount,
-    output  uint32  ROL,
-    output  uint32  ROR
+    input   uint1   reverse,
+    output  uint32  result,
 ) <autorun> {
     uint6   shiftother <:: 32 - shiftcount;
 
     always_after {
-        ROL = ( sourceReg1 << shiftcount ) | ( sourceReg1 >> shiftother );
-        ROR = ( sourceReg1 >> shiftcount ) | ( sourceReg1 << shiftother );
+        result = ( sourceReg1 << ( reverse ? shiftother : shiftcount ) ) | ( sourceReg1 >> ( reverse ? shiftcount : shiftother ) );
     }
 }
 // CALCULATES BCLR BCLRI BEXT BEXTI BIN BINI BSET BSETI
@@ -150,6 +149,8 @@ algorithm alu(
     input   int32   sourceReg2,
     input   int32   negSourceReg2,
     input   int32   immediateValue,
+    input   uint1   LT,                                                             // SIGNED COMPARE sourceReg1 < operand2
+    input   uint1   LTU,                                                            // UNSIGNED COMPARE sourceReg1 < operand2
 
     output  int32   result
 ) <autorun> {
@@ -169,30 +170,27 @@ algorithm alu(
 
     uint5   shiftcount <:: opCode[3,1] ? sourceReg2[0,5] : rs2;
     uint32  operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
-
-    uint1   unsignedcompare <:: __unsigned( sourceReg1 ) < __unsigned( operand2 );
-    uint1   SLT <:: __signed( sourceReg1 ) < __signed(operand2);
-    uint1   SLTU <:: opCode[3,1] ? ( ~|rs1 ) ? ( |operand2 ) : unsignedcompare : ( operand2 == 1 ) ? ( ~|sourceReg1 ) : unsignedcompare;
+    uint1   SLTU <:: opCode[3,1] ? ( ~|rs1 ) ? ( |operand2 ) : LTU : ( operand2 == 1 ) ? ( ~|sourceReg1 ) : LTU;
 
     aluaddsub ADDSUB( dosub <: doalt, sourceReg1 <: sourceReg1, operand2 <: operand2, negoperand2 <: negSourceReg2 );
     alushift SHIFTS( sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
-    alurotate ROTATES( sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
+    alurotate ROTATES( sourceReg1 <: sourceReg1, shiftcount <: shiftcount, reverse <: function3[2,1] );
     alubits BITS( sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
     alulogic LOGIC( sourceReg1 <: sourceReg1, operand2 <: operand2, doinv <: doalt );
     alushxadd SHXADD( function3 <: function3[1,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
     alucount COUNT( shiftcount <: shiftcount[0,2], sourceReg1 <: sourceReg1 );
-    aluminmax MINMAX( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, signedcompare <: SLT, unsignedcompare <: unsignedcompare );
+    aluminmax MINMAX( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, signedcompare <: LT, unsignedcompare <: LTU );
     aluextend EXTEND( shiftcount <: shiftcount[0,3], sourceReg1 <: sourceReg1 );
     aluorcrev ORCREV( sourceReg1 <: sourceReg1 );
 
     always_after {
         switch( function3 ) {
             case 3b000: { result = ADDSUB.AS; }
-            case 3b001: { result = dosignx ? EXTEND.result : docount ? COUNT.result : dobclrext ? BITS.CLR : dobinv ? BITS.INV : dobset ? BITS.SET : dorotate ? ROTATES.ROL : SHIFTS.SLL; }
-            case 3b010: { result = doshxadd ? SHXADD.result : SLT; }
+            case 3b001: { result = dosignx ? EXTEND.result : docount ? COUNT.result : dobclrext ? BITS.CLR : dobinv ? BITS.INV : dobset ? BITS.SET : dorotate ? ROTATES.result : SHIFTS.SLL; }
+            case 3b010: { result = doshxadd ? SHXADD.result : LT; }
             case 3b011: { result = SLTU; }
             case 3b100: { result = dozerox ? EXTEND.result : dominmax ? MINMAX.result : doshxadd ? SHXADD.result : LOGIC.XOR; }
-            case 3b101: { result = doorc ? ORCREV.ORC : dorev ? ORCREV.REV8 : dominmax ? MINMAX.result : dobclrext ? BITS.EXT : dorotate ? ROTATES.ROR : dosra ? SHIFTS.SRA : SHIFTS.SRL; }
+            case 3b101: { result = doorc ? ORCREV.ORC : dorev ? ORCREV.REV8 : dominmax ? MINMAX.result : dobclrext ? BITS.EXT : dorotate ? ROTATES.result : dosra ? SHIFTS.SRA : SHIFTS.SRL; }
             case 3b110: { result = dominmax ? MINMAX.result : doshxadd ? SHXADD.result : LOGIC.OR; }
             case 3b111: { result = dominmax ? MINMAX.result : LOGIC.AND; }
         }
@@ -260,44 +258,37 @@ algorithm aluMD(
 // ALU FOR MULTIPLICATION
 // UNSIGNED / SIGNED 32 by 32 bit multiplication giving 64 bit product using DSP blocks
 algorithm douintmul(
-    input   uint32  factor_1,
-    input   uint32  factor_2,
-    input   uint1   productsign,
-    output  uint64  product64,
+    input   int33   factor_1,
+    input   int33   factor_2,
+    output  int66   product
 ) <autorun> {
-    uint64  product <:: factor_1 * factor_2;
-    always_after {
-        product64 = productsign ? -product : product;
-    }
+    product := factor_1 * factor_2;
 }
 
 algorithm aluMM(
     input   uint2   function3,
-    input   uint32  sourceReg1,
-    input   uint32  sourceReg2,
-    input   uint32  abssourceReg1,
-    input   uint32  abssourceReg2,
-    output  uint32  result
+    input   int32   sourceReg1,
+    input   int32   sourceReg2,
+    output  int32   result
 ) <autorun> {
     uint1   doupper <:: |function3;
     uint2   dosigned = uninitialised;
 
-    uint1   productsign <:: &dosigned ? ( sourceReg1[31,1] ^ sourceReg2[31,1] ) : |dosigned ? sourceReg1[31,1] : 0;
-    uint32  sourceReg1_unsigned <:: dosigned[0,1] ? abssourceReg1 : sourceReg1;
-    uint32  sourceReg2_unsigned <:: dosigned[1,1] ? abssourceReg2 : sourceReg2;
+    int33   factor_1 <:: { dosigned[0,1] ? sourceReg1[ 31, 1 ] : 1b0, sourceReg1 }; // SIGN EXTEND IF SIGNED MULTIPLY
+    int33   factor_2 <:: { dosigned[1,1] ? sourceReg2[ 31, 1 ] : 1b0, sourceReg2 }; // SIGN EXTEND IF SIGNED MULTIPLY
 
-    douintmul UINTMUL( factor_1 <: sourceReg1_unsigned, factor_2 <: sourceReg2_unsigned, productsign <: productsign );
+    douintmul UINTMUL( factor_1 <: factor_1, factor_2 <: factor_2 );
 
     always_after {
         // SELECT SIGNED/UNSIGNED OF INPUTS
         switch( function3 ) {
-            case 2b00: { dosigned = 2b11; }
-            case 2b01: { dosigned = 2b11; }
-            case 2b10: { dosigned = 2b01; }
-            case 2b11: { dosigned = 2b00; }
+            case 2b00: { dosigned = 2b11; } // MUL ( for both signed x signed and unsigned x unsigned )
+            case 2b01: { dosigned = 2b11; } // MULH ( upper 32 bits for signed x signed )
+            case 2b10: { dosigned = 2b01; } // MULHSU ( upper 32 bits for signed x unsigned )
+            case 2b11: { dosigned = 2b00; } // MULHU ( upper 32 bits for unsigned x unsigned )
         }
         // SELECT HIGH OR LOW PART
-        result = UINTMUL.product64[ { doupper, 5b0 }, 32 ];
+        result = UINTMUL.product[ { doupper, 5b0 }, 32 ];
     }
 }
 
@@ -313,6 +304,7 @@ algorithm doclmul(
     output  uint32  result
 ) <autorun,reginputs> {
     uint6   count = uninitialised;                  uint6   countPLUS1 <:: count + 1;
+    uint32  shift = uninitialised;
 
     while(1) {
         if( start ) {
@@ -320,12 +312,12 @@ algorithm doclmul(
 
             while( count != stopat ) {
                 if( sourceReg2[ count, 1 ] ) {
-                    switch( mode ) {
-                        default: { result = result ^ ( sourceReg1 << count ); }             // CLMUL
-                        case 2b10: { result = result ^ ( sourceReg1 >> ( 31 - count ) ); }  // CLMULR
-                        case 2b11: { result = result ^ ( sourceReg1 >> ( 32 - count ) ); }  // CLMULH
+                    switch( mode[1,1] ) {
+                        case 0: { shift = ( sourceReg1 << count ); }                                // CLMUL
+                        case 1: { shift = ( sourceReg1 >> ( ( mode[0,1] ? 31 : 32 ) - count ) ); }  // CLMULH CLMULR
                     }
                 }
+                result = result ^ shift;
                 count = count + countPLUS1;
             }
 
@@ -342,18 +334,8 @@ algorithm aluCLMUL(
     output  uint32  result
 ) <autorun,reginputs> {
     doclmul DOCLMUL( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, mode <: function3, result :> result );
-    DOCLMUL.start := 0; busy := start | DOCLMUL.busy;
-
-    always_after {
-        if( start ) {
-            switch( function3 ) {
-                default: { DOCLMUL.startat = 0; DOCLMUL.stopat = 32; }
-                case 2b10: { DOCLMUL.startat = 0; DOCLMUL.stopat = 31; }
-                case 2b11: { DOCLMUL.startat = 1; DOCLMUL.stopat = 32; }
-            }
-            DOCLMUL.start = 1;
-        }
-    }
+    DOCLMUL.start := start; DOCLMUL.startat := &function3; DOCLMUL.stopat := function3[0,1] ? 32 : 31;
+    busy := start | DOCLMUL.busy;
 }
 
 // ATOMIC A EXTENSION ALU

@@ -47,19 +47,6 @@ static inline fixed_t FixedMul (fixed_t a, fixed_t b)
     fixed_t lo = ((unsigned)(a * b)) >> 16;
     return _mr32_pack (hi, lo);
 #else
-//  Risc-V Assembler Code for fixed_t multiply
-//  Gives graphical glitches
-//    fixed_t hi, lo = ((unsigned)(a * b)) >> 16;
-//    asm volatile (
-//        "mulh   %[hi],%[a],%[b]    \n"  // GET UPPER 32 BITS OF a*b
-//        "slli   %[hi],%[hi],16     \n"  // MOVE LOWER 16 BITS TO UPPER 16 BITS
-//        "or     %[hi],%[hi],%[lo]  \n"  // OR IN THE FRACTIONAL BITS
-//        : [hi] "=r" (hi)
-//        : [a]  "r"  (a),
-//          [b]  "r"  (b),
-//          [lo] "r" (lo)
-//    );
-//    return( hi );
     return ((long long) a * (long long) b) >> FRACBITS;
 #endif
 }

@@ -1,4 +1,4 @@
-# PAWSv2 a Risc-V RVIMAFC CPU
+# PAWSv2 a Risc-V RVIMAFCB CPU
 
 * Written in Silice
     * Inspired by ICE-V by [ICE-V](https://github.com/sylefeb/Silice/tree/master/projects/ice-v) by @sylefeb
@@ -31,7 +31,7 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
 ## Overview
 
 * CPU
-    * 25MHz clock
+    * 50MHz clock
         * Instructions take varying number of clock cycles for execution
             * 4 Pipeline Stages
                 * Fetch ( starts partial decode )
@@ -68,6 +68,21 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
             * COMPRESSED ( 16 bit ) INSTRUCTION SUPPORT
                 * Expanded to 32 bit instruction
                 * Faster than 32 bit instructions due to less memory fetching
+        * RV32B instruction set
+            * BIT MANIPULATION INSTRUCTIONS
+                * Zba
+                    * SH1ADD SH2ADD SH3ADD
+                * Zbb
+                    * ANDN ORN XNOR
+                    * CLZ CPOP CTZ
+                    * MAX[U] MIN[U]
+                    * ORC.B REV8
+                    * ROL ROR[I]
+                    * SEXT.B SEXT.H ZEXT.H
+                * Zbc
+                    * CLMUL CLMULH CLMULR
+                * Zbs
+                    * BCLR[I] BEXT[I] BINV[I] BSET[I]
 
 * MEMORY
     * 32K of RAM

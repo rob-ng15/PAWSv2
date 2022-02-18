@@ -131,8 +131,6 @@ algorithm PAWSCPU(
         rs2 <: RV32DECODER.rs2,
         sourceReg1 <: REGISTERS.sourceReg1,
         sourceReg2 <: REGISTERS.sourceReg2,
-        abssourceReg1 <: ARS1.value,
-        abssourceReg2 <: ARS2.value,
         negSourceReg2 <: negRS2,
         sourceReg2F <: REGISTERSF.sourceReg2,
         immediateValue <: RV32DECODER.immediateValue,
@@ -344,8 +342,6 @@ algorithm cpuexecuteFASTPATH(
     input   uint5   rs2,
     input   int32   sourceReg1,
     input   int32   sourceReg2,
-    input   int32   abssourceReg1,
-    input   int32   abssourceReg2,
     input   int32   negSourceReg2,
     input   uint32  sourceReg2F,
     input   int32   immediateValue,
@@ -356,19 +352,23 @@ algorithm cpuexecuteFASTPATH(
     output  int32  memoryoutput,
     output  int32  result
 ) <autorun> {
+    // COMPARISON UNIT
+    compare COMPARE( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, immediateValue <: immediateValue, regimm <: opCode[3,1] );
+
     // BRANCH COMPARISON UNIT
-    branchcomparison BRANCHUNIT( function3 <: function3, sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
+    branchcomparison BRANCHUNIT( function3 <: function3, sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, LT <: COMPARE.LT, LTU <: COMPARE.LTU, EQ <: COMPARE.EQ );
 
     // ALU
     alu ALU(
         opCode <: opCode, function3 <: function3, function7 <: function7,
         rs1 <: rs1, rs2 <: rs2,
         sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, negSourceReg2 <: negSourceReg2,
-        immediateValue <: immediateValue
+        immediateValue <: immediateValue,
+        LT <: COMPARE.LT, LTU <: COMPARE.LTU
     );
 
     // M EXTENSION - MULTIPLICATION
-    aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, abssourceReg1 <: abssourceReg1, abssourceReg2 <: abssourceReg2 );
+    aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
     // CLASSIFY THE TYPE FOR INSTRUCTIONS THAT WRITE TO REGISTER
     uint1   isALUMM <:: ( opCode[3,1] & function7 == 7b0000001 );

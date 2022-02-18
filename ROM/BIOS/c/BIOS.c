@@ -321,7 +321,7 @@ void smtthread( void ) {
 
 // DISPLAY FILENAME, ADD AN ARROW IN FRONT OF DIRECTORIES
 void displayfilename( unsigned char *filename, unsigned char type ) {
-    unsigned char displayname[10], i, j;
+    char displayname[10], i, j;
     gpu_outputstringcentre( WHITE, 144, 0, "Current PAW File:", 0 );
     for( i = 0; i < 10; i++ ) {
         displayname[i] = 0;
@@ -441,6 +441,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 
     unsigned char rereaddirectory = 1;
     unsigned short entries, present_entry;
+    int temp;
 
     directorycluster = ( FAT32DirectoryEntry * )directorynames - FAT32clustersize * 512;
 
@@ -526,7 +527,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
                         return( directorynames[present_entry].starting_cluster );
                         break;
                     case 2:
-                        int temp = filebrowser( directorynames[present_entry].starting_cluster, rootdirectorycluster );
+                        temp = filebrowser( directorynames[present_entry].starting_cluster, rootdirectorycluster );
                         if( temp ) {
                             return( temp );
                         } else {
@@ -539,7 +540,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 }
 
 extern int _bss_start, _bss_end;
-void main( void ) {
+int main( void ) {
     unsigned int isa;
     unsigned short i, j, x, y;
     unsigned short selectedfile = 0;
@@ -569,7 +570,7 @@ void main( void ) {
     SMTSTART( (unsigned int )smtthread );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV32IMAFC CPU", 0 );
+    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV32IMAFCB CPU", 0 );
     gpu_outputstringcentre( GREY2, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS

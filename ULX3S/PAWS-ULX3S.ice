@@ -45,7 +45,7 @@ $include('../io_memmap.ice')
 $include('../timers_random.ice')
 
 // CPU SPECIFICATION
-$$CPUISA = 0x40001025
+$$CPUISA = 0x40001027
 $include('../cpu_functionblocks.ice')
 $include('../ALU.ice')
 $include('../FPU.ice')
