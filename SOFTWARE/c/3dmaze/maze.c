@@ -53,6 +53,49 @@ unsigned int map[ MAXWIDTH >> 5 ][MAXHEIGHT];
 unsigned short ghostx[4], ghosty[4], ghostdirection[4];
 unsigned short ghosteyes[4][4] = { { 0, 1, 2, 3 }, { 3, 0, 1, 2 }, { 2, 3, 0, 1 }, { 1, 2, 3, 0 } };
 
+// PACMAN TUNE - PLAYS WHEN ENTERING LEVEL 0
+unsigned char tune_treble[] = {  24, 36, 31, 28, 36, 30, 24, 27,  0,
+                                 36, 37, 32, 29, 37, 32, 25, 29,  0,
+                                 24, 36, 31, 28, 36, 30, 24, 27,  0,
+                                 28, 29, 30,  0, 30, 31, 32,  0, 32, 33, 34,  0, 36,  0, 0xff };
+unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 16, 16, 16,
+                                 16, 16, 16, 16,  8,  8, 16, 16, 16,
+                                 16, 16, 16, 16,  8,  8, 16, 16, 16,
+                                  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8, 24,  8, 0xff };
+
+unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
+                                13,  0,  0, 20, 13,  0,  0, 19,
+                                12,  0,  0, 19, 12,  0,  0, 20,
+                                19,  0, 20,  0, 22,  0,  24, 0, 0xff };
+
+// SMT THREAD TO PLAY THE INTRO TUNE
+void playtune( void ) {
+    short trebleposition = 0, bassposition = 0;
+
+    while( ( tune_treble[ trebleposition ] != 0xff ) && ( tune_bass[ bassposition ] != 0xff ) ) {
+        if( tune_treble[ trebleposition ] != 0xff ) {
+            if( !get_beep_active( 1 ) ) {
+                beep( 1, WAVE_SQUARE, tune_treble[ trebleposition ], size_treble[ trebleposition ] << 3 );
+                trebleposition++;
+            }
+        }
+        if( tune_bass[ bassposition ] != 0xff ) {
+            if( !get_beep_active( 2 ) ) {
+                beep( 2, WAVE_SQUARE, tune_bass[ bassposition ], 16 << 3 );
+                bassposition++;
+            }
+        }
+    }
+    SMTSTOP();
+}
+
+void smt_thread( void ) {
+    // SETUP STACKPOINTER FOR THE SMT THREAD
+    asm volatile ("li sp ,0x4000");
+
+    playtune();
+}
+
 // DRAW WELCOME SCREEN
 void drawwelcome( void ) {
     // DISPLAY ULX3 BITMAP
@@ -837,8 +880,8 @@ int main( void ) {
         // SET NUMBER OF POWER PILLS
         powerpills = ( level < 4 ) ? level + 1 : 4;
 
-        // ENTER THE MAZE IN 3D
-        set_background( DKBLUE, DKGREEN, BKG_5050_V );
+        // ENTER THE MAZE IN 3D - Play tune if level 1
+        set_background( DKBLUE, DKGREEN, BKG_5050_V ); if( !level ) SMTSTART( (unsigned int )smt_thread );
         if( walk_maze( levelwidths[level], levelheights[level] ) ) {
             // PACMAN WILT GRAPHICS
             for( unsigned char i = 0; i < 5; i++ ) {

@@ -35,11 +35,10 @@ algorithm memoryaccess(
     output  uint2   accesssize
 ) <autorun> {
     uint1   FLOAD <:: opCode == 5b00001;   uint1   FSTORE <:: opCode == 5b01001;
-    always_after {
-        memoryload = ( ~|opCode ) | FLOAD | ( AMO & ( function7 != 5b00011 ) );
-        memorystore = ( opCode == 5b01000 ) | FSTORE | ( AMO & ( function7 != 5b00010 ) );
-        accesssize = DMAACTIVE ? 2b00 : ~cacheselect ? 2b01: AMO | FLOAD | FSTORE ? 2b10 : function3[0,2];
-    }
+
+    memoryload := ( ~|opCode ) | FLOAD | ( AMO & ( function7 != 5b00011 ) );
+    memorystore := ( opCode == 5b01000 ) | FSTORE | ( AMO & ( function7 != 5b00010 ) );
+    accesssize := DMAACTIVE ? 2b00 : ~cacheselect ? 2b01: AMO | FLOAD | FSTORE ? 2b10 : function3[0,2];
 }
 
 // DETERMINE IF FAST OR SLOW INSTRUCTION
@@ -96,16 +95,15 @@ algorithm signextend(
 ) <autorun> {
     uint4   byteoffset <:: { byteaccess, 3b000 };
     uint1   sign <:: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1] );
-    always_after {
-        memory168 = is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[byteoffset, 8] };
-    }
+
+    memory168 := is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[byteoffset, 8] };
 }
 
 // FIND THE ABSOLUTE VALUE FOR A SIGNED 32 BIT NUMBER
 algorithm absolute(
     input   int32   number,
     input   int32   negative,
-    output  int32  value
+    output  int32   value
 ) <autorun> {
     value := number[31,1] ? negative : number;
 }
@@ -174,9 +172,7 @@ algorithm newpc(
     output  uint27  newPC
 ) <autorun> {
     nextPC := PC + ( compressed ? 2 : 4 );
-    always_after {
-        newPC = ( incPC ) ? ( takeBranch ? branchAddress : nextPC ) : ( opCode[1,1] ? jumpAddress : loadAddress );
-    }
+    newPC := ( incPC ) ? ( takeBranch ? branchAddress : nextPC ) : ( opCode[1,1] ? jumpAddress : loadAddress );
 }
 
 // RISC-V REGISTERS
@@ -238,9 +234,11 @@ algorithm compare(
     output  uint1   LTU,
     output  uint1   EQ
 ) <autorun> {
-    LT := __signed(sourceReg1) < __signed( regimm ? sourceReg2 : immediateValue );
-    LTU := __unsigned(sourceReg1) < __unsigned( regimm ? sourceReg2 : immediateValue );
-    EQ := sourceReg1 == ( regimm ? sourceReg2 : immediateValue );
+    int32   operand2 <:: regimm ? sourceReg2 : immediateValue;
+
+    LT := __signed(sourceReg1) < __signed( operand2 );
+    LTU := __unsigned(sourceReg1) < __unsigned( operand2 );
+    EQ := sourceReg1 == ( operand2 );
 }
 
 // BRANCH COMPARISIONS
@@ -253,10 +251,7 @@ algorithm branchcomparison(
     input   uint1   EQ,
     output  uint1   takeBranch
 ) <autorun> {
-    uint4   flags <:: { LTU, LT, 1b0, EQ };
-    always_after {
-        takeBranch = function3[0,1] ^ flags[ function3[1,2], 1 ];
-    }
+    uint4   flags <:: { LTU, LT, 1b0, EQ };         takeBranch := function3[0,1] ^ flags[ function3[1,2], 1 ];
 }
 
 // COMPRESSED INSTRUCTION EXPANSION

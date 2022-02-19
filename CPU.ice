@@ -376,18 +376,10 @@ algorithm cpuexecuteFASTPATH(
     uint1   isJAL <:: ( opCode[2,3] == 3b110 ) & opCode[0,1];
     uint1   isLOAD <:: ~|opCode[1,4];
 
-    takeBranch := 0;
-
-    always_after {
-        switch( opCode ) {
-            case 5b11000: { takeBranch = BRANCHUNIT.takeBranch; }       // BRANCH
-            case 5b01000: { memoryoutput = sourceReg2; }                // STORE
-            case 5b01001: { memoryoutput = sourceReg2F; }               // FLOAT STORE
-            case 5b00011: {}                                            // FENCE[I]
-            default: { result = isAUIPCLUI ? AUIPCLUI :                 // LUI AUIPC
-                                isJAL ? nextPC :                        // JAL[R]
-                                isLOAD ? memoryinput :                  // [FLOAT]LOAD
-                                isALUMM ? ALUMM.result : ALU.result; }  // INTEGER ALU AND MULTIPLICATION
-        }
-    }
+    takeBranch := ( opCode == 5b11000 ) & BRANCHUNIT.takeBranch;    // BRANCH
+    memoryoutput := opCode[0,1] ? sourceReg2F : sourceReg2;         // FLOAT STORE OR STORE
+    result := isAUIPCLUI ? AUIPCLUI :                               // LUI AUIPC
+                           isJAL ? nextPC :                         // JAL[R]
+                           isLOAD ? memoryinput :                   // [FLOAT]LOAD
+                           isALUMM ? ALUMM.result : ALU.result;     // INTEGER ALU AND MULTIPLICATION
 }

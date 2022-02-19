@@ -471,11 +471,6 @@ algorithm sdramcontroller(
     output  uint1   busy(0)
 ) <autorun,reginputs> {
     // MEMORY ACCESS FLAGS
-    sio.addr := { address[1,25], 1b0 }; sio.in_valid := ( readflag | writeflag );
-    sio.data_in := writedata; sio.rw := writeflag;
-    readdata := sio.data_out;
-
-    always_after {
-        busy = ( sio.done ) ? 0 : ( readflag | writeflag ) ? 1 : busy;
-    }
+    sio.addr := { address[1,25], 1b0 };             sio.in_valid := ( readflag | writeflag );           sio.data_in := writedata;
+    sio.rw := writeflag;                            readdata := sio.data_out;                           busy := ( sio.done ) ? 0 : ( readflag | writeflag ) ? 1 : busy;
 }

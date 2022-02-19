@@ -275,9 +275,7 @@ algorithm istodraw(
     input   int11   max_y,
     output  uint1   draw
 ) <autorun> {
-    always_after {
-        draw = ~|{ ( max_x < crop_left ), ( max_y < crop_top ), ( min_x > crop_right ), ( min_y > crop_bottom ) };
-    }
+    draw := ~|{ ( max_x < crop_left ), ( max_y < crop_top ), ( min_x > crop_right ), ( min_y > crop_bottom ) };
 }
 // RECTANGLE - OUTPUT PIXELS TO DRAW A RECTANGLE
 algorithm preprectangle(
@@ -608,9 +606,7 @@ algorithm min3(
     input   int11   n3,
     output  int11   min
 ) <autorun> {
-    always_after {
-        min = ( n1 < n2 ) ? ( ( n1 < n3 ) ? n1 : n3 ) : ( ( n2 < n3 ) ? n2 : n3 );
-    }
+    min := ( n1 < n2 ) ? ( ( n1 < n3 ) ? n1 : n3 ) : ( ( n2 < n3 ) ? n2 : n3 );
 }
 algorithm max3(
     input   int11   n1,
@@ -618,9 +614,7 @@ algorithm max3(
     input   int11   n3,
     output  int11   max
 ) <autorun> {
-    always_after {
-        max = ( n1 > n2 ) ? ( ( n1 > n3 ) ? n1 : n3 ) : ( ( n2 > n3 ) ? n2 : n3 );
-    }
+    max := ( n1 > n2 ) ? ( ( n1 > n3 ) ? n1 : n3 ) : ( ( n2 > n3 ) ? n2 : n3 );
 }
 algorithm preptriangle(
     input   uint1   start,
@@ -699,9 +693,7 @@ algorithm intriangle(
     int22   step2 <:: (( x0 - x2 ) * ( py - y2 ) - ( y0 - y2 ) * ( px - x2 ));
     int22   step3 <:: (( x1 - x0 ) * ( py - y0 ) - ( y1 - y0 ) * ( px - x0 ));
 
-    always_after {
-        IN =  ~|{ step1[21,1], step2[21,1], step3[21,1] };
-    }
+    IN :=  ~|{ step1[21,1], step2[21,1], step3[21,1] };
 }
 algorithm drawtriangle(
     input   uint1   start,
@@ -801,10 +793,7 @@ algorithm blitscale(
     output  uint7   base,
     output  int11   scaled
 ) <autorun> {
-    base := offset;
-    always_after {
-        scaled = offset << scale;
-    }
+    base := offset; scaled := offset << scale;
 }
 algorithm   blittilexy(
     input   uint7   px,
@@ -820,12 +809,10 @@ algorithm   blittilexy(
     uint1   action00 <:: ( ~|action[0,2] );         uint1   action01 <:: ( action[0,2] == 2b01 );           uint1   action10 <:: ( action[0,2] == 2b10 );
 
     // find y and x positions within the tile/character bitmap handling rotation or reflection
-    always_after {
-        xinblittile = ( action[2,1] ?  action00 ? revx4 : action01 ? py[0,4] : action10 ? px[0,4] : revy4 : action[0,1] ? px[0,4] : revx4 );
-        yinblittile = action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy4 : revx4 : action[1,1] ? revy4 :  py[0,4];
-        xinchartile = ( action[2,1] ?  action00 ? revx3 : action01 ? py[0,3] : action10 ? px[0,3] : revy3 : action[0,1] ?  px[0,3] : revx3 );
-        yinchartile = action[2,1] ? action00 ? py[0,3] : action01 ? px[0,3] : action10 ? revy3 : revx3 : action[1,1] ? revy3 :  py[0,3];
-    }
+    xinblittile := ( action[2,1] ?  action00 ? revx4 : action01 ? py[0,4] : action10 ? px[0,4] : revy4 : action[0,1] ? px[0,4] : revx4 );
+    yinblittile := action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy4 : revx4 : action[1,1] ? revy4 :  py[0,4];
+    xinchartile := ( action[2,1] ?  action00 ? revx3 : action01 ? py[0,3] : action10 ? px[0,3] : revy3 : action[0,1] ?  px[0,3] : revx3 );
+    yinchartile := action[2,1] ? action00 ? py[0,3] : action01 ? px[0,3] : action10 ? revy3 : revx3 : action[1,1] ? revy3 :  py[0,3];
 }
 algorithm cololurblittilexy(
     input   uint7   px,
@@ -838,10 +825,8 @@ algorithm cololurblittilexy(
     uint1   action00 <:: ( ~|action[0,2] );         uint1   action01 <:: ( action[0,2] == 2b01 );           uint1   action10 <:: ( action[0,2] == 2b10 );
 
     // find y and x positions within the tile bitmap handling rotation or reflection
-    always_after {
-        xintile = action[2,1] ? action00 ? px[0,4] : action01 ? revy : action10 ? revx : py[0,4] : action[0,1] ? revx :  px[0,4];
-        yintile = action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy : revx : action[1,1] ? revy :  py[0,4];
-    }
+    xintile := action[2,1] ? action00 ? px[0,4] : action01 ? revy : action10 ? revx : py[0,4] : action[0,1] ? revx :  px[0,4];
+    yintile := action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy : revx : action[1,1] ? revy :  py[0,4];
 }
 algorithm blit(
     input   uint2   start,
@@ -985,9 +970,8 @@ algorithm scaledetla(
 ) <autorun> {
     // SIGN EXTEND THE DELTA, THEN SCALE
     int11   extdelta <:: { {11{delta[5,1]}}, delta };
-    always_after {
-        scaled = ( scale[2,1] ? ( __signed(extdelta) >>> scale[0,2] ) : ( extdelta << scale[0,2] ) );
-    }
+
+    scaled := ( scale[2,1] ? ( __signed(extdelta) >>> scale[0,2] ) : ( extdelta << scale[0,2] ) );
 }
 // ADJUST COORDINATES BY DELTAS AND SCALE
 algorithm centreplusdelta(
