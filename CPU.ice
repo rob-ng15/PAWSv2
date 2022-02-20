@@ -29,12 +29,10 @@ algorithm PAWSCPU(
     output  uint1   DMAACTIVE(0)
 ) <autorun,reginputs> {
     // COMMIT TO REGISTERS FLAG AND HART (0/1) SELECT
-    uint1   COMMIT = uninitialized;
-    uint1   SMT = uninitialized;
+    uint1   COMMIT = uninitialized;                 uint1   SMT = uninitialized;
 
     // COMPRESSED INSTRUCTION EXPANDER
-    uint32  instruction = uninitialized;
-    uint1   compressed = uninitialized;
+    uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
     compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata ); compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata ); compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata );
 
     // RISC-V 32 BIT INSTRUCTION DECODER + MEMORY ACCESS SIZE
@@ -52,11 +50,6 @@ algorithm PAWSCPU(
         rd <: RV32DECODER.rd,
         write <: REGISTERSwrite
     );
-    // NEGATIVE OF REGISTERS FOR ABS AND ADD/SUB
-    int32   negRS1 <:: -REGISTERS.sourceReg1;                 int32   negRS2 <:: -REGISTERS.sourceReg2;
-    // EXTRACT ABSOLUTE VALUE FOR MULTIPLICATION AND DIVISION
-    absolute ARS1 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg1, negative <: negRS1 ); absolute ARS2 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg2, negative <: negRS2 );
-
     // RISC-V FLOATING POINT REGISTERS
     uint1   REGISTERSFwrite <:: COMMIT & IFASTSLOW.writeRegister & frd;
     registersF REGISTERSF <@clock_CPUdecoder> (
@@ -68,6 +61,11 @@ algorithm PAWSCPU(
         rd <: RV32DECODER.rd,
         write <: REGISTERSFwrite
     );
+    // NEGATIVE OF REGISTERS FOR ABS AND ADD/SUB
+    int32   negRS1 <: -REGISTERS.sourceReg1;                 int32   negRS2 <: -REGISTERS.sourceReg2;
+    // EXTRACT ABSOLUTE VALUE FOR MULTIPLICATION AND DIVISION
+    absolute ARS1 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg1, negative <: negRS1 ); absolute ARS2 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg2, negative <: negRS2 );
+
 
     // RISC-V PROGRAM COUNTERS AND STATUS - SMT -> RUNNING ON HART 1 WITH DUPLICATE PROGRAM COUNTER AND REGISTER FILE
     uint27  pc = uninitialized;         uint27  pc_next <:: SMT ? pc :  NEWPC.newPC;                                    // HART 0 pc + UPDATE
@@ -91,13 +89,13 @@ algorithm PAWSCPU(
 
     // CPU EXECUTE BLOCKS
     uint32  memoryinput = uninitialized;
-    uint32  result <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
-    uint16  storeLOW <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[0,16] : EXECUTESLOW.memoryoutput[0,16];
-    uint16  storeHIGH <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[16,16] : EXECUTESLOW.memoryoutput[16,16];
+    uint32  result <: IFASTSLOW.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
+    uint16  storeLOW <: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[0,16] : EXECUTESLOW.memoryoutput[0,16];
+    uint16  storeHIGH <: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[16,16] : EXECUTESLOW.memoryoutput[16,16];
 
     // CLASSIFY THE INSTRUCTION TO FAST/SLOW
-    uint1   isALUM <:: RV32DECODER.opCode[3,1] & ( RV32DECODER.function7[0,1] == 7b0000001 );
-    uint1   isALUCLM <:: RV32DECODER.opCode[3,1] & ~RV32DECODER.function3[2,1] & ( RV32DECODER.function7[0,1] == 7b0000101 );
+    uint1   isALUM <: RV32DECODER.opCode[3,1] & ( RV32DECODER.function7 == 7b0000001 );
+    uint1   isALUCLM <: RV32DECODER.opCode[3,1] & ~RV32DECODER.function3[2,1] & ( RV32DECODER.function7 == 7b0000101 );
 
     Iclass IFASTSLOW <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, isALUM <: isALUM, isALUCLM <: isALUCLM );
 
@@ -136,7 +134,9 @@ algorithm PAWSCPU(
         immediateValue <: RV32DECODER.immediateValue,
         memoryinput <: memoryinput,
         AUIPCLUI <: AGU.AUIPCLUI,
-        nextPC <: NEWPC.nextPC
+        nextPC <: NEWPC.nextPC,
+        isALUMM <: isALUM,
+        isLOAD <: MEMACCESS.memoryload
     );
 
     // SELECT NEXT PC
@@ -200,7 +200,7 @@ algorithm PAWSCPU(
             instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
             ++: ++:
         }
-        // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS
+        // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
 
         cacheselect = 1;
         if( MEMACCESS.memoryload ) {
@@ -259,7 +259,7 @@ algorithm cpuexecuteSLOWPATH(
     aluCLMUL ALUBCLMUL( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
     // FLOATING POINT INSTRUCTION CLASSIFICATION
-    Fclass FCLASS( is2FPU <: opCode[2,1], isFPUFAST <: function7[4,1] );
+    Fclass FCLASS( opCode <: opCode, function7 <: function7 );
 
     // FLOATING POINT REGISTERS CLASSIFICATION
     classifyF class1F( a <: sourceReg1F ); classifyF class2F( a <: sourceReg2F ); classifyF class3F( a <: sourceReg3F );
@@ -282,7 +282,7 @@ algorithm cpuexecuteSLOWPATH(
     );
 
     // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
-    uint5   FPUnewflags <:: FCLASS.FASTPATHFPU ? FPUFAST.FPUnewflags : FPUSLOW.FPUnewflags;
+    uint5   FPUnewflags <: FCLASS.FASTPATHFPU ? FPUFAST.FPUnewflags : FPUSLOW.FPUnewflags;
     CSRblock CSR(
         SMT <: SMT,
         instruction <: instruction,
@@ -348,9 +348,11 @@ algorithm cpuexecuteFASTPATH(
     input   int32   memoryinput,
     input   uint32  AUIPCLUI,
     input   uint32  nextPC,
+    input   uint1   isALUMM,
+    input   uint1   isLOAD,
     output  uint1   takeBranch,
-    output  int32  memoryoutput,
-    output  int32  result
+    output  int32   memoryoutput,
+    output  int32   result
 ) <autorun> {
     // COMPARISON UNIT
     compare COMPARE( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, immediateValue <: immediateValue, regimm <: opCode[3,1] );
@@ -371,10 +373,8 @@ algorithm cpuexecuteFASTPATH(
     aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
     // CLASSIFY THE TYPE FOR INSTRUCTIONS THAT WRITE TO REGISTER
-    uint1   isALUMM <:: ( opCode[3,1] & function7 == 7b0000001 );
-    uint1   isAUIPCLUI <:: ( opCode[0,3] == 3b101 );
-    uint1   isJAL <:: ( opCode[2,3] == 3b110 ) & opCode[0,1];
-    uint1   isLOAD <:: ~|opCode[1,4];
+    uint1   isAUIPCLUI <: ( opCode[0,3] == 3b101 );
+    uint1   isJAL <: ( opCode[2,3] == 3b110 ) & opCode[0,1];
 
     takeBranch := ( opCode == 5b11000 ) & BRANCHUNIT.takeBranch;    // BRANCH
     memoryoutput := opCode[0,1] ? sourceReg2F : sourceReg2;         // FLOAT STORE OR STORE

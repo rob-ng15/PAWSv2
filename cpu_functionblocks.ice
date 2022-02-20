@@ -21,6 +21,7 @@ algorithm decode(
     rd := Rtype(instruction).destReg;
     immediateValue := { {20{instruction[31,1]}}, Itype(instruction).immediate };
 }
+
 // DETERMINE IF MEMORY LOAD OR STORE
 // AMO AND FLOAT LOAD/STORE ARE 32 BIT
 algorithm memoryaccess(
@@ -34,7 +35,7 @@ algorithm memoryaccess(
     output  uint1   memorystore,
     output  uint2   accesssize
 ) <autorun> {
-    uint1   FLOAD <:: opCode == 5b00001;   uint1   FSTORE <:: opCode == 5b01001;
+    uint1   FLOAD <: opCode == 5b00001;             uint1   FSTORE <: opCode == 5b01001;
 
     memoryload := ( ~|opCode ) | FLOAD | ( AMO & ( function7 != 5b00011 ) );
     memorystore := ( opCode == 5b01000 ) | FSTORE | ( AMO & ( function7 != 5b00010 ) );
@@ -55,7 +56,7 @@ algorithm Iclass(
 ) <autorun> {
     // CHECK FOR FLOATING POINT, OR INTEGER DIVIDE
     frd := 0; writeRegister := 1; incPC := 1; FASTPATH := 1;
-    always_after {
+    always {
         switch( opCode ) {
             case 5b01101: {}                        // LUI
             case 5b00101: {}                        // AUIPC
@@ -76,13 +77,13 @@ algorithm Iclass(
 
 // DETERMINE IN FAST OR SLOW FPU INSTRUCTION
 algorithm Fclass(
-    input   uint1   is2FPU,
-    input   uint1   isFPUFAST,
+    input   uint5   opCode,
+    input   uint7   function7,
     output  uint1   FASTPATHFPU
 ) <autorun> {
     // FUSED OPERATIONS + CALCULATIONS & CONVERSIONS GO VIA SLOW PATH
     // SIGN MANIPULATION, COMPARISONS + MIN/MAX, MOVE AND CLASSIFICATION GO VIA FAST PATH
-    FASTPATHFPU := is2FPU & isFPUFAST;           // is2FPU DETERMINES IF NORMAL OR FUSED, THEN isFPUFAST DETERMINES IF FAST OR SLOW
+    FASTPATHFPU := opCode[2,1] & function7[4,1];
 }
 
 // PERFORM SIGN EXTENSION FOR 8 AND 16 BIT LOADS
@@ -93,8 +94,8 @@ algorithm signextend(
     input   uint1   dounsigned,
     output  uint32  memory168
 ) <autorun> {
-    uint4   byteoffset <:: { byteaccess, 3b000 };
-    uint1   sign <:: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1] );
+    uint4   byteoffset <: { byteaccess, 3b000 };
+    uint1   sign <: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1] );
 
     memory168 := is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[byteoffset, 8] };
 }
@@ -234,7 +235,7 @@ algorithm compare(
     output  uint1   LTU,
     output  uint1   EQ
 ) <autorun> {
-    int32   operand2 <:: regimm ? sourceReg2 : immediateValue;
+    int32   operand2 <: regimm ? sourceReg2 : immediateValue;
 
     LT := __signed(sourceReg1) < __signed( operand2 );
     LTU := __unsigned(sourceReg1) < __unsigned( operand2 );
@@ -251,7 +252,7 @@ algorithm branchcomparison(
     input   uint1   EQ,
     output  uint1   takeBranch
 ) <autorun> {
-    uint4   flags <:: { LTU, LT, 1b0, EQ };         takeBranch := function3[0,1] ^ flags[ function3[1,2], 1 ];
+    uint4   flags <: { LTU, LT, 1b0, EQ };          takeBranch := function3[0,1] ^ flags[ function3[1,2], 1 ];
 }
 
 // COMPRESSED INSTRUCTION EXPANSION
@@ -395,7 +396,7 @@ algorithm csrf(
     input   uint1   update,
     input   uint5   newflags
 ) <autorun,reginputs> {
-    always_after {
+    always {
         if( update ) {
             CSRf = newflags;
         } else {
@@ -459,7 +460,7 @@ $$end
     counter40 INSTRET(); counter40 INSTRETSMT();
 
     // SWITCH BETWEEN IMMEDIATE OR REGISTER VALUE TO WRITE TO CSR
-    uint32  writevalue <:: function3[2,1] ? rs1 : sourceReg1;
+    uint32  writevalue <: function3[2,1] ? rs1 : sourceReg1;
 
     // FLOATING-POINT CSR FOR BOTH THREADS
     csrf CSRF0( csr <: instruction[20,2], writevalue <: writevalue );                                   // MAIN CSRf ( CSR(instruction).csr[0,2] )
@@ -473,7 +474,7 @@ $$end
     // PASS PRESENT FPU FLAGS TO THE FPU
     FPUflags := SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];
 
-    always_after {
+    always {
         if( start ) {
             result = 0;
             switch( CSR(instruction).csr[8,4] ) {

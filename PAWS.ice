@@ -150,7 +150,7 @@ $$end
 
     // SDRAM ( via CACHE ) and BRAM (for BIOS AND FAST BRAM )
     // byteaccess controls byte read/writes
-    uint1   byteaccess <:: ( ~|CPU.accesssize[0,2] );
+    uint1   byteaccess <: ( ~|CPU.accesssize[0,2] );
     cachecontroller DRAM <@clock_system,!reset> (
         sio <:> sio_halfrate,
         byteaccess <: byteaccess,
@@ -255,22 +255,19 @@ $$end
     // SDRAM -> CPU BUSY STATE
     CPU.memorybusy := DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM );
 
-    always_before {
-        DRAM.readflag = SDRAM & CPU.readmemory;
-        RAM.readflag = BRAM & CPU.readmemory;
-        AUDIO_Map.memoryRead = AUDIO & CPU.readmemory;
-        IO_Map.memoryRead = IO & CPU.readmemory;
-        TIMERS_Map.memoryRead = TIMERS & CPU.readmemory;
-        VIDEO_Map.memoryRead = VIDEO & CPU.readmemory;
-    }
-    always_after {
-        DRAM.writeflag = SDRAM & CPU.writememory;
-        RAM.writeflag = BRAM & CPU.writememory;
-        AUDIO_Map.memoryWrite = AUDIO & CPU.writememory;
-        IO_Map.memoryWrite = IO & CPU.writememory;
-        TIMERS_Map.memoryWrite = TIMERS & CPU.writememory;
-        VIDEO_Map.memoryWrite = VIDEO & CPU.writememory;
-    }
+        DRAM.readflag := SDRAM & CPU.readmemory;
+        RAM.readflag := BRAM & CPU.readmemory;
+        AUDIO_Map.memoryRead := AUDIO & CPU.readmemory;
+        IO_Map.memoryRead := IO & CPU.readmemory;
+        TIMERS_Map.memoryRead := TIMERS & CPU.readmemory;
+        VIDEO_Map.memoryRead := VIDEO & CPU.readmemory;
+
+        DRAM.writeflag := SDRAM & CPU.writememory;
+        RAM.writeflag := BRAM & CPU.writememory;
+        AUDIO_Map.memoryWrite := AUDIO & CPU.writememory;
+        IO_Map.memoryWrite := IO & CPU.writememory;
+        TIMERS_Map.memoryWrite := TIMERS & CPU.writememory;
+        VIDEO_Map.memoryWrite := VIDEO & CPU.writememory;
 }
 
 // RAM - BRAM controller
@@ -305,7 +302,7 @@ $$end
     ram.wenable := 0; ram.addr := address[1,14]; readdata := ram.rdata;
     ram.wdata := byteaccess ? ( address[0,1] ? { writedata[0,8], ram.rdata[0,8] } : { ram.rdata[8,8], writedata[0,8] } ) : writedata;
 
-    always_after {
+    always {
         if( writeflag ) {
             ram.wenable = update | ~byteaccess;
             if( byteaccess ) { update = 1; }
@@ -353,7 +350,7 @@ algorithm cachecontroller(
     // DATA CACHE TAG IS REMAINING bits of the 26 bit address + 1 bit for valid flag + 1 bit for needwritetosdram flag
     simple_dualport_bram uint16 cache[$size$] = uninitialized;
     simple_dualport_bram uint$partaddresswidth+2$ tags[$size$] = uninitialized;
-    uint26  addressfromcache <:: { cachetag(tags.rdata0).partaddress, address[1,$cacheaddrwidth$], 1b0 };
+    uint26  addressfromcache <: { cachetag(tags.rdata0).partaddress, address[1,$cacheaddrwidth$], 1b0 };
 
     // INSTRUCTION CACHE for SDRAM
     // DEFINED AS ABOVE EXCEPT NO NEED FOR needwritetosdram flag
@@ -368,19 +365,19 @@ algorithm cachecontroller(
     sdramcontroller SDRAM( sio <:> sio, writedata <: cache.rdata0 );
 
     // CACHE TAG match flags
-    uint1   cachetagmatch <:: ( { cachetag(tags.rdata0).valid, cachetag(tags.rdata0).partaddress } == { 1b1, address[$partaddressstart$,$partaddresswidth$] } );
-    uint1   Icachetagmatch <:: ( Itags.rdata0 == { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] } );
+    uint1   cachetagmatch <: ( { cachetag(tags.rdata0).valid, cachetag(tags.rdata0).partaddress } == { 1b1, address[$partaddressstart$,$partaddresswidth$] } );
+    uint1   Icachetagmatch <: ( Itags.rdata0 == { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] } );
 
     // VALUE TO WRITE TO CACHE ( deals with correctly mapping 8 bit writes and 16 bit writes, using sdram or cache as base )
-    uint16  writethrough <:: ( byteaccess ) ? ( address[0,1] ? { writedata[0,8], cachetagmatch ? cache.rdata0[0,8] : SDRAM.readdata[0,8] } :
+    uint16  writethrough <: ( byteaccess ) ? ( address[0,1] ? { writedata[0,8], cachetagmatch ? cache.rdata0[0,8] : SDRAM.readdata[0,8] } :
                                                                 { cachetagmatch ? cache.rdata0[8,8] : SDRAM.readdata[8,8], writedata[0,8] } ) : writedata;
 
     // MEMORY ACCESS FLAGS
     uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
-    uint1   doreadsdram <:: ( doread | ( dowrite & byteaccess ) );
+    uint1   doreadsdram <: ( doread | ( dowrite & byteaccess ) );
 
     //  FOR QUICK RETURN IF READING FROM LAST DATA CACHE ADDRESS
-    uint25  lastaddress = uninitialized;            uint1   lastdcacheaddress <:: cacheselect & ( lastaddress == address[1,25] );
+    uint25  lastaddress = uninitialized;            uint1   lastdcacheaddress <: cacheselect & ( lastaddress == address[1,25] );
 
     // SDRAM ACCESS
     SDRAM.readflag := 0; SDRAM.writeflag := 0;

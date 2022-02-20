@@ -104,21 +104,22 @@ algorithm terminal_writer(
 
     while(1) {
         if( |terminal_active ) {
-            onehot( terminal_active ) {
-                case 0: {                                                                                                                                       // SCROLL AND BLANK LAST LINE
-                    while( working ) {
-                        ++:
+            while( working ) {
+                ++:
+                onehot( terminal_active ) {
+                    case 0: {                                                                                                                                   // SCROLL AND BLANK LAST LINE
                         terminal.addr1 = terminal_scroll; terminal.wdata1 = scrolling ? terminal_copy.rdata0 : 0;
                         terminal_copy.addr1 = terminal_scroll; terminal_copy.wdata1 = scrolling ? terminal_copy.rdata0 : 0;
                         terminal_scroll = terminal_scroll_next;
                     }
+                    case 1: {                                                                                                                                   // RESET TERMINAL
+                        terminal.addr1 = terminal_scroll; terminal_copy.addr1 = terminal_scroll; terminal_scroll = terminal_scroll_next;
+                        terminal.wdata1 = 0; terminal_copy.wdata1 = 0;
+                    }
                 }
-                case 1: {                                                                                                                                       // RESET TERMINAL
-                    terminal.wdata1 = 0; terminal_copy.wdata1 = 0;
-                    while( working ) { terminal.addr1 = terminal_scroll; terminal_copy.addr1 = terminal_scroll; terminal_scroll = terminal_scroll_next; }
-                    terminal_x = 0;
-                }
+
             }
+            if( terminal_active[1,1] ) { terminal_x = 0; }
             terminal_active = 0;
         } else {
             terminal_scroll = 0;
