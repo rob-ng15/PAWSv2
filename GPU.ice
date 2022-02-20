@@ -227,17 +227,18 @@ algorithm gpu(
             default: {
                 // START THE GPU DRAWING UNIT - RESET DITHERMODE TO 0 (most common)
                 gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; bitmap_colour_write_alt = gpu_colour_alt;
+                GPUcircle.filledcircle = gpu_write[0,1]; GPUblit.tilecharacter = gpu_write[0,1];
                 switch( gpu_write ) {
                     default: {}
-                    case 2: { GPUline.start = 1; }                                                                          // DRAW LINE FROM (X,Y) to (PARAM0,PARAM1)
-                    case 3: { gpu_active_dithermode = gpu_dithermode; GPUrectangle.start = 1; }                             // DRAW RECTANGLE FROM (X,Y) to (PARAM0,PARAM1)
-                    case 4: { GPUcircle.filledcircle = 0; GPUcircle.start = 1; }                                            // DRAW CIRCLE CENTRE (X,Y) with RADIUS PARAM0
-                    case 5: { gpu_active_dithermode = gpu_dithermode; GPUcircle.filledcircle = 1; GPUcircle.start = 1; }    // DRAW FILLED CIRCLE CENTRE (X,Y) with RADIUS PARAM0
-                    case 6: { gpu_active_dithermode = gpu_dithermode; GPUtriangle.start = 1; }                              // DRAW FILLED TRIANGLE WITH VERTICES (X,Y) (PARAM0,PARAM1) (PARAM2,PARAM3)
-                    case 7: { GPUblit.tilecharacter = 1; GPUblit.start = 1; }                                               // BLIT 16 x 16 TILE PARAM0 TO (X,Y)
-                    case 8: { GPUblit.tilecharacter = 0; GPUblit.start = 1; }                                               // BLIT 8 x 8 CHARACTER PARAM0 TO (X,Y) as 8 x 8
-                    case 9: { GPUblit.tilecharacter = 1; GPUblit.start = 2; }                                               // BLIT 16 x 16 COLOUR TILE PARAM0 TO (X,Y) as 16 x 16
-                    case 10: { GPUpixelblock.start = 1; }                                                                   // START THE PIXELBLOCK WRITER AT (x,y) WITH WIDTH PARAM0, IGNORE COLOUR PARAM1
+                    case 2: { GPUline.start = 1; }                                                  // DRAW LINE FROM (X,Y) to (PARAM0,PARAM1)
+                    case 3: { gpu_active_dithermode = gpu_dithermode; GPUrectangle.start = 1; }     // DRAW RECTANGLE FROM (X,Y) to (PARAM0,PARAM1)
+                    case 4: { GPUcircle.start = 1; }                                                // DRAW CIRCLE CENTRE (X,Y) with RADIUS PARAM0
+                    case 5: { gpu_active_dithermode = gpu_dithermode; GPUcircle.start = 1; }        // DRAW FILLED CIRCLE CENTRE (X,Y) with RADIUS PARAM0
+                    case 6: { gpu_active_dithermode = gpu_dithermode; GPUtriangle.start = 1; }      // DRAW FILLED TRIANGLE WITH VERTICES (X,Y) (PARAM0,PARAM1) (PARAM2,PARAM3)
+                    case 7: { GPUblit.start = 1; }                                                  // BLIT 16 x 16 TILE PARAM0 TO (X,Y)
+                    case 8: { GPUblit.start = 1; }                                                  // BLIT 8 x 8 CHARACTER PARAM0 TO (X,Y) as 8 x 8
+                    case 9: { GPUblit.start = 2; }                                                  // BLIT 16 x 16 COLOUR TILE PARAM0 TO (X,Y) as 16 x 16
+                    case 10: { GPUpixelblock.start = 1; }                                           // START THE PIXELBLOCK WRITER AT (x,y) WITH WIDTH PARAM0, IGNORE COLOUR PARAM1
                     // 11
                     // 12
                     // 13

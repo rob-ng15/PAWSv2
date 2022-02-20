@@ -114,12 +114,13 @@ algorithm character_map_writer(
     charactermap_copy.addr0 := ( |tpu_active[2,2] ) ? tpu_cs_addr : TPUA.WRITEADDR;
 
     always_after {
+        if( |tpu_write ) { tpu_start_cs_addr = 0; tpu_max_count = 4800; }                                           // Set default start and end points
         switch( tpu_write ) {
             default: {}
-            case 1: {                                                                                                                                   // Set cursor position
+            case 1: {                                                                                               // Set cursor position
                 ( tpu_active_x, tpu_active_y ) = copycoordinates( tpu_x, tpu_y );
             }
-            case 2: {                                                                                                                                   // Write character,foreground, background and move
+            case 2: {                                                                                               // Write character,foreground, background and move
                 charactermap.addr1 = TPUA.WRITEADDR; charactermap.wdata1 = tpu_character;
                 colourmap.addr1 = TPUA.WRITEADDR; colourmap.wdata1 = { tpu_background, tpu_foreground };
                 if( TPUX.ATLAST ) {
@@ -128,18 +129,18 @@ algorithm character_map_writer(
                     tpu_active_x = TPUX.NEXT;
                 }
             }
-            case 3: { tpu_active_x = 0; tpu_active_y = 0; tpu_active = 1; tpu_start_cs_addr = 0; tpu_max_count = 4800; }                                // Start tpucs
-            case 4: { tpu_active = 1; tpu_start_cs_addr = TPUA.YSTARTADDR; tpu_max_count = TPUA.YENDADDR; }                                             // Start tpu_clearline
-            case 5: {                                                                                                                                   // Write character, foreground, background to curses buffer
+            case 3: { tpu_active_x = 0; tpu_active_y = 0; tpu_active = 1; }                                         // Start tpucs
+            case 4: { tpu_active = 1; tpu_start_cs_addr = TPUA.YSTARTADDR; tpu_max_count = TPUA.YENDADDR; }         // Start tpu_clearline
+            case 5: {                                                                                               // Write character, foreground, background to curses buffer
                 charactermap_copy.addr1 = TPUA.WRITEADDR;
                 charactermap_copy.wdata1 = { tpu_background, tpu_foreground, tpu_character };
             }
-            case 6: { tpu_active = 2; tpu_start_cs_addr = 0; tpu_max_count = 4800; }                                                                    // Start curses wipe
-            case 7: { tpu_active = 4; tpu_start_cs_addr = 0; tpu_max_count = 4800; }                                                                    // Start curses copy
-            case 8: { tpu_active = 8; tpu_start_cs_addr = 80; tpu_max_count = 4800; }                                                                   // Start curses scroll up
-            case 9: { tpu_active = 8; tpu_start_cs_addr = TPUA.YSTARTADDR; }                                                                            // Start curses deleteln
-            case 10: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; tpu_max_count = TPUA.YENDADDR; }                                            // Start curses clear to eol
-            case 11: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; tpu_max_count = 4800; }                                                     // Start curses clear to bot
+            case 6: { tpu_active = 2;  }                                                                            // Start curses wipe
+            case 7: { tpu_active = 4; }                                                                             // Start curses copy
+            case 8: { tpu_active = 8; tpu_start_cs_addr = 80; }                                                     // Start curses scroll up
+            case 9: { tpu_active = 8; tpu_start_cs_addr = TPUA.YSTARTADDR; }                                        // Start curses deleteln
+            case 10: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; tpu_max_count = TPUA.YENDADDR; }        // Start curses clear to eol
+            case 11: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; }                                       // Start curses clear to bot
         }
     }
 

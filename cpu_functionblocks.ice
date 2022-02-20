@@ -445,6 +445,10 @@ algorithm CSRblock(
     output  uint5   FPUflags,
     output  uint32  result
 ) <autorun,reginputs> {
+$$if VERILATOR then
+    uint16 outputflag = 0;
+$$end
+
     // MAIN SYSTEM TIMER
     counter40always TIMER();
 
@@ -518,6 +522,13 @@ algorithm CSRblock(
                 }
             }
         }
+$$if VERILATOR then
+        // DISPLAY DEBUG INFORMATION
+        if( ~|outputflag ) {
+            __display("CYCLES = ( %d, %d ), INSTRUCTIONS = ( %d, %d )",CYCLE.counter,CYCLESMT.counter,INSTRET.counter,INSTRETSMT.counter);
+        }
+        outputflag = outputflag + 1;
+$$end
     }
 }
 

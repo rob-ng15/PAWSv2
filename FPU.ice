@@ -62,7 +62,8 @@ algorithm fpuslow(
     floatcalc FPUcalculator( sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, sourceReg3F <: sourceReg3F,
                                 classA <: classA, classB <: classB, classC <: classC,
                                 opCode <: opCode, function7 <: function7 );
-    floatconvert FPUconvert( sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1, sourceReg1F <: sourceReg1F, classA <: classA, direction <: function7[1,1], dounsigned <: rs2 );
+    inttofloat FPUfloat( a <: sourceReg1, absa <: abssourceReg1, dounsigned <: rs2 );
+    floattoint FPUint( a <: sourceReg1F, classA <: classA, dounsigned <: rs2 );
 
     FPUcalculator.start := start & ~( opCode[2,1] & function7[4,1] );
 
@@ -71,7 +72,9 @@ algorithm fpuslow(
             busy = 1;
             if( opCode[2,1] & function7[4,1] ) {
                 // FCVT.W.S FCVT.WU.S  FCVT.S.W FCVT.S.WU
-                frd = function7[1,1]; ++: ++: result = FPUconvert.result; FPUnewflags = FPUflags | FPUconvert.flags;
+                frd = function7[1,1];
+                result = function7[1,1] ? FPUfloat.result : FPUint.result;
+                FPUnewflags = FPUflags | ( function7[1,1] ?  FPUfloat.flags : FPUint.flags );
             } else {
                 // FMADD.S FMSUB.S FNMSUB.S FNMADD.S FADD.S FSUB.S FMUL.S FDIV.S FSQRT.S
                 frd = 1; while( FPUcalculator.busy ) {} result = FPUcalculator.result; FPUnewflags = FPUflags | FPUcalculator.flags;
@@ -80,27 +83,6 @@ algorithm fpuslow(
         }
     }
 }
-
-algorithm floatconvert(
-    input   uint1   direction,
-    input   uint1   dounsigned,
-    input   uint32  sourceReg1,
-    input   uint32  abssourceReg1,
-    input   uint32  sourceReg1F,
-    input   uint4   classA,
-
-    output  uint5   flags,
-    output  uint32  result
-) <autorun,reginputs> {
-    inttofloat FPUfloat( a <: sourceReg1, absa <: abssourceReg1, dounsigned <: dounsigned );
-    floattoint FPUint( a <: sourceReg1F, classA <: classA, dounsigned <: dounsigned );
-
-    always_after {
-        // FCVT.S.W FCVT.S.WU FCVT.W.S FCVT.WU.S
-        result = direction ? FPUfloat.result : FPUint.result; flags = direction ? FPUfloat.flags : FPUint.flags;
-    }
-}
-
 
 // FPU CALCULATION BLOCKS FUSED ADD SUB MUL DIV SQRT
 algorithm floatcalc(
