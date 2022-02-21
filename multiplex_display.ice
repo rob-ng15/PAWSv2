@@ -53,8 +53,10 @@ algorithm multiplex_display(
         background <: background_p
     );
 
-    // TEMPORARY STORAGE FOR CALCULATIONS
-    uint8   grey = uninitialised;
+    // Grey calculations
+    uint8   grey <: GREY[ LAYER.pixel[0,3] ];                                                           // PAWSv2
+    uint8   greyv1 <: { LAYER.pixel[0,6], LAYER.pixel[0,2] };                                           // PAWSv1 Grey
+    uint8   greyv2 <: { LAYER.pixel[0,7], LAYER.pixel[0,1] };                                           // PAWSv2 Grey
 
     // SPECIAL COLOUR PALETTES
     uint8   R[] = { 153, 255, 034, 070, 138, 255, 135, 229 };                                           uint8   G[] = { 076, 215, 139, 130, 043, 192, 206, 255 };
@@ -67,20 +69,19 @@ algorithm multiplex_display(
     // DEFAULT to PAWSv1 COLOUR EXPANSIONS
     pix_red := {4{LAYER.pixel[4,2]}};               pix_green := {4{LAYER.pixel[2,2]}};                 pix_blue := {4{LAYER.pixel[0,2]}};
 
-    always_after {
+    always {
         switch( colour ) {
             case 2b00: {                                                                                // PAWSv2 PALETTE, V1 + GRADIENTS
                 if( LAYER.pixel[6,1] ) {
                     pix_red = 0; pix_green = 0; pix_blue = 0;
-                    grey = GREY[ LAYER.pixel[0,3] ];
                     switch( LAYER.pixel[3,3] ) {
-                        case 0: { pix_red = grey; pix_green = grey; pix_blue = grey; }               // GREYS
-                        case 1: { pix_red = grey; }                                                    // REDS
-                        case 2: { pix_green = grey; }                                                  // GREENS
-                        case 3: { pix_blue = grey; }                                                   // BLUES
-                        case 4: { pix_red = grey; pix_green = grey; }                                 // YELLOWS
-                        case 5: { pix_red = grey; pix_blue = grey; }                                  // MAGENTAS
-                        case 6: { pix_green = grey; pix_blue = grey; }                                // CYANS
+                        case 0: { pix_red = grey; pix_green = grey; pix_blue = grey; }                  // GREYS
+                        case 1: { pix_red = grey; }                                                     // REDS
+                        case 2: { pix_green = grey; }                                                   // GREENS
+                        case 3: { pix_blue = grey; }                                                    // BLUES
+                        case 4: { pix_red = grey; pix_green = grey; }                                   // YELLOWS
+                        case 5: { pix_red = grey; pix_blue = grey; }                                    // MAGENTAS
+                        case 6: { pix_green = grey; pix_blue = grey; }                                  // CYANS
                         case 7: {                                                                       // 8 SPECIAL COLOURS
                             pix_red = R[ lookup ];
                             pix_green = G[ lookup ];
@@ -94,13 +95,11 @@ algorithm multiplex_display(
             }
             case 2b10: {                                                                                // PAWSv1 + 64 GREY
                 if( LAYER.pixel[6,1] ) {
-                    grey = { LAYER.pixel[0,6], LAYER.pixel[0,2] };
-                    pix_red = grey; pix_green = grey; pix_blue = grey;
+                    pix_red = greyv1; pix_green = greyv1; pix_blue = greyv1;
                 }
             }
             case 2b11: {                                                                                // PAWSv2 GREYSCALE
-                grey = { LAYER.pixel[0,7], LAYER.pixel[0,1] };
-                pix_red = grey; pix_green = grey; pix_blue = grey;
+                pix_red = greyv2; pix_green = greyv2; pix_blue = greyv2;
             }
         }
     }
@@ -129,7 +128,7 @@ algorithm selectlayer(
     // CONVERT TERMINAL COLOUR TO BLUE OR WHITE
     uint7   terminalcolour <: { 1b0, {4{terminal}}, 2b11 };
 
-    always_after {
+    always {
         switch( display_order ) {
             case 0: { // BACKGROUND -> LOWER TILEMAP -> UPPER TILEMAP -> LOWER_SPRITES -> BITMAP -> UPPER_SPRITES -> CHARACTER_MAP -> TERMINAL
                 pixel = ( terminal_display ) ? terminalcolour :

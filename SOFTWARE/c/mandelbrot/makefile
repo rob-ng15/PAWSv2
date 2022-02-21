@@ -1,4 +1,4 @@
-include ../makefile.inc
+include ../makefile-fast.inc
 
 PROJECT=MANDEL
 PROJECTTYPE=DEMO

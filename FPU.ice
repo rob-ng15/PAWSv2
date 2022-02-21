@@ -39,49 +39,26 @@ algorithm fpufast(
     }
 }
 
-algorithm fpuslow(
-    input   uint1   start,
-    output  uint1   busy(0),
-    input   uint5   opCode,
+// FCVT.W.S FCVT.WU.S  FCVT.S.W FCVT.S.WU
+algorithm floatconvert(
     input   uint5   function7,
     input   uint1   rs2,
     input   uint32  sourceReg1,
     input   uint32  abssourceReg1,
     input   uint32  sourceReg1F,
-    input   uint32  sourceReg2F,
-    input   uint32  sourceReg3F,
     input   uint4   classA,
-    input   uint4   classB,
-    input   uint4   classC,
 
     output  uint32  result,
     output  uint1   frd,
     input   uint5   FPUflags,
     output  uint5   FPUnewflags
 ) <autorun,reginputs> {
-    floatcalc FPUcalculator( sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, sourceReg3F <: sourceReg3F,
-                                classA <: classA, classB <: classB, classC <: classC,
-                                opCode <: opCode, function7 <: function7 );
     inttofloat FPUfloat( a <: sourceReg1, absa <: abssourceReg1, dounsigned <: rs2 );
     floattoint FPUint( a <: sourceReg1F, classA <: classA, dounsigned <: rs2 );
 
-    FPUcalculator.start := start & ~( opCode[2,1] & function7[4,1] );
-
-    while(1) {
-        if( start ) {
-            busy = 1;
-            if( opCode[2,1] & function7[4,1] ) {
-                // FCVT.W.S FCVT.WU.S  FCVT.S.W FCVT.S.WU
-                frd = function7[1,1];
-                result = function7[1,1] ? FPUfloat.result : FPUint.result;
-                FPUnewflags = FPUflags | ( function7[1,1] ?  FPUfloat.flags : FPUint.flags );
-            } else {
-                // FMADD.S FMSUB.S FNMSUB.S FNMADD.S FADD.S FSUB.S FMUL.S FDIV.S FSQRT.S
-                frd = 1; while( FPUcalculator.busy ) {} result = FPUcalculator.result; FPUnewflags = FPUflags | FPUcalculator.flags;
-            }
-            busy = 0;
-        }
-    }
+    frd := function7[1,1];
+    result := function7[1,1] ? FPUfloat.result : FPUint.result;
+    FPUnewflags := FPUflags | ( function7[1,1] ?  FPUfloat.flags : FPUint.flags );
 }
 
 // FPU CALCULATION BLOCKS FUSED ADD SUB MUL DIV SQRT
@@ -97,8 +74,9 @@ algorithm floatcalc(
     input   uint4   classB,
     input   uint4   classC,
 
-    output  uint5   flags,
-    output  uint32  result,
+    input   uint5   FPUflags,
+    output  uint5   FPUnewflags,
+    output  uint32  result
 ) <autorun,reginputs> {
     // CLASSIFY THE RESULT OF MULTIPLICATION
     classifyF classM( a <: FPUmultiply.result );
@@ -118,12 +96,13 @@ algorithm floatcalc(
     // NEW FPU FLAGS
     uint5   FNFas <: FPUaddsub.flags & 5b00110;    uint5   FNFm <: FPUmultiply.flags & 5b00110;       uint5   FNFd <: FPUdivide.flags & 5b01110;
     uint5   FNFs <: FPUsqrt.flags & 5b00110;       uint5   FNFfused <: ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
+    uint5   flags = uninitialised;
 
     // UNIT BUSY FLAG
     uint1   unitbusy <: FPUaddsub.busy | FPUmultiply.busy  | FPUsqrt.busy | FPUdivide.busy;
 
     DONORMAL.bitstream := opCode[2,1] & ( &function7[0,2] ) ? FPUdivide.tonormalisebitstream : FPUaddsub.tonormalisebitstream;
-    FPUaddsub.start := 0; FPUmultiply.start := 0; FPUdivide.start := 0; FPUsqrt.start := 0;
+    FPUaddsub.start := 0; FPUmultiply.start := 0; FPUdivide.start := 0; FPUsqrt.start := 0; FPUnewflags := FPUflags | flags;
 
     always {
         // PREPARE INPUTS FOR ADDITION/SUBTRACTION AND MULTIPLICATION
@@ -297,6 +276,16 @@ bitfield fp32{
     uint8   exponent,
     uint23  fraction
 }
+// REFERENCE, NOT USED IN THIS MODULE
+bitfield floatingpointflags{
+    uint1   IF,     // infinity as an argument
+    uint1   NN,     // NaN as an argument
+    uint1   NV,     // Result is not valid,
+    uint1   DZ,     // Divide by zero
+    uint1   OF,     // Result overflowed
+    uint1   UF,     // Result underflowed
+    uint1   NX      // Not exact ( integer to float conversion caused bits to be dropped )
+}
 
 // IDENTIFY infinity, signalling NAN, quiet NAN, ZERO
 algorithm classifyF(
@@ -309,25 +298,14 @@ algorithm classifyF(
     class := { expFF & ~a[22,1], NAN & a[21,1], NAN & ~a[21,1], ~|( fp32(a).exponent ) };
 }
 
-// REFERENCE, NOT USED IN THIS MODULE
-bitfield floatingpointflags{
-    uint1   IF,     // infinity as an argument
-    uint1   NN,     // NaN as an argument
-    uint1   NV,     // Result is not valid,
-    uint1   DZ,     // Divide by zero
-    uint1   OF,     // Result overflowed
-    uint1   UF,     // Result underflowed
-    uint1   NX      // Not exact ( integer to float conversion caused bits to be dropped )
-}
-
 // NORMALISE A 48 BIT MANTISSA SO THAT THE MSB IS ONE, FOR ADDSUB ALSO DECREMENT THE EXPONENT FOR EACH SHIFT LEFT
 // EXTRACT THE 24 BITS FOLLOWING THE MSB (1.xxxx) FOR ROUNDING
 algorithm clz48(
     input   uint48  bitstream,
     output! uint6   count
 ) <autorun> {
-    uint16  bitstreamh <: bitstream[32,16];        uint32  bitstreaml <: bitstream[0,32];
-    uint6   clz = uninitialised;
+    uint16  bitstreamh <: bitstream[32,16];        uint32  bitstreaml <: bitstream[0,32];               uint6   clz = uninitialised;
+
     always {
         if( ~|bitstreamh ) {
             ( clz ) = clz_silice_32( bitstreaml );
@@ -347,8 +325,7 @@ algorithm normalise24(
     // COUNT LEADING ZEROS
     clz48 CLZ48( bitstream <: bitstream );          uint48  temporary <: bitstream << CLZ48.count;
 
-    normalfraction := temporary[23,24];
-    newexponent := exp - CLZ48.count;
+    normalfraction := temporary[23,24]; newexponent := exp - CLZ48.count;
 }
 
 // NORMALISE RESULT FOR MULTIPLICATION AND SQUARE ROOT
@@ -408,8 +385,7 @@ algorithm floattoint(
     output  uint7   flags,
     output  uint32  result
 ) <autorun> {
-    uint1   NN <: classA[2,1] | classA[1,1];       uint1   NV <: dounsigned ? ( exp > 31 ) | fp32( a ).sign | classA[3,1] | NN :
-                                                                                ( exp > 30 ) | classA[3,1] | NN;
+    uint1   NN <: classA[2,1] | classA[1,1];       uint1   NV <: ( exp > ( dounsigned ? 31 : 30 ) ) | ( dounsigned & fp32( a ).sign ) | classA[3,1] | NN;
 
     uint33  sig <: ( exp < 24 ) ? { 9b1, fp32( a ).fraction, 1b0 } >> ( 23 - exp ) : { 9b1, fp32( a ).fraction, 1b0 } << ( exp - 24);
     int10   exp <: fp32( a ).exponent - 127;

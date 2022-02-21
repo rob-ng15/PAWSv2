@@ -260,7 +260,7 @@ algorithm compressed00(
     input   uint16  i16,
     output  uint30  i32
 ) <autorun> {
-    always_after {
+    always {
         if( |i16[13,3] ) {
             if( i16[15,1] ) {
                 // SW -> sw rs2', offset[6:2](rs1') { 110 uimm[5:3] rs1' uimm[2][6] rs2' 00 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
@@ -281,7 +281,7 @@ algorithm compressed01(
     input   uint16  i16,
     output  uint30  i32
 ) <autorun> {
-    always_after {
+    always {
         switch( i16[13,3] ) {
             case 3b000: {
                 // ADDI -> addi rd, rd, nzimm[5:0] { 000 nzimm[5] rs1/rd!=0 nzimm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
@@ -343,7 +343,7 @@ algorithm compressed10(
     input   uint16  i16,
     output  uint30  i32
 ) <autorun> {
-    always_after {
+    always {
         switch( i16[13,3] ) {
             case 3b000: {
                 // SLLI -> slli rd, rd, shamt[5:0] { 000, nzuimm[5], rs1/rd!=0 nzuimm[4:0] 10 } -> { 0000000 shamt rs1 001 rd 0010011 }
@@ -446,10 +446,6 @@ algorithm CSRblock(
     output  uint5   FPUflags,
     output  uint32  result
 ) <autorun,reginputs> {
-$$if VERILATOR then
-    uint16 outputflag = 0;
-$$end
-
     // MAIN SYSTEM TIMER
     counter40always TIMER();
 
@@ -523,13 +519,6 @@ $$end
                 }
             }
         }
-$$if VERILATOR then
-        // DISPLAY DEBUG INFORMATION
-        if( ~|outputflag ) {
-            __display("CYCLES = ( %d, %d ), INSTRUCTIONS = ( %d, %d )",CYCLE.counter,CYCLESMT.counter,INSTRET.counter,INSTRETSMT.counter);
-        }
-        outputflag = outputflag + 1;
-$$end
     }
 }
 

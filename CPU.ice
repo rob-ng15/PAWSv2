@@ -265,11 +265,17 @@ algorithm cpuexecuteSLOWPATH(
     classifyF class1F( a <: sourceReg1F ); classifyF class2F( a <: sourceReg2F ); classifyF class3F( a <: sourceReg3F );
 
     // FLOATING POINT SLOW OPERATIONS - CALCULATIONS AND CONVERSIONS
-    fpuslow FPUSLOW(
+    floatconvert FPUCONVERT(
+        FPUflags <: CSR.FPUflags,
+        function7 <: function7[2,5], rs2 <: rs2[0,1],
+        sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1, sourceReg1F <: sourceReg1F,
+        classA <: class1F.class
+    );
+
+    floatcalc FPUCALC(
         FPUflags <: CSR.FPUflags,
         opCode <: opCode, function7 <: function7[2,5],
-        rs2 <: rs2[0,1],
-        sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, sourceReg3F <: sourceReg3F,
+        sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, sourceReg3F <: sourceReg3F,
         classA <: class1F.class, classB <: class2F.class, classC <: class3F.class
     );
 
@@ -282,7 +288,7 @@ algorithm cpuexecuteSLOWPATH(
     );
 
     // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
-    uint5   FPUnewflags <: FCLASS.FASTPATHFPU ? FPUFAST.FPUnewflags : FPUSLOW.FPUnewflags;
+    uint5   FPUnewflags <: FCLASS.FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? FPUCONVERT.FPUnewflags : FPUCALC.FPUnewflags;
     CSRblock CSR(
         SMT <: SMT,
         instruction <: instruction,
@@ -293,8 +299,11 @@ algorithm cpuexecuteSLOWPATH(
         incCSRinstret <: incCSRinstret
     );
 
+    uint1   fpuconvert <: ( opCode == 5b10100 ) & ( function7[4,3] == 3b110 );
+    uint1   fpucalc <: opCode[4,1] & ~fpuconvert;
+
     // START FLAGS
-    ALUMD.start := 0; ALUBCLMUL.start := 0; FPUSLOW.start := 0; CSR.start := 0; CSR.updateFPUflags := 0;
+    ALUMD.start := 0; ALUBCLMUL.start := 0; FPUCALC.start := 0; CSR.start := 0; CSR.updateFPUflags := 0;
 
     while(1) {
         if( start ) {
@@ -317,17 +326,17 @@ algorithm cpuexecuteSLOWPATH(
                     }
                 }
                 default: {
-                    if( opCode[4,1] & FCLASS.FASTPATHFPU ) {
-                        frd = FPUFAST.frd; result = FPUFAST.result;                         // FPU COMPARISONS, MIN/MAX, SIGN MANIPULATION, CLASSIFICTIONS AND MOVE F-> and I->F
+                    if( fpuconvert | ( opCode[4,1] & FCLASS.FASTPATHFPU ) ) {               // FPU COMPARISONS, MIN/MAX, SIGN MANIPULATION, CLASSIFICTIONS AND MOVE F->I  and I-> F
+                        frd = fpuconvert ? FPUCONVERT.frd : FPUFAST.frd;                    // PLUS CONVERSION [U]I -> F and F -> [U]I
+                        result = fpuconvert ? FPUCONVERT.result : FPUFAST.result;
                     } else {
-                        FPUSLOW.start = opCode[4,1];                                        // FPU CALCULATIONS AND CONVERSIONS, INTEGER DIVISION, CARRYLESS MULTIPLY
-                        ALUMD.start = ~opCode[4,1] & function3[2,1];
-                        ALUBCLMUL.start = ~opCode[4,1] & ~function3[2,1];
-                        while( FPUSLOW.busy | ALUMD.busy | ALUBCLMUL.busy ) {}
-                        frd = opCode[4,1] & FPUSLOW.frd;
-                        result = opCode[4,1] ? FPUSLOW.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result;
+                        FPUCALC.start = fpucalc;                                            // FPU CALCULATIONS
+                        ALUMD.start = ~opCode[4,1] & function3[2,1];                        // INTEGER DIVISION
+                        ALUBCLMUL.start = ~opCode[4,1] & ~function3[2,1];                   // CARRYLESS MULTIPLY
+                        while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {}
+                        frd = fpucalc ? 1 : 0; result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result;
                     }
-                    CSR.updateFPUflags = opCode[4,1];
+                    CSR.updateFPUflags = fpuconvert | fpucalc;
                 }
             }
             busy = 0;
