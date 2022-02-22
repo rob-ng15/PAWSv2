@@ -21,16 +21,9 @@ algorithm apu(
     waveform WAVEFORM( staticGenerator <: staticGenerator );
     audiocounter COUNTER( active :> audio_active );
 
-    frequency_table.addr := frequency; COUNTER.start := 0;
+    frequency_table.addr := frequency;              COUNTER.start := 0;                                 audio_output := audio_active ? WAVEFORM.audio_output : 0;
 
-    always_before {
-        if( audio_active ) {
-            if( COUNTER.updatepoint ) { audio_output = WAVEFORM.audio_output; }
-        } else {
-            audio_output = 0;
-        }
-    }
-    always_after {
+    always {
         if( apu_write ) {
             WAVEFORM.point = 0;
             WAVEFORM.selected_waveform = waveform;
@@ -78,7 +71,7 @@ algorithm audiocounter(
 
     active := ( |duration ); updatepoint := active & ( ~|counter25mhz );
 
-    always_after {
+    always{
         if( start ) {
             counter25mhz = 0;
             counter1khz = 25000;

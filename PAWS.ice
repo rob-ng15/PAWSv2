@@ -374,7 +374,7 @@ algorithm cachecontroller(
 
     // MEMORY ACCESS FLAGS
     uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
-    uint1   doreadsdram <: ( doread | ( dowrite & byteaccess ) );
+    uint1   doreadsdram <:: ( doread | ( dowrite & byteaccess ) );
 
     //  FOR QUICK RETURN IF READING FROM LAST DATA CACHE ADDRESS
     uint25  lastaddress = uninitialized;            uint1   lastdcacheaddress <: cacheselect & ( lastaddress == address[1,25] );

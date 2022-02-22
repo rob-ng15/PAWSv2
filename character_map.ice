@@ -96,7 +96,7 @@ algorithm character_map_writer(
     // Counter for clearscreen/copyscreen/scroll
     uint13  tpu_start_cs_addr = uninitialized;      uint13  tpu_cs_addr = uninitialized;                    uint13  tpu_cs_addr_next <:: tpu_cs_addr + 1;
     uint13  tpu_max_count = uninitialized;          uint13  tpu_cs_addr_nextline <:: tpu_cs_addr + 80;      uint13  tpu_cs_addr_prevline <:: tpu_cs_addr - 80;
-    uint1   tpu_cs_addr_lastline <:: ( tpu_cs_addr > 4719 );                                                uint23  curses_wipe <:: { curses_wipe_background, curses_wipe_foreground, 9h0 };
+    uint1   tpu_cs_addr_lastline <:: ( tpu_cs_addr > 4719 );                                                 uint23  curses_wipe <: { curses_wipe_background, curses_wipe_foreground, 9h0 };
 
     // TPU character position
     uint7   tpu_active_x = 0;                       cmcursorx TPUX( tpu_active_x <: tpu_active_x );
@@ -113,7 +113,7 @@ algorithm character_map_writer(
     // CURSES COPY ADDRESS
     charactermap_copy.addr0 := ( |tpu_active[2,2] ) ? tpu_cs_addr : TPUA.WRITEADDR;
 
-    always_after {
+    always {
         if( |tpu_write ) { tpu_start_cs_addr = 0; tpu_max_count = 4800; }                                           // Set default start and end points
         switch( tpu_write ) {
             default: {}

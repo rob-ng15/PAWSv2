@@ -83,7 +83,7 @@ $$if not SIMULATION then
     SDCARDreadsector := 0; SDCARDwritesector := 0; buffer_out.wenable1 := 0;
 $$end
 
-     always_before {
+     always {
 $$if not SIMULATION then
         // UPDATE LATCHES
         UARTinread = UARTinread[1,1]; UARToutwrite = UARToutwrite[1,1]; PS2inread = PS2inread[1,1];
@@ -121,8 +121,6 @@ $$end
                 default: { readData = 0;}
             }
         }
-    }
-    always_after {
         // WRITE IO Memory
         if( memoryWrite ) {
             switch( memoryAddress[4,4] ) {
@@ -192,13 +190,13 @@ algorithm timers_memmap(
 ) <autorun,reginputs> {
     // TIMERS and RNG
     timers_rng timers <@clock_25mhz> ( seconds :> cursor, g_noise_out :> static16bit );
-    uint3   timerreset <:: memoryAddress[1,3] + 1;
-    uint32  floatrng <:: { 1b0, 5b01111, &timers.u_noise_out[0,3] ? 3b110 : timers.u_noise_out[0,3], timers.g_noise_out[0,16], timers.u_noise_out[3,7] };
+    uint3   timerreset <: memoryAddress[1,3] + 1;
+    uint32  floatrng <: { 1b0, 5b01111, &timers.u_noise_out[0,3] ? 3b110 : timers.u_noise_out[0,3], timers.g_noise_out[0,16], timers.u_noise_out[3,7] };
 
     // LATCH MEMORYWRITE
     uint1   LATCHmemoryWrite = uninitialized;
 
-    always_before {
+    always {
         // READ IO Memory
         if( memoryRead ) {
             switch( memoryAddress[1,4] ) {
@@ -220,8 +218,6 @@ algorithm timers_memmap(
                 default: { readData = 0; }
             }
         }
-    }
-    always_after {
         // WRITE IO Memory
         switch( { memoryWrite, LATCHmemoryWrite } ) {
             case 2b10: { timers.counter = writeData; timers.resetcounter = timerreset; }
@@ -267,16 +263,14 @@ algorithm audio_memmap(
     uint1   LATCHmemoryWrite = uninitialized;
 
     // SAMPLE MEMORY CONTROLS - SAMPLES TO BE WRITTEN ADJUSTED FROM 1 to 127 to 1 to 63
-    uint7   writeSAMPE <:: ( writeData == 1 ) ? 1 : writeData[ 1, 6 ];
-    samples_left.addr0 := SAMPLE[0];                samples_left.wdata1 := writeSAMPE;                  samples_left.wenable1 := 0;
-    samples_right.addr0 := SAMPLE[1];               samples_right.wdata1 := writeSAMPE;                 samples_right.wenable1 := 0;
+    uint7   writeSAMPLE <: ( writeData == 1 ) ? 1 : writeData[ 1, 6 ];
+    samples_left.addr0 := SAMPLE[0];                samples_left.wdata1 := writeSAMPLE;                  samples_left.wenable1 := 0;
+    samples_right.addr0 := SAMPLE[1];               samples_right.wdata1 := writeSAMPLE;                 samples_right.wenable1 := 0;
 
-    always_before {
+    always {
         // READ IO Memory
         if( memoryRead ) { readData = memoryAddress[1,1] ? apu_processor.audio_active_r : apu_processor.audio_active_l; }
-    }
 
-    always_after {
         SAMPLESEND = SAMPLESEND[1,1];                                                               // HOLD SAMPLESEND FOR 2 CYCLES TO ALLOW SAMPLE TO SEND
 
         if( |SAMPLEMODE ) {                                                                         // CHECK IF SAMPLE MODE IS ACTIVE
@@ -367,7 +361,7 @@ algorithm timers_rng(
     T0khz0.resetCounter := 0; T1khz1.resetCounter := 0;
     STimer0.resetCounter := 0; STimer1.resetCounter := 0;
 
-    always_after {
+    always {
         switch( resetcounter ) {
             default: {}
             case 1: { T1hz0.resetCounter = 1; }
@@ -432,7 +426,7 @@ algorithm fifo8(
     queue.addr0 := next; first := queue.rdata0;
     queue.wenable1 := 1;
 
-    always_after {
+    always {
         if( write ) {
             queue.addr1 = top; queue.wdata1 = last;
             update = 1;
@@ -494,7 +488,7 @@ algorithm fifo9(
     queue.addr0 := next; first := queue.rdata0;
     queue.wenable1 := 1;
 
-    always_after {
+    always {
         if( write ) { queue.addr1 = top; queue.wdata1 = last; }
         top = top + write;
         next = next + read;

@@ -23,8 +23,8 @@ algorithm ps2ascii(
     uint1   npleftup = 0;                           uint1   npleftdown = 0;
     uint1   nprightup = 0;                          uint1   nprightdown = 0;
 
-    uint1   CTRL <:: lctrl | rctrl;                 uint1   SHIFT <:: lshift | rshift;                  uint1   CAPITAL <:: ( lshift | rshift ) ^ capslock;
-    uint1   ALT <:: lalt | ralt;                    uint2   LETTERMOD <:: CTRL ? 2b00 : CAPITAL ? 2b10 : 2b11;
+    uint1   CTRL <: lctrl | rctrl;                  uint1   SHIFT <: lshift | rshift;                   uint1   CAPITAL <: ( lshift | rshift ) ^ capslock;
+    uint1   ALT <: lalt | ralt;                     uint2   LETTERMOD <: CTRL ? 2b00 : CAPITAL ? 2b10 : 2b11;
 
     uint1   startbreak = 0;                         uint1   startmulti = 0;
 
@@ -34,7 +34,7 @@ algorithm ps2ascii(
     newascii := 0; asciivalid := 0;
     joystick := { application, nprightup, nprightdown, npleftdown, npleftup, rctrl, rwin, ralt, lalt, npright | right, npleft | left, npdown | down, npup | up, lwin, lctrl, 1b0 };
 
-    always_after {
+    always {
         if( PS2.valid ) {
             switch( PS2.data ) {
                 case 8he0: { startmulti = 1; }
@@ -253,8 +253,8 @@ algorithm ps2(
 
     valid := 0;                                     error := 0;                                         clk_edge := 0;
 
-    // Filter the PS/2 clock
-    always_before {
+    always {
+        // Filter the PS/2 clock
         clk_filter = { ps2clk_ext, clk_filter[1,3] };
         switch( clk_filter ) {
             case 4b1100: { ps2_clk_in = 1; }
@@ -266,8 +266,7 @@ algorithm ps2(
             }
             default: {}
         }
-    }
-    always_after {
+
         // Process the PS/2 data bit
         if( clk_edge ) {
             switch( bit_count ) {
