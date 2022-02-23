@@ -426,7 +426,10 @@ void sortdirectoryentries( unsigned short entries ) {
                 swapentries(i,i+1);
                 changes++;
             }
-            if( ( directorynames[i].type == directorynames[i+1].type ) && ( directorynames[i].filename[0] > directorynames[i+1].filename[0] ) ) {
+            if( ( directorynames[i].type == directorynames[i+1].type ) &&
+                ( ( directorynames[i].filename[0] > directorynames[i+1].filename[0] ) ||
+                ( ( directorynames[i].filename[0] == directorynames[i+1].filename[0] ) && ( directorynames[i].filename[1] > directorynames[i+1].filename[1] ) ) )
+            ) {
                 swapentries(i,i+1);
                 changes++;
             }
@@ -472,9 +475,9 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
                         } else {
                             if( fileentry[i].attributes != 0x0f ) {
                                 // SHORT FILE NAME ENTRY
-                                if( ( ( fileentry[i].ext[0] == 'P' ) || ( fileentry[i].ext[0] == 'p' ) ) &&
-                                    ( ( fileentry[i].ext[1] == 'A' ) || ( fileentry[i].ext[1] == 'a' ) ) &&
-                                    ( ( fileentry[i].ext[2] == 'W' ) || ( fileentry[i].ext[2] == 'w' ) ) ) {
+                                if( ( ( fileentry[i].ext[0] == 'P' ) ) &&
+                                    ( ( fileentry[i].ext[1] == 'A' ) ) &&
+                                    ( ( fileentry[i].ext[2] == 'W' ) ) ) {
                                         entries++;
                                         memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
                                         directorynames[entries].type = 1;

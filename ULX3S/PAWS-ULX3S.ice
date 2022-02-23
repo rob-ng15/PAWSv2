@@ -1,8 +1,14 @@
 $$ uart_in_clock_freq_mhz = 25
+//$$ sdram_150_mhz = 1
+//$$ gpu_50_mhz = 1
 
 $$if not SIMULATION then
 // CLOCKS
+$$if sdram_150_mhz then
+import('../common/clock_system-sdram150.v')
+$$else
 import('../common/clock_system.v')
+$$end
 import('../common/clock_cpu.v')
 $$end
 
@@ -40,7 +46,11 @@ $include('../terminal.ice')
 $include('../tile_map.ice')
 $include('../multiplex_display.ice')
 $include('../audio.ice')
+$$if gpu_50_mhz then
+$include('../video_memmap-50MHzGPU.ice')
+$$else
 $include('../video_memmap.ice')
+$$end
 $include('../io_memmap.ice')
 $include('../timers_random.ice')
 

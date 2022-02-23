@@ -100,7 +100,8 @@ algorithm gpu_queue(
             ( queue_cropL, queue_cropR ) = copycoordinates( crop_left, crop_right );
             ( queue_cropT, queue_cropB ) = copycoordinates( crop_top, crop_bottom );
         }
-
+    }
+    while(1) {
         // PROCESS QUEUE
         if( queue_busy & ~gpu_active ) {
             GPU.gpu_dithermode = queue_dithermode; GPU.gpu_colour = queue_colour; GPU.gpu_colour_alt = queue_colour_alt;
@@ -327,6 +328,7 @@ algorithm drawrectangle(
     output  int11   bitmap_y_write,
     output  uint1   bitmap_write
 ) <autorun> {
+    int11   xPLUS1 <:: bitmap_x_write + 1;          int11   yPLUS1 <:: bitmap_y_write + 1;
     bitmap_write := 0;
 
     while(1) {
@@ -335,9 +337,9 @@ algorithm drawrectangle(
             bitmap_x_write = min_x; bitmap_y_write = min_y; bitmap_write = 1;           // Output 1st Pixel
             while( busy ) {
                 if( bitmap_x_write != max_x ) {
-                    bitmap_x_write = bitmap_x_write + 1;
+                    bitmap_x_write = xPLUS1;
                 } else {
-                    bitmap_x_write = min_x; bitmap_y_write = bitmap_y_write + 1;
+                    bitmap_x_write = min_x; bitmap_y_write = yPLUS1;
                 }
                 busy = ( bitmap_y_write != max_y );
                 bitmap_write = busy;                                                    // Output subsequent pixels
@@ -366,7 +368,6 @@ algorithm rectangle (
         crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
         x <: x, y <: y, param0 <: x1, param1 <: y1
     );
-
     drawrectangle RECTANGLE(
         min_x <: PREP.min_x, min_y <: PREP.min_y, max_x <: PREP.max_x, max_y <: PREP.max_y,
         bitmap_x_write :> bitmap_x_write, bitmap_y_write :> bitmap_y_write, bitmap_write :> bitmap_write,
@@ -588,7 +589,7 @@ algorithm swaponcondition(
     output  int11   nx2,
     output  int11   ny1,
     output  int11   ny2
-) <autorun,reginputs> {
+) <autorun> {
     always {
         if( condition ) {
             nx1 = x2; ny1 = y2;
@@ -793,7 +794,7 @@ algorithm blitscale(
     input   uint2   scale,
     output  uint7   base,
     output  int11   scaled
-) <autorun> {
+) <autorun,reginputs> {
     base := offset; scaled := offset << scale;
 }
 algorithm   blittilexy(
@@ -807,7 +808,7 @@ algorithm   blittilexy(
 ) <autorun> {
     uint4   revx4 <: ~px[0,4];                      uint4   revy4 <: ~py[0,4];
     uint3   revx3 <: ~px[0,3];                      uint3   revy3 <: ~py[0,3];
-    uint1   action00 <: ( ~|action[0,2] );          uint1   action01 <: ( action[0,2] == 2b01 );            uint1   action10 <: ( action[0,2] == 2b10 );
+    uint1   action00 <: ( ~|action[0,2] );          uint1   action01 <: ( action[0,2] == 2b01 );        uint1   action10 <: ( action[0,2] == 2b10 );
 
     // find y and x positions within the tile/character bitmap handling rotation or reflection
     xinblittile := ( action[2,1] ?  action00 ? revx4 : action01 ? py[0,4] : action10 ? px[0,4] : revy4 : action[0,1] ? px[0,4] : revx4 );
@@ -823,7 +824,7 @@ algorithm cololurblittilexy(
     output  uint4   yintile
 ) <autorun> {
     uint4   revx <: ~px[0,4];                       uint4   revy <:: ~py[0,4];
-    uint1   action00 <: ( ~|action[0,2] );           uint1   action01 <: ( action[0,2] == 2b01 );               uint1   action10 <: ( action[0,2] == 2b10 );
+    uint1   action00 <: ( ~|action[0,2] );          uint1   action01 <: ( action[0,2] == 2b01 );        uint1   action10 <: ( action[0,2] == 2b10 );
 
     // find y and x positions within the tile bitmap handling rotation or reflection
     xintile := action[2,1] ? action00 ? px[0,4] : action01 ? revy : action10 ? revx : py[0,4] : action[0,1] ? revx :  px[0,4];
@@ -920,10 +921,12 @@ algorithm pixelblock(
     uint1   update = uninitialised;                 uint2   toprocess = uninitialised;                  uint1   lineend <:: ( bitmap_x_write == x + width - 1 );
     uint7   grrggbb <: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };                  uint7   grey <: ( ( colour8r + colour8g + colour8b ) * 341 ) >> 11;
 
+    int11   xPLUS1 <:: bitmap_x_write + 1;          int11   yPLUS1 <:: bitmap_y_write + 1;
+
     // LOOKUP THE COLOUR FROM THE REMAPPER
     colourmap.addr0 := colour;
 
-    bitmap_write := 0;
+    bitmap_write := ( ( toprocess == 1 ) & ( colour != ignorecolour ) ) | ( toprocess == 2 );
     bitmap_colour_write := ( toprocess == 1 ) ? mode ? colourmap.rdata0 : colour :
                             mode ? ( grey == 64 ) ? 65 : grey : ( grrggbb == 64 ) ? 80 : grrggbb;
 
@@ -934,9 +937,9 @@ algorithm pixelblock(
             if( busy ) {
                 if( update ) {
                     if( lineend ) {
-                        bitmap_x_write = x; bitmap_y_write = bitmap_y_write + 1;
+                        bitmap_x_write = x; bitmap_y_write = yPLUS1;
                     } else {
-                        bitmap_x_write = bitmap_x_write + 1;
+                        bitmap_x_write = xPLUS1;
                     }
                     update = 0;
                 }
@@ -944,7 +947,6 @@ algorithm pixelblock(
                     if( &toprocess ) {
                         busy = 0;
                     } else {
-                        bitmap_write = ( ( toprocess == 1 ) & ( colour != ignorecolour ) ) | ( toprocess == 2 );
                         update = 1;
                     }
                 }
@@ -974,6 +976,31 @@ algorithm scaledetla(
 
     scaled := ( scale[2,1] ? ( __signed(extdelta) >>> scale[0,2] ) : ( extdelta << scale[0,2] ) );
 }
+algorithm cpm(
+    input   int11   xc,
+    input   uint6   dx,
+    input   int11   yc,
+    input   uint6   dy,
+    input   uint3   scale,
+    input   uint3   action,
+    output  int11   xcpdx,
+    output  int11   xcndx,
+    output  int11   ycpdy,
+    output  int11   ycndy,
+    output  int11   xcpdy,
+    output  int11   xcndy,
+    output  int11   ycpdx,
+    output  int11   ycndx,
+) <autorun> {
+    // SIGN EXTEND DELTAS AND APPLY SCALE
+    scaledetla SDX( scale <: scale, delta <: dx ); scaledetla SDY( scale <: scale, delta <: dy );
+
+    // PLUS OR MINUS SCALE
+    xcpdx := xc + SDX.scaled;                       xcndx := xc - SDX.scaled;
+    ycpdy := yc + SDY.scaled;                       ycndy := yc - SDY.scaled;
+    xcpdy := xc + SDY.scaled;                       xcndy := xc - SDY.scaled;
+    ycpdx := yc + SDX.scaled;                       ycndx := yc - SDX.scaled;
+}
 // ADJUST COORDINATES BY DELTAS AND SCALE
 algorithm centreplusdelta(
     input   int11   xc,
@@ -985,28 +1012,20 @@ algorithm centreplusdelta(
     output  int11   xdx,
     output  int11   ydy
 ) <autorun> {
-    // SIGN EXTEND DELTAS AND APPLY SCALE
-    scaledetla SDX( scale <: scale, delta <: dx ); scaledetla SDY( scale <: scale, delta <: dy );
-
-    // PLUS OR MINUS SCALE
-    int11   xcpdx <: xc + SDX.scaled;                  int11   xcndx <: xc - SDX.scaled;
-    int11   ycpdy <: yc + SDY.scaled;                  int11   ycndy <: yc - SDY.scaled;
-    int11   xcpdy <: xc + SDY.scaled;                  int11   xcndy <: xc - SDY.scaled;
-    int11   ycpdx <: yc + SDX.scaled;                  int11   ycndx <: yc - SDX.scaled;
-
+    cpm CPM( xc <: xc, yc <: yc, dx <: dx, dy <: dy, scale <: scale, action <: action );
     always {
         if( action[2,1] ) {
             // ROTATION
             switch( action[0,2] ) {
-                case 0: { xdx = xcpdx; ydy = ycpdy; }
-                case 1: { xdx = xcndy; ydy = ycpdx; }
-                case 2: { xdx = xcndx; ydy = ycndy; }
-                case 3: { xdx = xcpdy; ydy = ycndx; }
+                case 0: { xdx = CPM.xcpdx; ydy = CPM.ycpdy; }
+                case 1: { xdx = CPM.xcndy; ydy = CPM.ycpdx; }
+                case 2: { xdx = CPM.xcndx; ydy = CPM.ycndy; }
+                case 3: { xdx = CPM.xcpdy; ydy = CPM.ycndx; }
             }
         } else {
             // REFLECTION
-            xdx = action[0,1] ? xcndx : xcpdx;
-            ydy = action[1,1] ? ycndy : ycpdy;
+            xdx = action[0,1] ? CPM.xcndx : CPM.xcpdx;
+            ydy = action[1,1] ? CPM.ycndy : CPM.ycpdy;
         }
     }
 }

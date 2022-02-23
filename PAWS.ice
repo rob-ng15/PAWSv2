@@ -97,7 +97,11 @@ $$if VERILATOR then
       compute_clock :> clock_system,
       compute_clock :> clock_cpu,
       compute_clock :> clock_io,
-      video_clock :> gpu_clock
+$$if gpu_50_mhz then
+      compute_clock :> gpu_clock,
+$$else
+      video_clock :> gpu_clock,
+$$end
     );
 $$else
     $$clock_25mhz = 'clock'
@@ -128,7 +132,15 @@ $$end
 
     // SDRAM chip controller by @sylefeb
     sdram_r16w16_io sio_fullrate; sdram_r16w16_io sio_halfrate;
+$$if VERILATOR then
     sdram_half_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
+$$else
+$$if sdram_150_mhz then
+    sdram_third_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
+$$else
+    sdram_half_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
+$$end
+$$end
     sdram_controller_autoprecharge_r16_w16 sdram32MB <@sdram_clock,!sdram_reset> (
         sd        <:> sio_fullrate,
         sdram_cle :>  sdram_cle,
@@ -208,6 +220,7 @@ $$end
 
     video_memmap VIDEO_Map <@clock_io,!reset> (
         video_clock <: $clock_25mhz$,
+        gpu_clock <: gpu_clock,
         memoryAddress <: CPU.address[0,12],
         writeData <: CPU.writedata,
 $$if HDMI then
@@ -319,18 +332,19 @@ $$end
 // Controller is 16bit, the natural width of the SDRAM on the ULX3s
 // An eviction cache was chosen as easy to implement as a directly mapped cache
 // Writes to SDRAM only if required when evicting a cache entry
+$$ sdram_addr_width = 26
 
 // DATA CACHE SIZE IS NUMBER OF 16bit ENTRIES
 $$ size = 4096
 $$ cacheaddrwidth = clog2(size)
-$$ partaddresswidth = 25 - cacheaddrwidth
+$$ partaddresswidth = sdram_addr_width - 1 - cacheaddrwidth
 $$ partaddressstart = 1 + cacheaddrwidth
 bitfield cachetag{ uint1 needswrite, uint1 valid, uint$partaddresswidth$ partaddress }
 
 // INSTRUCTION CACHE IS NUMBER OF 16bit ENTRIES
 $$ Isize = 8192
 $$ Icacheaddrwidth = clog2(Isize)
-$$ Ipartaddresswidth = 25 - Icacheaddrwidth
+$$ Ipartaddresswidth = sdram_addr_width - 1 - Icacheaddrwidth
 $$ Ipartaddressstart = 1 + Icacheaddrwidth
 bitfield Icachetag{ uint1 valid, uint$Ipartaddresswidth$ partaddress }
 

@@ -21,7 +21,7 @@ algorithm apu(
     waveform WAVEFORM( staticGenerator <: staticGenerator );
     audiocounter COUNTER( active :> audio_active );
 
-    frequency_table.addr := frequency;              COUNTER.start := 0;                                 audio_output := audio_active ? WAVEFORM.audio_output : 0;
+    frequency_table.addr := frequency;              COUNTER.start := 0;                                 audio_output := audio_active ? COUNTER.updatepoint ? WAVEFORM.audio_output : audio_output : 0;
 
     always {
         if( apu_write ) {

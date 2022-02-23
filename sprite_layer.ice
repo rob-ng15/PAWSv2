@@ -55,10 +55,8 @@ algorithm sprite_layer(
     uint16  sprite_collision_frame <: { SPRITE_15.pix_visible, SPRITE_14.pix_visible, SPRITE_13.pix_visible, SPRITE_12.pix_visible, SPRITE_11.pix_visible,
                                         SPRITE_10.pix_visible, SPRITE_9.pix_visible, SPRITE_8.pix_visible, SPRITE_7.pix_visible,
                                         SPRITE_6.pix_visible, SPRITE_5.pix_visible, SPRITE_4.pix_visible, SPRITE_3.pix_visible,
-                                        SPRITE_2.pix_visible, SPRITE_1.pix_visible, SPRITE_0.pix_visible
-                                      };
+                                        SPRITE_2.pix_visible, SPRITE_1.pix_visible, SPRITE_0.pix_visible };
     uint1   output_collisions <: ( pix_x == 639 ) & ( pix_y == 479 );
-
 
     // Default to transparent
     sprite_layer_display := pix_active & ( |sprite_collision_frame );
@@ -166,6 +164,12 @@ algorithm sprite_layer_writer(
         sprite_read_tile_$i$ := sprite_tile_number[$i$];
     $$end
 
+    // CALCULATE HELPER VALUES FOR SPRITE UPDATE
+    sprite_off_left := ( __signed( sprite_x[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
+    sprite_off_top := ( __signed( sprite_y[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
+    sprite_offscreen_x := sprite_off_left | ( __signed( sprite_x[ sprite_set_number  ] ) > __signed(640) );
+    sprite_offscreen_y := sprite_off_top | ( __signed( sprite_y[ sprite_set_number ] ) > __signed(480) );
+
     always {
         // SET ATTRIBUTES + PERFORM UPDATE
         switch( sprite_layer_write ) {
@@ -176,11 +180,6 @@ algorithm sprite_layer_writer(
             case 5: { sprite_y[ sprite_set_number ] = sprite_write_value[0,10]; }
             case 6: { sprite_tile_number[ sprite_set_number ] = sprite_write_value[0,3]; }
             case 7: {
-                // CALCULATE HELPER VALUES FOR SPRITE UPDATE
-                sprite_off_left = ( __signed( sprite_x[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
-                sprite_off_top = ( __signed( sprite_y[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
-                sprite_offscreen_x = sprite_off_left | ( __signed( sprite_x[ sprite_set_number  ] ) > __signed(640) );
-                sprite_offscreen_y = sprite_off_top | ( __signed( sprite_y[ sprite_set_number ] ) > __signed(480) );
                 // PERFORM SPRITE UPDATE
                 sprite_active[ sprite_set_number ] = ( ( sprite_write_value[12,1] & sprite_offscreen_y ) | ( sprite_write_value[11,1] & sprite_offscreen_x ) ) ? 0 : sprite_active[ sprite_set_number ];
                 sprite_tile_number[ sprite_set_number ] = sprite_tile_number[ sprite_set_number ] + sprite_write_value[10,1];

@@ -271,8 +271,8 @@ algorithm sdcard(
       () <- sendbyte <- ( 8hff, 3 );
       () <- sendbyte <- ( 8hff, 3 );
 
-      // Wait for response ( should be 0x05 )
-      ( status ) <- read <- ( 8,1,3);
+      // wait for data response
+      ( status ) <- read <- (8,1,3);
 
       // wait for card to return from busy
       () <- waitbusy <- ( 3 );
@@ -280,9 +280,11 @@ algorithm sdcard(
       // Request status
       () <- send <- ( cmd13 );
 
-      // Read R1 & R2 response bytes
-      ( status ) <- read <- ( 8,1,3);
-      ( status ) <- read <- ( 8,1,3);
+      // wait for cmd response ( 0x00 )
+      ( status ) <- read <- (8,1,3);
+      while( |status[0,8] ) {
+          ( status ) <- read <- (8,1,3);
+      }
 
       io.ready = 1;
     }
