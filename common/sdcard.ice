@@ -280,11 +280,9 @@ algorithm sdcard(
       // Request status
       () <- send <- ( cmd13 );
 
-      // wait for cmd response ( 0x00 )
+      // wait for 2 response tokens
       ( status ) <- read <- (8,1,3);
-      while( |status[0,8] ) {
-          ( status ) <- read <- (8,1,3);
-      }
+      ( status ) <- read <- (8,1,3);
 
       io.ready = 1;
     }

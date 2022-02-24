@@ -67,19 +67,20 @@ algorithm gpu_queue(
     );
 
     // QUEUE STORAGE
-    uint1   queue_busy = 0;
+    uint1   queue_busy = uninitialised;
     int11   queue_x = uninitialised;                int11   queue_y = uninitialised;
     uint7   queue_colour = uninitialised;           uint7   queue_colour_alt = uninitialised;
     int11   queue_param0 = uninitialised;           int11   queue_param1 = uninitialised;
     int11   queue_param2 = uninitialised;           int11   queue_param3 = uninitialised;
     int11   queue_param4 = uninitialised;           int11   queue_param5 = uninitialised;
     uint4   queue_dithermode = uninitialised;
-    uint4   queue_write = uninitialised;
+    uint4   queue_write = 0;
     uint9   queue_cropL = uninitialised;            uint8   queue_cropT = uninitialised;
     uint9   queue_cropR = uninitialised;            uint8   queue_cropB = uninitialised;
 
     GPU.gpu_write := 0; queue_full := vector_block_active | queue_busy ; queue_complete := ~( gpu_active | queue_full );
     bitmap_crop_left := GPU.crop_left; bitmap_crop_right := GPU.crop_right; bitmap_crop_top := GPU.crop_top; bitmap_crop_bottom := GPU.crop_bottom;
+    queue_busy := |queue_write;
 
     always {
         // PUT INTO QUEUE
@@ -92,7 +93,7 @@ algorithm gpu_queue(
             GPU.gpu_write = 2;
         }
         if( |gpu_write ) {
-            queue_busy = 1; queue_dithermode = gpu_dithermode; queue_colour = gpu_colour; queue_colour_alt = gpu_colour_alt; queue_write = gpu_write;
+            queue_dithermode = gpu_dithermode; queue_colour = gpu_colour; queue_colour_alt = gpu_colour_alt; queue_write = gpu_write;
             ( queue_x, queue_y ) = copycoordinates( gpu_x, gpu_y );
             ( queue_param0, queue_param1 ) = copycoordinates( gpu_param0, gpu_param1 );
             ( queue_param2, queue_param3 ) = copycoordinates( gpu_param2, gpu_param3 );
@@ -100,8 +101,6 @@ algorithm gpu_queue(
             ( queue_cropL, queue_cropR ) = copycoordinates( crop_left, crop_right );
             ( queue_cropT, queue_cropB ) = copycoordinates( crop_top, crop_bottom );
         }
-    }
-    while(1) {
         // PROCESS QUEUE
         if( queue_busy & ~gpu_active ) {
             GPU.gpu_dithermode = queue_dithermode; GPU.gpu_colour = queue_colour; GPU.gpu_colour_alt = queue_colour_alt;
@@ -131,7 +130,6 @@ algorithm gpu_queue(
                 }
             }
         }
-        queue_busy = |queue_write;
     }
 }
 
@@ -220,34 +218,28 @@ algorithm gpu(
     gpu_active := ( |gpu_write[1,3] ) | gpu_busy;
 
     always {
+        if( |gpu_write ) {
+            // START THE GPU DRAWING UNIT - RESET DITHERMODE TO 0 (most common)
+            gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; bitmap_colour_write_alt = gpu_colour_alt;
+            GPUcircle.filledcircle = gpu_write[0,1]; GPUblit.tilecharacter = gpu_write[0,1];
+        }
         switch( gpu_write ) {
-            case 0: {}
-            case 1: {
-                // SET PIXEL (X,Y) NO GPU ACTIVATION
-                gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  gpu_x, gpu_y ); bitmap_write = 1;
-            }
-            default: {
-                // START THE GPU DRAWING UNIT - RESET DITHERMODE TO 0 (most common)
-                gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; bitmap_colour_write_alt = gpu_colour_alt;
-                GPUcircle.filledcircle = gpu_write[0,1]; GPUblit.tilecharacter = gpu_write[0,1];
-                switch( gpu_write ) {
-                    default: {}
-                    case 2: { GPUline.start = 1; }                                                  // DRAW LINE FROM (X,Y) to (PARAM0,PARAM1)
-                    case 3: { gpu_active_dithermode = gpu_dithermode; GPUrectangle.start = 1; }     // DRAW RECTANGLE FROM (X,Y) to (PARAM0,PARAM1)
-                    case 4: { GPUcircle.start = 1; }                                                // DRAW CIRCLE CENTRE (X,Y) with RADIUS PARAM0
-                    case 5: { gpu_active_dithermode = gpu_dithermode; GPUcircle.start = 1; }        // DRAW FILLED CIRCLE CENTRE (X,Y) with RADIUS PARAM0
-                    case 6: { gpu_active_dithermode = gpu_dithermode; GPUtriangle.start = 1; }      // DRAW FILLED TRIANGLE WITH VERTICES (X,Y) (PARAM0,PARAM1) (PARAM2,PARAM3)
-                    case 7: { GPUblit.start = 1; }                                                  // BLIT 16 x 16 TILE PARAM0 TO (X,Y)
-                    case 8: { GPUblit.start = 1; }                                                  // BLIT 8 x 8 CHARACTER PARAM0 TO (X,Y) as 8 x 8
-                    case 9: { GPUblit.start = 2; }                                                  // BLIT 16 x 16 COLOUR TILE PARAM0 TO (X,Y) as 16 x 16
-                    case 10: { GPUpixelblock.start = 1; }                                           // START THE PIXELBLOCK WRITER AT (x,y) WITH WIDTH PARAM0, IGNORE COLOUR PARAM1
-                    // 11
-                    // 12
-                    // 13
-                    // 14
-                    // 15 is quadrilateral, handled by the queue
-                }
-            }
+            default: {}
+            case 1: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  gpu_x, gpu_y ); bitmap_write = 1; }
+            case 2: { GPUline.start = 1; }                                                  // DRAW LINE FROM (X,Y) to (PARAM0,PARAM1)
+            case 3: { gpu_active_dithermode = gpu_dithermode; GPUrectangle.start = 1; }     // DRAW RECTANGLE FROM (X,Y) to (PARAM0,PARAM1)
+            case 4: { GPUcircle.start = 1; }                                                // DRAW CIRCLE CENTRE (X,Y) with RADIUS PARAM0
+            case 5: { gpu_active_dithermode = gpu_dithermode; GPUcircle.start = 1; }        // DRAW FILLED CIRCLE CENTRE (X,Y) with RADIUS PARAM0
+            case 6: { gpu_active_dithermode = gpu_dithermode; GPUtriangle.start = 1; }      // DRAW FILLED TRIANGLE WITH VERTICES (X,Y) (PARAM0,PARAM1) (PARAM2,PARAM3)
+            case 7: { GPUblit.start = 1; }                                                  // BLIT 16 x 16 TILE PARAM0 TO (X,Y)
+            case 8: { GPUblit.start = 1; }                                                  // BLIT 8 x 8 CHARACTER PARAM0 TO (X,Y) as 8 x 8
+            case 9: { GPUblit.start = 2; }                                                  // BLIT 16 x 16 COLOUR TILE PARAM0 TO (X,Y) as 16 x 16
+            case 10: { GPUpixelblock.start = 1; }                                           // START THE PIXELBLOCK WRITER AT (x,y) WITH WIDTH PARAM0, IGNORE COLOUR PARAM1
+            // 11
+            // 12
+            // 13
+            // 14
+            // 15 is quadrilateral, handled by the queue
         }
         if( gpu_busy ) {
             // COPY OUTPUT TO THE BITMAP WRITER

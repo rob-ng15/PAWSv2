@@ -264,19 +264,24 @@ void sdcard_wait( void ) {
 
 // READ A SECTOR FROM THE SDCARD AND COPY TO MEMORY
 void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress ) {
-    sdcard_wait();
+    unsigned char leds = *LEDS;
+
+    *LEDS = 0x0a; sdcard_wait();
     *SDCARD_SECTOR = sectorAddress;
     *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
     *SDCARD_READSTART = 1;
-    sdcard_wait();
+    *LEDS = 0xaa; sdcard_wait();
 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
     DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, 4 );
+    *LEDS = leds;
 }
 // WRITE A SECTOR TO THE SDCARD COPIED FROM MEMORY
 void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress ) {
-    sdcard_wait();
+    unsigned char leds = *LEDS;
+
+    *LEDS = 0x05; sdcard_wait();
 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 1 COPIES FROM MULTIPLE-ADDRESSES TO SINGLE ADDRESS
     // EACH WRITE OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
@@ -285,7 +290,9 @@ void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress 
 
     *SDCARD_SECTOR = sectorAddress;
     *SDCARD_WRITESTART = 1;
-    sdcard_wait();
+    *LEDS = 0x55; sdcard_wait();
+
+    *LEDS = leds;
 }
 
 // I/O FUNCTIONS

@@ -58,7 +58,7 @@
 
 // Support time/date (1 / 0)?
 #ifndef FATFS_INC_TIME_DATE_SUPPORT
-    #define FATFS_INC_TIME_DATE_SUPPORT     1
+    #define FATFS_INC_TIME_DATE_SUPPORT     0
 #endif
 
 // Include support for formatting disks (1 / 0)?

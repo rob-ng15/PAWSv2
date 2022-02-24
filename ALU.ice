@@ -215,14 +215,12 @@ algorithm douintdivide(
 
     busy := start | ( ~&bit );
     always {
-        if( start ) {
-            bit = 31; quotient = 0; remainder = 0;
+        if( &bit ) {
+            if( start ) { bit = 31; quotient = 0; remainder = 0; }
         } else {
-            if( ~&bit ) {
-                quotient[bit,1] = bitresult;
-                remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
-                bit = bitMINUS1;
-            }
+            quotient[bit,1] = bitresult;
+            remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
+            bit = bitMINUS1;
         }
     }
 }

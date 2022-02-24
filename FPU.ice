@@ -99,7 +99,7 @@ algorithm floatcalc(
     uint5   flags = uninitialised;
 
     // UNIT BUSY FLAG
-    uint1   unitbusy <: FPUaddsub.busy | FPUmultiply.busy  | FPUsqrt.busy | FPUdivide.busy;
+    uint4   unitbusy <: { FPUsqrt.busy, FPUdivide.busy, FPUmultiply.busy, FPUaddsub.busy };
 
     DONORMAL.bitstream := opCode[2,1] & ( &function7[0,2] ) ? FPUdivide.tonormalisebitstream : FPUaddsub.tonormalisebitstream;
     FPUaddsub.start := 0; FPUmultiply.start := 0; FPUdivide.start := 0; FPUsqrt.start := 0; FPUnewflags := FPUflags | flags;
@@ -117,10 +117,14 @@ algorithm floatcalc(
         }
 
         // CONTROL INPUTS TO ROUNDING AND COMBINING
-        if( FPUaddsub.busy ) { MAKERESULT.exponent = DONORMAL.newexponent; MAKERESULT.bitstream = DONORMAL.normalfraction; MAKERESULT.sign = FPUaddsub.resultsign; }
-        if( FPUmultiply.busy ) { MAKERESULT.exponent = FPUmultiply.productexp; MAKERESULT.bitstream = FPUmultiply.normalfraction; MAKERESULT.sign = FPUmultiply.productsign; }
-        if( FPUdivide.busy ) { MAKERESULT.exponent = FPUdivide.quotientexp; MAKERESULT.bitstream = DONORMAL.normalfraction; MAKERESULT.sign = FPUdivide.quotientsign; }
-        if( FPUsqrt.busy ) { MAKERESULT.exponent = FPUsqrt.squarerootexp; MAKERESULT.bitstream = FPUsqrt.normalfraction; MAKERESULT.sign = 0; }
+        if( |unitbusy ) {
+            onehot( unitbusy ) {
+                case 0: { MAKERESULT.exponent = DONORMAL.newexponent; MAKERESULT.bitstream = DONORMAL.normalfraction; MAKERESULT.sign = FPUaddsub.resultsign; }
+                case 1: { MAKERESULT.exponent = FPUmultiply.productexp; MAKERESULT.bitstream = FPUmultiply.normalfraction; MAKERESULT.sign = FPUmultiply.productsign; }
+                case 2: { MAKERESULT.exponent = FPUdivide.quotientexp; MAKERESULT.bitstream = DONORMAL.normalfraction; MAKERESULT.sign = FPUdivide.quotientsign; }
+                case 3: { MAKERESULT.exponent = FPUsqrt.squarerootexp; MAKERESULT.bitstream = FPUsqrt.normalfraction; MAKERESULT.sign = 0; }
+            }
+        }
     }
 
     while(1) {
@@ -132,7 +136,7 @@ algorithm floatcalc(
                     case 2b10: { FPUmultiply.start = 1; }                                               // FMUL.S
                     case 2b11: { FPUsqrt.start = function7[3,1]; FPUdivide.start = ~function7[3,1]; }   // FSQRT.S // FDIV.S
                 }
-                while( unitbusy ) {}                                                                    // WAIT FOR FINISH
+                while( |unitbusy ) {}                                                                   // WAIT FOR FINISH
                 switch( function7[0,2] ) {                                                              // EXTRACT RESULT AND FLAGS
                     default: { result = FPUaddsub.result; flags = FNFas; }                              // FADD.S FSUB.S
                     case 2b10: { result = FPUmultiply.result; flags = FNFm; }                           // FMUL.S
@@ -515,10 +519,11 @@ algorithm prepmul(
     output  int10   productexp,
     output  uint24  normalfraction
 ) <autorun> {
+    // BREAK DOWN INITIAL float32 INPUTS AND FIND SIGN OF RESULT AND EXPONENT OF PRODUCT ( + 1 IF PRODUCT OVERFLOWS, MSB == 1 )
+    // NORMALISE THE RESULTING PRODUCT AND EXTRACT THE 24 BITS AFTER THE LEADING 1.xxxx
     fastnormal24 NORMAL( tonormal <: product, normalfraction :> normalfraction );
 
-    uint24  sigA <: { 1b1, fp32( a ).fraction };   uint24  sigB <: { 1b1, fp32( b ).fraction };
-    uint48  product <: sigA * sigB;
+    uint48  product <: { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction };
 
     productsign := fp32( a ).sign ^ fp32( b ).sign;
     productexp := fp32( a ).exponent + fp32( b ).exponent - ( product[47,1] ? 253 : 254 );
@@ -540,8 +545,6 @@ algorithm floatmultiply(
     output  uint7   flags,
     output  uint32  result
 ) <autorun,reginputs> {
-    // BREAK DOWN INITIAL float32 INPUTS AND FIND SIGN OF RESULT AND EXPONENT OF PRODUCT ( + 1 IF PRODUCT OVERFLOWS, MSB == 1 )
-    // NORMALISE THE RESULTING PRODUCT AND EXTRACT THE 24 BITS AFTER THE LEADING 1.xxxx
     prepmul PREP( a <: a, b <: b, productsign :> productsign, productexp :> productexp, normalfraction :> normalfraction );
 
     // CLASSIFY THE INPUTS AND FLAG INFINITY, NAN, ZERO AND INVALID ( INF x ZERO )
@@ -584,7 +587,7 @@ algorithm dofloatdivide(
     output  uint1   busy(0),
     input   uint50  sigA,
     input   uint50  sigB,
-    output  uint50  quotient
+    output  uint50  quotient(0)
 ) <autorun> {
     uint6   bit(63);                                                                                    uint6 bitMINUS1 <:: bit - 1;
     uint50  remainder = uninitialised;
@@ -595,16 +598,12 @@ algorithm dofloatdivide(
     busy := start | ( ~&bit ) | ( quotient[48,2] != 0 );
     always {
         // FIND QUOTIENT AND ENSURE 48 BIT FRACTION ( ie BITS 48 and 49 clear )
-        if( start ) {
-            bit = 49; quotient = 0; remainder = 0;
+        if( &bit ) {
+            if( start ) { bit = 49; quotient = 0; remainder = 0; } else { quotient = quotient[ normalshift, 48 ]; }
         } else {
-            if( ~&bit ) {
-                remainder = __unsigned(temporary) - ( bitresult ? __unsigned(sigB) : 0 );
-                quotient[bit,1] = bitresult;
-                bit = bitMINUS1;
-            } else {
-                quotient = quotient[ normalshift, 48 ];
-            }
+            remainder = __unsigned(temporary) - ( bitresult ? __unsigned(sigB) : 0 );
+            quotient[bit,1] = bitresult;
+            bit = bitMINUS1;
         }
     }
 }
@@ -707,15 +706,13 @@ algorithm dofloatsqrt(
 
     busy := start | ( i != 47 );
     always {
-        if( start ) {
-            i = 0; squareroot = 0; ac = start_ac; x = start_x;
+        if( i == 47) {
+            if( start ) { i = 0; squareroot = 0; ac = start_ac; x = start_x; }
         } else {
-            if( i != 47 ) {
-                ac = { test_res[49,1] ? ac[0,47] : test_res[0,47], x[46,2] };
-                squareroot = { squareroot[0,47], ~test_res[49,1] };
-                x = { x[0,46], 2b00 };
-                i = iPLUS1;
-            }
+            ac = { test_res[49,1] ? ac[0,47] : test_res[0,47], x[46,2] };
+            squareroot = { squareroot[0,47], ~test_res[49,1] };
+            x = { x[0,46], 2b00 };
+            i = iPLUS1;
         }
     }
 }

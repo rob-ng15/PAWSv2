@@ -300,32 +300,29 @@ algorithm cpuexecuteSLOWPATH(
     );
 
     // Classify the instruction
-    uint1   csr <: ( opCode == 5b11100 );           uint1   atomic <: ( opCode == 5b01011 );
-    uint1   alufpu <: ~csr & ~atomic;               uint3   operation <: { alufpu, atomic, csr };
+    uint1   csr <: ( opCode == 5b11100 );           uint1   atomic <: ( opCode == 5b01011 );            uint1 fpu <: opCode[4,1] & ~csr;
+    uint1   alufpu <: ~csr & ~atomic;
 
     uint1   fpuconvert <: ( opCode == 5b10100 ) & ( function7[4,3] == 3b110 );
-    uint1   fpucalc <: alufpu & opCode[4,1] & ~fpuconvert & ~FCLASS.FASTPATHFPU;
+    uint1   fpufast <: ( fpu & FCLASS.FASTPATHFPU ) | fpuconvert;
+    uint1   fpucalc <: fpu & ~fpufast;
+
+    uint4   operation <: { ~|{fpufast,atomic,csr}, fpufast, atomic, csr };
 
     // START FLAGS
-    ALUMD.start := start & alufpu & ~opCode[4,1] & function3[2,1];                          // INTEGER DIVISION
-    ALUBCLMUL.start := start & alufpu & ~opCode[4,1] & ~function3[2,1];                     // CARRYLESS MULTIPLY
+    ALUMD.start := start & ~fpu & function3[2,1];                                           // INTEGER DIVISION
+    ALUBCLMUL.start := start & ~fpu & ~function3[2,1];                                      // CARRYLESS MULTIPLY
     FPUCALC.start := start & fpucalc;                                                       // FPU CALCULATIONS
     CSR.start := start & csr & |function3;                                                  // CSR
 
     // Deal with updating fpuflags and writing to fpu registers
-    CSR.updateFPUflags := 0; frd := alufpu ? fpuconvert ? FPUCONVERT.frd : ( opCode[4,1] & FCLASS.FASTPATHFPU ) ? FPUFAST.frd : fpucalc ? 1 : 0 : 0;
+    CSR.updateFPUflags := 0; frd := fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0;
 
     while(1) {
         if( start ) {
             busy = 1;
             onehot( operation ) {
-                case 0: {                                                                   // CSR
-                    if( |function3 ) {
-                        ++: result = CSR.result;
-                    } else {
-                        result = 0;
-                    }
-                }
+                case 0: { ++: result = |function3 ? CSR.result : 0; }                        // CSR
                 case 1: {                                                                   // ATOMIC OPERATIONS
                     if( function7[3,1] ) {
                         result = memoryinput; memoryoutput = ALUA.result;                   // ATOMIC LOAD - MODIFY - STORE
@@ -334,17 +331,14 @@ algorithm cpuexecuteSLOWPATH(
                         memoryoutput = sourceReg2;
                     }
                 }
-                case 2: {
-                    if( fpuconvert | ( opCode[4,1] & FCLASS.FASTPATHFPU ) ) {               // FPU COMPARISONS, MIN/MAX, SIGN MANIPULATION, CLASSIFICTIONS AND MOVE F-> I  and I -> F
-                        result = fpuconvert ? FPUCONVERT.result : FPUFAST.result;           // FPU CONVERSION I -> F and F -> I
-                    } else {
-                        while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {}
+                case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }       // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                case 3: {
+                        while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {}              // FPU CALCULATIONS AND INTEGER DIVISION
                         result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result;
-                    }
-                    CSR.updateFPUflags = fpuconvert | fpucalc;
                 }
             }
             busy = 0;
+            CSR.updateFPUflags = fpuconvert | fpucalc;
         }
     }
 }
