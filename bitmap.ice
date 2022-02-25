@@ -155,17 +155,17 @@ algorithm bitmapwriter(
         queue_complete :> gpu_queue_complete
     );
 
-    uint7   pixeltowrite <: ( QUEUE.gpu_active_dithermode == 14 ) ? static6bit : DODITHER.condition ? QUEUE.bitmap_colour_write : QUEUE.bitmap_colour_write_alt;
+    uint7   pixeltowrite <:: ( QUEUE.gpu_active_dithermode == 14 ) ? static6bit : DODITHER.condition ? QUEUE.bitmap_colour_write : QUEUE.bitmap_colour_write_alt;
     dither DODITHER( bitmap_x_write <: QUEUE.bitmap_x_write, bitmap_y_write <: QUEUE.bitmap_y_write, dithermode <: QUEUE.gpu_active_dithermode, static1bit <: static6bit[0,1] );
 
     // Write in range?
-    uint1   write_pixel <: ( QUEUE.bitmap_x_write >= QUEUE.bitmap_crop_left ) & (QUEUE. bitmap_x_write <= QUEUE.bitmap_crop_right ) &
+    uint1   write_pixel <:: ( QUEUE.bitmap_x_write >= QUEUE.bitmap_crop_left ) & (QUEUE. bitmap_x_write <= QUEUE.bitmap_crop_right ) &
                             ( QUEUE.bitmap_y_write >= QUEUE.bitmap_crop_top ) & ( QUEUE.bitmap_y_write <= QUEUE.bitmap_crop_bottom ) & QUEUE.bitmap_write;
-    uint1   write_buffer0 <: write_pixel & ~framebuffer;
-    uint1   write_buffer1 <: write_pixel & framebuffer;
+    uint1   write_buffer0 <:: write_pixel & ~framebuffer;
+    uint1   write_buffer1 <:: write_pixel & framebuffer;
 
     // LOCK BITMAP ADDRESSES, PIXEL VALUE, AND WRITE FLAGS
-    uint17  address <: QUEUE.bitmap_y_write[0,8] * 320 + QUEUE.bitmap_x_write[0,9];
+    uint17  address <:: QUEUE.bitmap_y_write[0,8] * 320 + QUEUE.bitmap_x_write[0,9];
     bitmap_0A.wenable1 := write_buffer0; bitmap_0R.wenable1 := write_buffer0; bitmap_0G.wenable1 := write_buffer0; bitmap_0B.wenable1 := write_buffer0;
     bitmap_1A.wenable1 := write_buffer1; bitmap_1R.wenable1 := write_buffer1; bitmap_1G.wenable1 := write_buffer1; bitmap_1B.wenable1 := write_buffer1;
 
@@ -183,7 +183,7 @@ algorithm dither(
     input   uint1   static1bit,
     output! uint1   condition
 ) <autorun> {
-    uint2   checkmode <: dithermode[0,2] - 1;            uint3   revbitmapx <: ~bitmap_x_write[0,3];
+    uint2   checkmode <:: dithermode[0,2] - 1;      uint3   revbitmapx <:: ~bitmap_x_write[0,3];
 
     always {
         // DITHER PATTERNS

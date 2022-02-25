@@ -470,6 +470,8 @@ void update() {
 // NUMBER OF SEGMENTS TO DRAW EACH ITERATION
 #define DRAWSEGMENTS 32
 void drawtrapezium( unsigned char colour, short x1, short y1, short w1, short x2, short y2, short w2 ) {
+    if( (((x1-w1)<0) && ((x1+w1)<0) && ((x2+w2)<0) && ((x2-w2)<0)) ||
+        (((x1-w1)>319) && ((x1+w1)>319) && ((x2+w2)>319) && ((x2-w2)>319)) ) return;
     gpu_quadrilateral( colour, x1-w1, y1, x1+w1, y1, x2+w2, y2, x2-w2, y2 );
 }
 

@@ -23,8 +23,8 @@ algorithm ps2ascii(
     uint1   npleftup = 0;                           uint1   npleftdown = 0;
     uint1   nprightup = 0;                          uint1   nprightdown = 0;
 
-    uint1   CTRL <: lctrl | rctrl;                  uint1   SHIFT <: lshift | rshift;                   uint1   CAPITAL <: ( lshift | rshift ) ^ capslock;
-    uint1   ALT <: lalt | ralt;                     uint2   LETTERMOD <: CTRL ? 2b00 : CAPITAL ? 2b10 : 2b11;
+    uint1   CTRL <:: lctrl | rctrl;                 uint1   SHIFT <:: lshift | rshift;                  uint1   CAPITAL <:: ( lshift | rshift ) ^ capslock;
+    uint1   ALT <:: lalt | ralt;                    uint2   LETTERMOD <:: CTRL ? 2b00 : CAPITAL ? 2b10 : 2b11;
 
     uint1   startbreak = 0;                         uint1   startmulti = 0;
 

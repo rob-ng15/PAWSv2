@@ -62,7 +62,7 @@ algorithm PAWSCPU(
         write <: REGISTERSFwrite
     );
     // NEGATIVE OF REGISTERS FOR ABS AND ADD/SUB
-    int32   negRS1 <: -REGISTERS.sourceReg1;                 int32   negRS2 <: -REGISTERS.sourceReg2;
+    int32   negRS1 <:: -REGISTERS.sourceReg1;                 int32   negRS2 <:: -REGISTERS.sourceReg2;
     // EXTRACT ABSOLUTE VALUE FOR MULTIPLICATION AND DIVISION
     absolute ARS1 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg1, negative <: negRS1 ); absolute ARS2 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg2, negative <: negRS2 );
 
@@ -89,13 +89,13 @@ algorithm PAWSCPU(
 
     // CPU EXECUTE BLOCKS
     uint32  memoryinput = uninitialized;
-    uint32  result <: IFASTSLOW.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
-    uint16  storeLOW <: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[0,16] : EXECUTESLOW.memoryoutput[0,16];
-    uint16  storeHIGH <: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[16,16] : EXECUTESLOW.memoryoutput[16,16];
+    uint32  result <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
+    uint16  storeLOW <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[0,16] : EXECUTESLOW.memoryoutput[0,16];
+    uint16  storeHIGH <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[16,16] : EXECUTESLOW.memoryoutput[16,16];
 
     // CLASSIFY THE INSTRUCTION TO FAST/SLOW
-    uint1   isALUM <: RV32DECODER.opCode[3,1] & ( RV32DECODER.function7 == 7b0000001 );
-    uint1   isALUCLM <: RV32DECODER.opCode[3,1] & ~RV32DECODER.function3[2,1] & ( RV32DECODER.function7 == 7b0000101 );
+    uint1   isALUM <:: RV32DECODER.opCode[3,1] & ( RV32DECODER.function7 == 7b0000001 );
+    uint1   isALUCLM <:: RV32DECODER.opCode[3,1] & ~RV32DECODER.function3[2,1] & ( RV32DECODER.function7 == 7b0000101 );
 
     Iclass IFASTSLOW <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, isALUM <: isALUM, isALUCLM <: isALUCLM );
 
@@ -300,14 +300,14 @@ algorithm cpuexecuteSLOWPATH(
     );
 
     // Classify the instruction
-    uint1   csr <: ( opCode == 5b11100 );           uint1   atomic <: ( opCode == 5b01011 );            uint1 fpu <: opCode[4,1] & ~csr;
-    uint1   alufpu <: ~csr & ~atomic;
+    uint1   csr <:: ( opCode == 5b11100 );           uint1   atomic <:: ( opCode == 5b01011 );            uint1 fpu <:: opCode[4,1] & ~csr;
+    uint1   alufpu <:: ~csr & ~atomic;
 
-    uint1   fpuconvert <: ( opCode == 5b10100 ) & ( function7[4,3] == 3b110 );
-    uint1   fpufast <: ( fpu & FCLASS.FASTPATHFPU ) | fpuconvert;
-    uint1   fpucalc <: fpu & ~fpufast;
+    uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( function7[4,3] == 3b110 );
+    uint1   fpufast <:: ( fpu & FCLASS.FASTPATHFPU ) | fpuconvert;
+    uint1   fpucalc <:: fpu & ~fpufast;
 
-    uint4   operation <: { ~|{fpufast,atomic,csr}, fpufast, atomic, csr };
+    uint4   operation <:: { ~|{fpufast,atomic,csr}, fpufast, atomic, csr };
 
     // START FLAGS
     ALUMD.start := start & ~fpu & function3[2,1];                                           // INTEGER DIVISION
@@ -381,8 +381,8 @@ algorithm cpuexecuteFASTPATH(
     aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
     // CLASSIFY THE TYPE FOR INSTRUCTIONS THAT WRITE TO REGISTER
-    uint1   isAUIPCLUI <: ( opCode[0,3] == 3b101 );
-    uint1   isJAL <: ( opCode[2,3] == 3b110 ) & opCode[0,1];
+    uint1   isAUIPCLUI <:: ( opCode[0,3] == 3b101 );
+    uint1   isJAL <:: ( opCode[2,3] == 3b110 ) & opCode[0,1];
 
     takeBranch := ( opCode == 5b11000 ) & BRANCHUNIT.takeBranch;    // BRANCH
     memoryoutput := opCode[0,1] ? sourceReg2F : sourceReg2;         // FLOAT STORE OR STORE

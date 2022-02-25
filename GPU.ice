@@ -101,6 +101,8 @@ algorithm gpu_queue(
             ( queue_cropL, queue_cropR ) = copycoordinates( crop_left, crop_right );
             ( queue_cropT, queue_cropB ) = copycoordinates( crop_top, crop_bottom );
         }
+    }
+    while(1) {
         // PROCESS QUEUE
         if( queue_busy & ~gpu_active ) {
             GPU.gpu_dithermode = queue_dithermode; GPU.gpu_colour = queue_colour; GPU.gpu_colour_alt = queue_colour_alt;
@@ -207,8 +209,8 @@ algorithm gpu(
     );
 
     // GPU UNIT BUSY FLAGS
-    uint6   gpu_busy_flags <: { GPUpixelblock.busy, |GPUblit.busy, GPUtriangle.busy, GPUcircle.busy, GPUrectangle.busy, GPUline.busy };
-    uint1   gpu_busy <: ( |gpu_busy_flags );
+    uint6   gpu_busy_flags <:: { GPUpixelblock.busy, |GPUblit.busy, GPUtriangle.busy, GPUcircle.busy, GPUrectangle.busy, GPUline.busy };
+    uint1   gpu_busy <:: ( |gpu_busy_flags );
 
     // CONTROLS FOR BITMAP PIXEL WRITER AND GPU SUBUNITS
     bitmap_write := GPUline.bitmap_write | GPUrectangle.bitmap_write | GPUcircle.bitmap_write |
@@ -241,6 +243,8 @@ algorithm gpu(
             // 14
             // 15 is quadrilateral, handled by the queue
         }
+    }
+    while(1) {
         if( gpu_busy ) {
             // COPY OUTPUT TO THE BITMAP WRITER
             onehot( gpu_busy_flags ) {
@@ -290,9 +294,9 @@ algorithm preprectangle(
     output  int11   max_y,
     output  uint1   todraw
 ) <autorun> {
-    uint1   xcompareparam0 <: ( x < param0 );          uint1   ycompareparam1 <: ( y < param1 );
-    int11   x1 <: xcompareparam0 ? x : param0;         int11   y1 <: ycompareparam1 ? y : param1;
-    int11   x2 <: xcompareparam0 ? param0 : x;         int11   y2 <: ycompareparam1 ? param1 : y;
+    uint1   xcompareparam0 <:: ( x < param0 );          uint1   ycompareparam1 <:: ( y < param1 );
+    int11   x1 <:: xcompareparam0 ? x : param0;         int11   y1 <:: ycompareparam1 ? y : param1;
+    int11   x2 <:: xcompareparam0 ? param0 : x;         int11   y2 <:: ycompareparam1 ? param1 : y;
     istodraw TODRAW( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
                 min_x <: min_x, min_y <: min_y, max_x <: max_x, max_y <: max_y );
 
@@ -385,7 +389,7 @@ algorithm prepline(
     output  int11   numerator,
     output  int11   max_count
 ) <autorun> {
-    uint1 ylessparam1 <: ( y < param1 );
+    uint1 ylessparam1 <:: ( y < param1 );
 
     todraw := 0;
 
@@ -425,11 +429,11 @@ algorithm drawline(
     int11   numerator = uninitialized;
     int11   numerator2 <:: numerator;                   int11   newnumerator <:: numerator - ( n2dx ? dy : 0 ) + ( n2dy ? dx : 0 );
     uint1   n2dx <:: numerator2 > (-dx);                uint1   n2dy <:: numerator2 < dy;
-    uint1   dxdy <: dx > dy;
+    uint1   dxdy <:: dx > dy;
     int11   count = uninitialized;                      int11   countNEXT <:: count + 1;
     int11   offset_x = uninitialised;                   int11   offset_xNEXT <:: offset_y + dxdy;
     int11   offset_y = uninitialised;                   int11   offset_yNEXT <:: offset_x + ~dxdy;
-    int11   offset_start <: -( width >> 1 );
+    int11   offset_start <:: -( width >> 1 );
     uint8   pixel_count = uninitialised;                uint8   pixel_countNEXT <:: pixel_count + 1;
 
     bitmap_x_write := x + offset_x; bitmap_y_write := y + offset_y; bitmap_write := 0;
@@ -485,6 +489,34 @@ algorithm line(
 }
 
 //  CIRCLE - OUTPUT PIXELS TO DRAW AN OUTLINE OR FILLED CIRCLE
+algorithm arccoords(
+    input   int11   xc,
+    input   int11   yc,
+    input   int11   active_x,
+    input   int11   count,
+    input   uint3   arc,
+    output  int11   bitmap_x_write,
+    output  int11   bitmap_y_write
+) <autorun> {
+    // PLUS OR MINUS OFFSETS
+    int11   xcpax <:: xc + active_x;                     int11   xcnax <:: xc - active_x;
+    int11   xcpc <:: xc + count;                         int11   xcnc <:: xc - count;
+    int11   ycpax <:: yc + active_x;                     int11   ycnax <:: yc - active_x;
+    int11   ycpc <:: yc + count;                         int11   ycnc <:: yc - count;
+
+    always {
+        switch( arc ) {
+            case 0: { bitmap_x_write = xcpax; bitmap_y_write = ycpc; }
+            case 1: { bitmap_y_write = ycnc; }
+            case 2: { bitmap_x_write = xcnax; }
+            case 3: { bitmap_y_write = ycpc; }
+            case 4: { bitmap_x_write = xcpc; bitmap_y_write = ycpax; }
+            case 5: { bitmap_y_write = ycnax; }
+            case 6: { bitmap_x_write = xcnc; }
+            case 7: { bitmap_y_write = ycpax; }
+        }
+    }
+}
 algorithm drawcircle(
     input   uint1   start,
     output  uint1   busy(0),
@@ -499,19 +531,19 @@ algorithm drawcircle(
     output  uint1   bitmap_write
 ) <autorun> {
     int11   numerator = uninitialised;                  int11   new_numerator <:: numerator[10,1] ? numerator + { active_x, 2b00 } + 6 : numerator + { (active_x - active_y), 2b00 } + 10;
-    uint1   positivenumerator <: ~numerator[10,1] & ( |numerator );
+    uint1   positivenumerator <:: ~numerator[10,1] & ( |numerator );
     int11   active_x = uninitialized;                   int11   active_xNEXT <:: active_x + 1;
     int11   active_y = uninitialized;                   int11   active_yNEXT <:: active_y - positivenumerator;
     int11   count = uninitialised;                      int11   countNEXT <:: filledcircle ? count - 1 : min_count;
     int11   min_count = uninitialised;                  int11   min_countNEXT <:: min_count + 1;
     uint1   drawingcircle <:: ( active_y >= active_x ); uint1   finishsegment <:: ( countNEXT == min_count );
+    uint1   centrepixel <:: ( ~|count & ~|active_x & |draw_sectors );
 
-    // PLUS OR MINUS OFFSETS
-    int11   xcpax <: xc + active_x;                     int11   xcnax <: xc - active_x;
-    int11   xcpc <: xc + count;                         int11   xcnc <: xc - count;
-    int11   ycpax <: yc + active_x;                     int11   ycnax <: yc - active_x;
-    int11   ycpc <: yc + count;                         int11   ycnc <: yc - count;
+    uint4   arc = uninitialised;                        uint4   arcNEXT <:: arc + 1;
+    arccoords ARC( xc <: xc, yc <: yc, active_x <: active_x, count <: count, arc <: arc );
 
+    bitmap_x_write := centrepixel ? xc : ARC.bitmap_x_write;
+    bitmap_y_write := centrepixel ? yc : ARC.bitmap_y_write;
     bitmap_write := 0;
 
     while(1) {
@@ -519,17 +551,14 @@ algorithm drawcircle(
             busy = 1;
             active_x = 0; active_y = radius; count = radius; min_count = (-1); numerator = start_numerator;
             while( drawingcircle ) {
-                if( ~|count & ~|active_x & |draw_sectors ) {
-                    bitmap_x_write = xc; bitmap_y_write = yc; bitmap_write = 1;                                     // DETECT IF CENTRE PIXEL, OUTPUT ONCE
+                if( centrepixel ) {
+                    // DETECT IF CENTRE PIXEL, OUTPUT ONCE
+                    bitmap_write = 1;
                 } else {
-                    bitmap_x_write = xcpax; bitmap_y_write = ycpc;      bitmap_write = draw_sectors[0,1]; ++:       // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
-                    bitmap_y_write = ycnc;                              bitmap_write = draw_sectors[1,1]; ++:
-                    bitmap_x_write = xcnax;                             bitmap_write = draw_sectors[2,1]; ++:
-                    bitmap_y_write = ycpc;                              bitmap_write = draw_sectors[3,1]; ++:
-                    bitmap_x_write = xcpc; bitmap_y_write = ycpax;      bitmap_write = draw_sectors[4,1]; ++:
-                    bitmap_y_write = ycnax;                             bitmap_write = draw_sectors[5,1]; ++:
-                    bitmap_x_write = xcnc;                              bitmap_write = draw_sectors[6,1]; ++:
-                    bitmap_y_write = ycpax;                             bitmap_write = draw_sectors[7,1];
+                    arc = 0; while( ~arc[3,1] ) {
+                        // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
+                        bitmap_write = draw_sectors[arc,1]; arc = arcNEXT;
+                    }
                 }
                 if( finishsegment ) {
                     active_x = active_xNEXT; active_y = active_yNEXT; count = active_y; min_count = min_countNEXT; numerator = new_numerator;
@@ -554,9 +583,9 @@ algorithm circle(
     output  int11  bitmap_y_write,
     output  uint1  bitmap_write
 ) <autorun,reginputs> {
-    int11   absradius <: radius[10,1] ? -radius : radius;
-    int11   gpu_numerator <: 3 - ( { absradius, 1b0 } );
-    uint8   draw_sectors <: { sectormask[5,1], sectormask[6,1], sectormask[1,1], sectormask[2,1], sectormask[4,1], sectormask[7,1], sectormask[0,1], sectormask[3,1] };
+    int11   absradius <:: radius[10,1] ? -radius : radius;
+    int11   gpu_numerator <:: 3 - ( { absradius, 1b0 } );
+    uint8   draw_sectors <:: { sectormask[5,1], sectormask[6,1], sectormask[1,1], sectormask[2,1], sectormask[4,1], sectormask[7,1], sectormask[0,1], sectormask[3,1] };
 
     drawcircle CIRCLE(
         xc <: x, yc <: y,
@@ -683,9 +712,9 @@ algorithm intriangle(
     input   int11   py,
     output  uint1   IN
 ) <autorun> {
-    int22   step1 <: (( x2 - x1 ) * ( py - y1 ) - ( y2 - y1 ) * ( px - x1 ));
-    int22   step2 <: (( x0 - x2 ) * ( py - y2 ) - ( y0 - y2 ) * ( px - x2 ));
-    int22   step3 <: (( x1 - x0 ) * ( py - y0 ) - ( y1 - y0 ) * ( px - x0 ));
+    int22   step1 <:: (( x2 - x1 ) * ( py - y1 ) - ( y2 - y1 ) * ( px - x1 ));
+    int22   step2 <:: (( x0 - x2 ) * ( py - y2 ) - ( y0 - y2 ) * ( px - x2 ));
+    int22   step3 <:: (( x1 - x0 ) * ( py - y0 ) - ( y1 - y0 ) * ( px - x0 ));
 
     IN :=  ~|{ step1[21,1], step2[21,1], step3[21,1] };
 }
@@ -798,9 +827,9 @@ algorithm   blittilexy(
     output  uint4   yinblittile,
     output  uint3   yinchartile
 ) <autorun> {
-    uint4   revx4 <: ~px[0,4];                      uint4   revy4 <: ~py[0,4];
-    uint3   revx3 <: ~px[0,3];                      uint3   revy3 <: ~py[0,3];
-    uint1   action00 <: ( ~|action[0,2] );          uint1   action01 <: ( action[0,2] == 2b01 );        uint1   action10 <: ( action[0,2] == 2b10 );
+    uint4   revx4 <:: ~px[0,4];                      uint4   revy4 <:: ~py[0,4];
+    uint3   revx3 <:: ~px[0,3];                      uint3   revy3 <:: ~py[0,3];
+    uint1   action00 <:: ( ~|action[0,2] );          uint1   action01 <:: ( action[0,2] == 2b01 );        uint1   action10 <:: ( action[0,2] == 2b10 );
 
     // find y and x positions within the tile/character bitmap handling rotation or reflection
     xinblittile := ( action[2,1] ?  action00 ? revx4 : action01 ? py[0,4] : action10 ? px[0,4] : revy4 : action[0,1] ? px[0,4] : revx4 );
@@ -815,8 +844,8 @@ algorithm cololurblittilexy(
     output  uint4   xintile,
     output  uint4   yintile
 ) <autorun> {
-    uint4   revx <: ~px[0,4];                       uint4   revy <:: ~py[0,4];
-    uint1   action00 <: ( ~|action[0,2] );          uint1   action01 <: ( action[0,2] == 2b01 );        uint1   action10 <: ( action[0,2] == 2b10 );
+    uint4   revx <:: ~px[0,4];                       uint4   revy <:: ~py[0,4];
+    uint1   action00 <:: ( ~|action[0,2] );          uint1   action01 <:: ( action[0,2] == 2b01 );        uint1   action10 <:: ( action[0,2] == 2b10 );
 
     // find y and x positions within the tile bitmap handling rotation or reflection
     xintile := action[2,1] ? action00 ? px[0,4] : action01 ? revy : action10 ? revx : py[0,4] : action[0,1] ? revx :  px[0,4];
@@ -849,7 +878,7 @@ algorithm blit(
     blitscale PYS( scale <: scale );                    int11   pyNEXT <:: PYS.base + 1;
 
     // MAX PIXELS IN TILE AND NUMBER OF TIMES TO USE EACH PIXEL
-    uint5   max_pixels <: tilecharacter ? 16 : 8;       uint4   max_count <: ( 1 << scale );
+    uint5   max_pixels <:: tilecharacter ? 16 : 8;       uint4   max_count <:: ( 1 << scale );
 
     // FIND X AND Y WITHIN THE TILE/CHARACTER BITMAP
     blittilexy BTXY( px <: PXS.base, py <: PYS.base, action <: action );
@@ -911,7 +940,7 @@ algorithm pixelblock(
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
     uint1   update = uninitialised;                 uint2   toprocess = uninitialised;                  uint1   lineend <:: ( bitmap_x_write == x + width - 1 );
-    uint7   grrggbb <: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };                  uint7   grey <: ( ( colour8r + colour8g + colour8b ) * 341 ) >> 11;
+    uint7   grrggbb <:: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };                  uint7   grey <:: ( ( colour8r + colour8g + colour8b ) * 341 ) >> 11;
 
     int11   xPLUS1 <:: bitmap_x_write + 1;          int11   yPLUS1 <:: bitmap_y_write + 1;
 

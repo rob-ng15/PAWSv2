@@ -152,8 +152,8 @@ algorithm sprite_layer_writer(
     uint1   sprite_offscreen_y = uninitialised;
     uint1   sprite_off_left = uninitialised;
     uint1   sprite_off_top = uninitialised;
-    int11   sprite_update_x <: { {7{spriteupdate( sprite_write_value ).dxsign}}, spriteupdate( sprite_write_value ).dx };
-    int10   sprite_update_y <: { {6{spriteupdate( sprite_write_value ).dysign}}, spriteupdate( sprite_write_value ).dy };
+    int11   sprite_update_x <:: { {7{spriteupdate( sprite_write_value ).dxsign}}, spriteupdate( sprite_write_value ).dx };
+    int10   sprite_update_y <:: { {6{spriteupdate( sprite_write_value ).dysign}}, spriteupdate( sprite_write_value ).dy };
 
     $$for i=0,15 do
         // For setting sprite read paramers

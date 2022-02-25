@@ -50,8 +50,8 @@ algorithm   calcoffset(
     output  uint1   MAX,
     output  int5    NEXT
 ) <autorun> {
-    int6    offsetPLUS <: { offset[4,1], offset } + adjust;
-    int6    offsetMINUS <: { offset[4,1], offset } - adjust;
+    int6    offsetPLUS <:: { offset[4,1], offset } + adjust;
+    int6    offsetMINUS <:: { offset[4,1], offset } - adjust;
 
     MIN := ( offsetMINUS < -15 );                   PREV := offsetMINUS + ( MIN ? 16 : 0 );
     MAX := ( offsetPLUS > 15 );                     NEXT:= offsetPLUS - ( MAX ? 16 : 0 );

@@ -49,7 +49,6 @@ extern void sample_upload( unsigned char channel_number, unsigned short length, 
 
 // DISPLAY
 //extern void await_vblank( void );
-//extern unsigned int total_frames( void );
 //extern void screen_mode( unsigned char, unsigned char );
 extern void bitmap_display( unsigned char );
 extern void bitmap_draw( unsigned char );
@@ -219,10 +218,6 @@ extern unsigned short volatile *BACKGROUND_COPPER_CPUINPUT;
 
 static inline void await_vblank( void ) {
     while( !*VBLANK );
-}
-
-static inline unsigned int total_frames( void ) {
-    return( *FRAMES );
 }
 
 static inline void screen_mode( unsigned char screenmode, unsigned char colour ) {

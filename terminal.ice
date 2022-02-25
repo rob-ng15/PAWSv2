@@ -45,12 +45,10 @@ algorithm terminalcursor(
     output  uint7   PREV,
     output  uint10  ADDRESS
 ) <autorun> {
-    always_after {
-        endofline = ( terminal_x == 79 );
-        NEXT = endofline ? 0 : terminal_x + 1;
-        PREV = terminal_x - 1;
-        ADDRESS = terminal_x + 560;
-    }
+    endofline := ( terminal_x == 79 );
+    NEXT := endofline ? 0 : terminal_x + 1;
+    PREV := terminal_x - 1;
+    ADDRESS := terminal_x + 560;
 }
 
 algorithm terminal_writer(
@@ -106,18 +104,12 @@ algorithm terminal_writer(
         if( |terminal_active ) {
             while( working ) {
                 ++:
+                terminal.addr1 = terminal_scroll;  terminal_copy.addr1 = terminal_scroll;
                 onehot( terminal_active ) {
-                    case 0: {                                                                                                                                   // SCROLL AND BLANK LAST LINE
-                        terminal.addr1 = terminal_scroll; terminal.wdata1 = scrolling ? terminal_copy.rdata0 : 0;
-                        terminal_copy.addr1 = terminal_scroll; terminal_copy.wdata1 = scrolling ? terminal_copy.rdata0 : 0;
-                        terminal_scroll = terminal_scroll_next;
-                    }
-                    case 1: {                                                                                                                                   // RESET TERMINAL
-                        terminal.addr1 = terminal_scroll; terminal_copy.addr1 = terminal_scroll; terminal_scroll = terminal_scroll_next;
-                        terminal.wdata1 = 0; terminal_copy.wdata1 = 0;
-                    }
+                    case 0: { terminal.wdata1 = scrolling ? terminal_copy.rdata0 : 0; terminal_copy.wdata1 = scrolling ? terminal_copy.rdata0 : 0; }            // SCROLL AND BLANK LAST LINE
+                    case 1: { terminal.wdata1 = 0; terminal_copy.wdata1 = 0; }                                                                                  // RESET TERMINAL
                 }
-
+                terminal_scroll = terminal_scroll_next;
             }
             if( terminal_active[1,1] ) { terminal_x = 0; }
             terminal_active = 0;

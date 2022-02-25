@@ -35,19 +35,14 @@ algorithm background_writer(
 
     simple_dualport_bram_port1 copper
 ) <autorun,reginputs> {
-    copper.wenable1 := 1;
+    copper.addr1 := copper_address;
+    copper.wdata1 := { copper_command[0,3], copper_condition[0,3], copper_coordinate[0,11], copper_mode[0,4], copper_alt[0,7], copper_colour[0,7] };
+    copper.wenable1 := copper_program;
 
     always {
         switch( background_update ) {
-            case 2b00: {
-                // CHANGE A PROGRAM LINE IN THE COPPER MEMORY
-                if( copper_program ) {
-                    copper.addr1 = copper_address;
-                    copper.wdata1 = { copper_command[0,3], copper_condition[0,3], copper_coordinate[0,11], copper_mode[0,4], copper_alt[0,7], copper_colour[0,7] };
-                }
-            }
-            // UPDATE THE BACKGROUND FROM RISC-V
-            case 2b01: { BACKGROUNDcolour = backgroundcolour; }
+            case 2b00: {}                                           // CHANGE A PROGRAM LINE IN THE COPPER MEMORY
+            case 2b01: { BACKGROUNDcolour = backgroundcolour; }     // UPDATE THE BACKGROUND FROM RISC-V
             case 2b10: { BACKGROUNDalt = backgroundcolour_alt; }
             case 2b11: { BACKGROUNDmode = backgroundcolour_mode; }
         }
@@ -77,8 +72,8 @@ algorithm background_copper(
     uint10  copper_variable = 0;
 
     // COPPER PROGRAM ENTRY
-    uint10  value <: CU(copper.rdata0).valueflag ? copper_cpu_input : CU(copper.rdata0).value;
-    uint10  negvalue <: -value;
+    uint10  value <:: CU(copper.rdata0).valueflag ? copper_cpu_input : CU(copper.rdata0).value;
+    uint10  negvalue <:: -value;
 
     // COPPER FLAGS
     copper.addr0 := PC; copper_execute := 0; copper_branch := 0;

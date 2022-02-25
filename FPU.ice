@@ -94,12 +94,12 @@ algorithm floatcalc(
     doroundcombine MAKERESULT();
 
     // NEW FPU FLAGS
-    uint5   FNFas <: FPUaddsub.flags & 5b00110;    uint5   FNFm <: FPUmultiply.flags & 5b00110;       uint5   FNFd <: FPUdivide.flags & 5b01110;
-    uint5   FNFs <: FPUsqrt.flags & 5b00110;       uint5   FNFfused <: ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
+    uint5   FNFas <:: FPUaddsub.flags & 5b00110;    uint5   FNFm <:: FPUmultiply.flags & 5b00110;       uint5   FNFd <:: FPUdivide.flags & 5b01110;
+    uint5   FNFs <:: FPUsqrt.flags & 5b00110;       uint5   FNFfused <:: ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
     uint5   flags = uninitialised;
 
     // UNIT BUSY FLAG
-    uint4   unitbusy <: { FPUsqrt.busy, FPUdivide.busy, FPUmultiply.busy, FPUaddsub.busy };
+    uint4   unitbusy <:: { FPUsqrt.busy, FPUdivide.busy, FPUmultiply.busy, FPUaddsub.busy };
 
     DONORMAL.bitstream := opCode[2,1] & ( &function7[0,2] ) ? FPUdivide.tonormalisebitstream : FPUaddsub.tonormalisebitstream;
     FPUaddsub.start := 0; FPUmultiply.start := 0; FPUdivide.start := 0; FPUsqrt.start := 0; FPUnewflags := FPUflags | flags;
