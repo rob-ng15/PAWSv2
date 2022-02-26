@@ -193,7 +193,7 @@ algorithm floatminmax(
     output  uint5   flags,
     output  uint32  result
 ) <autorun> {
-    uint1   NAN <: ( classA[2,1] | classB[2,1] ) | ( classA[1,1] & classB[1,1] );
+    uint1   NAN <:: ( classA[2,1] | classB[2,1] ) | ( classA[1,1] & classB[1,1] );
 
     flags := { NAN, 4b0000 };
     result := NAN ? 32h7fc00000 : classA[1,1] ? ( classB[1,1] ? 32h7fc00000 : sourceReg2F ) : classB[1,1] | ( function3 ^ less ) ? sourceReg1F : sourceReg2F;
@@ -211,8 +211,8 @@ algorithm floatcomparison(
     output  uint5   flags,
     output  uint1   result
 ) <autorun> {
-    uint1   NAN <: ( classA[1,1] | classA[2,1] | classB[1,1] | classB[2,1] );
-    uint4   comparison <: { 1b0, equal, less, less | equal };
+    uint1   NAN <:: ( classA[1,1] | classA[2,1] | classB[1,1] | classB[2,1] );
+    uint4   comparison <:: { 1b0, equal, less, less | equal };
 
     flags := { function3[1,1] ? ( classA[2,1] | classB[2,1] ) : NAN, 4b0000 };
     result := ~NAN & comparison[ function3, 1 ];
@@ -224,7 +224,7 @@ algorithm floatsign(
     input   uint32  sourceReg2F,
     output  uint32  result,
 ) <autorun> {
-    uint1   sign <: function3[1,1] ? sourceReg1F[31,1] ^ sourceReg2F[31,1] : function3[0,1] ^ sourceReg2F[31,1];
+    uint1   sign <:: function3[1,1] ? sourceReg1F[31,1] ^ sourceReg2F[31,1] : function3[0,1] ^ sourceReg2F[31,1];
 
     result := { sign, sourceReg1F[0,31] };
 }
@@ -297,7 +297,7 @@ algorithm classifyF(
     output  uint4   class
 ) <autorun> {
     // CHECK FOR 8hff ( signals INF/NAN )
-    uint1   expFF <: &fp32(a).exponent;            uint1   NAN <: expFF & a[22,1];
+    uint1   expFF <:: &fp32(a).exponent;            uint1   NAN <:: expFF & a[22,1];
 
     class := { expFF & ~a[22,1], NAN & a[21,1], NAN & ~a[21,1], ~|( fp32(a).exponent ) };
 }
@@ -308,7 +308,7 @@ algorithm clz48(
     input   uint48  bitstream,
     output! uint6   count
 ) <autorun> {
-    uint16  bitstreamh <: bitstream[32,16];        uint32  bitstreaml <: bitstream[0,32];               uint6   clz = uninitialised;
+    uint16  bitstreamh <:: bitstream[32,16];        uint32  bitstreaml <:: bitstream[0,32];               uint6   clz = uninitialised;
 
     always {
         if( ~|bitstreamh ) {
@@ -327,7 +327,7 @@ algorithm normalise24(
     output  uint24  normalfraction
 ) <autorun,reginputs> {
     // COUNT LEADING ZEROS
-    clz48 CLZ48( bitstream <: bitstream );          uint48  temporary <: bitstream << CLZ48.count;
+    clz48 CLZ48( bitstream <: bitstream );          uint48  temporary <:: ( bitstream << CLZ48.count );
 
     normalfraction := temporary[23,24]; newexponent := exp - CLZ48.count;
 }
@@ -352,8 +352,8 @@ algorithm doroundcombine(
     output  uint1   UF,
     output  uint32  f32
 ) <autorun,reginputs> {
-    uint23  roundfraction <: bitstream[1,23] + bitstream[0,1];
-    int10   newexponent <: ( ( ~|roundfraction & bitstream[0,1] ) ? 128 : 127 ) + exponent;
+    uint23  roundfraction <:: bitstream[1,23] + bitstream[0,1];
+    int10   newexponent <:: ( ( ~|roundfraction & bitstream[0,1] ) ? 128 : 127 ) + exponent;
 
     OF := ( newexponent > 254 ); UF := newexponent[9,1];
     f32 := UF ? 0 : { sign, OF ? 31h7f800000 : { newexponent[0,8], roundfraction } };
@@ -426,9 +426,9 @@ algorithm equaliseexpaddsub(
     output  int10   resultexp,
 ) <autorun> {
     // BREAK DOWN INITIAL float32 INPUTS - SWITCH SIGN OF B IF SUBTRACTION
-    int10   expA <: fp32(a).exponent;              uint48  sigA <: { 2b01, fp32(a).fraction, 23b0 };
-    int10   expB <: fp32(b).exponent;              uint48  sigB <: { 2b01, fp32(b).fraction, 23b0 };
-    uint1   AvB <: ( expA < expB );                uint48  aligned <: ( AvB ? sigA : sigB ) >> ( AvB ? ( expB - expA ) : ( expA - expB ) );
+    int10   expA <:: fp32(a).exponent;              uint48  sigA <:: { 2b01, fp32(a).fraction, 23b0 };
+    int10   expB <:: fp32(b).exponent;              uint48  sigB <:: { 2b01, fp32(b).fraction, 23b0 };
+    uint1   AvB <:: ( expA < expB );                uint48  aligned <:: ( AvB ? sigA : sigB ) >> ( AvB ? ( expB - expA ) : ( expA - expB ) );
 
     newsigA := AvB ? aligned : sigA;                newsigB := AvB ? sigB : aligned;
     resultexp := ( AvB ? expB : expA ) - 126;
@@ -441,8 +441,8 @@ algorithm dofloataddsub(
     output  uint1   resultsign,
     output  uint48  resultfraction
 ) <autorun> {
-    uint48  sigAminussigB <: sigA - sigB;          uint48  sigBminussigA <: sigB - sigA;
-    uint48  sigAplussigB <: sigA + sigB;           uint1   AvB <: ( sigA > sigB );
+    uint48  sigAminussigB <:: sigA - sigB;          uint48  sigBminussigA <:: sigB - sigA;
+    uint48  sigAplussigB <:: sigA + sigB;           uint1   AvB <:: ( sigA > sigB );
 
     always {
         // PERFORM ADDITION HANDLING SIGNS
@@ -471,9 +471,9 @@ algorithm floataddsub(
     output  uint32  result
 ) <autorun,reginputs> {
     // CLASSIFY THE INPUTS AND FLAG INFINITY, NAN, ZERO AND INVALID ( INF - INF )
-    uint1   IF <: ( classA[3,1] | classB[3,1] );
-    uint1   NN <: ( classA[2,1] | classA[1,1] | classB[2,1] | classB[1,1] );
-    uint1   NV <: ( classA[3,1] & classB[3,1]) & ( fp32( a ).sign ^ fp32( b).sign );
+    uint1   IF <:: ( classA[3,1] | classB[3,1] );
+    uint1   NN <:: ( classA[2,1] | classA[1,1] | classB[2,1] | classB[1,1] );
+    uint1   NV <:: ( classA[3,1] & classB[3,1]) & ( fp32( a ).sign ^ fp32( b).sign );
     uint1   OF = uninitialised;
     uint1   UF = uninitialised;
 
@@ -523,7 +523,7 @@ algorithm prepmul(
     // NORMALISE THE RESULTING PRODUCT AND EXTRACT THE 24 BITS AFTER THE LEADING 1.xxxx
     fastnormal24 NORMAL( tonormal <: product, normalfraction :> normalfraction );
 
-    uint48  product <: { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction };
+    uint48  product <:: { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction };
 
     productsign := fp32( a ).sign ^ fp32( b ).sign;
     productexp := fp32( a ).exponent + fp32( b ).exponent - ( product[47,1] ? 253 : 254 );
@@ -548,10 +548,10 @@ algorithm floatmultiply(
     prepmul PREP( a <: a, b <: b, productsign :> productsign, productexp :> productexp, normalfraction :> normalfraction );
 
     // CLASSIFY THE INPUTS AND FLAG INFINITY, NAN, ZERO AND INVALID ( INF x ZERO )
-    uint1   ZERO <: (classA[0,1] | classB[0,1] );
-    uint1   IF <: ( classA[3,1] | classB[3,1] );
-    uint1   NN <: ( classA[2,1] | classA[1,1] | classB[2,1] | classB[1,1] );
-    uint1   NV <: IF & ZERO;
+    uint1   ZERO <:: (classA[0,1] | classB[0,1] );
+    uint1   IF <:: ( classA[3,1] | classB[3,1] );
+    uint1   NN <:: ( classA[2,1] | classA[1,1] | classB[2,1] | classB[1,1] );
+    uint1   NV <:: IF & ZERO;
     uint1   OF = uninitialised;
     uint1   UF = uninitialised;
 
@@ -617,7 +617,7 @@ algorithm prepdivide(
 ) <autorun> {
     // BREAK DOWN INITIAL float32 INPUTS AND FIND SIGN OF RESULT AND EXPONENT OF QUOTIENT ( -1 IF DIVISOR > DIVIDEND )
     // ALIGN DIVIDEND TO THE LEFT, DIVISOR TO THE RIGHT
-    uint1   AvB <: ( fp32(b).fraction > fp32(a).fraction );
+    uint1   AvB <:: ( fp32(b).fraction > fp32(a).fraction );
 
     quotientsign := fp32( a ).sign ^ fp32( b ).sign;
     quotientexp := fp32( a ).exponent - fp32( b ).exponent - AvB;
@@ -642,8 +642,8 @@ algorithm floatdivide(
     output  uint32  result
 ) <autorun,reginputs> {
     // CLASSIFY THE INPUTS AND FLAG INFINITY, NAN, ZERO AND DIVIDE ZERO
-    uint1   IF <: ( classA[3,1] | classB[3,1] );
-    uint1   NN <: ( classA[2,1] | classA[1,1] | classB[2,1] | classB[1,1] );
+    uint1   IF <:: ( classA[3,1] | classB[3,1] );
+    uint1   NN <:: ( classA[2,1] | classA[1,1] | classB[2,1] | classB[1,1] );
     uint1   NV = uninitialised;
     uint1   OF = uninitialised;
     uint1   UF = uninitialised;
@@ -724,7 +724,7 @@ algorithm prepsqrt(
 ) <autorun> {
     // EXPONENT OF INPUT ( used to determine if 1x.xxxxx or 01.xxxxx for fixed point fraction to sqrt )
     // SQUARE ROOT EXPONENT IS HALF OF INPUT EXPONENT
-    int10   exp  <: fp32( a ).exponent - 127;
+    int10   exp  <:: fp32( a ).exponent - 127;
 
     start_ac := exp[0,1] ? { 48b0, 1b1, a[22,1] } : 1;
     start_x := exp[0,1] ? { a[0,22], 26b0 } : { fp32( a ).fraction, 25b0 };
@@ -745,8 +745,8 @@ algorithm floatsqrt(
     output  uint32  result
 ) <autorun,reginputs> {
     // CLASSIFY THE INPUTS AND FLAG INFINITY, NAN, ZERO AND NOT VALID
-    uint1   NN <: classA[2,1] | classA[1,1];
-    uint1   NV <: classA[3,1] | NN | fp32( a ).sign;
+    uint1   NN <:: classA[2,1] | classA[1,1];
+    uint1   NV <:: classA[3,1] | NN | fp32( a ).sign;
     uint1   OF = uninitialised;
     uint1   UF = uninitialised;
 
@@ -823,11 +823,11 @@ algorithm floatcompare(
     output  uint1   less,
     output  uint1   equal
 ) <autorun,reginputs> {
-    uint1   INF <: classA[3,1] | classB[3,1];
-    uint1   NAN <: classA[2,1] | classB[2,1] | classA[1,1] | classB[1,1];
+    uint1   INF <:: classA[3,1] | classB[3,1];
+    uint1   NAN <:: classA[2,1] | classB[2,1] | classA[1,1] | classB[1,1];
 
-    uint1   aequalb <: ( a == b );                 uint1   aorbleft1equal0 <: ~|( ( a | b ) << 1 );
-    uint1   avb <: ( a < b );
+    uint1   aequalb <:: ( a == b );                 uint1   aorbleft1equal0 <:: ~|( ( a | b ) << 1 );
+    uint1   avb <:: ( a < b );
 
     // IDENTIFY NaN, RETURN 0 IF NAN, OTHERWISE RESULT OF COMPARISONS
     flags := { INF, {2{NAN}}, 4b0000 };

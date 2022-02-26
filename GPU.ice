@@ -496,13 +496,16 @@ algorithm arccoords(
     input   int11   count,
     input   uint3   arc,
     output  int11   bitmap_x_write,
-    output  int11   bitmap_y_write
+    output  int11   bitmap_y_write,
+    output  uint1   centrepixel
 ) <autorun> {
     // PLUS OR MINUS OFFSETS
     int11   xcpax <:: xc + active_x;                     int11   xcnax <:: xc - active_x;
     int11   xcpc <:: xc + count;                         int11   xcnc <:: xc - count;
     int11   ycpax <:: yc + active_x;                     int11   ycnax <:: yc - active_x;
     int11   ycpc <:: yc + count;                         int11   ycnc <:: yc - count;
+
+    centrepixel := ( ~|count & ~|active_x );
 
     always {
         switch( arc ) {
@@ -537,13 +540,12 @@ algorithm drawcircle(
     int11   count = uninitialised;                      int11   countNEXT <:: filledcircle ? count - 1 : min_count;
     int11   min_count = uninitialised;                  int11   min_countNEXT <:: min_count + 1;
     uint1   drawingcircle <:: ( active_y >= active_x ); uint1   finishsegment <:: ( countNEXT == min_count );
-    uint1   centrepixel <:: ( ~|count & ~|active_x & |draw_sectors );
 
     uint4   arc = uninitialised;                        uint4   arcNEXT <:: arc + 1;
     arccoords ARC( xc <: xc, yc <: yc, active_x <: active_x, count <: count, arc <: arc );
 
-    bitmap_x_write := centrepixel ? xc : ARC.bitmap_x_write;
-    bitmap_y_write := centrepixel ? yc : ARC.bitmap_y_write;
+    bitmap_x_write := ARC.centrepixel ? xc : ARC.bitmap_x_write;
+    bitmap_y_write := ARC.centrepixel ? yc : ARC.bitmap_y_write;
     bitmap_write := 0;
 
     while(1) {
@@ -551,9 +553,9 @@ algorithm drawcircle(
             busy = 1;
             active_x = 0; active_y = radius; count = radius; min_count = (-1); numerator = start_numerator;
             while( drawingcircle ) {
-                if( centrepixel ) {
+                if( ARC.centrepixel ) {
                     // DETECT IF CENTRE PIXEL, OUTPUT ONCE
-                    bitmap_write = 1;
+                    bitmap_write = |draw_sectors;
                 } else {
                     arc = 0; while( ~arc[3,1] ) {
                         // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK

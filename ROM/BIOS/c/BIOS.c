@@ -555,7 +555,8 @@ int main( void ) {
     memset( &_bss_start, 0, &_bss_end - &_bss_end );
 
     // RESET THE DISPLAY
-    reset_display(); set_background( DKBLUE - 1, BLACK, BKG_SOLID );
+//    reset_display(); set_background( DKBLUE - 1, BLACK, BKG_SOLID );
+    reset_display(); set_background( 6, 121, 1 );
 
     // KEYBOARD INTO JOYSTICK MODE
     *PS2_MODE = 0;
@@ -581,7 +582,7 @@ int main( void ) {
     while( *PS2_AVAILABLE ) { short temp = *PS2_DATA; }
 
     gpu_outputstringcentre( RED, 72, 0, "Waiting for SDCARD", 0 );
-    sleep( 2000 );
+    //sleep( 2000 );
     gpu_outputstringcentre( RED, 80, 0, "Press RESET if not detected", 0 );
     sdcard_readsector( 0, BOOTRECORD );
     PARTITIONS = (PartitionTable *) &BOOTRECORD[ 0x1BE ];

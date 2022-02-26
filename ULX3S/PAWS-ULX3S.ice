@@ -45,6 +45,7 @@ $include('../sprite_layer.ice')
 $include('../terminal.ice')
 $include('../tile_map.ice')
 $include('../multiplex_display.ice')
+$include('../common/audio_pwm.ice')
 $include('../audio.ice')
 $$if gpu_50_mhz then
 $include('../video_memmap-50MHzGPU.ice')

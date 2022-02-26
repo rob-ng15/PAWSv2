@@ -215,7 +215,7 @@ $$end
         writeData <: CPU.writedata,
         audio_l :> audio_l,
         audio_r :> audio_r,
-        static4bit <: TIMERS_Map.static16bit[0,4]
+        static8bit <: TIMERS_Map.static16bit[0,8]
     );
 
     video_memmap VIDEO_Map <@clock_io,!reset> (

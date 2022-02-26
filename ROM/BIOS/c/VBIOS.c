@@ -525,8 +525,8 @@ void main( void ) {
     memset( &_bss_start, 0, &_bss_end - &_bss_end );
 
     // RESET THE DISPLAY
-    reset_display();
-    set_background( DKBLUE - 1, BLACK, BKG_SOLID );
+//    reset_display(); set_background( DKBLUE - 1, BLACK, BKG_SOLID );
+    reset_display(); set_background( 6, 60, 1 );
 
     // SETUP INITIAL WELCOME MESSAGE
     draw_paws_logo();

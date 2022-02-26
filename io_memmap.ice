@@ -83,7 +83,7 @@ $$if not SIMULATION then
     SDCARDreadsector := 0; SDCARDwritesector := 0; buffer_out.wenable1 := 0;
 $$end
 
-     always {
+     always_before {
 $$if not SIMULATION then
         // UPDATE LATCHES
         UARTinread = UARTinread[1,1]; UARToutwrite = UARToutwrite[1,1]; PS2inread = PS2inread[1,1];
@@ -121,6 +121,8 @@ $$end
                 default: { readData = 0;}
             }
         }
+    }
+    always_after {
         // WRITE IO Memory
         if( memoryWrite ) {
             switch( memoryAddress[4,4] ) {
@@ -196,7 +198,7 @@ algorithm timers_memmap(
     // LATCH MEMORYWRITE
     uint1   LATCHmemoryWrite = uninitialized;
 
-    always {
+    always_before {
         // READ IO Memory
         if( memoryRead ) {
             switch( memoryAddress[1,4] ) {
@@ -218,6 +220,8 @@ algorithm timers_memmap(
                 default: { readData = 0; }
             }
         }
+    }
+    always_after {
         // WRITE IO Memory
         switch( { memoryWrite, LATCHmemoryWrite } ) {
             case 2b10: { timers.counter = writeData; timers.resetcounter = timerreset; }
@@ -244,7 +248,7 @@ algorithm audio_memmap(
     output  uint4   audio_r,
 
     // RNG
-    input  uint4   static4bit
+    input  uint8   static8bit
 ) <autorun,reginputs> {
     // BLOCK STORAGE FOR "SAMPLES" - A SERIES OF NOTES TO BE PLAYED FOR A GIVEN NUMBER OF MILLISECONDS
     simple_dualport_bram uint6 samples_left[1024] = uninitialized;
@@ -255,7 +259,7 @@ algorithm audio_memmap(
     uint11  MAXS0P1 <:: MAXSAMPLES[0] + 1;          uint11  MAXS1P1 <:: MAXSAMPLES[1] + 1;
 
     // Left and Right audio channels
-    audio apu_processor <@clock_25mhz> ( samples_left <:> samples_left, samples_right <:> samples_right, staticGenerator <: static4bit, audio_l :> audio_l, audio_r :> audio_r, samples_MAX_L <: MAXSAMPLES[0], samples_MAX_R <: MAXSAMPLES[1] );
+    audio apu_processor <@clock_25mhz> ( samples_left <:> samples_left, samples_right <:> samples_right, staticGenerator <: static8bit, audio_l :> audio_l, audio_r :> audio_r, samples_MAX_L <: MAXSAMPLES[0], samples_MAX_R <: MAXSAMPLES[1] );
 
     // LATCH MEMORYWRITE
     uint1   LATCHmemoryWrite = uninitialized;
@@ -265,10 +269,11 @@ algorithm audio_memmap(
     samples_left.addr1 := MAXSAMPLES[0]; samples_left.wdata1 := writeSAMPLE;                  samples_left.wenable1 := 0;
     samples_right.addr1 := MAXSAMPLES[1]; samples_right.wdata1 := writeSAMPLE;                samples_right.wenable1 := 0;
 
-    always {
+    always_before {
         // READ IO Memory
         if( memoryRead ) { readData = memoryAddress[1,1] ? apu_processor.audio_active_r : apu_processor.audio_active_l; }
-
+    }
+    always_after {
         // WRITE IO Memory
         switch( { memoryWrite, LATCHmemoryWrite } ) {
             case 2b10: {
@@ -347,7 +352,7 @@ algorithm audio(
     simple_dualport_bram_port0  samples_left,
     simple_dualport_bram_port0  samples_right,
 
-    input   uint4   staticGenerator,
+    input   uint8   staticGenerator,
     input   uint3   waveform,
     input   uint6   frequency,
     input   uint16  duration,
@@ -361,16 +366,8 @@ algorithm audio(
     input   uint11  samples_MAX_R
 ) <autorun,reginputs> {
     // Left and Right audio channels
-    apu apu_processor_L(
-        staticGenerator <: staticGenerator,
-        audio_output :> audio_l,
-        audio_active :> audio_active_l
-    );
-    apu apu_processor_R(
-        staticGenerator <: staticGenerator,
-        audio_output :> audio_r,
-        audio_active :> audio_active_r
-    );
+    apu apu_processor_L( staticGenerator <: staticGenerator, audio_active :> audio_active_l ); audio_pwm PWM_L( wave <: apu_processor_L.audio_output, audio :> audio_l );
+    apu apu_processor_R( staticGenerator <: staticGenerator, audio_active :> audio_active_r ); audio_pwm PWM_R( wave <: apu_processor_R.audio_output, audio :> audio_r );
 
     uint1   SAMPLEMODE_L = uninitialised;                   uint1   SAMPLEMODE_R = uninitialised;
     uint11  SAMP0P1 <:: samples_left.addr0 + 1;             uint11  SAMP1P1 <:: samples_right.addr0 + 1;
