@@ -8,14 +8,14 @@ algorithm apu(
     output  uint1   audio_active,
     output  uint8   audio_output
 ) <autorun,reginputs> {
-    brom uint16 frequency_table[64] = {
+    brom uint12 frequency_table[64] = {
         0,
         2986, 2819, 2660, 2511, 2314, 2237, 2112, 1993, 1881, 1776, 1676, 1582,     // 1 = C 2 or Deep C
-        1493, 1409, 1330, 1256, 1185, 1119, 1056, 996, 941, 888, 838, 791,             // 13 = C 3
+        1493, 1409, 1330, 1256, 1185, 1119, 1056, 996, 941, 888, 838, 791,          // 13 = C 3
         747, 705, 665, 628, 593, 559, 528, 498, 470, 444, 419, 395,                 // 25 = C 4 or Middle C
         373, 352, 333, 314, 296, 280, 264, 249, 235, 222, 209, 198,                 // 37 = C 5 or Tenor C
-        187, 176, 166, 157, 148, 140, 132, 125, 118, 111, 105, 99,                      // 49 = C 6 or Soprano C
-        93, 88, 83                                                                           // 61 = C 7 or Double High C
+        187, 176, 166, 157, 148, 140, 132, 125, 118, 111, 105, 99,                  // 49 = C 6 or Soprano C
+        93, 88, 83                                                                  // 61 = C 7 or Double High C
     };
 
     waveform WAVEFORM( staticGenerator <: staticGenerator );
@@ -63,7 +63,7 @@ algorithm waveform(
     sine.addr := point;
     always {
         switch( selected_waveform ) {
-            case 0: { audio_output = point[7,1] ? 1 : 253; }                                        // SQUARE
+            case 0: { audio_output = { point[7,1], 7b1111111 }; }                                   // SQUARE
             case 1: { audio_output = point; }                                                       // SAWTOOTH
             case 2: { audio_output = point[7,1] ? { point[0,7], 1b0 } : ~{ point[0,7], 1b0 }; }     // TRIANGLE
             case 3: { audio_output = sine.rdata; }                                                  // SINE
@@ -74,12 +74,12 @@ algorithm waveform(
 
 algorithm audiocounter(
     input   uint1   start,
-    input   uint16  selected_frequency,
+    input   uint12  selected_frequency,
     input   uint16  selected_duration,
     output  uint1   updatepoint,
     output  uint1   active(0)
 ) <autorun,reginputs> {
-    uint16  counter25mhz = uninitialised;           uint16  counter1khz = uninitialised;                uint16  duration = uninitialised;
+    uint12  counter25mhz = uninitialised;           uint16  counter1khz = uninitialised;                uint16  duration = uninitialised;
     uint1   updateduration <:: active & ( ~|counter1khz );
 
     active := ( |duration ); updatepoint := active & ( ~|counter25mhz );

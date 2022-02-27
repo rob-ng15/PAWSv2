@@ -33,18 +33,12 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
 * CPU
     * 50MHz clock
         * Instructions take varying number of clock cycles for execution
-            * 4 Pipeline Stages
-                * Fetch ( starts partial decode )
-                * Decode
-                * Execute
-                * Dispatch
+            * 4 Stages: Fetch -> Decode -> Execute -> Dispatch
         * RV32I instruction set
-            * AUIPC
-            * LUI
+            * AUIPC and LUI
             * JAL and JALR
             * BRANCH
-            * LOAD
-            * STORE
+            * LOAD and STORE
             * INTEGER OPERATION WITH IMMEDIATE PARAMETER
                 * ADDI
                 * SLTI[U]
@@ -63,7 +57,7 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
                 * MUL MULH[[S]U]
                 * DIV[U] REM[U]
         * RV32A instruction set
-        * RV32F instruction set
+        * RV32F instruction set ( limited rounding capability )
         * RV32C instruction expansion
             * COMPRESSED ( 16 bit ) INSTRUCTION SUPPORT
                 * Expanded to 32 bit instruction
@@ -139,7 +133,7 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
     * LEDS ( 8 on board leds )
     * BUTTONS ( 6 on board buttons )
     * TIMERS ( 1hz and 1khz )
-    * STEREO AUDIO
+    * STEREO AUDIO with Pulse-Width-Modulation to improve sound quality
     * SDCARD via SPI
         * FAT32 read only support
         * With Linux compatible file I/O plus PAWS file selector

@@ -63,6 +63,7 @@
 #define VDKBLUE 0x01
 #define DKBLUE 0x02
 #define BLUE 0x03
+#define UKBLUE 0x06
 #define LTBLUE 0x07
 #define VDKGREEN 0x04
 #define DKGREEN 0x08

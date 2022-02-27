@@ -113,7 +113,7 @@ algorithm character_map_writer(
     // CURSES COPY ADDRESS
     charactermap_copy.addr0 := ( |tpu_active[2,2] ) ? tpu_cs_addr : TPUA.WRITEADDR;
 
-    always {
+    always_after {
         if( |tpu_write ) { tpu_start_cs_addr = 0; tpu_max_count = 4800; }                                           // Set default start and end points
         switch( tpu_write ) {
             default: {}

@@ -105,7 +105,7 @@ algorithm tile_map_writer(
     // TILEMAP WRITE FLAGS
     tiles.wenable1 := 1; tiles_copy.wenable1 := 1;
 
-    always {
+    always_after {
         if( tm_write ) {
             // Write character to the tilemap
             tiles.addr1 = write_address; tiles.wdata1 = { tm_actions, tm_character };

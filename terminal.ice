@@ -73,7 +73,7 @@ algorithm terminal_writer(
     // READ CHARACTER ON THE NEXT LINE FOR SCROLLING
     terminal_copy.addr0 := terminal_scroll + 80;
 
-    always {
+    always_after {
         if( |terminal_write ) {
             onehot( terminal_write ) {                                                                                                                          // WRITE CHARACTER
                 case 0: {

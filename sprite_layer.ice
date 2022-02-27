@@ -170,7 +170,7 @@ algorithm sprite_layer_writer(
     sprite_offscreen_x := sprite_off_left | ( __signed( sprite_x[ sprite_set_number  ] ) > __signed(640) );
     sprite_offscreen_y := sprite_off_top | ( __signed( sprite_y[ sprite_set_number ] ) > __signed(480) );
 
-    always {
+    always_after {
         // SET ATTRIBUTES + PERFORM UPDATE
         switch( sprite_layer_write ) {
             case 0: {}

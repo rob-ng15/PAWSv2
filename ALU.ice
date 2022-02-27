@@ -18,7 +18,7 @@ algorithm alurotate(
     input   uint1   reverse,
     output  uint32  result,
 ) <autorun> {
-    uint6   shiftother <: 32 - shiftcount;
+    uint6   shiftother <:: 32 - shiftcount;
 
     result := ( sourceReg1 << ( reverse ? shiftother : shiftcount ) ) | ( sourceReg1 >> ( reverse ? shiftcount : shiftother ) );
 }
@@ -31,7 +31,7 @@ algorithm alubits(
     output  uint32  SET,
     output  uint1   EXT
 ) <autorun> {
-    uint32  mask <: ( 1 << shiftcount );
+    uint32  mask <:: ( 1 << shiftcount );
 
     CLR := sourceReg1 & ~mask;                      INV := sourceReg1 ^ mask;
     SET := sourceReg1 | mask;                       EXT := sourceReg1[ shiftcount, 1 ];
@@ -55,7 +55,7 @@ algorithm alulogic(
     output  uint32  OR,
     output  uint32  XOR
 ) <autorun> {
-    uint32  operand <: doinv ? ~operand2 : operand2;
+    uint32  operand <:: doinv ? ~operand2 : operand2;
 
     AND := sourceReg1 & operand;                    OR := sourceReg1 | operand;
     XOR := sourceReg1 ^ operand;
@@ -75,7 +75,7 @@ algorithm alucount(
     input   uint32  sourceReg1,
     output  uint6   result
 ) <autorun> {
-    uint1   zero <: ~|sourceReg1;
+    uint1   zero <:: ~|sourceReg1;
 
     always {
         switch( shiftcount ) {
@@ -235,9 +235,9 @@ algorithm aluMD(
     input   uint32  abssourceReg2,
     output  uint32  result
 ) <autorun,reginputs> {
-    uint1   quotientremaindersign <: ~function3[0,1] & ( sourceReg1[31,1] ^ sourceReg2[31,1] );
-    uint32  sourceReg1_unsigned <: function3[0,1] ? sourceReg1 : abssourceReg1;
-    uint32  sourceReg2_unsigned <: function3[0,1] ? sourceReg2 : abssourceReg2;
+    uint1   quotientremaindersign <:: ~function3[0,1] & ( sourceReg1[31,1] ^ sourceReg2[31,1] );
+    uint32  sourceReg1_unsigned <:: function3[0,1] ? sourceReg1 : abssourceReg1;
+    uint32  sourceReg2_unsigned <:: function3[0,1] ? sourceReg2 : abssourceReg2;
 
     douintdivide DODIVIDE( dividend <: sourceReg1_unsigned, divisor <: sourceReg2_unsigned );
     DODIVIDE.start := 0; busy := start | DODIVIDE.busy;
@@ -262,11 +262,11 @@ algorithm aluMM(
     input   int32   sourceReg2,
     output  int32   result
 ) <autorun> {
-    uint1   doupper <: |function3;
-    uint2   dosigned <: function3[1,1] ? function3[0,1] ? 2b00 : 2b01 : 2b11;
-    int33   factor_1 <: { dosigned[0,1] ? sourceReg1[ 31, 1 ] : 1b0, sourceReg1 }; // SIGN EXTEND IF SIGNED MULTIPLY
-    int33   factor_2 <: { dosigned[1,1] ? sourceReg2[ 31, 1 ] : 1b0, sourceReg2 }; // SIGN EXTEND IF SIGNED MULTIPLY
-    int66   product <: factor_1 * factor_2;
+    uint1   doupper <:: |function3;
+    uint2   dosigned <:: function3[1,1] ? function3[0,1] ? 2b00 : 2b01 : 2b11;
+    int33   factor_1 <:: { dosigned[0,1] ? sourceReg1[ 31, 1 ] : 1b0, sourceReg1 }; // SIGN EXTEND IF SIGNED MULTIPLY
+    int33   factor_2 <:: { dosigned[1,1] ? sourceReg2[ 31, 1 ] : 1b0, sourceReg2 }; // SIGN EXTEND IF SIGNED MULTIPLY
+    int66   product <:: factor_1 * factor_2;
 
     result := product[ { doupper, 5b0 }, 32 ];
 }
@@ -324,7 +324,7 @@ algorithm aluA (
     input   uint32  sourceReg2,
     output  uint32  result
 ) <autorun> {
-    uint1   comparison <: function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) : ( __signed(memoryinput) < __signed(sourceReg2) );
+    uint1   comparison <:: function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) : ( __signed(memoryinput) < __signed(sourceReg2) );
     alulogic LOGIC( sourceReg1 <: memoryinput, operand2 <: sourceReg2 );
 
     always {

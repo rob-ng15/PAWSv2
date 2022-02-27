@@ -39,7 +39,7 @@ algorithm background_writer(
     copper.wdata1 := { copper_command[0,3], copper_condition[0,3], copper_coordinate[0,11], copper_mode[0,4], copper_alt[0,7], copper_colour[0,7] };
     copper.wenable1 := copper_program;
 
-    always {
+    always_after {
         switch( background_update ) {
             case 2b00: {}                                           // CHANGE A PROGRAM LINE IN THE COPPER MEMORY
             case 2b01: { BACKGROUNDcolour = backgroundcolour; }     // UPDATE THE BACKGROUND FROM RISC-V

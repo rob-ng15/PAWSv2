@@ -34,7 +34,7 @@ algorithm ps2ascii(
     newascii := 0; asciivalid := 0;
     joystick := { application, nprightup, nprightdown, npleftdown, npleftup, rctrl, rwin, ralt, lalt, npright | right, npleft | left, npdown | down, npup | up, lwin, lctrl, 1b0 };
 
-    always {
+    always_after {
         if( PS2.valid ) {
             switch( PS2.data ) {
                 case 8he0: { startmulti = 1; }

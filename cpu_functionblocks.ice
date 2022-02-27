@@ -235,7 +235,7 @@ algorithm compare(
     output  uint1   LTU,
     output  uint1   EQ
 ) <autorun> {
-    int32   operand2 <: regimm ? sourceReg2 : immediateValue;
+    int32   operand2 <:: regimm ? sourceReg2 : immediateValue;
 
     LT := __signed(sourceReg1) < __signed( operand2 );
     LTU := __unsigned(sourceReg1) < __unsigned( operand2 );
@@ -252,7 +252,7 @@ algorithm branchcomparison(
     input   uint1   EQ,
     output  uint1   takeBranch
 ) <autorun> {
-    uint4   flags <: { LTU, LT, 1b0, EQ };          takeBranch := function3[0,1] ^ flags[ function3[1,2], 1 ];
+    uint4   flags <:: { LTU, LT, 1b0, EQ };          takeBranch := function3[0,1] ^ flags[ function3[1,2], 1 ];
 }
 
 // COMPRESSED INSTRUCTION EXPANSION
@@ -260,7 +260,7 @@ algorithm compressed00(
     input   uint16  i16,
     output  uint30  i32
 ) <autorun> {
-    always {
+    always_after {
         if( |i16[13,3] ) {
             if( i16[15,1] ) {
                 // SW -> sw rs2', offset[6:2](rs1') { 110 uimm[5:3] rs1' uimm[2][6] rs2' 00 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
@@ -281,7 +281,7 @@ algorithm compressed01(
     input   uint16  i16,
     output  uint30  i32
 ) <autorun> {
-    always {
+    always_after {
         switch( i16[13,3] ) {
             case 3b000: {
                 // ADDI -> addi rd, rd, nzimm[5:0] { 000 nzimm[5] rs1/rd!=0 nzimm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
@@ -343,7 +343,7 @@ algorithm compressed10(
     input   uint16  i16,
     output  uint30  i32
 ) <autorun> {
-    always {
+    always_after {
         switch( i16[13,3] ) {
             case 3b000: {
                 // SLLI -> slli rd, rd, shamt[5:0] { 000, nzuimm[5], rs1/rd!=0 nzuimm[4:0] 10 } -> { 0000000 shamt rs1 001 rd 0010011 }
@@ -396,7 +396,7 @@ algorithm csrf(
     input   uint1   update,
     input   uint5   newflags
 ) <autorun,reginputs> {
-    always {
+    always_after {
         if( update ) {
             CSRf = newflags;
         } else {
@@ -470,7 +470,7 @@ algorithm CSRblock(
     // PASS PRESENT FPU FLAGS TO THE FPU
     FPUflags := SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];
 
-    always {
+    always_after {
         if( start ) {
             result = 0;
             switch( CSR(instruction).csr[8,4] ) {
