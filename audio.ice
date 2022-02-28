@@ -23,7 +23,7 @@ algorithm apu(
 
     frequency_table.addr := frequency;              COUNTER.start := 0;                                 audio_output := audio_active ? COUNTER.updatepoint ? WAVEFORM.audio_output : audio_output : 0;
 
-    always {
+    always_after {
         if( apu_write ) {
             WAVEFORM.point = 0;
             WAVEFORM.selected_waveform = waveform;
@@ -61,7 +61,8 @@ algorithm waveform(
         79,82,85,88,91,94,97,100,103,106,109,112,116,119,122,125
     };
     sine.addr := point;
-    always {
+
+    always_after  {
         switch( selected_waveform ) {
             case 0: { audio_output = { point[7,1], 7b1111111 }; }                                   // SQUARE
             case 1: { audio_output = point; }                                                       // SAWTOOTH
@@ -84,7 +85,7 @@ algorithm audiocounter(
 
     active := ( |duration ); updatepoint := active & ( ~|counter25mhz );
 
-    always{
+    always_after {
         if( start ) {
             counter25mhz = 0;
             counter1khz = 25000;

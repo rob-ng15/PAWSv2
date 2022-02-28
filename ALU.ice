@@ -8,8 +8,11 @@ algorithm alushift(
     output  uint32  SRL,
     output  uint32  SRA
 ) <autorun> {
-    SLL := sourceReg1 << shiftcount;                SRL := sourceReg1 >> shiftcount;
-    SRA := __signed(sourceReg1) >>> shiftcount;
+    always_after {
+        SLL = sourceReg1 << shiftcount;
+        SRL = sourceReg1 >> shiftcount;
+        SRA = __signed(sourceReg1) >>> shiftcount;
+    }
 }
 // CALCULATES ROL ROR RORI
 algorithm alurotate(
@@ -20,7 +23,9 @@ algorithm alurotate(
 ) <autorun> {
     uint6   shiftother <:: 32 - shiftcount;
 
-    result := ( sourceReg1 << ( reverse ? shiftother : shiftcount ) ) | ( sourceReg1 >> ( reverse ? shiftcount : shiftother ) );
+    always_after {
+        result = ( sourceReg1 << ( reverse ? shiftother : shiftcount ) ) | ( sourceReg1 >> ( reverse ? shiftcount : shiftother ) );
+    }
 }
 // CALCULATES BCLR BCLRI BEXT BEXTI BIN BINI BSET BSETI
 algorithm alubits(
@@ -33,8 +38,10 @@ algorithm alubits(
 ) <autorun> {
     uint32  mask <:: ( 1 << shiftcount );
 
-    CLR := sourceReg1 & ~mask;                      INV := sourceReg1 ^ mask;
-    SET := sourceReg1 | mask;                       EXT := sourceReg1[ shiftcount, 1 ];
+    always_after {
+        CLR = sourceReg1 & ~mask;                      INV = sourceReg1 ^ mask;
+        SET = sourceReg1 | mask;                       EXT = sourceReg1[ shiftcount, 1 ];
+    }
 }
 // CALCULATES ADD ADDI SUB
 algorithm aluaddsub(
@@ -44,7 +51,9 @@ algorithm aluaddsub(
     input   int32   negoperand2,
     output  int32   AS
 ) <autorun> {
-    AS := sourceReg1 + ( dosub ? negoperand2 : operand2 );
+    always_after {
+        AS = sourceReg1 + ( dosub ? negoperand2 : operand2 );
+    }
 }
 // CALCULATES AND/ANDN OR/ORN XOR/XNOR
 algorithm alulogic(
@@ -57,8 +66,10 @@ algorithm alulogic(
 ) <autorun> {
     uint32  operand <:: doinv ? ~operand2 : operand2;
 
-    AND := sourceReg1 & operand;                    OR := sourceReg1 | operand;
-    XOR := sourceReg1 ^ operand;
+    always_after {
+        AND = sourceReg1 & operand;                    OR = sourceReg1 | operand;
+        XOR = sourceReg1 ^ operand;
+    }
 }
 // CALCULATES SH1ADD, SH2ADD, SH3ADD
 algorithm alushxadd(
@@ -67,7 +78,9 @@ algorithm alushxadd(
     input   uint32  sourceReg2,
     output  uint32  result
 ) <autorun> {
-    result := sourceReg2 + ( sourceReg1 << function3 );
+    always_after {
+        result = sourceReg2 + ( sourceReg1 << function3 );
+    }
 }
 // CALCULATES CLZ CTZ CPOP
 algorithm alucount(
@@ -77,7 +90,7 @@ algorithm alucount(
 ) <autorun> {
     uint1   zero <:: ~|sourceReg1;
 
-    always {
+    always_after {
         switch( shiftcount ) {
             case 2b00: { if( zero ) { result = 32; } else { ( result ) = clz_silice_32( sourceReg1 ); } }
             case 2b01: { if( zero ) { result = 32; } else { ( result ) = ctz_silice_32( sourceReg1 ); } }
@@ -94,7 +107,9 @@ algorithm aluminmax(
     input   uint32  sourceReg2,
     output  uint32  result
 ) <autorun> {
-    result := function3[1,1] ^ ( function3[0,1] ? unsignedcompare : signedcompare ) ? sourceReg1 : sourceReg2;
+    always_after {
+        result = function3[1,1] ^ ( function3[0,1] ? unsignedcompare : signedcompare ) ? sourceReg1 : sourceReg2;
+    }
 }
 // CALCULATES SEXT.B SEXT.H ZEXT.H
 algorithm aluextend(
@@ -102,8 +117,9 @@ algorithm aluextend(
     input   uint32  sourceReg1,
     output  uint32  result
 ) {
-    result := shiftcount[2,1] ? shiftcount[0,1] ? { {16{sourceReg1[15,1]}}, sourceReg1[0,16] } : { {24{sourceReg1[7,1]}}, sourceReg1[0,8] } :
-                                sourceReg1[0,16];
+    always_after {
+        result = shiftcount[2,1] ? shiftcount[0,1] ? { {16{sourceReg1[15,1]}}, sourceReg1[0,16] } : { {24{sourceReg1[7,1]}}, sourceReg1[0,8] } : sourceReg1[0,16];
+    }
 }
 // CALCULATES ORC.B REV8
 algorithm aluorcrev(
@@ -111,8 +127,10 @@ algorithm aluorcrev(
     output  uint32  ORC,
     output  uint32  REV8
 ) <autorun> {
-    ORC := { {8{ |sourceReg1[24,8] }}, {8{ |sourceReg1[16,8] }}, {8{ |sourceReg1[8,8] }}, {8{ |sourceReg1[0,8] }} };
-    REV8 := { sourceReg1[0,8], sourceReg1[8,8], sourceReg1[16,8], sourceReg1[24,8] };
+    always_after {
+        ORC = { {8{ |sourceReg1[24,8] }}, {8{ |sourceReg1[16,8] }}, {8{ |sourceReg1[8,8] }}, {8{ |sourceReg1[0,8] }} };
+        REV8 = { sourceReg1[0,8], sourceReg1[8,8], sourceReg1[16,8], sourceReg1[24,8] };
+    }
 }
 
 // DECODE ALU INSTRUCTIONS
@@ -137,19 +155,21 @@ algorithm aludecode(
     output  uint1   doorc,
     output  uint1   dorev
 ) <autorun> {
-    doalt := regimm & ( function7 == 7b0100000 );                   // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
-    dosra := ( function7 == 7b0100000 );                            // SRL SRA
-    dorotate := ( function7 == 7b0110000 );                         // ROL ROR RORI
-    dobclrext := ( function7 == 7b0100100 );                        // BCLR BCLRI BEXT BEXTI
-    dobinv := ( function7 == 7b0110100 );                           // BINV BINVI
-    dobset := ( function7 == 7b0010100 );                           // BSET BSETI
-    doshxadd := regimm & ( function7 == 7b0010000 );                // SH1ADD SH2ADD SH3ADD ( register - register only )
-    docount := ~regimm & ( function7 == 7b0110000 ) & ~rs2[2,1];    // CLZ CPOP CTZ ( immediate only )
-    dominmax := regimm & function3[2,1] & ( function7 == 7b0000101 );    // MAX MAXU MIN MINU ( register - register only )
-    dosignx := ~regimm & ( function7 == 7b0110000 ) & rs2[2,1];     // SEXT.B SEXT.H
-    dozerox := regimm & ( function7 == 7b0000100 );                 // ZEXT.H
-    doorc := ~regimm & ( function7 == 7b0010100 );                  // ORC.B
-    dorev := ~regimm & ( function7 == 7b0110100 );                  // REV8
+    always_after {
+        doalt = regimm & ( function7 == 7b0100000 );                   // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
+        dosra = ( function7 == 7b0100000 );                            // SRL SRA
+        dorotate = ( function7 == 7b0110000 );                         // ROL ROR RORI
+        dobclrext = ( function7 == 7b0100100 );                        // BCLR BCLRI BEXT BEXTI
+        dobinv = ( function7 == 7b0110100 );                           // BINV BINVI
+        dobset = ( function7 == 7b0010100 );                           // BSET BSETI
+        doshxadd = regimm & ( function7 == 7b0010000 );                // SH1ADD SH2ADD SH3ADD ( register - register only )
+        docount = ~regimm & ( function7 == 7b0110000 ) & ~rs2[2,1];    // CLZ CPOP CTZ ( immediate only )
+        dominmax = regimm & function3[2,1] & ( function7 == 7b0000101 );    // MAX MAXU MIN MINU ( register - register only )
+        dosignx = ~regimm & ( function7 == 7b0110000 ) & rs2[2,1];     // SEXT.B SEXT.H
+        dozerox = regimm & ( function7 == 7b0000100 );                 // ZEXT.H
+        doorc = ~regimm & ( function7 == 7b0010100 );                  // ORC.B
+        dorev = ~regimm & ( function7 == 7b0110100 );                  // REV8
+    }
 }
 
 algorithm alu(
@@ -169,9 +189,9 @@ algorithm alu(
 ) <autorun> {
     aludecode AD( regimm <: opCode[3,1], function7 <: function7, function3 <: function3, rs2 <: rs2, );
 
-    uint5   shiftcount <: opCode[3,1] ? sourceReg2[0,5] : rs2;
-    uint32  operand2 <: opCode[3,1] ? sourceReg2 : immediateValue;
-    uint1   SLTU <: opCode[3,1] ? ( ~|rs1 ) ? ( |operand2 ) : LTU : ( operand2 == 1 ) ? ( ~|sourceReg1 ) : LTU;
+    uint5   shiftcount <:: opCode[3,1] ? sourceReg2[0,5] : rs2;
+    uint32  operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
+    uint1   SLTU <:: opCode[3,1] ? ( ~|rs1 ) ? ( |operand2 ) : LTU : ( operand2 == 1 ) ? ( ~|sourceReg1 ) : LTU;
 
     aluaddsub ADDSUB( dosub <: AD.doalt, sourceReg1 <: sourceReg1, operand2 <: operand2, negoperand2 <: negSourceReg2 );
     alushift SHIFTS( sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
@@ -184,7 +204,7 @@ algorithm alu(
     aluextend EXTEND( shiftcount <: rs2[0,3], sourceReg1 <: sourceReg1 );
     aluorcrev ORCREV( sourceReg1 <: sourceReg1 );
 
-    always {
+    always_after {
         switch( function3 ) {
             case 3b000: { result = ADDSUB.AS; }
             case 3b001: { result = AD.dosignx ? EXTEND.result : AD.docount ? COUNT.result : AD.dobclrext ? BITS.CLR : AD.dobinv ? BITS.INV : AD.dobset ? BITS.SET : AD.dorotate ? ROTATES.result : SHIFTS.SLL; }
@@ -214,7 +234,7 @@ algorithm douintdivide(
     uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
 
     busy := start | ( ~&bit );
-    always {
+    always_after {
         if( &bit ) {
             if( start ) { bit = 31; quotient = 0; remainder = 0; }
         } else {
@@ -268,7 +288,9 @@ algorithm aluMM(
     int33   factor_2 <:: { dosigned[1,1] ? sourceReg2[ 31, 1 ] : 1b0, sourceReg2 }; // SIGN EXTEND IF SIGNED MULTIPLY
     int66   product <:: factor_1 * factor_2;
 
-    result := product[ { doupper, 5b0 }, 32 ];
+    always_after {
+        result = product[ { doupper, 5b0 }, 32 ];
+    }
 }
 
 // ALU FOR CARRYLESS MULTIPLY FROM B-EXTENSION
@@ -327,7 +349,7 @@ algorithm aluA (
     uint1   comparison <:: function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) : ( __signed(memoryinput) < __signed(sourceReg2) );
     alulogic LOGIC( sourceReg1 <: memoryinput, operand2 <: sourceReg2 );
 
-    always {
+    always_after {
         if( function7[4,1] ) {
             result = ( function7[2,1] ^ comparison ) ? memoryinput : sourceReg2;    // AMOMAX[U] AMOMIN[U]
         } else {

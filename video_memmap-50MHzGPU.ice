@@ -198,7 +198,7 @@ $$end
     BACKGROUND.memoryWrite := 0; BITMAP.memoryWrite := 0; CHARACTER_MAP.memoryWrite := 0; LOWER_SPRITE.memoryWrite := 0; UPPER_SPRITE.memoryWrite := 0; TERMINAL.memoryWrite := 0;
     LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0;
 
-    always {
+    always_before {
         // READ IO Memory
         if( memoryRead ) {
             switch( memoryAddress[8,4] ) {
@@ -255,6 +255,8 @@ $$end
                 default: { readData = 0; }
             }
         }
+    }
+    always_after {
         // WRITE IO Memory
         if( memoryWrite ) {
             switch( memoryAddress[8,4] ) {
@@ -278,7 +280,6 @@ $$end
                 default: {}
             }
         }
-        totalframes = totalframesNEXT;
     }
 
     if( ~reset ) {
@@ -349,7 +350,7 @@ algorithm background_memmap(
     background_writer BACKGROUND_WRITER( copper <:> copper );
 
     BACKGROUND_WRITER.background_update := 0; BACKGROUND_WRITER.copper_program := 0;
-    always {
+    always_after {
         if( memoryWrite ) {
             switch( memoryAddress[1,4] ) {
                 case 4h00: { BACKGROUND_WRITER.backgroundcolour = writeData; BACKGROUND_WRITER.background_update = 1; }
@@ -473,7 +474,7 @@ algorithm bitmap_memmap(
 
     pixel_writer.gpu_write := 0;  pixel_writer.pb_newpixel := 0; pixel_writer.draw_vector := 0;
 
-    always {
+    always_after {
         if( memoryWrite ) {
             switch( memoryAddress[4,4] ) {
                 case 4h0: {
@@ -638,7 +639,7 @@ algorithm charactermap_memmap(
     );
     CMW.tpu_write := 0;
 
-    always {
+    always_after {
         if( memoryWrite ) {
             switch( memoryAddress[1,3] ) {
                 case 3h0: { CMW.tpu_x = writeData; }
@@ -748,7 +749,7 @@ algorithm sprite_memmap(
 
     SLW.sprite_layer_write := 0;
 
-    always {
+    always_after {
         if( memoryWrite ) {
             if( bitmapwriter ) {
                 switch( memoryAddress[1,1] ) {
@@ -812,7 +813,7 @@ algorithm terminal_memmap(
     );
     TW.terminal_write := 0;
 
-    always {
+    always_after {
         if( memoryWrite) {
             switch( memoryAddress[1,2] ) {
                 case 2h0: { TW.terminal_character = writeData; TW.terminal_write = 1; }
@@ -888,7 +889,7 @@ algorithm tilemap_memmap(
 
     tiles16x16.wdata1 := writeData; tiles16x16.wenable1 := 0; TMW.tm_write := 0; TMW.tm_scrollwrap := 0;
 
-    always {
+    always_after {
         if( memoryWrite ) {
             switch( memoryAddress[1,3] ) {
                 case 3h0: { TMW.tm_x = writeData; }

@@ -288,7 +288,7 @@ algorithm cpuexecuteSLOWPATH(
     );
 
     // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
-    uint5   FPUnewflags <: FCLASS.FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? FPUCONVERT.FPUnewflags : FPUCALC.FPUnewflags;
+    uint5   FPUnewflags <:: FCLASS.FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? FPUCONVERT.FPUnewflags : FPUCALC.FPUnewflags;
     CSRblock CSR(
         SMT <: SMT,
         instruction <: instruction,
@@ -384,10 +384,12 @@ algorithm cpuexecuteFASTPATH(
     uint1   isAUIPCLUI <:: ( opCode[0,3] == 3b101 );
     uint1   isJAL <:: ( opCode[2,3] == 3b110 ) & opCode[0,1];
 
-    takeBranch := ( opCode == 5b11000 ) & BRANCHUNIT.takeBranch;    // BRANCH
-    memoryoutput := opCode[0,1] ? sourceReg2F : sourceReg2;         // FLOAT STORE OR STORE
-    result := isAUIPCLUI ? AUIPCLUI :                               // LUI AUIPC
-                           isJAL ? nextPC :                         // JAL[R]
-                           isLOAD ? memoryinput :                   // [FLOAT]LOAD
-                           isALUMM ? ALUMM.result : ALU.result;     // INTEGER ALU AND MULTIPLICATION
+    always_after {
+        takeBranch = ( opCode == 5b11000 ) & BRANCHUNIT.takeBranch;    // BRANCH
+        memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2;         // FLOAT STORE OR STORE
+        result = isAUIPCLUI ? AUIPCLUI :                               // LUI AUIPC
+                            isJAL ? nextPC :                         // JAL[R]
+                            isLOAD ? memoryinput :                   // [FLOAT]LOAD
+                            isALUMM ? ALUMM.result : ALU.result;     // INTEGER ALU AND MULTIPLICATION
+    }
 }

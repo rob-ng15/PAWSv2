@@ -78,7 +78,7 @@ algorithm background_copper(
     // COPPER FLAGS
     copper.addr0 := PC; copper_execute := 0; copper_branch := 0;
 
-    always {
+    always_after {
         // UPDATE THE BACKGROUND GENERATOR FROM THE COPPER
         if( copper_status ) {
             switch( CU(copper.rdata0).command ) {
@@ -143,7 +143,7 @@ algorithm background_display(
     // TRUE FOR COLOUR, FALSE FOR ALT
     pattern PATTERN( pix_x <: pix_x, pix_y <: pix_y, b_mode <: b_mode );                                rainbow RAINBOW( y <: pix_y[6,3] );
 
-    always {
+    always_after {
         // RENDER - SELECT ACTUAL COLOUR
         switch( PATTERN.condition ) {
             case 0: { pixel = b_alt; }                                              // EVERYTHING ELSE
@@ -160,7 +160,9 @@ algorithm rainbow(
 ) <autorun> {
     uint7   rainbow[] = { 7b100000, 7b110000, 7b111000, 7b111100, 7b001100, 7b000011, 7b010010, 7b011011 };
 
-    colour := rainbow[ y ];
+    always_after {
+        colour = rainbow[ y ];
+    }
 }
 
 algorithm starfield(
@@ -172,11 +174,13 @@ algorithm starfield(
     int10   dotpos = 0;                             int2    speed = 0;                                  int2    inv_speed = 0;
     int12   rand_x = 0;                             int12   new_rand_x <:: rand_x * 31421 + 6927;       int32   frame = 0;
 
-    // Increment frame number for the snow/star field
-    frame := frame + ( ( pix_x == 639 ) & ( pix_y == 479 ) );
+    always_after {
+        // Increment frame number for the snow/star field
+        frame = frame + ( ( pix_x == 639 ) & ( pix_y == 479 ) );
 
-    rand_x := ( ~|pix_x )  ? 1 : new_rand_x;        speed  := rand_x[10,2];                             dotpos := ( frame >> speed ) + rand_x;
-    star := ( pix_y == dotpos );
+        rand_x = ( ~|pix_x )  ? 1 : new_rand_x;        speed  = rand_x[10,2];                             dotpos = ( frame >> speed ) + rand_x;
+        star = ( pix_y == dotpos );
+    }
 }
 
 algorithm pattern(
@@ -188,7 +192,7 @@ algorithm pattern(
     uint1   tophalf <: ( pix_y < 240 );             uint1   lefthalf <: ( pix_x < 320 );                uint2   checkmode <: b_mode - 7;
     starfield STARS( pix_x <: pix_x, pix_y <: pix_y );
 
-    always {
+    always_after {
         // SELECT COLOUR OR ALT
         switch( b_mode ) {
             case 0: { condition = 1; }                                              // SOLID

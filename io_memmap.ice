@@ -334,7 +334,7 @@ algorithm timers_rng(
     T0khz0.resetCounter := 0; T1khz1.resetCounter := 0;
     STimer0.resetCounter := 0; STimer1.resetCounter := 0;
 
-    always {
+    always_after {
         switch( resetcounter ) {
             default: {}
             case 1: { T1hz0.resetCounter = 1; }
@@ -375,7 +375,7 @@ algorithm audio(
 
     apu_processor_L.apu_write := 0; apu_processor_R.apu_write := 0;
 
-    always {
+    always_after {
         // DISPATCH NEXT SAMPLE IF SAMPLE MODE ACTIVE LEFT/RIGHT / RESET SAMPLE POINTER IF NOT
         if( SAMPLEMODE_L ) {
             if( ~apu_processor_L.audio_active ) {
@@ -460,7 +460,7 @@ algorithm fifo8(
     queue.addr0 := next; first := queue.rdata0;
     queue.wenable1 := 1;
 
-    always {
+    always_after {
         if( write ) {
             queue.addr1 = top; queue.wdata1 = last;
             update = 1;
@@ -523,7 +523,7 @@ algorithm fifo9(
     queue.addr0 := next; first := queue.rdata0;
     queue.wenable1 := 1;
 
-    always {
+    always_after {
         if( write ) { queue.addr1 = top; queue.wdata1 = last; }
         top = top + write;
         next = next + read;

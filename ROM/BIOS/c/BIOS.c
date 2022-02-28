@@ -265,8 +265,8 @@ void draw_sdcard( void  ) {
     set_blitter_bitmap( 0, &sdcardtiles[0] );
     set_blitter_bitmap( 1, &sdcardtiles[16] );
     set_blitter_bitmap( 2, &sdcardtiles[32] );
-    gpu_blit( BLACK, 256, 2, 1, 2 );
-    gpu_blit( WHITE, 256, 2, 0, 2 );
+    gpu_blit( GOLD, 256, 2, 1, 2 );
+    gpu_blit( BLUEUK, 256, 2, 0, 2 );
 }
 
 void reset_display( void ) {
@@ -324,10 +324,9 @@ void smtthread( void ) {
 // DISPLAY FILENAME, ADD AN ARROW IN FRONT OF DIRECTORIES
 void displayfilename( unsigned char *filename, unsigned char type ) {
     char displayname[10], i, j;
-    gpu_outputstringcentre( BLUEUK, 144, 0, "Current PAW File:", 0 );
-    for( i = 0; i < 10; i++ ) {
-        displayname[i] = 0;
-    }
+    gpu_outputstringcentre( BLUEUK, 144, 1, "Current PAW File:", 0 );
+    memset( displayname, 0, 10 );
+
     j = type - 1;
     if( j == 1 ) {
         displayname[0] = 16;
@@ -337,7 +336,7 @@ void displayfilename( unsigned char *filename, unsigned char type ) {
             displayname[j++] = filename[i];
         }
     }
-    gpu_outputstringcentre( type == 1 ? BLUEUK : GREY2, 176, 0, displayname, 2 );
+    gpu_outputstringcentre( type == 1 ? BLUEUK : GREY2, 176, 1, displayname, 2 );
 }
 
 // FAT32 FILE BROWSER FOR DIRECTORIES AND .PAW FILES

@@ -8,9 +8,11 @@ algorithm timesinceboot(
     uint1   MIN <:: ( ~|counter25mhz );
     uint1   MAX <:: ( counter1mhz == 1000000 );
 
-    counter25mhz := MIN ? 25 : counter25mhz - 1;
-    counter1mhz := MAX ? 0 : counter1mhz + MIN;
-    counter1hz := counter1hz + MAX;
+    always_after {
+        counter25mhz = MIN ? 25 : counter25mhz - 1;
+        counter1mhz = MAX ? 0 : counter1mhz + MIN;
+        counter1hz = counter1hz + MAX;
+    }
 }
 
 // Create 1hz (1 second counter)
@@ -21,8 +23,10 @@ algorithm pulse1hz(
     uint25  counter25mhz = uninitialised;
     uint1   MIN <:: ( ~|counter25mhz );
 
-    counter1hz := resetCounter ? 0 : counter1hz + MIN;
-    counter25mhz := resetCounter | MIN ? 25000000 : counter25mhz - 1;
+    always_after {
+        counter1hz = resetCounter ? 0 : counter1hz + MIN;
+        counter25mhz = resetCounter | MIN ? 25000000 : counter25mhz - 1;
+    }
 }
 
 // Create 1khz (1 milli-second counter)
@@ -35,8 +39,10 @@ algorithm pulse1khz(
     uint1   RESET <: ( |resetCounter );
     uint1   FINISHED <:: ( ~|counter1khz );
 
-    counter1khz := RESET ? resetCounter : FINISHED ? 0 : counter1khz - MIN;
-    counter25mhz := RESET | MIN ? 25000 : counter25mhz - 1;
+    always_after {
+        counter1khz = RESET ? resetCounter : FINISHED ? 0 : counter1khz - MIN;
+        counter25mhz = RESET | MIN ? 25000 : counter25mhz - 1;
+    }
 }
 
 // 16 bit random number generator
@@ -54,8 +60,10 @@ algorithm random(
     uint16  temp_u_noise0 <:: temp_u_noise1;
     uint16  temp_g_noise_nxt <:: __signed(temp_u_noise3) + __signed(temp_u_noise2) + __signed(temp_u_noise1) + __signed(temp_u_noise0) + ( rand_en_ff[9,1] ? __signed(g_noise_out) : 0 );
 
-    g_noise_out := ( rand_en_ff[17,1] ) ? temp_g_noise_nxt : ( rand_en_ff[10,1] ) ? rand_out : g_noise_out;
-    u_noise_out := ( rand_en_ff[17,1] ) ? rand_out : u_noise_out;
-    rand_en_ff := { ( rand_en_ff[7,1] ^ rand_en_ff[0,1] ), rand_en_ff[1,17]};
-    rand_ff := { ( rand_ff[5,1] ^ rand_ff[3,1] ^ rand_ff[2,1] ^ rand_ff[0,1] ), rand_ff[1,15] };
+    always_after {
+        g_noise_out = ( rand_en_ff[17,1] ) ? temp_g_noise_nxt : ( rand_en_ff[10,1] ) ? rand_out : g_noise_out;
+        u_noise_out = ( rand_en_ff[17,1] ) ? rand_out : u_noise_out;
+        rand_en_ff = { ( rand_en_ff[7,1] ^ rand_en_ff[0,1] ), rand_en_ff[1,17]};
+        rand_ff = { ( rand_ff[5,1] ^ rand_ff[3,1] ^ rand_ff[2,1] ^ rand_ff[0,1] ), rand_ff[1,15] };
+    }
 }

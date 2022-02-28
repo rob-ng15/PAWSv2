@@ -82,7 +82,7 @@ algorithm gpu_queue(
     bitmap_crop_left := GPU.crop_left; bitmap_crop_right := GPU.crop_right; bitmap_crop_top := GPU.crop_top; bitmap_crop_bottom := GPU.crop_bottom;
     queue_busy := |queue_write;
 
-    always {
+    always_after {
         // PUT INTO QUEUE
         if( vector_drawer_gpu_write ) {
             GPU.gpu_colour = vector_block_colour;
@@ -101,8 +101,6 @@ algorithm gpu_queue(
             ( queue_cropL, queue_cropR ) = copycoordinates( crop_left, crop_right );
             ( queue_cropT, queue_cropB ) = copycoordinates( crop_top, crop_bottom );
         }
-    }
-    while(1) {
         // PROCESS QUEUE
         if( queue_busy & ~gpu_active ) {
             GPU.gpu_dithermode = queue_dithermode; GPU.gpu_colour = queue_colour; GPU.gpu_colour_alt = queue_colour_alt;
@@ -219,7 +217,7 @@ algorithm gpu(
     GPUrectangle.start := 0; GPUline.start := 0; GPUcircle.start := 0; GPUtriangle.start := 0; GPUblit.start := 0; GPUpixelblock.start := 0;
     gpu_active := ( |gpu_write[1,3] ) | gpu_busy;
 
-    always {
+    always_after {
         if( |gpu_write ) {
             // START THE GPU DRAWING UNIT - RESET DITHERMODE TO 0 (most common)
             gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; bitmap_colour_write_alt = gpu_colour_alt;
@@ -243,10 +241,9 @@ algorithm gpu(
             // 14
             // 15 is quadrilateral, handled by the queue
         }
-    }
-    while(1) {
+
+        // COPY OUTPUT TO THE BITMAP WRITER
         if( gpu_busy ) {
-            // COPY OUTPUT TO THE BITMAP WRITER
             onehot( gpu_busy_flags ) {
                 case 0: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUline.bitmap_x_write, GPUline.bitmap_y_write ); }
                 case 1: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUrectangle.bitmap_x_write, GPUrectangle.bitmap_y_write ); }
@@ -274,7 +271,9 @@ algorithm istodraw(
     input   int11   max_y,
     output  uint1   draw
 ) <autorun> {
-    draw := ~|{ ( max_x < crop_left ), ( max_y < crop_top ), ( min_x > crop_right ), ( min_y > crop_bottom ) };
+    always_after {
+        draw = ~|{ ( max_x < crop_left ), ( max_y < crop_top ), ( min_x > crop_right ), ( min_y > crop_bottom ) };
+    }
 }
 // RECTANGLE - OUTPUT PIXELS TO DRAW A RECTANGLE
 algorithm preprectangle(
@@ -393,7 +392,7 @@ algorithm prepline(
 
     todraw := 0;
 
-    always {
+    always_after {
         if( start ) {
             // Setup drawing a line from x,y to param0,param1 of width param2 in colour
             // Ensure LEFT to RIGHT AND if moving UP or DOWN
@@ -613,7 +612,7 @@ algorithm swaponcondition(
     output  int11   ny1,
     output  int11   ny2
 ) <autorun> {
-    always {
+    always_after {
         if( condition ) {
             nx1 = x2; ny1 = y2;
             nx2 = x1; ny2 = y1;
@@ -629,7 +628,9 @@ algorithm min3(
     input   int11   n3,
     output  int11   min
 ) <autorun> {
-    min := ( n1 < n2 ) ? ( ( n1 < n3 ) ? n1 : n3 ) : ( ( n2 < n3 ) ? n2 : n3 );
+    always_after {
+        min = ( n1 < n2 ) ? ( ( n1 < n3 ) ? n1 : n3 ) : ( ( n2 < n3 ) ? n2 : n3 );
+    }
 }
 algorithm max3(
     input   int11   n1,
@@ -637,7 +638,9 @@ algorithm max3(
     input   int11   n3,
     output  int11   max
 ) <autorun> {
-    max := ( n1 > n2 ) ? ( ( n1 > n3 ) ? n1 : n3 ) : ( ( n2 > n3 ) ? n2 : n3 );
+    always_after {
+        max = ( n1 > n2 ) ? ( ( n1 > n3 ) ? n1 : n3 ) : ( ( n2 > n3 ) ? n2 : n3 );
+    }
 }
 algorithm preptriangle(
     input   uint1   start,
@@ -718,7 +721,9 @@ algorithm intriangle(
     int22   step2 <:: (( x0 - x2 ) * ( py - y2 ) - ( y0 - y2 ) * ( px - x2 ));
     int22   step3 <:: (( x1 - x0 ) * ( py - y0 ) - ( y1 - y0 ) * ( px - x0 ));
 
-    IN :=  ~|{ step1[21,1], step2[21,1], step3[21,1] };
+    always_after {
+        IN =  ~|{ step1[21,1], step2[21,1], step3[21,1] };
+    }
 }
 algorithm drawtriangle(
     input   uint1   start,
@@ -756,7 +761,7 @@ algorithm drawtriangle(
 
     bitmap_x_write := px; bitmap_y_write := py; bitmap_write := busy & IS.IN;
 
-    always {
+    always_after {
         if( start ) {
             busy = 1; dx = 1; px = min_x; py = min_y;
         } else {
@@ -818,7 +823,9 @@ algorithm blitscale(
     output  uint7   base,
     output  int11   scaled
 ) <autorun,reginputs> {
-    base := offset; scaled := offset << scale;
+    always_after {
+        base = offset; scaled = offset << scale;
+    }
 }
 algorithm   blittilexy(
     input   uint7   px,
@@ -834,10 +841,12 @@ algorithm   blittilexy(
     uint1   action00 <:: ( ~|action[0,2] );          uint1   action01 <:: ( action[0,2] == 2b01 );        uint1   action10 <:: ( action[0,2] == 2b10 );
 
     // find y and x positions within the tile/character bitmap handling rotation or reflection
-    xinblittile := ( action[2,1] ?  action00 ? revx4 : action01 ? py[0,4] : action10 ? px[0,4] : revy4 : action[0,1] ? px[0,4] : revx4 );
-    yinblittile := action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy4 : revx4 : action[1,1] ? revy4 :  py[0,4];
-    xinchartile := ( action[2,1] ?  action00 ? revx3 : action01 ? py[0,3] : action10 ? px[0,3] : revy3 : action[0,1] ?  px[0,3] : revx3 );
-    yinchartile := action[2,1] ? action00 ? py[0,3] : action01 ? px[0,3] : action10 ? revy3 : revx3 : action[1,1] ? revy3 :  py[0,3];
+    always_after {
+        xinblittile = ( action[2,1] ?  action00 ? revx4 : action01 ? py[0,4] : action10 ? px[0,4] : revy4 : action[0,1] ? px[0,4] : revx4 );
+        yinblittile = action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy4 : revx4 : action[1,1] ? revy4 :  py[0,4];
+        xinchartile = ( action[2,1] ?  action00 ? revx3 : action01 ? py[0,3] : action10 ? px[0,3] : revy3 : action[0,1] ?  px[0,3] : revx3 );
+        yinchartile = action[2,1] ? action00 ? py[0,3] : action01 ? px[0,3] : action10 ? revy3 : revx3 : action[1,1] ? revy3 :  py[0,3];
+    }
 }
 algorithm cololurblittilexy(
     input   uint7   px,
@@ -850,8 +859,10 @@ algorithm cololurblittilexy(
     uint1   action00 <:: ( ~|action[0,2] );          uint1   action01 <:: ( action[0,2] == 2b01 );        uint1   action10 <:: ( action[0,2] == 2b10 );
 
     // find y and x positions within the tile bitmap handling rotation or reflection
-    xintile := action[2,1] ? action00 ? px[0,4] : action01 ? revy : action10 ? revx : py[0,4] : action[0,1] ? revx :  px[0,4];
-    yintile := action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy : revx : action[1,1] ? revy :  py[0,4];
+    always_after {
+        xintile = action[2,1] ? action00 ? px[0,4] : action01 ? revy : action10 ? revx : py[0,4] : action[0,1] ? revx :  px[0,4];
+        yintile = action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy : revx : action[1,1] ? revy :  py[0,4];
+    }
 }
 algorithm blit(
     input   uint2   start,
@@ -953,7 +964,7 @@ algorithm pixelblock(
     bitmap_colour_write := ( toprocess == 1 ) ? mode ? colourmap.rdata0 : colour :
                             mode ? ( grey == 64 ) ? 65 : grey : ( grrggbb == 64 ) ? 80 : grrggbb;
 
-    always {
+    always_after {
         if( start ) {
             busy = 1; bitmap_x_write = x; bitmap_y_write = y;
         } else {
@@ -997,7 +1008,9 @@ algorithm scaledetla(
     // SIGN EXTEND THE DELTA, THEN SCALE
     int11   extdelta <:: { {11{delta[5,1]}}, delta };
 
-    scaled := ( scale[2,1] ? ( __signed(extdelta) >>> scale[0,2] ) : ( extdelta << scale[0,2] ) );
+    always_after {
+        scaled = ( scale[2,1] ? ( __signed(extdelta) >>> scale[0,2] ) : ( extdelta << scale[0,2] ) );
+    }
 }
 algorithm cpm(
     input   int11   xc,
@@ -1019,10 +1032,12 @@ algorithm cpm(
     scaledetla SDX( scale <: scale, delta <: dx ); scaledetla SDY( scale <: scale, delta <: dy );
 
     // PLUS OR MINUS SCALE
-    xcpdx := xc + SDX.scaled;                       xcndx := xc - SDX.scaled;
-    ycpdy := yc + SDY.scaled;                       ycndy := yc - SDY.scaled;
-    xcpdy := xc + SDY.scaled;                       xcndy := xc - SDY.scaled;
-    ycpdx := yc + SDX.scaled;                       ycndx := yc - SDX.scaled;
+    always_after {
+        xcpdx = xc + SDX.scaled;                       xcndx = xc - SDX.scaled;
+        ycpdy = yc + SDY.scaled;                       ycndy = yc - SDY.scaled;
+        xcpdy = xc + SDY.scaled;                       xcndy = xc - SDY.scaled;
+        ycpdx = yc + SDX.scaled;                       ycndx = yc - SDX.scaled;
+    }
 }
 // ADJUST COORDINATES BY DELTAS AND SCALE
 algorithm centreplusdelta(
@@ -1036,7 +1051,8 @@ algorithm centreplusdelta(
     output  int11   ydy
 ) <autorun> {
     cpm CPM( xc <: xc, yc <: yc, dx <: dx, dy <: dy, scale <: scale, action <: action );
-    always {
+
+    always_after {
         if( action[2,1] ) {
             // ROTATION
             switch( action[0,2] ) {

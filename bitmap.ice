@@ -185,7 +185,7 @@ algorithm dither(
 ) <autorun> {
     uint2   checkmode <:: dithermode[0,2] - 1;      uint3   revbitmapx <:: ~bitmap_x_write[0,3];
 
-    always {
+    always_after {
         // DITHER PATTERNS
         // == 0 SOLID == 1 SMALL CHECKERBOARD == 2 MED CHECKERBOARD == 3 LARGE CHECKERBOARD
         // == 4 VERTICAL STRIPES == 5 HORIZONTAL STRIPES == 6 CROSSHATCH == 7 LEFT SLOPE

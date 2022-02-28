@@ -195,10 +195,10 @@ $$end
   uint1  do_rw       = 0;
 
 $$if sdram_150_mhz then
-$$ refresh_cycles      = 750
-$$ refresh_wait        = 6
-$$ cmd_active_delay    = 3
-$$ cmd_precharge_delay = 4
+$$ refresh_cycles      = 750 -- assume 150 MHz
+$$ refresh_wait        = 7
+$$ cmd_active_delay    = 2
+$$ cmd_precharge_delay = 3
 $$ print('SDRAM r16w16 configured for 150 MHz (default)')
 $$else
 $$ refresh_cycles      = 750 -- assume 100 MHz

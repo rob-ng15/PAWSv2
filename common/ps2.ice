@@ -253,7 +253,7 @@ algorithm ps2(
 
     valid := 0;                                     error := 0;                                         clk_edge := 0;
 
-    always {
+    always_after {
         // Filter the PS/2 clock
         clk_filter = { ps2clk_ext, clk_filter[1,3] };
         switch( clk_filter ) {

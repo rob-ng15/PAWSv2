@@ -14,11 +14,11 @@ algorithm audio_pwm(
 ) <autorun> {
 
   uint4  counter        = 0;
-  uint4  dac_low       := wave[4,4];   // tracks higher bits
-  uint4  dac_high      := dac_low + 1; // same plus on (we interpolate between dac_low and dac_high)
-  uint4  pwm_threshold := wave[0,4];   // threshold for pwm ratio, using lower bits
+  uint4  dac_low       <:: wave[4,4];   // tracks higher bits
+  uint4  dac_high      <:: dac_low + 1; // same plus on (we interpolate between dac_low and dac_high)
+  uint4  pwm_threshold <:: wave[0,4];   // threshold for pwm ratio, using lower bits
                                        //   threshold == 0 => always low, threshold == 15 almost always high
-  always {
+  always_after {
     if (counter < pwm_threshold) {
       audio = dac_high;
     } else {
