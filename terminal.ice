@@ -45,10 +45,12 @@ algorithm terminalcursor(
     output  uint7   PREV,
     output  uint10  ADDRESS
 ) <autorun> {
-    endofline := ( terminal_x == 79 );
-    NEXT := endofline ? 0 : terminal_x + 1;
-    PREV := terminal_x - 1;
-    ADDRESS := terminal_x + 560;
+    always_after {
+        endofline = ( terminal_x == 79 );
+        NEXT = endofline ? 0 : terminal_x + 1;
+        PREV = terminal_x - 1;
+        ADDRESS = terminal_x + 560;
+    }
 }
 
 algorithm terminal_writer(

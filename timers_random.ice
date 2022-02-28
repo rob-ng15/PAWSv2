@@ -51,7 +51,7 @@ algorithm random(
     output  uint16  g_noise_out,
     output  uint16  u_noise_out,
 ) <autorun> {
-    uint16  rand_out <: rand_ff;
+    uint16  rand_out <:: rand_ff;
     uint16  rand_ff = 24b011000110111011010011101;
     uint18  rand_en_ff = 24b001100010011011101100101;
     uint16  temp_u_noise3 <:: { rand_out[15,1], rand_out[15,1], rand_out[2,13] };

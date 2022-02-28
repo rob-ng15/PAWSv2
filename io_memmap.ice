@@ -567,6 +567,8 @@ algorithm sdcardcontroller(
     sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, buffer_in <:> buffer_in, buffer_out <:> buffer_out );
 
     // SDCARD Commands
-    sdcio.read_sector := readsector;                sdcio.write_sector := writesector;
-    sdcio.addr_sector := sectoraddress;             ready := sdcio.ready;
+    always_after {
+        sdcio.read_sector = readsector;                sdcio.write_sector = writesector;
+        sdcio.addr_sector = sectoraddress;             ready = sdcio.ready;
+    }
 }

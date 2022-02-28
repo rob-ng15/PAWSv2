@@ -53,8 +53,10 @@ algorithm   calcoffset(
     int6    offsetPLUS <:: { offset[4,1], offset } + adjust;
     int6    offsetMINUS <:: { offset[4,1], offset } - adjust;
 
-    MIN := ( offsetMINUS < -15 );                   PREV := offsetMINUS + ( MIN ? 16 : 0 );
-    MAX := ( offsetPLUS > 15 );                     NEXT:= offsetPLUS - ( MAX ? 16 : 0 );
+    always_after {
+        MIN = ( offsetMINUS < -15 );                   PREV = offsetMINUS + ( MIN ? 16 : 0 );
+        MAX = ( offsetPLUS > 15 );                     NEXT= offsetPLUS - ( MAX ? 16 : 0 );
+    }
 }
 
 algorithm tile_map_writer(
