@@ -2,11 +2,11 @@
 // diamond 3.8-3.9 is untested
 // diamond 3.10 or higher is likely to abort with error about unable to use feedback signal
 // cause of this could be from wrong CPHASE/FPHASE parameters
-module ulx3s_clk_risc_ice_v_SYSTEM
+module ulx3s_clk_PAWS_SYSTEM
 (
     input clkin,                // 25 MHz, 0 deg
     output  clkSYSTEM,          // 50 MHz, 0 deg        // SYSTEM CLOCK, memory
-    output  clkIO,              // 50 MHz, 0 deg        // SYSTEM CLOCK, I/O
+    output  clkIO,              // 50 MHz, 0 deg        // SYSTEM CLOCK - I/O
     output  clkSDRAM,           // 150 MHz, 0 deg       // SDRAM
     output  clkSDRAMcontrol,    // 150 MHz, 180 deg     // SDRAM controller
     output  locked

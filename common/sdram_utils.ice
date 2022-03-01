@@ -16,7 +16,7 @@ algorithm sdram_half_speed_access(
   uint1 half_clock(0);
   uint2 done(0);
 
-  uint32 cycle(0);
+//  uint32 cycle(0);
 
   sdh.done     := 0; // pulses high when ready
   sd .in_valid := 0; // pulses high when ready
@@ -46,7 +46,7 @@ algorithm sdram_half_speed_access(
     // half clock
     half_clock    = ~ half_clock;
 
-    cycle = cycle  + 1;
+//    cycle = cycle  + 1;
   } // always
 
 }
@@ -61,14 +61,14 @@ algorithm sdram_third_speed_access(
   uint2 third_clock(0);
   uint3 done(0);
 
-  uint32 cycle(0);
+//  uint32 cycle(0);
 
   sdh.done     := 0; // pulses high when ready
   sd .in_valid := 0; // pulses high when ready
 
   always {
     // buffer requests
-    if (third_clock == 2b10) { // read only on slow clock
+    if (~|third_clock) { // read only on slow clock
       if (sdh.in_valid == 1) {
         // relay request
         sd.addr       = sdh.addr;
@@ -87,11 +87,11 @@ algorithm sdram_third_speed_access(
       sdh.data_out = sd.rw ? sdh.data_out : sd.data_out; // update data_out on a read
     }
     // three-cycle out done
-    sdh.done      = done[0,1];
-    // half clock
-    third_clock    = ( third_clock == 2b10 ) ? 0 : third_clock + 1;
+    sdh.done      = done[0,2];
+    // third clock
+    third_clock    = ( third_clock[1,1] ) ? 0 : third_clock + 1;
 
-    cycle = cycle  + 1;
+//    cycle = cycle  + 1;
   } // always
 
 }

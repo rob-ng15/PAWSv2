@@ -86,7 +86,7 @@ $$end
     uint1   clock_io = uninitialized;
     uint1   clock_cpu = uninitialized;
     uint1   clock_decode = uninitialized;
-    uint1   gpu_clock = uninitialized;
+    uint1   clock_gpu = uninitialized;
 $$if VERILATOR then
     $$clock_25mhz = 'video_clock'
     // --- PLL
@@ -98,9 +98,9 @@ $$if VERILATOR then
       compute_clock :> clock_cpu,
       compute_clock :> clock_io,
 $$if gpu_50_mhz then
-      compute_clock :> gpu_clock,
+      compute_clock :> clock_gpu,
 $$else
-      video_clock :> gpu_clock,
+      video_clock :> clock_gpu,
 $$end
     );
 $$else
@@ -109,7 +109,7 @@ $$else
     // CPU + MEMORY
     uint1   sdram_clock = uninitialized;
     uint1   pll_lock_SYSTEM = uninitialized;
-    ulx3s_clk_risc_ice_v_SYSTEM clk_gen_SYSTEM (
+    ulx3s_clk_PAWS_SYSTEM clk_gen_SYSTEM (
         clkin    <: $clock_25mhz$,
         clkSYSTEM  :> clock_system,
         clkIO :> clock_io,
@@ -118,11 +118,11 @@ $$else
         locked   :> pll_lock_SYSTEM
     );
     uint1   pll_lock_CPU = uninitialized;
-    ulx3s_clk_risc_ice_v_CPU clk_gen_CPU (
+    ulx3s_clk_PAWS_CPU clk_gen_CPU (
         clkin    <: $clock_25mhz$,
-        clkCPU  :> clock_cpu,
-        clkDECODE  :> clock_decode,
-        clkGPU :> gpu_clock,
+        clkCPU :> clock_cpu,
+        clkDECODE :> clock_decode,
+        clkGPU :> clock_gpu,
         locked   :> pll_lock_CPU
     );
 $$end
@@ -220,7 +220,7 @@ $$end
 
     video_memmap VIDEO_Map <@clock_io,!reset> (
         video_clock <: $clock_25mhz$,
-        gpu_clock <: gpu_clock,
+        gpu_clock <: clock_gpu,
         memoryAddress <: CPU.address[0,12],
         writeData <: CPU.writedata,
 $$if HDMI then
@@ -300,16 +300,10 @@ algorithm bramcontroller(
 ) <autorun,reginputs> {
 $$if not SIMULATION then
     // RISC-V FAST BRAM and BIOS
-    bram uint16 ram[16384] = {
-        $include('ROM/BIOS.inc')
-        , pad(uninitialized)
-    };
+    bram uint16 ram[16384] = {file("ROM/BIOS.bin"), pad(uninitialized)};
 $$else
     // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
-    bram uint16 ram[16384] = {
-        $include('ROM/VBIOS.inc')
-        , pad(uninitialized)
-    };
+    bram uint16 ram[16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
 $$end
 
     uint1   update = uninitialized;

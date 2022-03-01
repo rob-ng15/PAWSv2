@@ -2,13 +2,13 @@
 // diamond 3.8-3.9 is untested
 // diamond 3.10 or higher is likely to abort with error about unable to use feedback signal
 // cause of this could be from wrong CPHASE/FPHASE parameters
-module ulx3s_clk_risc_ice_v_CPU
+module ulx3s_clk_PAWS_SYSTEM
 (
     input clkin,                // 25 MHz, 0 deg
-    output  clkCPU,             // 50 MHz, 0 deg        // SYSTEM CLOCK cpu
-    output  clkDECODE,          // 100 MHz, 0 deg       // CPU decoder and compressed instruction expander
-    output  clkIO25,            // 25 MHz, 0 deg        // VIDO CLOCK (if used)
-    output  clkGPU,             // 50 MHz, 0 deg        // GPU CLOCK (if used)
+    output  clkSYSTEM,          // 50 MHz, 0 deg        // SYSTEM CLOCK - Memory
+    output  clkIO,              // 50 MHz, 0 deg        // SYSTEM CLOCK - I/O
+    output  clkSDRAM,           // 100 MHz, 0 deg       // SDRAM
+    output  clkSDRAMcontrol,    // 100 MHz, 180 deg     // SDRAM controller
     output  locked
 );
 (* FREQUENCY_PIN_CLKI="25" *)
@@ -33,27 +33,28 @@ EHXPLLL #(
         .CLKOP_FPHASE(0),
         .CLKOS_ENABLE("ENABLED"),
         .CLKOS_DIV(6),
-        .CLKOS_CPHASE(5),
+        .CLKOS_CPHASE(8),
         .CLKOS_FPHASE(0),
         .CLKOS2_ENABLE("ENABLED"),
-        .CLKOS2_DIV(24),
+        .CLKOS2_DIV(6),
         .CLKOS2_CPHASE(5),
         .CLKOS2_FPHASE(0),
         .CLKOS3_ENABLE("ENABLED"),
         .CLKOS3_DIV(12),
         .CLKOS3_CPHASE(5),
         .CLKOS3_FPHASE(0),
-         .FEEDBK_PATH("CLKOP"),
+
+        .FEEDBK_PATH("CLKOP"),
         .CLKFB_DIV(2)
     ) pll_i (
         .RST(1'b0),
         .STDBY(1'b0),
         .CLKI(clkin),
-        .CLKOP(clkCPU),
-        .CLKOS(clkDECODE),
-        .CLKOS2(clkIO25),
-        .CLKOS3(clkGPU),
-        .CLKFB(clkCPU),
+        .CLKOP(clkSYSTEM),
+        .CLKOS(clkSDRAMcontrol),
+        .CLKOS2(clkSDRAM),
+        .CLKOS3(clkIO),
+        .CLKFB(clkSYSTEM),
         .CLKINTFB(),
         .PHASESEL0(1'b0),
         .PHASESEL1(1'b0),
