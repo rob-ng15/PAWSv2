@@ -42,7 +42,7 @@ algorithm memoryaccess(
     always_after {
         memoryload = ( ~|opCode ) | FLOAD | ( AMO & ( function7 != 5b00011 ) );
         memorystore = ( opCode == 5b01000 ) | FSTORE | ( AMO & ( function7 != 5b00010 ) );
-        accesssize = DMAACTIVE ? 2b00 : ~cacheselect ? 2b01: AMO | FLOAD | FSTORE ? 2b10 : function3[0,2];
+        accesssize = DMAACTIVE ? 2b00 : cacheselect ? AMO | FLOAD | FSTORE ? 2b10 : function3[0,2] : 2b01;
     }
 }
 
@@ -214,40 +214,6 @@ algorithm registers(
         registers.addr1 = { SMT, rd }; registers.wdata1 = result;
         registers.wenable1 = write;
     }
-}
-
-// RISC-V REGISTERS - INTEGERS
-algorithm registersI(
-    input   uint1   SMT,
-    input   uint5   rs1,
-    input   uint5   rs2,
-    input   uint5   rd,
-    input   uint1   write,
-    input   int32   result,
-    output  int32   sourceReg1,
-    output  int32   sourceReg2
-) <autorun> {
-    // RISC-V REGISTERS
-    registers RS1( SMT <: SMT, rs <: rs1, rd <: rd, write <: write, result <: result, contents :> sourceReg1 );
-    registers RS2( SMT <: SMT, rs <: rs2, rd <: rd, write <: write, result <: result, contents :> sourceReg2 );
-}
-// RISC-V REGISTERS - FLOATING POINT
-algorithm registersF(
-    input   uint1   SMT,
-    input   uint5   rs1,
-    input   uint5   rs2,
-    input   uint5   rs3,
-    input   uint5   rd,
-    input   uint1   write,
-    input   int32   result,
-    output  int32   sourceReg1,
-    output  int32   sourceReg2,
-    output  int32   sourceReg3
-) <autorun> {
-    // RISC-V REGISTERS
-    registers RS1F( SMT <: SMT, rs <: rs1, rd <: rd, write <: write, result <: result, contents :> sourceReg1 );
-    registers RS2F( SMT <: SMT, rs <: rs2, rd <: rd, write <: write, result <: result, contents :> sourceReg2 );
-    registers RS3F( SMT <: SMT, rs <: rs3, rd <: rd, write <: write, result <: result, contents :> sourceReg3 );
 }
 
 // COMPARISONS

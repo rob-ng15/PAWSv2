@@ -40,27 +40,15 @@ algorithm PAWSCPU(
     memoryaccess MEMACCESS <@clock_CPUdecoder> ( cacheselect <: cacheselect, DMAACTIVE <: DMAACTIVE, opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
 
     // RISC-V REGISTERS
-    uint1   frd <:: IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd;
-    uint1   REGISTERSwrite <:: COMMIT & IFASTSLOW.writeRegister & ~frd & ( |RV32DECODER.rd );
-    registersI REGISTERS <@clock_CPUdecoder> (
-        SMT <:: SMT,
-        rs1 <: RV32DECODER.rs1,
-        rs2 <: RV32DECODER.rs2,
-        result <: result,
-        rd <: RV32DECODER.rd,
-        write <: REGISTERSwrite
-    );
-    // RISC-V FLOATING POINT REGISTERS
-    uint1   REGISTERSFwrite <:: COMMIT & IFASTSLOW.writeRegister & frd;
-    registersF REGISTERSF <@clock_CPUdecoder> (
+    riscvregisters REGISTERS <@clock_CPUdecoder> (
         SMT <:: SMT,
         rs1 <: RV32DECODER.rs1,
         rs2 <: RV32DECODER.rs2,
         rs3 <: RV32DECODER.rs3,
-        result <: result,
         rd <: RV32DECODER.rd,
-        write <: REGISTERSFwrite
+        result <: result
     );
+
     // NEGATIVE OF REGISTERS FOR ABS AND ADD/SUB
     int32   negRS1 <:: -REGISTERS.sourceReg1;                 int32   negRS2 <:: -REGISTERS.sourceReg2;
     // EXTRACT ABSOLUTE VALUE FOR MULTIPLICATION AND DIVISION
@@ -112,9 +100,9 @@ algorithm PAWSCPU(
         sourceReg2 <: REGISTERS.sourceReg2,
         abssourceReg1 <: ARS1.value,
         abssourceReg2 <: ARS2.value,
-        sourceReg1F <: REGISTERSF.sourceReg1,
-        sourceReg2F <: REGISTERSF.sourceReg2,
-        sourceReg3F <: REGISTERSF.sourceReg3,
+        sourceReg1F <: REGISTERS.sourceReg1F,
+        sourceReg2F <: REGISTERS.sourceReg2F,
+        sourceReg3F <: REGISTERS.sourceReg3F,
         memoryinput <: memoryinput,
         incCSRinstret <: COMMIT
     );
@@ -130,7 +118,7 @@ algorithm PAWSCPU(
         sourceReg1 <: REGISTERS.sourceReg1,
         sourceReg2 <: REGISTERS.sourceReg2,
         negSourceReg2 <: negRS2,
-        sourceReg2F <: REGISTERSF.sourceReg2,
+        sourceReg2F <: REGISTERS.sourceReg2F,
         immediateValue <: RV32DECODER.immediateValue,
         memoryinput <: memoryinput,
         AUIPCLUI <: AGU.AUIPCLUI,
@@ -155,7 +143,9 @@ algorithm PAWSCPU(
     dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE );
     DMA.start :=0; DMA.update := 0;
 
-    readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
+    REGISTERS.frd := IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd; REGISTERS.write := COMMIT & IFASTSLOW.writeRegister; COMMIT := 0;
+
+    readmemory := 0; writememory := 0; EXECUTESLOW.start := 0;
 
     if( ~reset ) {
         DMAACTIVE = 0;                                                                                                                              // ON RESET CANCEL DMA
@@ -410,7 +400,7 @@ algorithm dma(
 
     uint1   dmadestblue <:: ( dmadest == 27hd676 );
 
-    while(1) {
+    always_after {
         if( start ) {
             dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT;
         } else {
@@ -426,4 +416,30 @@ algorithm dma(
             }
         }
     }
+}
+
+// RISC-V CPU REGISTERS
+algorithm riscvregisters(
+    input   uint1   SMT,
+    input   uint5   rs1,
+    input   uint5   rs2,
+    input   uint5   rs3,
+    input   uint5   rd,
+    input   uint1   frd,
+    input   uint1   write,
+    input   int32   result,
+    output  int32   sourceReg1,
+    output  int32   sourceReg2,
+    output  int32   sourceReg1F,
+    output  int32   sourceReg2F,
+    output  int32   sourceReg3F
+) <autorun,reginputs> {
+    // RISC-V REGISTERS
+    registers RS1( SMT <: SMT, rs <: rs1, rd <: rd, write <: Iwrite, result <: result, contents :> sourceReg1 );
+    registers RS2( SMT <: SMT, rs <: rs2, rd <: rd, write <: Iwrite, result <: result, contents :> sourceReg2 );
+    registers RS1F( SMT <: SMT, rs <: rs1, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg1F );
+    registers RS2F( SMT <: SMT, rs <: rs2, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg2F );
+    registers RS3F( SMT <: SMT, rs <: rs3, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg3F );
+
+    uint1   Iwrite <:: write & ~frd & |rd;          uint1   Fwrite <:: write & frd;
 }

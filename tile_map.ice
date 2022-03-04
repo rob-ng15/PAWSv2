@@ -58,7 +58,32 @@ algorithm   calcoffset(
         MAX = ( offsetPLUS > 15 );                     NEXT= offsetPLUS - ( MAX ? 16 : 0 );
     }
 }
-
+algorithm tmxaddresses(
+    input   uint6   x_cursor,
+    input   uint1   tm_dodir,
+    output  uint6   xNEXT,
+    output  uint6   xPREV,
+    output  uint11  xSAVED
+) <autorun> {
+    always_after {
+        xNEXT = x_cursor + 1;
+        xPREV = x_cursor - 1;
+        xSAVED = x_cursor + ( tm_dodir ? 1302 : 0 );
+    }
+}
+algorithm tmyaddresses(
+    input   uint11  y_cursor_addr,
+    input   uint1   tm_dodir,
+    output  uint11  yNEXT,
+    output  uint11  yPREV,
+    output  uint11  ySAVED
+) <autorun> {
+    always_after {
+        yNEXT = y_cursor_addr + 42;
+        yPREV = y_cursor_addr - 42;
+        ySAVED = y_cursor_addr + ( tm_dodir ? 41 : 0 );
+    }
+}
 algorithm tile_map_writer(
     simple_dualport_bram_port1 tiles,
 
@@ -89,13 +114,12 @@ algorithm tile_map_writer(
     uint1   tm_dodir = uninitialized;
 
     // CURSORS AND ADDRESSES FOR SCROLLING WRAPPING
-    uint6   x_cursor = uninitialized;               uint6   xNEXT <:: x_cursor + 1;                         uint6   xPREV <:: x_cursor - 1;
-                                                    uint11  xSAVED <:: x_cursor + ( tm_dodir ? 1302 : 0 );
-    uint11  y_cursor_addr = uninitialized;          uint11  yNEXT <:: y_cursor_addr + 42;                   uint11  yPREV <:: y_cursor_addr - 42;
-                                                    uint11  ySAVED <:: y_cursor_addr + ( tm_dodir ? 41 : 0 );
+    uint6   x_cursor = uninitialized;               tmxaddresses TMX( x_cursor <: x_cursor, tm_dodir <: tm_dodir );
+    uint11  y_cursor_addr = uninitialized;          tmyaddresses TMY( y_cursor_addr <: y_cursor_addr, tm_dodir <: tm_dodir );
+
     uint11  temp_1 = uninitialized;
-    uint11  temp_2 <:: x_cursor + y_cursor_addr;    uint11  temp_2NEXT1 <:: temp_2 + 1;                     uint11  temp_2PREV1 <:: temp_2 - 1;
-                                                    uint11  temp_2NEXT42 <:: temp_2 + 42;                   uint11  temp_2PREV42 <:: temp_2 - 42;
+    uint11  temp_2 <:: x_cursor + y_cursor_addr;    uint11  temp_2NEXT1 <:: temp_2 + ( tm_dodir ? 1 : (-1) );
+                                                    uint11  temp_2NEXT42 <:: temp_2 + ( tm_dodir ? 42 : (-42) );
     uint11  write_address <:: tm_x + tm_y * 42;
 
     // STORAGE FOR SAVED CHARACTER WHEN WRAPPING
@@ -146,21 +170,21 @@ algorithm tile_map_writer(
                         while( tm_active[0,1] ? tm_dodir ? ( x_cursor != 42 ) : ( |x_cursor ) :                                         // START AT THE LEFT/RIGHT OF THE LINE
                                                 tm_dodir ? ( y_cursor_addr != 1302 ) : ( |y_cursor_addr ) ) {                           // START AT TOP/BOTTOM OF THE SCREEN
                             onehot( tm_active ) {
-                                case 0: { temp_1 = tm_dodir ? temp_2NEXT1 : temp_2PREV1; }                                              // SAVE THE ADJACENT CHARACTER IN LINE
-                                default: { temp_1 = tm_dodir ? temp_2NEXT42 : temp_2PREV42; }                                           // SAVE THE ADJACENT CHARACTER IN COLUMN
+                                case 0: { temp_1 = temp_2NEXT1; }                                                                       // SAVE THE ADJACENT CHARACTER IN LINE
+                                default: { temp_1 = temp_2NEXT42; }                                                                     // SAVE THE ADJACENT CHARACTER IN COLUMN
                             }
                             tiles_copy.addr0 = temp_1;
                             ++:
                             tiles.addr1 = temp_2; tiles_copy.addr1 = temp_2;                                                            // COPY INTO NEW LOCATION
                             tiles.wdata1 = tiles_copy.rdata0; tiles_copy.wdata1 = tiles_copy.rdata0;
                             onehot( tm_active ) {
-                                case 0: { x_cursor = tm_dodir ? xNEXT : xPREV;}                                                         // MOVE TO NEXT CHARACTER ON THE LINE
-                                default: { y_cursor_addr = tm_dodir ? yNEXT : yPREV; }                                                  // MOVE TO THE NEXT CHARACTER IN THE COLUMN
+                                case 0: { x_cursor = tm_dodir ? TMX.xNEXT : TMX.xPREV;}                                                 // MOVE TO NEXT CHARACTER ON THE LINE
+                                default: { y_cursor_addr = tm_dodir ? TMY.yNEXT : TMY.yPREV; }                                          // MOVE TO THE NEXT CHARACTER IN THE COLUMN
                             }
                         }
                         onehot( tm_active ) {
-                            case 0: { tiles.addr1 = ySAVED; tiles_copy.addr1 = ySAVED; y_cursor_addr = yNEXT; }                         // SET SAVED ADDRESS, MOVE TO NEXT LINE
-                            default: { tiles.addr1 = xSAVED; tiles_copy.addr1 = xSAVED;  x_cursor = xNEXT; }                            // SET SAVED ADDRESS, MOVE TO NEXT COLUMN
+                            case 0: { tiles.addr1 = TMY.ySAVED; tiles_copy.addr1 = TMY.ySAVED; y_cursor_addr = TMY.yNEXT; }             // SET SAVED ADDRESS, MOVE TO NEXT LINE
+                            default: { tiles.addr1 = TMX.xSAVED; tiles_copy.addr1 = TMX.xSAVED;  x_cursor = TMX.xNEXT; }                // SET SAVED ADDRESS, MOVE TO NEXT COLUMN
                         }
                         tiles.wdata1 = new_tile; tiles_copy.wdata1 = new_tile;                                                          // WRITE BLANK OR WRAPPED CHARACTER
                     }
