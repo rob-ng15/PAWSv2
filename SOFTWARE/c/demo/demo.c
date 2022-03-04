@@ -824,7 +824,7 @@ char *dithernames[] = {
 
 void displayreset( void ) {
     // RESET THE DISPLAY
-    screen_mode( 0, 0 );
+    screen_mode( 0, 0, 0 );
     gpu_cs();
     tpu_cs();
     tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
@@ -851,7 +851,7 @@ void colourtable( void ) {
 
     // CYCLE THROUGH COLOUR MODES
     for( short i = 0; i < 4; i++ ) {
-        screen_mode( 0, i );
+        screen_mode( 0, i, 0 );
         sleep1khz( 2000, 0 );
     }
 }
@@ -914,6 +914,7 @@ void tilemapdemo( void ) {
     unsigned char x, y, count, colour, actionflag;
     (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
     (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+    screen_mode( 0, 0, TM_UPPER_DOUBLE );
 
     for( unsigned char tile_number = 0; tile_number < 10; tile_number++ ) {
         set_tilemap_bitmap( LOWER_LAYER, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );

@@ -317,9 +317,10 @@ void await_vblank( void ) {
 }
 
 // SET THE LAYER ORDER FOR THE DISPLAY
-void screen_mode( unsigned char screenmode, unsigned char colour ) {
+void screen_mode( unsigned char screenmode, unsigned char colour, unsigned char tmresolution ) {
     *SCREENMODE = screenmode;
     *COLOUR = colour;
+    *REZ = tmresolution;
 }
 
 // SET THE FRAMEBUFFER TO DISPLAY / DRAW

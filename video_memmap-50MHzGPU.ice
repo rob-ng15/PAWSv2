@@ -66,6 +66,10 @@ $$if HDMI then
     );
 $$end
     // CREATE DISPLAY LAYERS
+
+    // FLAG FOR hi (640x480) or lo (320x240) SWITCH FOR TILEMAPS
+    uint2   hilorez = 0;
+
     // BACKGROUND
     background_memmap BACKGROUND(
         video_clock <: video_clock,
@@ -155,6 +159,7 @@ $$end
     tilemap_memmap LOWER_TILE(
         video_clock <: video_clock,
         video_reset <: video_reset,
+        lorez <: hilorez[0,1],
         pix_x      <: pix_x,
         pix_y      <: pix_y,
         pix_active <: pix_active,
@@ -165,6 +170,7 @@ $$end
     tilemap_memmap UPPER_TILE(
         video_clock <: video_clock,
         video_reset <: video_reset,
+        lorez <: hilorez[1,1],
         pix_x      <: pix_x,
         pix_y      <: pix_y,
         pix_active <: pix_active,
@@ -271,10 +277,10 @@ $$end
                 case 4h8: { LOWER_SPRITE.memoryWrite = 1; LOWER_SPRITE.bitmapwriter = 1; }
                 case 4h9: { UPPER_SPRITE.memoryWrite = 1; UPPER_SPRITE.bitmapwriter = 1; }
                 case 4hf: {
-                    if( memoryAddress[0,1] ) {
-                        display.colour = writeData;
-                    } else {
-                        display.display_order = writeData;
+                    switch( memoryAddress[0,2] ) {
+                        case 0: { display.display_order = writeData; }
+                        case 1: { display.colour = writeData; }
+                        default: { hilorez = writeData;}
                     }
                 }
                 default: {}

@@ -275,14 +275,35 @@ algorithm istodraw(
         draw = ~|{ ( max_x < crop_left ), ( max_y < crop_top ), ( min_x > crop_right ), ( min_y > crop_bottom ) };
     }
 }
-// RECTANGLE - OUTPUT PIXELS TO DRAW A RECTANGLE
-algorithm preprectangle(
-    input   uint1   start,
-    output  uint1   busy(0),
+// HELPER - APPLY CROPPING RECTANGLE FOR RECTANGLES AND TRIANGLES
+algorithm applycrop(
     input   int11   crop_left,
     input   int11   crop_right,
     input   int11   crop_top,
     input   int11   crop_bottom,
+    input   int11   x1,
+    input   int11   y1,
+    input   int11   x2,
+    input   int11   y2,
+    output  int11   min_x,
+    output  int11   min_y,
+    output  int11   max_x,
+    output  int11   max_y
+) <autorun> {
+    always_after {
+        min_x = ( x1 < crop_left ) ? crop_left : x1;   max_x = ( ( x2 > crop_right ) ? crop_right : x2 );
+        min_y = ( y1 < crop_top ) ? crop_top : y1;     max_y = 1 + ( ( y2 > crop_bottom ) ? crop_bottom : y2 );
+    }
+}
+
+// RECTANGLE - OUTPUT PIXELS TO DRAW A RECTANGLE
+algorithm preprectangle(
+    input   uint1   start,
+    output  uint1   busy(0),
+    input   uint9   crop_left,
+    input   uint9   crop_right,
+    input   uint8   crop_top,
+    input   uint8   crop_bottom,
     input   int11   x,
     input   int11   y,
     input   int11   param0,
@@ -296,17 +317,19 @@ algorithm preprectangle(
     uint1   xcompareparam0 <:: ( x < param0 );          uint1   ycompareparam1 <:: ( y < param1 );
     int11   x1 <:: xcompareparam0 ? x : param0;         int11   y1 <:: ycompareparam1 ? y : param1;
     int11   x2 <:: xcompareparam0 ? param0 : x;         int11   y2 <:: ycompareparam1 ? param1 : y;
-    istodraw TODRAW( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
-                min_x <: min_x, min_y <: min_y, max_x <: max_x, max_y <: max_y );
 
-    min_x := ( x1 < crop_left ) ? crop_left : x1;   max_x := ( ( x2 > crop_right ) ? crop_right : x2 );
-    min_y := ( y1 < crop_top ) ? crop_top : y1;     max_y := 1 + ( ( y2 > crop_bottom ) ? crop_bottom : y2 );
+    applycrop CROP( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
+                    x1 <: x1, y1 <: y1, x2 <: x2, y2 <: y2, min_x :> min_x, min_y :> min_y, max_x :> max_x, max_y :> max_y );
+
+    istodraw TODRAW( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
+                min_x <: CROP.min_x, min_y <: CROP.min_y, max_x <: CROP.max_x, max_y <: CROP.max_y );
+
     todraw := 0;
 
     while(1) {
         if( start ) {
             busy = 1;
-            ++:
+            ++: ++:
             todraw = TODRAW.draw;
             busy = 0;
         }
@@ -543,9 +566,12 @@ algorithm drawcircle(
     uint4   arc = uninitialised;                        uint4   arcNEXT <:: arc + 1;
     arccoords ARC( xc <: xc, yc <: yc, active_x <: active_x, count <: count, arc <: arc );
 
-    bitmap_x_write := ARC.centrepixel ? xc : ARC.bitmap_x_write;
-    bitmap_y_write := ARC.centrepixel ? yc : ARC.bitmap_y_write;
     bitmap_write := 0;
+
+    always_after {
+        bitmap_x_write = ARC.centrepixel ? xc : ARC.bitmap_x_write;
+        bitmap_y_write = ARC.centrepixel ? yc : ARC.bitmap_y_write;
+    }
 
     while(1) {
         if( start ) {
@@ -678,29 +704,29 @@ algorithm preptriangle(
     min3 Xmin( n1 <: x1, n2 <: x2, n3 <: x3 );      min3 Ymin( n1 <: y1, n2 <: y2, n3 <: y3 );
     max3 Xmax( n1 <: x1, n2 <: x2, n3 <: x3 );      max3 Ymax( n1 <: y1, n2 <: y2, n3 <: y3 );
 
+    applycrop CROP( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
+                    x1 <: Xmin.min, y1 <: Ymin.min, x2 <: Xmax.max, y2 <: Ymax.max, min_x :> min_x, min_y :> min_y, max_x :> max_x, max_y :> max_y );
+
     istodraw TODRAW( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
-                min_x <: min_x, min_y <: min_y, max_x <: max_x, max_y <: max_y );
+                min_x <: CROP.min_x, min_y <: CROP.min_y, max_x <: CROP.max_x, max_y <: CROP.max_y );
+
     todraw := 0;
 
-    SWAP1.condition := ( param3 < param1 );                                                                                                     // ( y3 < y2 )
-    SWAP2.condition := ( SWAP1.ny1 < y );                                                                                                       // ( y2 < y1 )
-    SWAP3.condition := ( SWAP1.ny2 < SWAP2.ny1 );                                                                                               // ( y3 < y1 )
-    SWAP4.condition := ( SWAP3.ny2 < SWAP2.ny2 );                                                                                               // ( y3 < y2 )
-    SWAP5.condition := ( SWAP4.ny1 == SWAP3.ny1 ) & ( SWAP4.nx1 < SWAP3.nx1 ) ;                                                                 // ( y2 == y1 ) & ( x2 < x1 )
-    SWAP6.condition := ( ( SWAP5.ny2 != SWAP5.ny1 ) & ( SWAP4.ny2 >= SWAP5.ny2 ) & ( SWAP5.nx2 < SWAP4.nx2 ) );                                 // ( y2 != y1 ) & ( y3 >= y2 ) & ( x2 < x3 )
-
-    // Apply cropping rectangle
-    min_x := ( Xmin.min < crop_left ) ? crop_left : Xmin.min;
-    min_y := ( Ymin.min < crop_top ) ? crop_top : Ymin.min;
-    max_x := ( Xmax.max > crop_right ) ? crop_right : Xmax.max;
-    max_y := 1 + ( ( Ymax.max > crop_bottom ) ? crop_bottom : Ymax.max );
+    always_after {
+        SWAP1.condition = ( param3 < param1 );                                                                                                  // ( y3 < y2 )
+        SWAP2.condition = ( SWAP1.ny1 < y );                                                                                                    // ( y2 < y1 )
+        SWAP3.condition = ( SWAP1.ny2 < SWAP2.ny1 );                                                                                            // ( y3 < y1 )
+        SWAP4.condition = ( SWAP3.ny2 < SWAP2.ny2 );                                                                                            // ( y3 < y2 )
+        SWAP5.condition = ( SWAP4.ny1 == SWAP3.ny1 ) & ( SWAP4.nx1 < SWAP3.nx1 ) ;                                                              // ( y2 == y1 ) & ( x2 < x1 )
+        SWAP6.condition = ( ( SWAP5.ny2 != SWAP5.ny1 ) & ( SWAP4.ny2 >= SWAP5.ny2 ) & ( SWAP5.nx2 < SWAP4.nx2 ) );                              // ( y2 != y1 ) & ( y3 >= y2 ) & ( x2 < x3 )
+    }
 
     while(1) {
         if( start ) {
             busy = 1;
             // Setup drawing a filled triangle x,y param0, param1, param2, param3
             // Allow the cascade for the coordinates
-            ++: ++: ++: ++: ++: ++:
+            ++: ++: ++: ++: ++: ++: ++:
             todraw = TODRAW.draw;
             busy = 0;
         }
@@ -898,7 +924,11 @@ algorithm blit(
     cololurblittilexy CBTXY( px <: PXS.base, py <: PYS.base, action <: action );
 
     blit1tilemap.addr0 := { tile, BTXY.yinblittile }; characterGenerator8x8.addr0 := { tile, BTXY.yinchartile }; colourblittilemap.addr0 := { tile, CBTXY.yintile, CBTXY.xintile };
-    bitmap_x_write := x + PXS.scaled + x2; bitmap_y_write := y + PYS.scaled + y2; bitmap_colour_write := colourblittilemap.rdata0; bitmap_write := 0;
+    bitmap_colour_write := colourblittilemap.rdata0; bitmap_write := 0;
+
+    always_after {
+        bitmap_x_write = x + PXS.scaled + x2; bitmap_y_write = y + PYS.scaled + y2;
+    }
 
     while(1) {
         if( |start ) {

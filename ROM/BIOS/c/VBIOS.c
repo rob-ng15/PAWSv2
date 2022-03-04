@@ -217,8 +217,7 @@ void set_background( unsigned char colour, unsigned char altcolour, unsigned cha
 }
 
 // GPU AND BITMAP
-// The bitmap is 640 x 480 pixels (0,0) is ALWAYS top left even if the bitmap has been offset
-// The bitmap can be moved 1 pixel at a time LEFT, RIGHT, UP, DOWN for scrolling
+// The bitmap is 320 x 240 pixels (0,0) is top left
 // The GPU can draw pixels, filled rectangles, lines, (filled) circles, filled triangles and has a 16 x 16 pixel blitter from user definable tiles
 
 // INTERNAL FUNCTION - WAIT FOR THE GPU TO FINISH THE LAST COMMAND
@@ -227,13 +226,14 @@ void wait_gpu( void ) {
     while( *GPU_STATUS );
 }
 
-// SET THE PIXEL at (x,y) to colour
-void gpu_pixel( unsigned char colour, short x, short y ) {
-    *GPU_COLOUR = colour;
+// SET GPU TO RECEIVE A PIXEL BLOCK, SEND INDIVIDUAL PIXELS, STOP
+void gpu_pixelblock_start( short x, short y, unsigned short w ) {
+    wait_gpu();
     *GPU_X = x;
     *GPU_Y = y;
-    wait_gpu();
-    *GPU_WRITE = 1;
+    *GPU_PARAM0 = w;
+    *GPU_PARAM1 = TRANSPARENT;
+    *GPU_WRITE = 10;
 }
 
 // DRAW A FILLED RECTANGLE from (x1,y1) to (x2,y2) in colour
@@ -439,7 +439,7 @@ void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, uns
 
 void draw_paws_logo( void ) {
     set_blitter_bitmap( 3, &PAWSLOGO[0] );
-    gpu_blit( BLUE, 2, 2, 3, 2 );
+    gpu_blit( 60, 2, 2, 3, 2 );
 }
 
 void set_sdcard_bitmap( void ) {
@@ -450,8 +450,8 @@ void set_sdcard_bitmap( void ) {
 
 void draw_sdcard( void  ) {
     set_sdcard_bitmap();
-    gpu_blit( BLUE, 256, 2, 1, 2 );
-    gpu_blit( WHITE, 256, 2, 0, 2 );
+    gpu_blit( 60, 256, 2, 1, 2 );
+    gpu_blit( 6, 256, 2, 0, 2 );
 }
 
 void reset_display( void ) {
@@ -486,11 +486,11 @@ void smtmandel( void ) {
     float jx, jy, tx, ty, wx, wy, r;
     int k;
 
-    for( int x = 0; x < graphwidth; x++ ) {
-        jx = xmin + x * dx;
-        for( int y = 0; y < graphheight; y++ ) {
-            //tpu_printf_centre( 0, TRANSPARENT, WHITE, "( %3d, %3d )", x, y );
-            jy = ymin + y * dy;
+    gpu_pixelblock_start( 0, 122, 320 );
+    for( int y = 0; y < graphheight; y++ ) {
+        jy = ymin + y * dy;
+        for( int x = 0; x < graphwidth; x++ ) {
+            jx = xmin + x * dx;
             k = 0; wx = 0.0; wy = 0.0;
             do {
                 tx = wx * wx - wy * wy + jx;
@@ -501,9 +501,10 @@ void smtmandel( void ) {
                 k = k + 1;
             } while( ( r < m ) && ( k < kt ) );
 
-            gpu_pixel( ( k > kt ) ? BLACK : k + 1, x, y + 122 );
+            *PB_COLOUR = ( k > kt ) ? BLACK : k + 1;
         }
     }
+    *PB_STOP = 3;
 }
 
 void smtthread( void ) {
@@ -542,9 +543,9 @@ void main( void ) {
         set_tilemap_tile( 1, i, 29, i+1, 0 );
     }
 
-    gpu_outputstringcentre( GREEN, 72, "VERILATOR - SMT + FPU TEST", 0 );
-    gpu_outputstringcentre( GREEN, 80, "THREAD 0 - PACMAN SPRITES", 0 );
-    gpu_outputstringcentre( GREEN, 88, "THREAD 1 - FPU MANDELBROT", 0 );
+    gpu_outputstringcentre( 60, 72, "VERILATOR - SMT + FPU TEST", 0 );
+    gpu_outputstringcentre( 60, 80, "THREAD 0 - PACMAN SPRITES", 0 );
+    gpu_outputstringcentre( 60, 88, "THREAD 1 - FPU MANDELBROT", 0 );
 
     SMTSTART( (unsigned int )smtthread );
 

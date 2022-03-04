@@ -59,7 +59,7 @@ void I_InitGraphics (void) {
 
    screens[0] = (byte*)malloc (SCREENWIDTH * SCREENHEIGHT);
 #ifndef PAWSv2PALETTE
-   screen_mode( 0, MODE_RGB );
+   screen_mode( 0, MODE_RGB, 0 );
 #endif
    gpu_pixelblock_mode( TRUE );
    gpu_cs();

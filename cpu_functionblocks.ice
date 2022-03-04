@@ -556,4 +556,3 @@ algorithm CSRblock(
         }
     }
 }
-

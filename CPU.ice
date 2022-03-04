@@ -29,7 +29,7 @@ algorithm PAWSCPU(
     output  uint1   DMAACTIVE(0)
 ) <autorun,reginputs> {
     // COMMIT TO REGISTERS FLAG AND HART (0/1) SELECT
-    uint1   COMMIT = uninitialized;                 uint1   SMT = uninitialized;
+    uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
 
     // COMPRESSED INSTRUCTION EXPANDER
     uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
@@ -68,7 +68,7 @@ algorithm PAWSCPU(
 
 
     // RISC-V PROGRAM COUNTERS AND STATUS - SMT -> RUNNING ON HART 1 WITH DUPLICATE PROGRAM COUNTER AND REGISTER FILE
-    uint27  pc = uninitialized;         uint27  pc_next <:: SMT ? pc :  NEWPC.newPC;                                    // HART 0 pc + UPDATE
+    uint27  pc = 0;                     uint27  pc_next <:: SMT ? pc :  NEWPC.newPC;                                    // HART 0 pc + UPDATE
     uint27  pcSMT = uninitialized;      uint27  pcSMT_next <:: SMT ? NEWPC.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;     // HART 1 pc + update
     uint27  PC <:: SMT ? pcSMT : pc;                                                                                    // SELECT PC FOR THIS CYCLE
 
@@ -152,41 +152,20 @@ algorithm PAWSCPU(
     );
 
     // MINI DMA CONTROLLER
-    uint3   dmamode = uninitialized;
-    uint27  dmasrc = uninitialized;                 addrplus1 dmasrc1( address <: dmasrc );
-    uint27  dmadest = uninitialized;                addrplus1 dmadest1( address <: dmadest );            addrplus2 dmadest2( address <: dmadest );
-    uint27  dmacount = uninitialized;               addrsub1 dmacount1( address <: dmacount );
-    uint1   dmadestblue <:: ( dmadest == 27hd676 );
+    dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE );
+    DMA.start :=0; DMA.update := 0;
 
     readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
 
     if( ~reset ) {
-        SMT = 0; pc = 0; DMAACTIVE = 0;                                                                                                             // ON RESET SET PC AND SMT TO 0, CANCEL DMA
+        DMAACTIVE = 0;                                                                                                                              // ON RESET CANCEL DMA
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
     }
 
+    cacheselect = 0; address = PC; readmemory = 1;                                                                                                  // FETCH FIRST INSTRUCTION
+
     while(1) {
-        if( |DMAMODE ) {
-            // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE
-            DMAACTIVE = 1;
-            dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT;
-            while( |dmacount ) {
-                address = dmasrc; readmemory = 1; while( memorybusy ) {}                                                                            // DMA FETCH
-                address = dmadest; writedata = readdata[ { dmasrc[0,1], 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}                       // DMA STORE
-                switch( dmamode ) {
-                    default: {}                                                                                                                     // DMA INACTIVE + UNDEFINED
-                    case 1: { dmasrc = dmasrc1.addressplus1; }                                                                                      // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
-                    case 2: { dmasrc = dmasrc1.addressplus1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2.addressplus2; } }   // DMA SPECIAL PIXEL BLOCK RGB
-                    case 3: { dmasrc = dmasrc1.addressplus1; dmadest = dmadest1.addressplus1; }                                                     // DMA multi-src to multi-dest MEMCPY
-                    case 4: { dmadest = dmadest1.addressplus1; }                                                                                    // DMA single-src to multi-dest MEMSET + SDCARD WRITE
-                    // case 5: {}                                                                                                                   // DMA single-src to single-dest SET TILE/CBLITTER to single value
-                }
-                dmacount = dmacount - 1;
-            }
-            DMAACTIVE = 0;
-        }
-        cacheselect = 0;
-        address = PC; readmemory = 1; while( memorybusy ) {}                                                                                        // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
+        while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
         compressed = ( ~&readdata[0,2] );
         if( compressed ) {
             switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
@@ -212,7 +191,11 @@ algorithm PAWSCPU(
             }
         }
 
-        if( ~IFASTSLOW.FASTPATH ) { EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                                           // FPU ALU AND CSR OPERATIONS, FASTPATH HANDLED AUTOMATICALLY
+        if( ~IFASTSLOW.FASTPATH ) {
+            EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                                     // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
+        } else {
+            COMMIT = 0;                                                                                                                             // INTEGER ALU, LOAD, STORE, BRANCH, JUMP, ETC
+        }
         COMMIT = 1;                                                                                                                                 // COMMIT REGISTERS
 
         if( MEMACCESS.memorystore ) {
@@ -223,6 +206,19 @@ algorithm PAWSCPU(
         }
 
         pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                                                  // UPDATE PC AND SMT
+
+        if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
+            // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE
+            DMAACTIVE = 1; DMA.start = 1;
+            while( |DMA.dmacount ) {
+                address = DMA.dmasrc; readmemory = 1; while( memorybusy ) {}                                                                        // DMA FETCH
+                address = DMA.dmadest; writedata = readdata[ { DMA.dmasrc[0,1], 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}               // DMA STORE
+                DMA.update = 1;
+            }
+            DMAACTIVE = 0;
+        }
+
+        cacheselect = 0; address = PC; readmemory = 1;                                                                                              // START FETCH OF NEXT INSTRUCTION
     } // RISC-V
 }
 
@@ -391,5 +387,43 @@ algorithm cpuexecuteFASTPATH(
                             isJAL ? nextPC :                         // JAL[R]
                             isLOAD ? memoryinput :                   // [FLOAT]LOAD
                             isALUMM ? ALUMM.result : ALU.result;     // INTEGER ALU AND MULTIPLICATION
+    }
+}
+
+// MINI DMA CONTROLLER ADDRESS GENERATOR
+algorithm dma(
+    input   uint27  DMASOURCE,
+    input   uint27  DMADEST,
+    input   uint27  DMACOUNT,
+    input   uint3   DMAMODE,
+
+    output  uint27  dmasrc,
+    output  uint27  dmadest,
+    output  uint27  dmacount,
+
+    input   uint1   start,
+    input   uint1   update
+) <autorun,reginputs> {
+    uint3   dmamode = uninitialized;
+    uint27  dmasrc1 <:: dmasrc + 1;                 uint27  dmadest1 <:: dmadest + 1;                   uint27  dmadest2 <:: dmadest + 2;
+    uint27  dmacount1 <:: dmacount - 1;
+
+    uint1   dmadestblue <:: ( dmadest == 27hd676 );
+
+    while(1) {
+        if( start ) {
+            dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT;
+        } else {
+            if( update ) {
+                switch( dmamode ) {
+                    default: {}                                                                                             // DMA single-src to single-dest SET TILE/CBLITTER to single value
+                    case 1: { dmasrc = dmasrc1; }                                                                           // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
+                    case 2: { dmasrc = dmasrc1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }     // DMA SPECIAL PIXEL BLOCK RGB
+                    case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                       // DMA multi-src to multi-dest MEMCPY
+                    case 4: { dmadest = dmadest1; }                                                                         // DMA single-src to multi-dest MEMSET + SDCARD WRITE
+                }
+                dmacount = dmacount1;
+            }
+        }
     }
 }

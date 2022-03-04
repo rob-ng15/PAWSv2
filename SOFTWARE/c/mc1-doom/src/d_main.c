@@ -1119,7 +1119,7 @@ void D_DoomMain (void)
     // RESET TERMINAL AND SET DEFAULT PALETTE
     autorefresh( FALSE ); curs_set( FALSE ); sleep1khz( 4000, 0 ); tpu_cs(); gpu_cs();
 #ifndef PAWSv2PALETTE
-    screen_mode( 0, MODE_RGB );
+    screen_mode( 0, MODE_RGB, 0 );
 #endif
     I_SetPalette (W_CacheLumpName ("PLAYPAL",PU_CACHE));
 

@@ -225,7 +225,7 @@ void setup_game() {
     }
 
     // DROP THE BITMAP TO JUST ABOVE THE BACKGROUND AND PAWSv2 COLOUR PALETTE
-    screen_mode( 2, MODE_COLOUR );
+    screen_mode( 2, MODE_COLOUR, 0 );
 
     // CLEAR and SET THE BACKGROUND
     gpu_cs();
