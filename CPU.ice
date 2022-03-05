@@ -211,6 +211,8 @@ algorithm PAWSCPU(
                 DMA.update = 1;
             }
             DMAACTIVE = 0;
+        } else {
+            DMAACTIVE = 0;
         }
 
         cacheselect = 0; address = PC; readmemory = 1;                                                                                              // START FETCH OF NEXT INSTRUCTION
