@@ -81,11 +81,9 @@ algorithm PAWSCPU(
     uint16  storeLOW <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[0,16] : EXECUTESLOW.memoryoutput[0,16];
     uint16  storeHIGH <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[16,16] : EXECUTESLOW.memoryoutput[16,16];
 
-    // CLASSIFY THE INSTRUCTION TO FAST/SLOW
-    uint1   isALUM <:: RV32DECODER.opCode[3,1] & ( RV32DECODER.function7 == 7b0000001 );
-    uint1   isALUCLM <:: RV32DECODER.opCode[3,1] & ~RV32DECODER.function3[2,1] & ( RV32DECODER.function7 == 7b0000101 );
-
-    Iclass IFASTSLOW <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, isALUM <: isALUM, isALUCLM <: isALUCLM );
+    // CLASSIFY THE INSTRUCTION AND SPLIT INTO FAST/SLOW FAST/SLOW
+    whatis IS <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, function7 <: RV32DECODER.function7 );
+    Iclass IFASTSLOW <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, isALUM <: IS.ALUM, isALUCLM <: IS.ALUCLM );
 
     // EXECUTE MULTICYCLE INSTRUCTIONS, INTEGER DIVIDE, FPU, CSR AND ALU-A
     cpuexecuteSLOWPATH EXECUTESLOW(
@@ -104,7 +102,12 @@ algorithm PAWSCPU(
         sourceReg2F <: REGISTERS.sourceReg2F,
         sourceReg3F <: REGISTERS.sourceReg3F,
         memoryinput <: memoryinput,
-        incCSRinstret <: COMMIT
+        incCSRinstret <: COMMIT,
+        isALUM <: IS.ALUM,
+        isALUCLM <: IS.ALUCLM,
+        isCSR <: IS.CSR,
+        isATOMIC <: IS.ATOMIC,
+        isFPU <: IS.FPU
     );
 
     // EXECUTE SINGLE CYLE INSTRUCTIONS, MOST OF BASE PLUS INTEGER MULTIPLICATION
@@ -123,8 +126,11 @@ algorithm PAWSCPU(
         memoryinput <: memoryinput,
         AUIPCLUI <: AGU.AUIPCLUI,
         nextPC <: NEWPC.nextPC,
-        isALUMM <: isALUM,
-        isLOAD <: MEMACCESS.memoryload
+        isALUMM <: IS.ALUM,
+        isLOAD <: MEMACCESS.memoryload,
+        isBRANCH <: IS.BRANCH,
+        isAUIPCLUI <: IS.AUIPCLUI,
+        isJAL <: IS.JAL
     );
 
     // SELECT NEXT PC
@@ -141,10 +147,9 @@ algorithm PAWSCPU(
 
     // MINI DMA CONTROLLER
     dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE );
+
     DMA.start :=0; DMA.update := 0;
-
     REGISTERS.frd := IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd; REGISTERS.write := COMMIT & IFASTSLOW.writeRegister; COMMIT := 0;
-
     readmemory := 0; writememory := 0; EXECUTESLOW.start := 0;
 
     if( ~reset ) {
@@ -233,7 +238,12 @@ algorithm cpuexecuteSLOWPATH(
     output  uint1   frd,
     output  int32   memoryoutput,
     output  int32   result,
-    input   uint1   incCSRinstret
+    input   uint1   incCSRinstret,
+    input   uint1   isCSR,
+    input   uint1   isATOMIC,
+    input   uint1   isFPU,
+    input   uint1   isALUM,
+    input   uint1   isALUCLM
 ) <autorun,reginputs> {
     // M EXTENSION - DIVISION
     aluMD ALUMD( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, abssourceReg1 <: abssourceReg1, abssourceReg2 <: abssourceReg2 );
@@ -286,20 +296,19 @@ algorithm cpuexecuteSLOWPATH(
     );
 
     // Classify the instruction
-    uint1   csr <:: ( opCode == 5b11100 );           uint1   atomic <:: ( opCode == 5b01011 );            uint1 fpu <:: opCode[4,1] & ~csr;
-    uint1   alufpu <:: ~csr & ~atomic;
+    uint1   alufpu <:: ~isCSR & ~isATOMIC;
 
     uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( function7[4,3] == 3b110 );
-    uint1   fpufast <:: ( fpu & FCLASS.FASTPATHFPU ) | fpuconvert;
-    uint1   fpucalc <:: fpu & ~fpufast;
+    uint1   fpufast <:: ( isFPU & FCLASS.FASTPATHFPU ) | fpuconvert;
+    uint1   fpucalc <:: isFPU & ~fpufast;
 
-    uint4   operation <:: { ~|{fpufast,atomic,csr}, fpufast, atomic, csr };
+    uint4   operation <:: { ~|{fpufast,isATOMIC,isCSR}, fpufast, isATOMIC, isCSR };
 
     // START FLAGS
-    ALUMD.start := start & ~fpu & function3[2,1];                                           // INTEGER DIVISION
-    ALUBCLMUL.start := start & ~fpu & ~function3[2,1];                                      // CARRYLESS MULTIPLY
+    ALUMD.start := start & isALUM;                                                          // INTEGER DIVISION
+    ALUBCLMUL.start := start & isALUCLM;                                                    // CARRYLESS MULTIPLY
     FPUCALC.start := start & fpucalc;                                                       // FPU CALCULATIONS
-    CSR.start := start & csr & |function3;                                                  // CSR
+    CSR.start := start & isCSR & |function3;                                                  // CSR
 
     // Deal with updating fpuflags and writing to fpu registers
     CSR.updateFPUflags := 0; frd := fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0;
@@ -344,6 +353,9 @@ algorithm cpuexecuteFASTPATH(
     input   uint32  nextPC,
     input   uint1   isALUMM,
     input   uint1   isLOAD,
+    input   uint1   isBRANCH,
+    input   uint1   isAUIPCLUI,
+    input   uint1   isJAL,
     output  uint1   takeBranch,
     output  int32   memoryoutput,
     output  int32   result
@@ -366,12 +378,8 @@ algorithm cpuexecuteFASTPATH(
     // M EXTENSION - MULTIPLICATION
     aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
-    // CLASSIFY THE TYPE FOR INSTRUCTIONS THAT WRITE TO REGISTER
-    uint1   isAUIPCLUI <:: ( opCode[0,3] == 3b101 );
-    uint1   isJAL <:: ( opCode[2,3] == 3b110 ) & opCode[0,1];
-
     always_after {
-        takeBranch = ( opCode == 5b11000 ) & BRANCHUNIT.takeBranch;    // BRANCH
+        takeBranch = isBRANCH & BRANCHUNIT.takeBranch;    // BRANCH
         memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2;         // FLOAT STORE OR STORE
         result = isAUIPCLUI ? AUIPCLUI :                               // LUI AUIPC
                             isJAL ? nextPC :                         // JAL[R]

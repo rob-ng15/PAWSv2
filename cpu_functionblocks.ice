@@ -46,6 +46,31 @@ algorithm memoryaccess(
     }
 }
 
+// CLASSIFY INSTRUCTION TYPE TO PASS TO OTHER BLOCKS
+algorithm whatis(
+    input   uint5   opCode,
+    input   uint3   function3,
+    input   uint7   function7,
+    output  uint1   AUIPCLUI,
+    output  uint1   JAL,
+    output  uint1   BRANCH,
+    output  uint1   ALUM,
+    output  uint1   ALUCLM,
+    output  uint1   CSR,
+    output  uint1   ATOMIC,
+    output  uint1   FPU
+) <autorun> {
+    always_after {
+        AUIPCLUI = ( opCode[0,3] == 3b101 );
+        JAL = ( opCode[2,3] == 3b110 ) & opCode[0,1];
+        BRANCH = ( opCode == 5b11000 );
+        ALUM = ( opCode == 5b01100 ) & ( function7 == 7b0000001 );
+        ALUCLM = ( opCode == 5b01100 ) & ~function3[2,1] & ( function7 == 7b0000101 );
+        CSR = ( opCode == 5b11100 );
+        ATOMIC =  ( opCode == 5b01011 );
+        FPU = ( opCode[3,2] == 2b10 );
+    }
+}
 // DETERMINE IF FAST OR SLOW INSTRUCTION
 // SET CPU CONTROLS DEPENDING UPON INSTRUCTION TYPE
 algorithm Iclass(
