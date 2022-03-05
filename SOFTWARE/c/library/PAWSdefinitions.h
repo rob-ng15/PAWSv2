@@ -63,6 +63,7 @@
 #define VDKBLUE 0x01
 #define DKBLUE 0x02
 #define BLUE 0x03
+#define UKBLUE 0x06
 #define LTBLUE 0x07
 #define VDKGREEN 0x04
 #define DKGREEN 0x08
@@ -208,6 +209,9 @@
 #define ROTATE90 5
 #define ROTATE180 6
 #define ROTATE270 7
+
+#define TM_LOWER_DOUBLE 1
+#define TM_UPPER_DOUBLE 2
 
 // TILEMAP DIRECTION FLAGS
 #define TM_SCROLL_LEFT 1

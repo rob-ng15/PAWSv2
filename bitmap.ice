@@ -183,7 +183,7 @@ algorithm dither(
     input   uint1   static1bit,
     output! uint1   condition
 ) <autorun> {
-    uint2   checkmode <: dithermode[0,2] - 1;            uint3   revbitmapx <: ~bitmap_x_write[0,3];
+    uint2   checkmode <:: dithermode[0,2] - 1;      uint3   revbitmapx <:: ~bitmap_x_write[0,3];
 
     always_after {
         // DITHER PATTERNS

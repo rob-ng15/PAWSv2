@@ -468,8 +468,10 @@ void update() {
 }
 
 // NUMBER OF SEGMENTS TO DRAW EACH ITERATION
-#define DRAWSEGMENTS 30
+#define DRAWSEGMENTS 32
 void drawtrapezium( unsigned char colour, short x1, short y1, short w1, short x2, short y2, short w2 ) {
+    if( (((x1-w1)<0) && ((x1+w1)<0) && ((x2+w2)<0) && ((x2-w2)<0)) ||
+        (((x1-w1)>319) && ((x1+w1)>319) && ((x2+w2)>319) && ((x2-w2)>319)) ) return;
     gpu_quadrilateral( colour, x1-w1, y1, x1+w1, y1, x2+w2, y2, x2-w2, y2 );
 }
 
@@ -542,8 +544,8 @@ void draw() {
         tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_LEFT,1 );
     }
     if( road[cnr].tu > 0 ) {
-        tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_RIGHT, 1 );
-        tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_RIGHT, ( road[cnr].tu >= 0.5 ) ? 2 : 1 );
+        tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_RIGHT, ( road[cnr].tu >= 0.5 ) ? 2 : 1 );
+        tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_RIGHT, 1 );
    }
 
     for( int i = 0; i < DRAWSEGMENTS; i++ ) {

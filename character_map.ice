@@ -120,12 +120,13 @@ algorithm character_map_writer(
     charactermap_copy.addr0 := ( |tpu_active[2,2] ) ? tpu_cs_addr : TPUA.WRITEADDR;
 
     always_after {
+        if( |tpu_write ) { tpu_start_cs_addr = 0; tpu_max_count = 4800; }                                           // Set default start and end points
         switch( tpu_write ) {
             default: {}
-            case 1: {                                                                                                                                   // Set cursor position
+            case 1: {                                                                                               // Set cursor position
                 ( tpu_active_x, tpu_active_y ) = copycoordinates( tpu_x, tpu_y );
             }
-            case 2: {                                                                                                                                   // Write character,foreground, background and move
+            case 2: {                                                                                               // Write character,foreground, background and move
                 charactermap.addr1 = TPUA.WRITEADDR; charactermap.wdata1 = tpu_character;
                 colourmap.addr1 = TPUA.WRITEADDR; colourmap.wdata1 = { tpu_background, tpu_foreground };
                 if( TPUX.ATLAST ) {
@@ -134,65 +135,46 @@ algorithm character_map_writer(
                     tpu_active_x = TPUX.NEXT;
                 }
             }
-            case 3: { tpu_active_x = 0; tpu_active_y = 0; tpu_active = 1; tpu_start_cs_addr = 0; tpu_max_count = 4800; }                                // Start tpucs
-            case 4: { tpu_active = 1; tpu_start_cs_addr = TPUA.YSTARTADDR; tpu_max_count = TPUA.YENDADDR; }                                             // Start tpu_clearline
-            case 5: {                                                                                                                                   // Write character, foreground, background to curses buffer
+            case 3: { tpu_active_x = 0; tpu_active_y = 0; tpu_active = 1; }                                         // Start tpucs
+            case 4: { tpu_active = 1; tpu_start_cs_addr = TPUA.YSTARTADDR; tpu_max_count = TPUA.YENDADDR; }         // Start tpu_clearline
+            case 5: {                                                                                               // Write character, foreground, background to curses buffer
                 charactermap_copy.addr1 = TPUA.WRITEADDR;
                 charactermap_copy.wdata1 = { tpu_background, tpu_foreground, tpu_character };
             }
-            case 6: { tpu_active = 2; tpu_start_cs_addr = 0; }                                                                                          // Start curses wipe
-            case 7: { tpu_active = 4; tpu_start_cs_addr = 0; }                                                                                          // Start curses copy
-            case 8: { tpu_active = 8; tpu_start_cs_addr = 80; }                                                                                         // Start curses scroll up
-            case 9: { tpu_active = 8; tpu_start_cs_addr = TPUA.YSTARTADDR; }                                                                            // Start curses deleteln
-            case 10: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; tpu_max_count = TPUA.YENDADDR; }                                            // Start curses clear to eol
-            case 11: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; tpu_max_count = 4800; }                                                     // Start curses clear to bot
+            case 6: { tpu_active = 2;  }                                                                            // Start curses wipe
+            case 7: { tpu_active = 4; }                                                                             // Start curses copy
+            case 8: { tpu_active = 8; tpu_start_cs_addr = 80; }                                                     // Start curses scroll up
+            case 9: { tpu_active = 8; tpu_start_cs_addr = TPUA.YSTARTADDR; }                                        // Start curses deleteln
+            case 10: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; tpu_max_count = TPUA.YENDADDR; }        // Start curses clear to eol
+            case 11: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; }                                       // Start curses clear to bot
         }
     }
 
     while(1) {
         if( |tpu_active ) {
             tpu_cs_addr = tpu_start_cs_addr;
-            onehot( tpu_active ) {
-                case 0: {                                                                                                                               // TPU WIPE - WHOLE OR PARTIAL SCREEN (LINE)
-                    charactermap.addr1 = tpu_cs_addr; colourmap.addr1 = tpu_cs_addr;
-                    charactermap.wdata1 = 0; colourmap.wdata1 = 14b10000001000000;
-                    while( tpu_cs_addr != tpu_max_count ) {
+            while( tpu_cs_addr != tpu_max_count ) {
+                ++:
+                onehot( tpu_active ) {
+                    case 0: {                                                                                                                           // TPU WIPE - WHOLE OR PARTIAL SCREEN (LINE)
                         charactermap.addr1 = tpu_cs_addr; colourmap.addr1 = tpu_cs_addr;
-                        tpu_cs_addr = tpu_cs_addr_next;
+                        charactermap.wdata1 = 0; colourmap.wdata1 = 14b10000001000000;
                     }
-                }
-                case 1: {                                                                                                                               // CURSES WIPE
-                    charactermap_copy.wdata1 = curses_wipe;
-                    while( tpu_cs_addr != 4800 ) {
-                        charactermap_copy.addr1 = tpu_cs_addr;
-                        tpu_cs_addr = tpu_cs_addr_next;
-                    }
-                }
-                case 2: {                                                                                                                               // CURSES COPY
-                    while( tpu_cs_addr != 4800 ) {
-                        ++:
+                    case 1: { charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe; }                                          // CURSES WIPE
+                    case 2: {                                                                                                                           // CURSES COPY
                         charactermap.addr1 = tpu_cs_addr; charactermap.wdata1 = charactermap_copy.rdata0[0,9];
                         colourmap.addr1 = tpu_cs_addr; colourmap.wdata1 = { charactermap_copy.rdata0[16,7], charactermap_copy.rdata0[9,7] };
-                        tpu_cs_addr = tpu_cs_addr_next;
                     }
-                }
-                case 3: {                                                                                                                               // CURSES SCROLL UP / DELETELN
-                    while( tpu_cs_addr != 4800 ) {
-                        ++:
+                    case 3: {                                                                                                                           // CURSES SCROLL UP / DELETELN
                         charactermap_copy.addr1 = tpu_cs_addr_prevline; charactermap_copy.wdata1 = charactermap_copy.rdata0;                            // MOVE CHARACTERS UP
                         if( tpu_cs_addr_lastline ) {
                             ++:
                             charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe;                                              // WIPE LAST LINE
                         }
-                        tpu_cs_addr = tpu_cs_addr_next;
                     }
+                    case 4: { charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe; }                                          // CURSES CLEAR TO EOL/BOT
                 }
-                case 4: {                                                                                                                               // CURSES CLEAR TO EOL/BOT
-                    while( tpu_cs_addr != tpu_max_count ) {
-                        charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe;
-                        tpu_cs_addr = tpu_cs_addr_next;
-                    }
-                }
+                tpu_cs_addr = tpu_cs_addr_next;
             }
             tpu_active = 0;
         }

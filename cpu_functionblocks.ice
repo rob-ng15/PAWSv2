@@ -23,6 +23,7 @@ algorithm decode(
         immediateValue = { {20{instruction[31,1]}}, Itype(instruction).immediate };
     }
 }
+
 // DETERMINE IF MEMORY LOAD OR STORE
 // AMO AND FLOAT LOAD/STORE ARE 32 BIT
 algorithm memoryaccess(
@@ -36,14 +37,40 @@ algorithm memoryaccess(
     output  uint1   memorystore,
     output  uint2   accesssize
 ) <autorun> {
-    uint1   FLOAD <:: opCode == 5b00001;   uint1   FSTORE <:: opCode == 5b01001;
+    uint1   FLOAD <:: opCode == 5b00001;             uint1   FSTORE <:: opCode == 5b01001;
+
     always_after {
         memoryload = ( ~|opCode ) | FLOAD | ( AMO & ( function7 != 5b00011 ) );
         memorystore = ( opCode == 5b01000 ) | FSTORE | ( AMO & ( function7 != 5b00010 ) );
-        accesssize = DMAACTIVE ? 2b00: ~cacheselect ? 2b01: AMO | FLOAD | FSTORE ? 2b10 : function3[0,2];
+        accesssize = DMAACTIVE ? 2b00 : cacheselect ? AMO | FLOAD | FSTORE ? 2b10 : function3[0,2] : 2b01;
     }
 }
 
+// CLASSIFY INSTRUCTION TYPE TO PASS TO OTHER BLOCKS
+algorithm whatis(
+    input   uint5   opCode,
+    input   uint3   function3,
+    input   uint7   function7,
+    output  uint1   AUIPCLUI,
+    output  uint1   JAL,
+    output  uint1   BRANCH,
+    output  uint1   ALUM,
+    output  uint1   ALUCLM,
+    output  uint1   CSR,
+    output  uint1   ATOMIC,
+    output  uint1   FPU
+) <autorun> {
+    always_after {
+        AUIPCLUI = ( opCode[0,3] == 3b101 );
+        JAL = ( opCode[2,3] == 3b110 ) & opCode[0,1];
+        BRANCH = ( opCode == 5b11000 );
+        ALUM = ( opCode == 5b01100 ) & ( function7 == 7b0000001 );
+        ALUCLM = ( opCode == 5b01100 ) & ~function3[2,1] & ( function7 == 7b0000101 );
+        CSR = ( opCode == 5b11100 );
+        ATOMIC =  ( opCode == 5b01011 );
+        FPU = ( opCode[3,2] == 2b10 );
+    }
+}
 // DETERMINE IF FAST OR SLOW INSTRUCTION
 // SET CPU CONTROLS DEPENDING UPON INSTRUCTION TYPE
 algorithm Iclass(
@@ -79,14 +106,14 @@ algorithm Iclass(
 
 // DETERMINE IN FAST OR SLOW FPU INSTRUCTION
 algorithm Fclass(
-    input   uint1   is2FPU,
-    input   uint1   isFPUFAST,
+    input   uint5   opCode,
+    input   uint7   function7,
     output  uint1   FASTPATHFPU
 ) <autorun> {
     // FUSED OPERATIONS + CALCULATIONS & CONVERSIONS GO VIA SLOW PATH
     // SIGN MANIPULATION, COMPARISONS + MIN/MAX, MOVE AND CLASSIFICATION GO VIA FAST PATH
     always_after {
-        FASTPATHFPU = is2FPU & isFPUFAST;           // is2FPU DETERMINES IF NORMAL OR FUSED, THEN isFPUFAST DETERMINES IF FAST OR SLOW
+        FASTPATHFPU = opCode[2,1] & function7[4,1];
     }
 }
 
@@ -100,6 +127,7 @@ algorithm signextend(
 ) <autorun> {
     uint4   byteoffset <:: { byteaccess, 3b000 };
     uint1   sign <:: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1] );
+
     always_after {
         memory168 = is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[byteoffset, 8] };
     }
@@ -109,7 +137,7 @@ algorithm signextend(
 algorithm absolute(
     input   int32   number,
     input   int32   negative,
-    output  int32  value
+    output  int32   value
 ) <autorun> {
     always_after {
         value = number[31,1] ? negative : number;
@@ -205,43 +233,31 @@ algorithm registers(
     output  uint32  contents
 ) <autorun> {
     simple_dualport_bram int32 registers[64] = { 0, pad(uninitialized) };
-    registers.addr0 := { SMT, rs }; contents := registers.rdata0;
-    registers.addr1 := { SMT, rd }; registers.wdata1 := result;
-    registers.wenable1 := write;
+
+    always_after {
+        registers.addr0 = { SMT, rs }; contents = registers.rdata0;
+        registers.addr1 = { SMT, rd }; registers.wdata1 = result;
+        registers.wenable1 = write;
+    }
 }
 
-// RISC-V REGISTERS - INTEGERS
-algorithm registersI(
-    input   uint1   SMT,
-    input   uint5   rs1,
-    input   uint5   rs2,
-    input   uint5   rd,
-    input   uint1   write,
-    input   int32   result,
-    output  int32   sourceReg1,
-    output  int32   sourceReg2
+// COMPARISONS
+algorithm compare(
+    input   int32   sourceReg1,
+    input   int32   sourceReg2,
+    input   int32   immediateValue,
+    input   uint1   regimm,
+    output  uint1   LT,
+    output  uint1   LTU,
+    output  uint1   EQ
 ) <autorun> {
-    // RISC-V REGISTERS
-    registers RS1( SMT <: SMT, rs <: rs1, rd <: rd, write <: write, result <: result, contents :> sourceReg1 );
-    registers RS2( SMT <: SMT, rs <: rs2, rd <: rd, write <: write, result <: result, contents :> sourceReg2 );
-}
-// RISC-V REGISTERS - FLOATING POINT
-algorithm registersF(
-    input   uint1   SMT,
-    input   uint5   rs1,
-    input   uint5   rs2,
-    input   uint5   rs3,
-    input   uint5   rd,
-    input   uint1   write,
-    input   int32   result,
-    output  int32   sourceReg1,
-    output  int32   sourceReg2,
-    output  int32   sourceReg3
-) <autorun> {
-    // RISC-V REGISTERS
-    registers RS1F( SMT <: SMT, rs <: rs1, rd <: rd, write <: write, result <: result, contents :> sourceReg1 );
-    registers RS2F( SMT <: SMT, rs <: rs2, rd <: rd, write <: write, result <: result, contents :> sourceReg2 );
-    registers RS3F( SMT <: SMT, rs <: rs3, rd <: rd, write <: write, result <: result, contents :> sourceReg3 );
+    int32   operand2 <:: regimm ? sourceReg2 : immediateValue;
+
+    always_after {
+        LT = __signed(sourceReg1) < __signed( operand2 );
+        LTU = __unsigned(sourceReg1) < __unsigned( operand2 );
+        EQ = sourceReg1 == ( operand2 );
+    }
 }
 
 // BRANCH COMPARISIONS
@@ -249,9 +265,13 @@ algorithm branchcomparison(
     input   uint3   function3,
     input   int32   sourceReg1,
     input   int32   sourceReg2,
+    input   uint1   LT,
+    input   uint1   LTU,
+    input   uint1   EQ,
     output  uint1   takeBranch
 ) <autorun> {
-    uint4   flags <:: { ( __unsigned(sourceReg1) < __unsigned(sourceReg2) ), ( __signed(sourceReg1) < __signed(sourceReg2) ), 1b0, ( sourceReg1 == sourceReg2 ) };
+    uint4   flags <:: { LTU, LT, 1b0, EQ };
+
     always_after {
         takeBranch = function3[0,1] ^ flags[ function3[1,2], 1 ];
     }
@@ -462,7 +482,7 @@ algorithm CSRblock(
     counter40 INSTRET(); counter40 INSTRETSMT();
 
     // SWITCH BETWEEN IMMEDIATE OR REGISTER VALUE TO WRITE TO CSR
-    uint32  writevalue <:: function3[2,1] ? rs1 : sourceReg1;
+    uint32  writevalue <: function3[2,1] ? rs1 : sourceReg1;
 
     // FLOATING-POINT CSR FOR BOTH THREADS
     csrf CSRF0( csr <: instruction[20,2], writevalue <: writevalue );                                   // MAIN CSRf ( CSR(instruction).csr[0,2] )
@@ -527,4 +547,3 @@ algorithm CSRblock(
         }
     }
 }
-

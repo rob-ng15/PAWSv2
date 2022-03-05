@@ -248,85 +248,52 @@ algorithm audio_memmap(
     output  uint4   audio_r,
 
     // RNG
-    input  uint4   static4bit
+    input  uint8   static8bit
 ) <autorun,reginputs> {
     // BLOCK STORAGE FOR "SAMPLES" - A SERIES OF NOTES TO BE PLAYED FOR A GIVEN NUMBER OF MILLISECONDS
     simple_dualport_bram uint6 samples_left[1024] = uninitialized;
     simple_dualport_bram uint6 samples_right[1024] = uninitialized;
 
-    // POINTERS WITHIN THE BUFFERS, AND ENABLE BITS FOR SAMPLE MODE PROCESSING
-    uint2   SAMPLEMODE = uninitialized;             uint16  SAMPLEDURATION[2] = uninitialized;      uint2   SAMPLESEND = 0;
-    uint11  MAXSAMPLES[2] = uninitialized;          uint11  MAXS0P1 <:: MAXSAMPLES[0] + 1;          uint11  MAXS1P1 <:: MAXSAMPLES[1] + 1;
-    uint11  SAMPLE[2] = uninitialized;              uint11  SAMP0P1 <:: SAMPLE[0] + 1;              uint11  SAMP1P1 <:: SAMPLE[1] + 1;
-    uint1   writesample = uninitialized;            uint1   update = uninitialized;
+    // POINTERS WITHIN THE BUFFERS
+    uint11  MAXSAMPLES[2] = uninitialised;
+    uint11  MAXS0P1 <:: MAXSAMPLES[0] + 1;          uint11  MAXS1P1 <:: MAXSAMPLES[1] + 1;
 
     // Left and Right audio channels
-    audio apu_processor <@clock_25mhz> ( staticGenerator <: static4bit, audio_l :> audio_l, audio_r :> audio_r );
+    audio apu_processor <@clock_25mhz> ( samples_left <:> samples_left, samples_right <:> samples_right, staticGenerator <: static8bit, audio_l :> audio_l, audio_r :> audio_r, samples_MAX_L <: MAXSAMPLES[0], samples_MAX_R <: MAXSAMPLES[1] );
 
     // LATCH MEMORYWRITE
     uint1   LATCHmemoryWrite = uninitialized;
 
     // SAMPLE MEMORY CONTROLS - SAMPLES TO BE WRITTEN ADJUSTED FROM 1 to 127 to 1 to 63
-    uint7   writeSAMPE <:: ( writeData == 1 ) ? 1 : writeData[ 1, 6 ];
-    samples_left.addr0 := SAMPLE[0];                samples_left.wdata1 := writeSAMPE;                  samples_left.wenable1 := 0;
-    samples_right.addr0 := SAMPLE[1];               samples_right.wdata1 := writeSAMPE;                 samples_right.wenable1 := 0;
+    uint7   writeSAMPLE <:: ( writeData == 1 ) ? 1 : writeData[ 1, 6 ];
+    samples_left.addr1 := MAXSAMPLES[0]; samples_left.wdata1 := writeSAMPLE;                  samples_left.wenable1 := 0;
+    samples_right.addr1 := MAXSAMPLES[1]; samples_right.wdata1 := writeSAMPLE;                samples_right.wenable1 := 0;
 
     always_before {
         // READ IO Memory
         if( memoryRead ) { readData = memoryAddress[1,1] ? apu_processor.audio_active_r : apu_processor.audio_active_l; }
     }
-
     always_after {
-        SAMPLESEND = SAMPLESEND[1,1];                                                               // HOLD SAMPLESEND FOR 2 CYCLES TO ALLOW SAMPLE TO SEND
-
-        if( |SAMPLEMODE ) {                                                                         // CHECK IF SAMPLE MODE IS ACTIVE
-            if( SAMPLEMODE[0,1] & ~apu_processor.audio_active_l & ~|SAMPLESEND ) {                  // PREPARE TO SEND LEFT SAMPLE IF LEFT CHANNEL EMPTY
-                writesample = 0; update = 1;
-            } else {
-                if( SAMPLEMODE[1,1] & ~apu_processor.audio_active_r  & ~|SAMPLESEND ) {             // PREPARE TO SEND RIGHT SAMPLE IF RIGHT CHANNEL EMPTY
-                    writesample = 1; update = 1;
-                }
-            }
-        }
-        if( update ) {                                                                              // SEND SAMPLE
-            apu_processor.waveform = 0;
-            apu_processor.frequency = writesample ? samples_right.rdata0 : samples_left.rdata0;
-            apu_processor.duration = SAMPLEDURATION[ writesample ];
-            apu_processor.apu_write = 1 + writesample;
-            SAMPLE[ writesample ] = writesample ? SAMP1P1 : SAMP0P1;
-            SAMPLESEND = 3;
-            update = 0;
-        }
         // WRITE IO Memory
         switch( { memoryWrite, LATCHmemoryWrite } ) {
             case 2b10: {
-                if( memoryAddress[3,1] ) {                                                                                                      // HANDLE WRITING OF SAMPLES TO MEMORY
+                if( memoryAddress[3,1] ) {                                                                              // HANDLE WRITING OF SAMPLES TO MEMORY
                     switch( memoryAddress[0,2] ) {
                         default: { if( writeData[0,1] ) { MAXSAMPLES[0] = 0; }  if( writeData[1,1] ) { MAXSAMPLES[1] = 0; } }
-                        case 1: { samples_left.addr1 = MAXSAMPLES[0]; samples_left.wenable1 = 1; MAXSAMPLES[0] = MAXS0P1; }
-                        case 2: { samples_right.addr1 = MAXSAMPLES[1]; samples_right.wenable1 = 1; MAXSAMPLES[1] = MAXS1P1; }
+                        case 1: { samples_left.wenable1 = 1; MAXSAMPLES[0] = MAXS0P1; }
+                        case 2: { samples_right.wenable1 = 1; MAXSAMPLES[1] = MAXS1P1; }
                     }
                 } else {
                     switch( memoryAddress[1,2] ) {
                         case 2h0: { apu_processor.waveform = writeData; }
                         case 2h1: { apu_processor.frequency = writeData; }
                         case 2h2: { apu_processor.duration = writeData; }
-                        case 2h3: {
-                            if( &apu_processor.waveform ) {                                                             // WAVEFORM 7 START SAMPLE MODE
-                                SAMPLEMODE = SAMPLEMODE | writeData[0,2];                                               // START SAMPLE MODE
-                                if( writeData[0,1] ) { SAMPLE[0] = 0; SAMPLEDURATION[0] = apu_processor.duration; }     // LATCH SAMPLE DURATION
-                                if( writeData[1,1] ) { SAMPLE[1] = 0; SAMPLEDURATION[1] = apu_processor.duration; }     // LATCH SAMPLE DURATION
-                            } else {
-                                SAMPLEMODE = SAMPLEMODE & ~writeData[0,2];                                              // WRITING NORMAL NOTE, CANCEL SAMPLE MODE ON SELECTED CHANNELS
-                                apu_processor.apu_write = writeData;                                                    // SEND NOTE AS NORMAL
-                            }
-                        }
+                        case 2h3: { apu_processor.apu_write = writeData; }
                     }
                 }
             }
             case 2b00: {
-                if( ~|SAMPLESEND ) { apu_processor.apu_write = 0; }
-                SAMPLEMODE = SAMPLEMODE & { SAMPLE[1] != MAXSAMPLES[1], SAMPLE[0] != MAXSAMPLES[0] };                   // SEE IF SAMPLE HAS FINISHED SENDING
+                apu_processor.apu_write = 0;
             }
             default: {}
         }
@@ -382,7 +349,10 @@ algorithm timers_rng(
 
 // AUDIO L&R Controller
 algorithm audio(
-    input   uint4   staticGenerator,
+    simple_dualport_bram_port0  samples_left,
+    simple_dualport_bram_port0  samples_right,
+
+    input   uint8   staticGenerator,
     input   uint3   waveform,
     input   uint6   frequency,
     input   uint16  duration,
@@ -390,27 +360,85 @@ algorithm audio(
     output  uint4   audio_l,
     output  uint1   audio_active_l,
     output  uint4   audio_r,
-    output  uint1   audio_active_r
+    output  uint1   audio_active_r,
+
+    input   uint11  samples_MAX_L,
+    input   uint11  samples_MAX_R
 ) <autorun,reginputs> {
     // Left and Right audio channels
-    apu apu_processor_L(
-        staticGenerator <: staticGenerator,
-        audio_output :> audio_l,
-        audio_active :> audio_active_l,
-        waveform <: waveform,
-        frequency <: frequency,
-        duration <: duration,
-        apu_write <: apu_write[0,1]
-    );
-    apu apu_processor_R(
-        staticGenerator <: staticGenerator,
-        audio_output :> audio_r,
-        audio_active :> audio_active_r,
-        waveform <: waveform,
-        frequency <: frequency,
-        duration <: duration,
-        apu_write <: apu_write[1,1]
-    );
+    apu apu_processor_L( staticGenerator <: staticGenerator, audio_active :> audio_active_l ); audio_pwm PWM_L( wave <: apu_processor_L.audio_output, audio :> audio_l );
+    apu apu_processor_R( staticGenerator <: staticGenerator, audio_active :> audio_active_r ); audio_pwm PWM_R( wave <: apu_processor_R.audio_output, audio :> audio_r );
+
+    uint1   SAMPLEMODE_L = uninitialised;                   uint1   SAMPLEMODE_R = uninitialised;
+    uint11  SAMP0P1 <:: samples_left.addr0 + 1;             uint11  SAMP1P1 <:: samples_right.addr0 + 1;
+    uint16  samples_DURATION_L = uninitialised;             uint16  samples_DURATION_R = uninitialised;
+
+    apu_processor_L.apu_write := 0; apu_processor_R.apu_write := 0;
+
+    always_after {
+        // DISPATCH NEXT SAMPLE IF SAMPLE MODE ACTIVE LEFT/RIGHT / RESET SAMPLE POINTER IF NOT
+        if( SAMPLEMODE_L ) {
+            if( ~apu_processor_L.audio_active ) {
+                // SEND NEXT SAMPLE TO LEFT
+                apu_processor_L.waveform = 0;
+                apu_processor_L.frequency = samples_left.rdata0;
+                apu_processor_L.duration = samples_DURATION_L;
+                apu_processor_L.apu_write = 1;
+                if( SAMP0P1 == samples_MAX_L ) {
+                    SAMPLEMODE_L = 0;
+                } else {
+                    samples_left.addr0 = SAMP0P1;
+                }
+            }
+        } else {
+            samples_left.addr0 = 0;
+        }
+        if( SAMPLEMODE_R ) {
+            if( ~apu_processor_R.audio_active ) {
+                // SEND NEXT SAMPLE TO RIGHT
+                apu_processor_R.waveform = 0;
+                apu_processor_R.frequency = samples_right.rdata0;
+                apu_processor_R.duration = samples_DURATION_R;
+                apu_processor_R.apu_write = 1;
+                if( SAMP1P1 == samples_MAX_R ) {
+                    SAMPLEMODE_R = 0;
+                } else {
+                    samples_right.addr0 = SAMP1P1;
+                }
+            }
+        } else {
+            samples_right.addr0 = 0;
+        }
+
+        // IF REQUEST TO START LEFT/RIGHT CHECK IF SAMPLE MODE REQUESTED AND START, OTHERWISE DISPATCH REQUESTED NOTE
+        if( apu_write[0,1] ) {
+            if( &waveform ) {
+                samples_left.addr0 = 0;
+                samples_DURATION_L = duration;
+                SAMPLEMODE_L = 1;
+            } else {
+                apu_processor_L.waveform = waveform;
+                apu_processor_L.frequency = frequency;
+                apu_processor_L.duration = duration;
+                apu_processor_L.apu_write = 1;
+                SAMPLEMODE_L = 0;
+            }
+        }
+
+        if( apu_write[1,1] ) {
+            if( &waveform ) {
+                samples_right.addr0 = 0;
+                samples_DURATION_R = duration;
+                SAMPLEMODE_R = 1;
+            } else {
+                apu_processor_R.waveform = waveform;
+                apu_processor_R.frequency = frequency;
+                apu_processor_R.duration = duration;
+                apu_processor_R.apu_write = 1;
+                SAMPLEMODE_R = 0;
+            }
+        }
+    }
 }
 
 // UART BUFFER CONTROLLER
@@ -478,6 +506,7 @@ algorithm uart_OUT(
     OUT.read := OUT.available & !uo.busy;
     uo.data_in_ready := OUT.available & ( !uo.busy );
 }
+
 // PS2 BUFFER CONTROLLER
 // 9 bit 256 entry FIFO buffer
 algorithm fifo9(
@@ -539,9 +568,7 @@ algorithm sdcardcontroller(
 
     // SDCARD Commands
     always_after {
-        sdcio.read_sector = readsector;
-        sdcio.write_sector = writesector;
-        sdcio.addr_sector = sectoraddress;
-        ready = sdcio.ready;
+        sdcio.read_sector = readsector;                sdcio.write_sector = writesector;
+        sdcio.addr_sector = sectoraddress;             ready = sdcio.ready;
     }
 }

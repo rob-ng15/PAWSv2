@@ -824,7 +824,7 @@ char *dithernames[] = {
 
 void displayreset( void ) {
     // RESET THE DISPLAY
-    screen_mode( 0, 0 );
+    screen_mode( 0, 0, 0 );
     gpu_cs();
     tpu_cs();
     tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
@@ -851,7 +851,7 @@ void colourtable( void ) {
 
     // CYCLE THROUGH COLOUR MODES
     for( short i = 0; i < 4; i++ ) {
-        screen_mode( 0, i );
+        screen_mode( 0, i, 0 );
         sleep1khz( 2000, 0 );
     }
 }
@@ -914,6 +914,7 @@ void tilemapdemo( void ) {
     unsigned char x, y, count, colour, actionflag;
     (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
     (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+    screen_mode( 0, 0, TM_UPPER_DOUBLE );
 
     for( unsigned char tile_number = 0; tile_number < 10; tile_number++ ) {
         set_tilemap_bitmap( LOWER_LAYER, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
@@ -1107,14 +1108,25 @@ void ditherdemo( void ) {
     sleep1khz( 2000, 0 );
 }
 
+unsigned char tune_treble[] = {  24, 36, 31, 28, 36, 30, 24, 27,  0,
+                                 36, 37, 32, 29, 37, 32, 25, 29,  0,
+                                 24, 36, 31, 28, 36, 30, 24, 27,  0,
+                                 28, 29, 30,  0, 30, 31, 32,  0, 32, 33, 34,  0, 36,  0, 0xff };
+unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 16, 16, 16,
+                                 16, 16, 16, 16,  8,  8, 16, 16, 16,
+                                 16, 16, 16, 16,  8,  8, 16, 16, 16,
+                                  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8, 24,  8, 0xff };
 
-unsigned char tune_treble[] = {  36, 47, 42, 39, 47, 41, 40, 37, 49, 47, 40, 49, 47, 40, 0xff };
-unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 32, 24, 16, 16, 16, 32, 24, 32, 0xff };
+
+unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
+                                13,  0,  0, 20, 13,  0,  0, 19,
+                                12,  0,  0, 19, 12,  0,  0, 20,
+                                19,  0, 20,  0, 22,  0,  24, 0, 0xff };
 
 void spritedemo( void ) {
     unsigned short animation_count = 0, ghost_animation_frame = 0, move_count = 0, do_power = 0, power = 0;
     char ghost_direction[4] = { 0, 1, 2, 3 };
-    unsigned short trebleposition = 0, updateflag;
+    unsigned short trebleposition = 0, bassposition = 0, updateflag;
 
     displayreset();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "SPRITE Demo" );
@@ -1235,10 +1247,14 @@ void spritedemo( void ) {
         // PACMAN "TUNE" - SLIGHTLY OUT
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
-                if( tune_treble[ trebleposition ] != 0xff ) {
-                    beep( 1, 0, tune_treble[ trebleposition ], size_treble[ trebleposition ] << 4 );
-                    trebleposition++;
-                }
+                beep( 1, 0, tune_treble[ trebleposition ], size_treble[ trebleposition ] << 3 );
+                trebleposition++;
+            }
+        }
+        if( tune_bass[ bassposition ] != 0xff ) {
+            if( !get_beep_active( 2 ) ) {
+                beep( 2, 0, tune_bass[ bassposition ], 16 << 3 );
+                bassposition++;
             }
         }
 

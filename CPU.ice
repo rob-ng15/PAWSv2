@@ -29,12 +29,10 @@ algorithm PAWSCPU(
     output  uint1   DMAACTIVE(0)
 ) <autorun,reginputs> {
     // COMMIT TO REGISTERS FLAG AND HART (0/1) SELECT
-    uint1   COMMIT = uninitialized;
-    uint1   SMT = uninitialized;
+    uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
 
     // COMPRESSED INSTRUCTION EXPANDER
-    uint32  instruction = uninitialized;
-    uint1   compressed = uninitialized;
+    uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
     compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata ); compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata ); compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata );
 
     // RISC-V 32 BIT INSTRUCTION DECODER + MEMORY ACCESS SIZE
@@ -42,35 +40,23 @@ algorithm PAWSCPU(
     memoryaccess MEMACCESS <@clock_CPUdecoder> ( cacheselect <: cacheselect, DMAACTIVE <: DMAACTIVE, opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
 
     // RISC-V REGISTERS
-    uint1   frd <:: IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd;
-    uint1   REGISTERSwrite <:: COMMIT & IFASTSLOW.writeRegister & ~frd & ( |RV32DECODER.rd );
-    registersI REGISTERS <@clock_CPUdecoder> (
+    riscvregisters REGISTERS <@clock_CPUdecoder> (
         SMT <:: SMT,
         rs1 <: RV32DECODER.rs1,
         rs2 <: RV32DECODER.rs2,
-        result <: result,
+        rs3 <: RV32DECODER.rs3,
         rd <: RV32DECODER.rd,
-        write <: REGISTERSwrite
+        result <: result
     );
+
     // NEGATIVE OF REGISTERS FOR ABS AND ADD/SUB
     int32   negRS1 <:: -REGISTERS.sourceReg1;                 int32   negRS2 <:: -REGISTERS.sourceReg2;
     // EXTRACT ABSOLUTE VALUE FOR MULTIPLICATION AND DIVISION
     absolute ARS1 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg1, negative <: negRS1 ); absolute ARS2 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg2, negative <: negRS2 );
 
-    // RISC-V FLOATING POINT REGISTERS
-    uint1   REGISTERSFwrite <:: COMMIT & IFASTSLOW.writeRegister & frd;
-    registersF REGISTERSF <@clock_CPUdecoder> (
-        SMT <:: SMT,
-        rs1 <: RV32DECODER.rs1,
-        rs2 <: RV32DECODER.rs2,
-        rs3 <: RV32DECODER.rs3,
-        result <: result,
-        rd <: RV32DECODER.rd,
-        write <: REGISTERSFwrite
-    );
 
     // RISC-V PROGRAM COUNTERS AND STATUS - SMT -> RUNNING ON HART 1 WITH DUPLICATE PROGRAM COUNTER AND REGISTER FILE
-    uint27  pc = uninitialized;         uint27  pc_next <:: SMT ? pc :  NEWPC.newPC;                                    // HART 0 pc + UPDATE
+    uint27  pc = 0;                     uint27  pc_next <:: SMT ? pc :  NEWPC.newPC;                                    // HART 0 pc + UPDATE
     uint27  pcSMT = uninitialized;      uint27  pcSMT_next <:: SMT ? NEWPC.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;     // HART 1 pc + update
     uint27  PC <:: SMT ? pcSMT : pc;                                                                                    // SELECT PC FOR THIS CYCLE
 
@@ -95,11 +81,9 @@ algorithm PAWSCPU(
     uint16  storeLOW <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[0,16] : EXECUTESLOW.memoryoutput[0,16];
     uint16  storeHIGH <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[16,16] : EXECUTESLOW.memoryoutput[16,16];
 
-    // CLASSIFY THE INSTRUCTION TO FAST/SLOW
-    uint1   isALUM <:: RV32DECODER.opCode[3,1] & ( RV32DECODER.function7[0,1] == 7b0000001 );
-    uint1   isALUCLM <:: RV32DECODER.opCode[3,1] & ~RV32DECODER.function3[2,1] & ( RV32DECODER.function7[0,1] == 7b0000101 );
-
-    Iclass IFASTSLOW <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, isALUM <: isALUM, isALUCLM <: isALUCLM );
+    // CLASSIFY THE INSTRUCTION AND SPLIT INTO FAST/SLOW FAST/SLOW
+    whatis IS <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, function7 <: RV32DECODER.function7 );
+    Iclass IFASTSLOW <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, isALUM <: IS.ALUM, isALUCLM <: IS.ALUCLM );
 
     // EXECUTE MULTICYCLE INSTRUCTIONS, INTEGER DIVIDE, FPU, CSR AND ALU-A
     cpuexecuteSLOWPATH EXECUTESLOW(
@@ -114,11 +98,16 @@ algorithm PAWSCPU(
         sourceReg2 <: REGISTERS.sourceReg2,
         abssourceReg1 <: ARS1.value,
         abssourceReg2 <: ARS2.value,
-        sourceReg1F <: REGISTERSF.sourceReg1,
-        sourceReg2F <: REGISTERSF.sourceReg2,
-        sourceReg3F <: REGISTERSF.sourceReg3,
+        sourceReg1F <: REGISTERS.sourceReg1F,
+        sourceReg2F <: REGISTERS.sourceReg2F,
+        sourceReg3F <: REGISTERS.sourceReg3F,
         memoryinput <: memoryinput,
-        incCSRinstret <: COMMIT
+        incCSRinstret <: COMMIT,
+        isALUM <: IS.ALUM,
+        isALUCLM <: IS.ALUCLM,
+        isCSR <: IS.CSR,
+        isATOMIC <: IS.ATOMIC,
+        isFPU <: IS.FPU
     );
 
     // EXECUTE SINGLE CYLE INSTRUCTIONS, MOST OF BASE PLUS INTEGER MULTIPLICATION
@@ -131,14 +120,17 @@ algorithm PAWSCPU(
         rs2 <: RV32DECODER.rs2,
         sourceReg1 <: REGISTERS.sourceReg1,
         sourceReg2 <: REGISTERS.sourceReg2,
-        abssourceReg1 <: ARS1.value,
-        abssourceReg2 <: ARS2.value,
         negSourceReg2 <: negRS2,
-        sourceReg2F <: REGISTERSF.sourceReg2,
+        sourceReg2F <: REGISTERS.sourceReg2F,
         immediateValue <: RV32DECODER.immediateValue,
         memoryinput <: memoryinput,
         AUIPCLUI <: AGU.AUIPCLUI,
-        nextPC <: NEWPC.nextPC
+        nextPC <: NEWPC.nextPC,
+        isALUMM <: IS.ALUM,
+        isLOAD <: MEMACCESS.memoryload,
+        isBRANCH <: IS.BRANCH,
+        isAUIPCLUI <: IS.AUIPCLUI,
+        isJAL <: IS.JAL
     );
 
     // SELECT NEXT PC
@@ -154,41 +146,21 @@ algorithm PAWSCPU(
     );
 
     // MINI DMA CONTROLLER
-    uint3   dmamode = uninitialized;
-    uint27  dmasrc = uninitialized;                 addrplus1 dmasrc1( address <: dmasrc );
-    uint27  dmadest = uninitialized;                addrplus1 dmadest1( address <: dmadest );            addrplus2 dmadest2( address <: dmadest );
-    uint27  dmacount = uninitialized;               addrsub1 dmacount1( address <: dmacount );
-    uint1   dmadestblue <:: ( dmadest == 27hd676 );
+    dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE );
 
-    readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
+    DMA.start :=0; DMA.update := 0;
+    REGISTERS.frd := IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd; REGISTERS.write := COMMIT & IFASTSLOW.writeRegister; COMMIT := 0;
+    readmemory := 0; writememory := 0; EXECUTESLOW.start := 0;
 
     if( ~reset ) {
-        SMT = 0; pc = 0; DMAACTIVE = 0;                                                                                                             // ON RESET SET PC AND SMT TO 0, CANCEL DMA
+        DMAACTIVE = 0;                                                                                                                              // ON RESET CANCEL DMA
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
     }
 
+    cacheselect = 0; address = PC; readmemory = 1;                                                                                                  // FETCH FIRST INSTRUCTION
+
     while(1) {
-        if( |DMAMODE ) {
-            // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE
-            DMAACTIVE = 1;
-            dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT;
-            while( |dmacount ) {
-                address = dmasrc; readmemory = 1; while( memorybusy ) {}                                                                            // DMA FETCH
-                address = dmadest; writedata = readdata[ { dmasrc[0,1], 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}                       // DMA STORE
-                switch( dmamode ) {
-                    default: {}                                                                                                                     // DMA INACTIVE + UNDEFINED
-                    case 1: { dmasrc = dmasrc1.addressplus1; }                                                                                      // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
-                    case 2: { dmasrc = dmasrc1.addressplus1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2.addressplus2; } }   // DMA SPECIAL PIXEL BLOCK RGB
-                    case 3: { dmasrc = dmasrc1.addressplus1; dmadest = dmadest1.addressplus1; }                                                     // DMA multi-src to multi-dest MEMCPY
-                    case 4: { dmadest = dmadest1.addressplus1; }                                                                                    // DMA single-src to multi-dest MEMSET + SDCARD WRITE
-                    // case 5: {}                                                                                                                   // DMA single-src to single-dest SET TILE/CBLITTER to single value
-                }
-                dmacount = dmacount - 1;
-            }
-            DMAACTIVE = 0;
-        }
-        cacheselect = 0;
-        address = PC; readmemory = 1; while( memorybusy ) {}                                                                                        // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
+        while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
         compressed = ( ~&readdata[0,2] );
         if( compressed ) {
             switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
@@ -202,7 +174,7 @@ algorithm PAWSCPU(
             instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
             ++: ++:
         }
-        // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS
+        // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
 
         cacheselect = 1;
         if( MEMACCESS.memoryload ) {
@@ -214,7 +186,11 @@ algorithm PAWSCPU(
             }
         }
 
-        if( ~IFASTSLOW.FASTPATH ) { EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                                           // FPU ALU AND CSR OPERATIONS, FASTPATH HANDLED AUTOMATICALLY
+        if( ~IFASTSLOW.FASTPATH ) {
+            EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                                     // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
+        } else {
+            COMMIT = 0;                                                                                                                             // INTEGER ALU, LOAD, STORE, BRANCH, JUMP, ETC
+        }
         COMMIT = 1;                                                                                                                                 // COMMIT REGISTERS
 
         if( MEMACCESS.memorystore ) {
@@ -225,6 +201,21 @@ algorithm PAWSCPU(
         }
 
         pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                                                  // UPDATE PC AND SMT
+
+        if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
+            // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE
+            DMAACTIVE = 1; DMA.start = 1;
+            while( |DMA.dmacount ) {
+                address = DMA.dmasrc; readmemory = 1; while( memorybusy ) {}                                                                        // DMA FETCH
+                address = DMA.dmadest; writedata = readdata[ { DMA.dmasrc[0,1], 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}               // DMA STORE
+                DMA.update = 1;
+            }
+            DMAACTIVE = 0;
+        } else {
+            DMAACTIVE = 0;
+        }
+
+        cacheselect = 0; address = PC; readmemory = 1;                                                                                              // START FETCH OF NEXT INSTRUCTION
     } // RISC-V
 }
 
@@ -249,7 +240,12 @@ algorithm cpuexecuteSLOWPATH(
     output  uint1   frd,
     output  int32   memoryoutput,
     output  int32   result,
-    input   uint1   incCSRinstret
+    input   uint1   incCSRinstret,
+    input   uint1   isCSR,
+    input   uint1   isATOMIC,
+    input   uint1   isFPU,
+    input   uint1   isALUM,
+    input   uint1   isALUCLM
 ) <autorun,reginputs> {
     // M EXTENSION - DIVISION
     aluMD ALUMD( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, abssourceReg1 <: abssourceReg1, abssourceReg2 <: abssourceReg2 );
@@ -261,17 +257,23 @@ algorithm cpuexecuteSLOWPATH(
     aluCLMUL ALUBCLMUL( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
     // FLOATING POINT INSTRUCTION CLASSIFICATION
-    Fclass FCLASS( is2FPU <: opCode[2,1], isFPUFAST <: function7[4,1] );
+    Fclass FCLASS( opCode <: opCode, function7 <: function7 );
 
     // FLOATING POINT REGISTERS CLASSIFICATION
     classifyF class1F( a <: sourceReg1F ); classifyF class2F( a <: sourceReg2F ); classifyF class3F( a <: sourceReg3F );
 
     // FLOATING POINT SLOW OPERATIONS - CALCULATIONS AND CONVERSIONS
-    fpuslow FPUSLOW(
+    floatconvert FPUCONVERT(
+        FPUflags <: CSR.FPUflags,
+        function7 <: function7[2,5], rs2 <: rs2[0,1],
+        sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1, sourceReg1F <: sourceReg1F,
+        classA <: class1F.class
+    );
+
+    floatcalc FPUCALC(
         FPUflags <: CSR.FPUflags,
         opCode <: opCode, function7 <: function7[2,5],
-        rs2 <: rs2[0,1],
-        sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, sourceReg3F <: sourceReg3F,
+        sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, sourceReg3F <: sourceReg3F,
         classA <: class1F.class, classB <: class2F.class, classC <: class3F.class
     );
 
@@ -284,7 +286,7 @@ algorithm cpuexecuteSLOWPATH(
     );
 
     // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
-    uint5   FPUnewflags <:: FCLASS.FASTPATHFPU ? FPUFAST.FPUnewflags : FPUSLOW.FPUnewflags;
+    uint5   FPUnewflags <:: FCLASS.FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? FPUCONVERT.FPUnewflags : FPUCALC.FPUnewflags;
     CSRblock CSR(
         SMT <: SMT,
         instruction <: instruction,
@@ -295,22 +297,30 @@ algorithm cpuexecuteSLOWPATH(
         incCSRinstret <: incCSRinstret
     );
 
+    // Classify the instruction
+    uint1   alufpu <:: ~isCSR & ~isATOMIC;
+
+    uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( function7[4,3] == 3b110 );
+    uint1   fpufast <:: ( isFPU & FCLASS.FASTPATHFPU ) | fpuconvert;
+    uint1   fpucalc <:: isFPU & ~fpufast;
+
+    uint4   operation <:: { ~|{fpufast,isATOMIC,isCSR}, fpufast, isATOMIC, isCSR };
+
     // START FLAGS
-    ALUMD.start := 0; ALUBCLMUL.start := 0; FPUSLOW.start := 0; CSR.start := 0; CSR.updateFPUflags := 0;
+    ALUMD.start := start & isALUM;                                                          // INTEGER DIVISION
+    ALUBCLMUL.start := start & isALUCLM;                                                    // CARRYLESS MULTIPLY
+    FPUCALC.start := start & fpucalc;                                                       // FPU CALCULATIONS
+    CSR.start := start & isCSR & |function3;                                                  // CSR
+
+    // Deal with updating fpuflags and writing to fpu registers
+    CSR.updateFPUflags := 0; frd := fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0;
 
     while(1) {
         if( start ) {
             busy = 1;
-            frd = 0;
-            switch( opCode ) {
-                case 5b11100: {                                                             // CSR
-                    if( |function3 ) {
-                        CSR.start = 1; ++: result = CSR.result;
-                    } else {
-                        result = 0;
-                    }
-                }
-                case 5b01011: {                                                             // ATOMIC OPERATIONS
+            onehot( operation ) {
+                case 0: { ++: result = |function3 ? CSR.result : 0; }                        // CSR
+                case 1: {                                                                   // ATOMIC OPERATIONS
                     if( function7[3,1] ) {
                         result = memoryinput; memoryoutput = ALUA.result;                   // ATOMIC LOAD - MODIFY - STORE
                     } else {
@@ -318,21 +328,14 @@ algorithm cpuexecuteSLOWPATH(
                         memoryoutput = sourceReg2;
                     }
                 }
-                default: {
-                    if( opCode[4,1] & FCLASS.FASTPATHFPU ) {
-                        frd = FPUFAST.frd; result = FPUFAST.result;                         // FPU COMPARISONS, MIN/MAX, SIGN MANIPULATION, CLASSIFICTIONS AND MOVE F-> and I->F
-                    } else {
-                        FPUSLOW.start = opCode[4,1];                                        // FPU CALCULATIONS AND CONVERSIONS, INTEGER DIVISION, CARRYLESS MULTIPLY
-                        ALUMD.start = ~opCode[4,1] & function3[2,1];
-                        ALUBCLMUL.start = ~opCode[4,1] & ~function3[2,1];
-                        while( FPUSLOW.busy | ALUMD.busy | ALUBCLMUL.busy ) {}
-                        frd = opCode[4,1] & FPUSLOW.frd;
-                        result = opCode[4,1] ? FPUSLOW.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result;
-                    }
-                    CSR.updateFPUflags = opCode[4,1];
+                case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }       // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                case 3: {
+                        while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {}              // FPU CALCULATIONS AND INTEGER DIVISION
+                        result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result;
                 }
             }
             busy = 0;
+            CSR.updateFPUflags = fpuconvert | fpucalc;
         }
     }
 }
@@ -344,50 +347,109 @@ algorithm cpuexecuteFASTPATH(
     input   uint5   rs2,
     input   int32   sourceReg1,
     input   int32   sourceReg2,
-    input   int32   abssourceReg1,
-    input   int32   abssourceReg2,
     input   int32   negSourceReg2,
     input   uint32  sourceReg2F,
     input   int32   immediateValue,
     input   int32   memoryinput,
     input   uint32  AUIPCLUI,
     input   uint32  nextPC,
+    input   uint1   isALUMM,
+    input   uint1   isLOAD,
+    input   uint1   isBRANCH,
+    input   uint1   isAUIPCLUI,
+    input   uint1   isJAL,
     output  uint1   takeBranch,
-    output  int32  memoryoutput,
-    output  int32  result
+    output  int32   memoryoutput,
+    output  int32   result
 ) <autorun> {
+    // COMPARISON UNIT
+    compare COMPARE( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, immediateValue <: immediateValue, regimm <: opCode[3,1] );
+
     // BRANCH COMPARISON UNIT
-    branchcomparison BRANCHUNIT( function3 <: function3, sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
+    branchcomparison BRANCHUNIT( function3 <: function3, sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, LT <: COMPARE.LT, LTU <: COMPARE.LTU, EQ <: COMPARE.EQ );
 
     // ALU
     alu ALU(
         opCode <: opCode, function3 <: function3, function7 <: function7,
         rs1 <: rs1, rs2 <: rs2,
         sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, negSourceReg2 <: negSourceReg2,
-        immediateValue <: immediateValue
+        immediateValue <: immediateValue,
+        LT <: COMPARE.LT, LTU <: COMPARE.LTU
     );
 
     // M EXTENSION - MULTIPLICATION
-    aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, abssourceReg1 <: abssourceReg1, abssourceReg2 <: abssourceReg2 );
-
-    // CLASSIFY THE TYPE FOR INSTRUCTIONS THAT WRITE TO REGISTER
-    uint1   isALUMM <:: ( opCode[3,1] & function7 == 7b0000001 );
-    uint1   isAUIPCLUI <:: ( opCode[0,3] == 3b101 );
-    uint1   isJAL <:: ( opCode[2,3] == 3b110 ) & opCode[0,1];
-    uint1   isLOAD <:: ~|opCode[1,4];
-
-    takeBranch := 0;
+    aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
     always_after {
-        switch( opCode ) {
-            case 5b11000: { takeBranch = BRANCHUNIT.takeBranch; }       // BRANCH
-            case 5b01000: { memoryoutput = sourceReg2; }                // STORE
-            case 5b01001: { memoryoutput = sourceReg2F; }               // FLOAT STORE
-            case 5b00011: {}                                            // FENCE[I]
-            default: { result = isAUIPCLUI ? AUIPCLUI :                 // LUI AUIPC
-                                isJAL ? nextPC :                        // JAL[R]
-                                isLOAD ? memoryinput :                  // [FLOAT]LOAD
-                                isALUMM ? ALUMM.result : ALU.result; }  // INTEGER ALU AND MULTIPLICATION
+        takeBranch = isBRANCH & BRANCHUNIT.takeBranch;    // BRANCH
+        memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2;         // FLOAT STORE OR STORE
+        result = isAUIPCLUI ? AUIPCLUI :                               // LUI AUIPC
+                            isJAL ? nextPC :                         // JAL[R]
+                            isLOAD ? memoryinput :                   // [FLOAT]LOAD
+                            isALUMM ? ALUMM.result : ALU.result;     // INTEGER ALU AND MULTIPLICATION
+    }
+}
+
+// MINI DMA CONTROLLER ADDRESS GENERATOR
+algorithm dma(
+    input   uint27  DMASOURCE,
+    input   uint27  DMADEST,
+    input   uint27  DMACOUNT,
+    input   uint3   DMAMODE,
+
+    output  uint27  dmasrc,
+    output  uint27  dmadest,
+    output  uint27  dmacount,
+
+    input   uint1   start,
+    input   uint1   update
+) <autorun,reginputs> {
+    uint3   dmamode = uninitialized;
+    uint27  dmasrc1 <:: dmasrc + 1;                 uint27  dmadest1 <:: dmadest + 1;                   uint27  dmadest2 <:: dmadest + 2;
+    uint27  dmacount1 <:: dmacount - 1;
+
+    uint1   dmadestblue <:: ( dmadest == 27hd676 );
+
+    always_after {
+        if( start ) {
+            dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT;
+        } else {
+            if( update ) {
+                switch( dmamode ) {
+                    default: {}                                                                                             // DMA single-src to single-dest SET TILE/CBLITTER to single value
+                    case 1: { dmasrc = dmasrc1; }                                                                           // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
+                    case 2: { dmasrc = dmasrc1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }     // DMA SPECIAL PIXEL BLOCK RGB
+                    case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                       // DMA multi-src to multi-dest MEMCPY
+                    case 4: { dmadest = dmadest1; }                                                                         // DMA single-src to multi-dest MEMSET + SDCARD WRITE
+                }
+                dmacount = dmacount1;
+            }
         }
     }
+}
+
+// RISC-V CPU REGISTERS
+algorithm riscvregisters(
+    input   uint1   SMT,
+    input   uint5   rs1,
+    input   uint5   rs2,
+    input   uint5   rs3,
+    input   uint5   rd,
+    input   uint1   frd,
+    input   uint1   write,
+    input   int32   result,
+    output  int32   sourceReg1,
+    output  int32   sourceReg2,
+    output  int32   sourceReg1F,
+    output  int32   sourceReg2F,
+    output  int32   sourceReg3F
+) <autorun,reginputs> {
+    // RISC-V REGISTERS
+    registers RS1( SMT <: SMT, rs <: rs1, rd <: rd, write <: Iwrite, result <: result, contents :> sourceReg1 );
+    registers RS2( SMT <: SMT, rs <: rs2, rd <: rd, write <: Iwrite, result <: result, contents :> sourceReg2 );
+    registers RS1F( SMT <: SMT, rs <: rs1, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg1F );
+    registers RS2F( SMT <: SMT, rs <: rs2, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg2F );
+    registers RS3F( SMT <: SMT, rs <: rs3, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg3F );
+
+    uint1   Iwrite <:: write & ~frd & |rd;          uint1   Fwrite <:: write & frd;
 }

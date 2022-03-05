@@ -20,6 +20,7 @@ typedef unsigned int size_t;
 #define BLACK 0x00
 #define BLUE 0x03
 #define DKBLUE 0x02
+#define BLUEUK 0x06
 #define GREEN 0x0c
 #define DKGREEN 0x08
 #define CYAN 0x0f
@@ -32,6 +33,7 @@ typedef unsigned int size_t;
 #define GREY1 0x15
 #define GREY2 0x2a
 #define ORANGE 0x38
+#define GOLD 0x79
 
 // PAWS LOGO BLITTER TILE
 unsigned short PAWSLOGO[] = {
@@ -256,15 +258,15 @@ void SMTSTART( unsigned int code ) {
 
 void draw_paws_logo( void ) {
     set_blitter_bitmap( 3, &PAWSLOGO[0] );
-    gpu_blit( BLUE, 2, 2, 3, 2 );
+    gpu_blit( GOLD, 2, 2, 3, 2 );
 }
 
 void draw_sdcard( void  ) {
     set_blitter_bitmap( 0, &sdcardtiles[0] );
     set_blitter_bitmap( 1, &sdcardtiles[16] );
     set_blitter_bitmap( 2, &sdcardtiles[32] );
-    gpu_blit( BLUE, 256, 2, 1, 2 );
-    gpu_blit( WHITE, 256, 2, 0, 2 );
+    gpu_blit( GOLD, 256, 2, 1, 2 );
+    gpu_blit( BLUEUK, 256, 2, 0, 2 );
 }
 
 void reset_display( void ) {
@@ -280,6 +282,7 @@ void reset_display( void ) {
     *SCREENMODE = 0; *COLOUR = 0;
     *TPU_CURSOR = 0; tpu_cs();
     *TERMINAL_SHOW = 0; *TERMINAL_RESET = 1;
+    *REZ = 0;
     *LOWER_TM_SCROLLWRAPCLEAR = 9;
     *UPPER_TM_SCROLLWRAPCLEAR = 9;
     for( unsigned short i = 0; i < 16; i++ ) {
@@ -321,11 +324,10 @@ void smtthread( void ) {
 
 // DISPLAY FILENAME, ADD AN ARROW IN FRONT OF DIRECTORIES
 void displayfilename( unsigned char *filename, unsigned char type ) {
-    unsigned char displayname[10], i, j;
-    gpu_outputstringcentre( WHITE, 144, 0, "Current PAW File:", 0 );
-    for( i = 0; i < 10; i++ ) {
-        displayname[i] = 0;
-    }
+    char displayname[10], i, j;
+    gpu_outputstringcentre( BLUEUK, 144, 1, "Current PAW File:", 0 );
+    memset( displayname, 0, 10 );
+
     j = type - 1;
     if( j == 1 ) {
         displayname[0] = 16;
@@ -335,7 +337,7 @@ void displayfilename( unsigned char *filename, unsigned char type ) {
             displayname[j++] = filename[i];
         }
     }
-    gpu_outputstringcentre( type == 1 ? WHITE : GREY2, 176, 0, displayname, 2 );
+    gpu_outputstringcentre( type == 1 ? BLUEUK : GREY2, 176, 1, displayname, 2 );
 }
 
 // FAT32 FILE BROWSER FOR DIRECTORIES AND .PAW FILES
@@ -426,7 +428,10 @@ void sortdirectoryentries( unsigned short entries ) {
                 swapentries(i,i+1);
                 changes++;
             }
-            if( ( directorynames[i].type == directorynames[i+1].type ) && ( directorynames[i].filename[0] > directorynames[i+1].filename[0] ) ) {
+            if( ( directorynames[i].type == directorynames[i+1].type ) &&
+                ( ( directorynames[i].filename[0] > directorynames[i+1].filename[0] ) ||
+                ( ( directorynames[i].filename[0] == directorynames[i+1].filename[0] ) && ( directorynames[i].filename[1] > directorynames[i+1].filename[1] ) ) )
+            ) {
                 swapentries(i,i+1);
                 changes++;
             }
@@ -441,6 +446,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 
     unsigned char rereaddirectory = 1;
     unsigned short entries, present_entry;
+    int temp;
 
     directorycluster = ( FAT32DirectoryEntry * )directorynames - FAT32clustersize * 512;
 
@@ -471,9 +477,9 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
                         } else {
                             if( fileentry[i].attributes != 0x0f ) {
                                 // SHORT FILE NAME ENTRY
-                                if( ( ( fileentry[i].ext[0] == 'P' ) || ( fileentry[i].ext[0] == 'p' ) ) &&
-                                    ( ( fileentry[i].ext[1] == 'A' ) || ( fileentry[i].ext[1] == 'a' ) ) &&
-                                    ( ( fileentry[i].ext[2] == 'W' ) || ( fileentry[i].ext[2] == 'w' ) ) ) {
+                                if( ( ( fileentry[i].ext[0] == 'P' ) ) &&
+                                    ( ( fileentry[i].ext[1] == 'A' ) ) &&
+                                    ( ( fileentry[i].ext[2] == 'W' ) ) ) {
                                         entries++;
                                         memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
                                         directorynames[entries].type = 1;
@@ -526,7 +532,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
                         return( directorynames[present_entry].starting_cluster );
                         break;
                     case 2:
-                        int temp = filebrowser( directorynames[present_entry].starting_cluster, rootdirectorycluster );
+                        temp = filebrowser( directorynames[present_entry].starting_cluster, rootdirectorycluster );
                         if( temp ) {
                             return( temp );
                         } else {
@@ -539,7 +545,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 }
 
 extern int _bss_start, _bss_end;
-void main( void ) {
+int main( void ) {
     unsigned int isa;
     unsigned short i, j, x, y;
     unsigned short selectedfile = 0;
@@ -551,7 +557,8 @@ void main( void ) {
     memset( &_bss_start, 0, &_bss_end - &_bss_end );
 
     // RESET THE DISPLAY
-    reset_display(); set_background( DKBLUE - 1, BLACK, BKG_SOLID );
+//    reset_display(); set_background( DKBLUE - 1, BLACK, BKG_SOLID );
+    reset_display(); set_background( BLUEUK, GOLD, 1 );
 
     // KEYBOARD INTO JOYSTICK MODE
     *PS2_MODE = 0;
@@ -569,15 +576,15 @@ void main( void ) {
     SMTSTART( (unsigned int )smtthread );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV32IMAFC CPU", 0 );
-    gpu_outputstringcentre( GREY2, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
+    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV32IMAFCB CPU", 0 );
+    gpu_outputstringcentre( BLUEUK, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS
     while( *UART_STATUS & 1 ) { char temp = *UART_DATA; }
     while( *PS2_AVAILABLE ) { short temp = *PS2_DATA; }
 
     gpu_outputstringcentre( RED, 72, 0, "Waiting for SDCARD", 0 );
-    sleep( 2000 );
+    //sleep( 2000 );
     gpu_outputstringcentre( RED, 80, 0, "Press RESET if not detected", 0 );
     sdcard_readsector( 0, BOOTRECORD );
     PARTITIONS = (PartitionTable *) &BOOTRECORD[ 0x1BE ];

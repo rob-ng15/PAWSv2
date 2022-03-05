@@ -86,7 +86,7 @@ $$end
     uint1   clock_io = uninitialized;
     uint1   clock_cpu = uninitialized;
     uint1   clock_decode = uninitialized;
-    uint1   gpu_clock = uninitialized;
+    uint1   clock_gpu = uninitialized;
 $$if VERILATOR then
     $$clock_25mhz = 'video_clock'
     // --- PLL
@@ -97,7 +97,11 @@ $$if VERILATOR then
       compute_clock :> clock_system,
       compute_clock :> clock_cpu,
       compute_clock :> clock_io,
-      video_clock :> gpu_clock
+$$if gpu_50_mhz then
+      compute_clock :> clock_gpu,
+$$else
+      video_clock :> clock_gpu,
+$$end
     );
 $$else
     $$clock_25mhz = 'clock'
@@ -105,7 +109,7 @@ $$else
     // CPU + MEMORY
     uint1   sdram_clock = uninitialized;
     uint1   pll_lock_SYSTEM = uninitialized;
-    ulx3s_clk_risc_ice_v_SYSTEM clk_gen_SYSTEM (
+    ulx3s_clk_PAWS_SYSTEM clk_gen_SYSTEM (
         clkin    <: $clock_25mhz$,
         clkSYSTEM  :> clock_system,
         clkIO :> clock_io,
@@ -114,11 +118,11 @@ $$else
         locked   :> pll_lock_SYSTEM
     );
     uint1   pll_lock_CPU = uninitialized;
-    ulx3s_clk_risc_ice_v_CPU clk_gen_CPU (
+    ulx3s_clk_PAWS_CPU clk_gen_CPU (
         clkin    <: $clock_25mhz$,
-        clkCPU  :> clock_cpu,
-        clkDECODE  :> clock_decode,
-        clkGPU :> gpu_clock,
+        clkCPU :> clock_cpu,
+        clkDECODE :> clock_decode,
+        clkGPU :> clock_gpu,
         locked   :> pll_lock_CPU
     );
 $$end
@@ -128,7 +132,15 @@ $$end
 
     // SDRAM chip controller by @sylefeb
     sdram_r16w16_io sio_fullrate; sdram_r16w16_io sio_halfrate;
+$$if VERILATOR then
     sdram_half_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
+$$else
+$$if sdram_150_mhz then
+    sdram_third_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
+$$else
+    sdram_half_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
+$$end
+$$end
     sdram_controller_autoprecharge_r16_w16 sdram32MB <@sdram_clock,!sdram_reset> (
         sd        <:> sio_fullrate,
         sdram_cle :>  sdram_cle,
@@ -203,11 +215,12 @@ $$end
         writeData <: CPU.writedata,
         audio_l :> audio_l,
         audio_r :> audio_r,
-        static4bit <: TIMERS_Map.static16bit[0,4]
+        static8bit <: TIMERS_Map.static16bit[0,8]
     );
 
     video_memmap VIDEO_Map <@clock_io,!reset> (
         video_clock <: $clock_25mhz$,
+        gpu_clock <: clock_gpu,
         memoryAddress <: CPU.address[0,12],
         writeData <: CPU.writedata,
 $$if HDMI then
@@ -236,16 +249,16 @@ $$end
     );
 
     // IDENTIFY ADDRESS BLOCK
-    uint1   SDRAM <: CPU.address[26,1];
-    uint1   BRAM <: ~SDRAM & ~CPU.address[15,1];
-    uint1   IOmem <: ~SDRAM & ~BRAM;
-    uint1   TIMERS <: IOmem & ( ~|CPU.address[12,2] );
-    uint1   VIDEO <: IOmem & ( CPU.address[12,2] == 2h1 );
-    uint1   AUDIO <: IOmem & ( CPU.address[12,2] == 2h2 );
-    uint1   IO <: IOmem & ( &CPU.address[12,2] );
+    uint1   SDRAM <:: CPU.address[26,1];
+    uint1   BRAM <:: ~SDRAM & ~CPU.address[15,1];
+    uint1   IOmem <:: ~SDRAM & ~BRAM;
+    uint1   TIMERS <:: IOmem & ( ~|CPU.address[12,2] );
+    uint1   VIDEO <:: IOmem & ( CPU.address[12,2] == 2h1 );
+    uint1   AUDIO <:: IOmem & ( CPU.address[12,2] == 2h2 );
+    uint1   IO <:: IOmem & ( &CPU.address[12,2] );
 
     // READ FROM SDRAM / BRAM / IO REGISTERS
-    uint16  readdata <: SDRAM ? DRAM.readdata :
+    uint16  readdata <:: SDRAM ? DRAM.readdata :
                 BRAM ? RAM.readdata :
                 TIMERS ? TIMERS_Map.readData :
                 VIDEO ? VIDEO_Map.readData :
@@ -287,16 +300,10 @@ algorithm bramcontroller(
 ) <autorun,reginputs> {
 $$if not SIMULATION then
     // RISC-V FAST BRAM and BIOS
-    bram uint16 ram[16384] = {
-        $include('ROM/BIOS.inc')
-        , pad(uninitialized)
-    };
+    bram uint16 ram[16384] = {file("ROM/BIOS.bin"), pad(uninitialized)};
 $$else
     // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
-    bram uint16 ram[16384] = {
-        $include('ROM/VBIOS.inc')
-        , pad(uninitialized)
-    };
+    bram uint16 ram[16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
 $$end
 
     uint1   update = uninitialized;
@@ -323,24 +330,28 @@ $$end
 // An eviction cache was chosen as easy to implement as a directly mapped cache
 // Writes to SDRAM only if required when evicting a cache entry
 
+// ADDRESS WIDTH OF THE SDRAM ( 26 bits is 32Mb )
+// CHIP SELECT is done by readflag/writeflag
+$$ sdram_addr_width = 26
+
 // DATA CACHE SIZE IS NUMBER OF 16bit ENTRIES
 $$ size = 4096
 $$ cacheaddrwidth = clog2(size)
-$$ partaddresswidth = 25 - cacheaddrwidth
+$$ partaddresswidth = sdram_addr_width - 1 - cacheaddrwidth
 $$ partaddressstart = 1 + cacheaddrwidth
 bitfield cachetag{ uint1 needswrite, uint1 valid, uint$partaddresswidth$ partaddress }
 
 // INSTRUCTION CACHE IS NUMBER OF 16bit ENTRIES
 $$ Isize = 8192
 $$ Icacheaddrwidth = clog2(Isize)
-$$ Ipartaddresswidth = 25 - Icacheaddrwidth
+$$ Ipartaddresswidth = sdram_addr_width - 1 - Icacheaddrwidth
 $$ Ipartaddressstart = 1 + Icacheaddrwidth
 bitfield Icachetag{ uint1 valid, uint$Ipartaddresswidth$ partaddress }
 
 algorithm cachecontroller(
     sdram_user      sio,
     input   uint1   cacheselect,
-    input   uint26  address,
+    input   uint$sdram_addr_width$  address,
     input   uint1   byteaccess,
     input   uint1   writeflag,
     input   uint16  writedata,
@@ -350,10 +361,10 @@ algorithm cachecontroller(
 ) <autorun,reginputs> {
     // DATA CACHE for SDRAM - CACHE SIZE DETERMINED BY size DEFINED ABOVE, MUST BE A POWER OF 2
     // DATA CACHE ADDRESS IS LOWER bits of the address, dropping the BYTE address bit
-    // DATA CACHE TAG IS REMAINING bits of the 26 bit address + 1 bit for valid flag + 1 bit for needwritetosdram flag
+    // DATA CACHE TAG IS REMAINING bits of the address + 1 bit for valid flag + 1 bit for needwritetosdram flag
     simple_dualport_bram uint16 cache[$size$] = uninitialized;
     simple_dualport_bram uint$partaddresswidth+2$ tags[$size$] = uninitialized;
-    uint26  addressfromcache <:: { cachetag(tags.rdata0).partaddress, address[1,$cacheaddrwidth$], 1b0 };
+    uint$sdram_addr_width$  addressfromcache <:: { cachetag(tags.rdata0).partaddress, address[1,$cacheaddrwidth$], 1b0 };
 
     // INSTRUCTION CACHE for SDRAM
     // DEFINED AS ABOVE EXCEPT NO NEED FOR needwritetosdram flag
@@ -436,46 +447,49 @@ algorithm cachecontroller(
 
 // WRITE TO DATA CACHE
 algorithm cachewriter(
-    input   uint26  address,
+    input   uint$sdram_addr_width$  address,
     input   uint1   needwritetosdram,
     input   uint16  writedata,
     input   uint1   update,
     simple_dualport_bram_port1 cache,
     simple_dualport_bram_port1 tags
 ) <autorun,reginputs> {
-    cache.wenable1 := update; tags.wenable1 := update;
-    cache.addr1 := address[1,$cacheaddrwidth$]; cache.wdata1 := writedata;
-    tags.addr1 := address[1,$cacheaddrwidth$]; tags.wdata1 := { needwritetosdram, 1b1, address[$partaddressstart$,$partaddresswidth$] };
+    always_after {
+        cache.wenable1 = update; tags.wenable1 = update;
+        cache.addr1 = address[1,$cacheaddrwidth$]; cache.wdata1 = writedata;
+        tags.addr1 = address[1,$cacheaddrwidth$]; tags.wdata1 = { needwritetosdram, 1b1, address[$partaddressstart$,$partaddresswidth$] };
+    }
 }
 
 // WRITE TO INSTRCUTION CACHE
 algorithm Icachewriter(
-    input   uint26  address,
+    input   uint$sdram_addr_width$  address,
     input   uint16  writedata,
     input   uint1   update,
     simple_dualport_bram_port1 Icache,
     simple_dualport_bram_port1 Itags
 ) <autorun,reginputs> {
-    Icache.wenable1 := update; Itags.wenable1 := update;
-    Icache.addr1 := address[1,$Icacheaddrwidth$]; Icache.wdata1 := writedata;
-    Itags.addr1 := address[1,$Icacheaddrwidth$]; Itags.wdata1 := { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] };
+    always_after {
+        Icache.wenable1 = update; Itags.wenable1 = update;
+        Icache.addr1 = address[1,$Icacheaddrwidth$]; Icache.wdata1 = writedata;
+        Itags.addr1 = address[1,$Icacheaddrwidth$]; Itags.wdata1 = { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] };
+    }
 }
 
 algorithm sdramcontroller(
     sdram_user      sio,
-    input   uint26  address,
+    input   uint$sdram_addr_width$  address,
     input   uint1   writeflag,
     input   uint16  writedata,
     input   uint1   readflag,
     output  uint16  readdata,
     output  uint1   busy(0)
 ) <autorun,reginputs> {
-    // MEMORY ACCESS FLAGS
-    sio.addr := { address[1,25], 1b0 }; sio.in_valid := ( readflag | writeflag );
-    sio.data_in := writedata; sio.rw := writeflag;
-    readdata := sio.data_out;
 
     always_after {
+        // MEMORY ACCESS FLAGS
+        sio.addr = { address[1,$sdram_addr_width-1$], 1b0 };             sio.in_valid = ( readflag | writeflag );           sio.data_in = writedata;
+        sio.rw = writeflag;                            readdata = sio.data_out;
         busy = ( sio.done ) ? 0 : ( readflag | writeflag ) ? 1 : busy;
     }
 }

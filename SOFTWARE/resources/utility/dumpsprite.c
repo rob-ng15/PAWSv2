@@ -42,8 +42,8 @@ int main(int argc, char *argv[]) {
     char title[32] = {0};
     uint8_t *colour, *frame;
 
-    if (argc != 2) {
-        fprintf(stderr, "usage:\n  %s gif-file\n", argv[0]);
+    if (argc < 2) {
+        fprintf(stderr, "usage:\n  %s gif-file [t]\n", argv[0]);
         return 1;
     }
     gif = gd_open_gif(argv[1]);
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
         printf("        ");
         for( int y = 0; y < gif->height; y++ ) {
             for( int x = 0; x < gif->width; x++ ) {
-                if(gd_is_bgcolor(gif,colour)) {
+                if(gd_is_bgcolor(gif,colour) && ( argc == 3 )) {
                     printf("64, ");
                 } else {
                     printf("%d, ", matchcolour( colour ));

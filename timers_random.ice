@@ -7,6 +7,7 @@ algorithm timesinceboot(
     uint5  counter25mhz = uninitialised;
     uint1   MIN <:: ( ~|counter25mhz );
     uint1   MAX <:: ( counter1mhz == 1000000 );
+
     always_after {
         counter25mhz = MIN ? 25 : counter25mhz - 1;
         counter1mhz = MAX ? 0 : counter1mhz + MIN;
@@ -21,6 +22,7 @@ algorithm pulse1hz(
 ) <autorun,reginputs> {
     uint25  counter25mhz = uninitialised;
     uint1   MIN <:: ( ~|counter25mhz );
+
     always_after {
         counter1hz = resetCounter ? 0 : counter1hz + MIN;
         counter25mhz = resetCounter | MIN ? 25000000 : counter25mhz - 1;
@@ -34,8 +36,9 @@ algorithm pulse1khz(
 ) <autorun,reginputs> {
     uint15  counter25mhz = uninitialised;
     uint1   MIN <:: ( ~|counter25mhz );
-    uint1   RESET <:: ( |resetCounter );
+    uint1   RESET <: ( |resetCounter );
     uint1   FINISHED <:: ( ~|counter1khz );
+
     always_after {
         counter1khz = RESET ? resetCounter : FINISHED ? 0 : counter1khz - MIN;
         counter25mhz = RESET | MIN ? 25000 : counter25mhz - 1;

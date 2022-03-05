@@ -1,9 +1,15 @@
 $$ uart_in_clock_freq_mhz = 25
+//$$ sdram_150_mhz = 1
+//$$ gpu_50_mhz = 1
 
 $$if not SIMULATION then
 // CLOCKS
-import('../common/clock_system.v')
-import('../common/clock_cpu.v')
+$$if sdram_150_mhz then
+import('../common/clock_PAWS-sdram150.v')
+$$else
+import('../common/clock_PAWS-sdram100.v')
+$$end
+import('../common/clock_PAWS-CPU.v')
 $$end
 
 // HDMI for FPGA, VGA for SIMULATION
@@ -39,13 +45,18 @@ $include('../sprite_layer.ice')
 $include('../terminal.ice')
 $include('../tile_map.ice')
 $include('../multiplex_display.ice')
+$include('../common/audio_pwm.ice')
 $include('../audio.ice')
+$$if gpu_50_mhz then
+$include('../video_memmap-50MHzGPU.ice')
+$$else
 $include('../video_memmap.ice')
+$$end
 $include('../io_memmap.ice')
 $include('../timers_random.ice')
 
 // CPU SPECIFICATION
-$$CPUISA = 0x40001025
+$$CPUISA = 0x40001027
 $include('../cpu_functionblocks.ice')
 $include('../ALU.ice')
 $include('../FPU.ice')

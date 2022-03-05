@@ -26,6 +26,7 @@
 ***************************************************************/
 
 #include "pf_all.h"
+#include <PAWSlibrary.h>
 
 #define PF_ENGLISH
 
@@ -39,6 +40,7 @@ void pfReportError( const char *FunctionName, Err ErrCode )
 {
     const char *s;
 
+    attron( COLOR_PAIR(3) | A_BOLD );
     MSG("Error in ");
     MSG(FunctionName);
     MSG(" - ");
@@ -92,6 +94,7 @@ void pfReportError( const char *FunctionName, Err ErrCode )
     }
     MSG(s);
     EMIT_CR;
+    attron( COLOR_PAIR(7) | A_NORMAL );
 }
 
 void pfReportThrow( ThrowCode code )
@@ -127,9 +130,11 @@ void pfReportThrow( ThrowCode code )
 
     if( s )
     {
+        attron( COLOR_PAIR(3) | A_BOLD );
         MSG_NUM_D("THROW code = ", code );
         MSG(s);
         EMIT_CR;
+        attron( COLOR_PAIR(7) | A_NORMAL );
     }
 }
 #endif

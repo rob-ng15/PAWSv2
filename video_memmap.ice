@@ -6,6 +6,7 @@ algorithm passthrough(input uint1 i,output! uint1 o)
 algorithm video_memmap(
     // CLOCKS
     input   uint1   video_clock,
+    input   uint1   gpu_clock,
 
     // Memory access
     input   uint12  memoryAddress,
@@ -65,6 +66,10 @@ $$if HDMI then
     );
 $$end
     // CREATE DISPLAY LAYERS
+
+    // FLAG FOR hi (640x480) or lo (320x240) SWITCH FOR TILEMAPS
+    uint2   hilorez = 0;
+
     // BACKGROUND
     background_memmap BACKGROUND(
         video_clock <: video_clock,
@@ -83,6 +88,7 @@ $$end
     bitmap_memmap BITMAP(
         video_clock <: video_clock,
         video_reset <: video_reset,
+        gpu_clock <: video_clock,
         pix_x      <: pix_x,
         pix_y      <: pix_y,
         pix_active <: pix_active,
@@ -153,6 +159,7 @@ $$end
     tilemap_memmap LOWER_TILE(
         video_clock <: video_clock,
         video_reset <: video_reset,
+        lorez <: hilorez[0,1],
         pix_x      <: pix_x,
         pix_y      <: pix_y,
         pix_active <: pix_active,
@@ -163,6 +170,7 @@ $$end
     tilemap_memmap UPPER_TILE(
         video_clock <: video_clock,
         video_reset <: video_reset,
+        lorez <: hilorez[1,1],
         pix_x      <: pix_x,
         pix_y      <: pix_y,
         pix_active <: pix_active,
@@ -192,9 +200,6 @@ $$end
         terminal_p <: TERMINAL.pixel,
         terminal_display <: TERMINAL.pixel_display
     );
-
-    // NUMBER OF DISPLAY FRAMES DRAWN SINCE STARTUP
-    uint32  totalframes = 0;
 
     BACKGROUND.memoryWrite := 0; BITMAP.memoryWrite := 0; CHARACTER_MAP.memoryWrite := 0; LOWER_SPRITE.memoryWrite := 0; UPPER_SPRITE.memoryWrite := 0; TERMINAL.memoryWrite := 0;
     LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0;
@@ -252,14 +257,7 @@ $$end
                     }
                 }
                 case 4h7: { readData = TERMINAL.terminal_active; }
-                case 4hf: {
-                    switch( memoryAddress[1,2] ) {
-                        case 2h0: { readData = vblank; }
-                        case 2h1: { readData = totalframes[0,16]; }
-                        case 2h2: { readData = totalframes[16,16]; }
-                        default: { readData = 0; }
-                    }
-                }
+                case 4hf: { readData = vblank; }
                 default: { readData = 0; }
             }
         }
@@ -279,16 +277,15 @@ $$end
                 case 4h8: { LOWER_SPRITE.memoryWrite = 1; LOWER_SPRITE.bitmapwriter = 1; }
                 case 4h9: { UPPER_SPRITE.memoryWrite = 1; UPPER_SPRITE.bitmapwriter = 1; }
                 case 4hf: {
-                    if( memoryAddress[0,1] ) {
-                        display.colour = writeData;
-                    } else {
-                        display.display_order = writeData;
+                    switch( memoryAddress[0,2] ) {
+                        case 0: { display.display_order = writeData; }
+                        case 1: { display.colour = writeData; }
+                        default: { hilorez = writeData;}
                     }
                 }
                 default: {}
             }
         }
-        if( ( pix_x == 639 ) & ( pix_y == 479 ) ) { totalframes = totalframes + 1; }
     }
 
     if( ~reset ) {
@@ -298,8 +295,8 @@ $$end
 }
 
 // ALL DISPLAY GENERATOR UNITS RUN AT 25MHz, 640 x 480 @ 60fps ( bitmap outputs 320 x 240 double sized pixels )
-// DISPLAY CONTROL UNITS RUN AT 50MHz - except GPU and BACKGROUND which run at 25MHz
-// WRITING TO THE GPU AND BACKGROUND THEREFORE
+// DISPLAY CONTROL UNITS RUN AT 50MHz - except GPU which runs at 25MHz
+// WRITING TO THE GPU THEREFORE
 // LATCHES THE OUTPUT FOR 2 x 50MHz clock cycles
 // AND THEN RESETS ANY CONTROLS
 //
@@ -330,6 +327,10 @@ algorithm background_memmap(
 
     input   uint2   static2bit
 ) <autorun,reginputs> {
+    // BACKGROUND CO-PROCESSOR PROGRAM STORAGE
+    // { 3 bit command, 3 bit mask, { 1 bit for cpuinput flag, 10 bit coordinate }, 4 bit mode, 7 bit colour 2, 7 bit colour 1 }
+    simple_dualport_bram uint35 copper <@video_clock,@clock> [ 128 ] = uninitialised;
+
     // BACKGROUND GENERATOR
     background_display BACKGROUND <@video_clock,!video_reset> (
         pix_x <: pix_x,
@@ -338,45 +339,42 @@ algorithm background_memmap(
         pix_vblank <: pix_vblank,
         pixel :> pixel,
         staticGenerator <: static2bit,
-        b_colour <: BACKGROUND_WRITER.BACKGROUNDcolour,
-        b_alt <: BACKGROUND_WRITER.BACKGROUNDalt,
-        b_mode <: BACKGROUND_WRITER.BACKGROUNDmode
+        b_colour <: BACKGROUND_COPPER.BACKGROUNDcolour,
+        b_alt <: BACKGROUND_COPPER.BACKGROUNDalt,
+        b_mode <: BACKGROUND_COPPER.BACKGROUNDmode
     );
-
-    background_writer BACKGROUND_WRITER <@video_clock,!video_reset> (
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+    background_copper BACKGROUND_COPPER  <@video_clock,!video_reset> (
+        pix_x <: pix_x,
+        pix_y <: pix_y,
         pix_active <: pix_active,
-        pix_vblank <: pix_vblank
+        pix_vblank <: pix_vblank,
+        backgroundcolour <: BACKGROUND_WRITER.BACKGROUNDcolour,
+        backgroundcolour_alt <: BACKGROUND_WRITER.BACKGROUNDalt,
+        backgroundcolour_mode <: BACKGROUND_WRITER.BACKGROUNDmode,
+        copper <:> copper
     );
+    background_writer BACKGROUND_WRITER( copper <:> copper );
 
-    // LATCH MEMORYWRITE
-    uint1   LATCHmemoryWrite = uninitialized;
-
+    BACKGROUND_WRITER.background_update := 0; BACKGROUND_WRITER.copper_program := 0;
     always_after {
-        switch( { memoryWrite, LATCHmemoryWrite } ) {
-            case 2b10: {
-                switch( memoryAddress ) {
-                    case 6h00: { BACKGROUND_WRITER.backgroundcolour = writeData; BACKGROUND_WRITER.background_update = 1; }
-                    case 6h02: { BACKGROUND_WRITER.backgroundcolour_alt = writeData; BACKGROUND_WRITER.background_update = 2; }
-                    case 6h04: { BACKGROUND_WRITER.backgroundcolour_mode = writeData; BACKGROUND_WRITER.background_update = 3; }
-                    case 6h10: { BACKGROUND_WRITER.copper_program = writeData; }
-                    case 6h12: { BACKGROUND_WRITER.copper_status = writeData; }
-                    case 6h20: { BACKGROUND_WRITER.copper_address = writeData; }
-                    case 6h22: { BACKGROUND_WRITER.copper_command = writeData; }
-                    case 6h24: { BACKGROUND_WRITER.copper_condition = writeData; }
-                    case 6h26: { BACKGROUND_WRITER.copper_coordinate = writeData; }
-                    case 6h28: { BACKGROUND_WRITER.copper_cpu_input = writeData; }
-                    case 6h2a: { BACKGROUND_WRITER.copper_mode = writeData; }
-                    case 6h2c: { BACKGROUND_WRITER.copper_alt = writeData; }
-                    case 6h2e: { BACKGROUND_WRITER.copper_colour = writeData; }
-                    default: {}
-                }
+        if( memoryWrite ) {
+            switch( memoryAddress[1,4] ) {
+                case 4h00: { BACKGROUND_WRITER.backgroundcolour = writeData; BACKGROUND_WRITER.background_update = 1; }
+                case 4h01: { BACKGROUND_WRITER.backgroundcolour_alt = writeData; BACKGROUND_WRITER.background_update = 2; }
+                case 4h02: { BACKGROUND_WRITER.backgroundcolour_mode = writeData; BACKGROUND_WRITER.background_update = 3; }
+                case 4h03: { BACKGROUND_COPPER.copper_status = writeData; }
+                case 4h04: { BACKGROUND_COPPER.copper_cpu_input = writeData; }
+                case 4h05: { BACKGROUND_WRITER.copper_program = writeData; }
+                case 4h06: { BACKGROUND_WRITER.copper_address = writeData; }
+                case 4h07: { BACKGROUND_WRITER.copper_command = writeData; }
+                case 4h08: { BACKGROUND_WRITER.copper_condition = writeData; }
+                case 4h09: { BACKGROUND_WRITER.copper_coordinate = writeData; }
+                case 4h0a: { BACKGROUND_WRITER.copper_mode = writeData; }
+                case 4h0b: { BACKGROUND_WRITER.copper_alt = writeData; }
+                case 4h0c: { BACKGROUND_WRITER.copper_colour = writeData; }
+                default: {}
             }
-            case 2b00: { BACKGROUND_WRITER.background_update = 0; BACKGROUND_WRITER.copper_program = 0; }
-            default: {}
         }
-        LATCHmemoryWrite = memoryWrite;
     }
 }
 
@@ -384,6 +382,7 @@ algorithm bitmap_memmap(
     // Clocks
     input   uint1   video_clock,
     input   uint1   video_reset,
+    input   uint1   gpu_clock,
 
     // Pixels
     input   uint10  pix_x,
@@ -446,7 +445,7 @@ algorithm bitmap_memmap(
     simple_dualport_bram uint7 colourblittilemap <@video_clock,@clock> [ 16384 ] = uninitialized;
 
     // 256 colour remapper
-    simple_dualport_bram uint8 pb_colourmap <@video_clock,@clock> [ 256 ] = uninitialized;
+    simple_dualport_bram uint7 pb_colourmap <@video_clock,@clock> [ 256 ] = uninitialized;
 
     // BITMAP WRITER AND GPU
     bitmapwriter pixel_writer <@video_clock,!video_reset> (
@@ -843,6 +842,7 @@ algorithm tilemap_memmap(
     // Clocks
     input   uint1   video_clock,
     input   uint1   video_reset,
+    input   uint1   lorez,
 
     // Pixels
     input   uint10  pix_x,
@@ -883,11 +883,12 @@ algorithm tilemap_memmap(
     // 42 x 32 tile map, allows for pixel scrolling with border { 2 bit rotation/reflection, 6 bits tile number }
     simple_dualport_bram uint9 tiles <@video_clock,@clock> [1344] = uninitialized;
 
+    uint10  dopix_x <: lorez ? pix_x[1,9] : pix_x;  uint10  dopix_y <: lorez ? pix_y[1,9] : pix_y;
     tilemap tile_map <@video_clock,!video_reset> (
         tiles16x16 <:> tiles16x16,
         tiles <:> tiles,
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+        pix_x      <: dopix_x,
+        pix_y      <: dopix_y,
         pix_active <: pix_active,
         pix_vblank <: pix_vblank,
         pixel    :> pixel,

@@ -55,10 +55,8 @@ algorithm sprite_layer(
     uint16  sprite_collision_frame <: { SPRITE_15.pix_visible, SPRITE_14.pix_visible, SPRITE_13.pix_visible, SPRITE_12.pix_visible, SPRITE_11.pix_visible,
                                         SPRITE_10.pix_visible, SPRITE_9.pix_visible, SPRITE_8.pix_visible, SPRITE_7.pix_visible,
                                         SPRITE_6.pix_visible, SPRITE_5.pix_visible, SPRITE_4.pix_visible, SPRITE_3.pix_visible,
-                                        SPRITE_2.pix_visible, SPRITE_1.pix_visible, SPRITE_0.pix_visible
-                                      };
+                                        SPRITE_2.pix_visible, SPRITE_1.pix_visible, SPRITE_0.pix_visible };
     uint1   output_collisions <: ( pix_x == 639 ) & ( pix_y == 479 );
-
 
     // Default to transparent
     sprite_layer_display := pix_active & ( |sprite_collision_frame );
@@ -68,7 +66,7 @@ algorithm sprite_layer(
         $$end
         SPRITE_0.pixel;
 
-    always_before {
+    always {
         if( pix_active ) {
             $$for i=0,15 do
                 // UPDATE COLLISION DETECTION FLAGS
@@ -80,18 +78,8 @@ algorithm sprite_layer(
         }
         if( output_collisions ) {
             $$for i=0,15 do
-                // UPDATE CPU READABLE FLAGS DURING THE FRAME
-                collision_$i$ = detect_collision_$i$;
-                layer_collision_$i$ = detect_layer_$i$;
-            $$end
-        }
-    }
-    always_after {
-        if( output_collisions ) {
-            // RESET collision detection
-            $$for i=0,15 do
-                detect_collision_$i$ = 0;
-                detect_layer_$i$ = 0;
+                collision_$i$ = detect_collision_$i$; detect_collision_$i$ = 0;
+                layer_collision_$i$ = detect_layer_$i$; detect_layer_$i$ = 0;
             $$end
         }
     }
@@ -176,13 +164,12 @@ algorithm sprite_layer_writer(
         sprite_read_tile_$i$ := sprite_tile_number[$i$];
     $$end
 
-    always_before {
-        // CALCULATE HELPER VALUES FOR SPRITE UPDATE
-        sprite_off_left = ( __signed( sprite_x[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
-        sprite_off_top = ( __signed( sprite_y[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
-        sprite_offscreen_x = sprite_off_left | ( __signed( sprite_x[ sprite_set_number  ] ) > __signed(640) );
-        sprite_offscreen_y = sprite_off_top | ( __signed( sprite_y[ sprite_set_number ] ) > __signed(480) );
-    }
+    // CALCULATE HELPER VALUES FOR SPRITE UPDATE
+    sprite_off_left := ( __signed( sprite_x[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
+    sprite_off_top := ( __signed( sprite_y[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
+    sprite_offscreen_x := sprite_off_left | ( __signed( sprite_x[ sprite_set_number  ] ) > __signed(640) );
+    sprite_offscreen_y := sprite_off_top | ( __signed( sprite_y[ sprite_set_number ] ) > __signed(480) );
+
     always_after {
         // SET ATTRIBUTES + PERFORM UPDATE
         switch( sprite_layer_write ) {

@@ -19,24 +19,24 @@ unsigned char volatile *SDCARD_DATA = (unsigned char volatile *) 0xf152;
 
 // DISPLAY UNITS
 unsigned char volatile *VBLANK = (unsigned char volatile *) 0xdf00;
-unsigned int volatile *FRAMES = (unsigned int volatile *) 0xdf02;
 unsigned char volatile *SCREENMODE = (unsigned char volatile *) 0xdf00;
 unsigned char volatile *COLOUR = (unsigned char volatile *) 0xdf01;
+unsigned char volatile *REZ = (unsigned char volatile *) 0xdf02;
 
 // BACKGROUND AND COPPER - BASE 0xd000
 unsigned char volatile *BACKGROUND_COLOUR = (unsigned char volatile *) 0xd000;
 unsigned char volatile *BACKGROUND_ALTCOLOUR = (unsigned char volatile *) 0xd002;
 unsigned char volatile *BACKGROUND_MODE = (unsigned char volatile *) 0xd004;
-unsigned char volatile *BACKGROUND_COPPER_PROGRAM = (unsigned char volatile *) 0xd010;
-unsigned char volatile *BACKGROUND_COPPER_STARTSTOP = (unsigned char volatile *) 0xd012;
-unsigned char volatile *BACKGROUND_COPPER_ADDRESS = (unsigned char volatile *) 0xd020;
-unsigned char volatile *BACKGROUND_COPPER_COMMAND = (unsigned char volatile *) 0xd022;
-unsigned char volatile *BACKGROUND_COPPER_CONDITION = (unsigned char volatile *) 0xd024;
-unsigned short volatile *BACKGROUND_COPPER_COORDINATE = (unsigned short volatile *) 0xd026;
-unsigned short volatile *BACKGROUND_COPPER_CPUINPUT = (unsigned short volatile *) 0xd028;
-unsigned char volatile *BACKGROUND_COPPER_MODE = (unsigned char volatile *) 0xd02a;
-unsigned char volatile *BACKGROUND_COPPER_ALT = (unsigned char volatile *) 0xd02c;
-unsigned char volatile *BACKGROUND_COPPER_COLOUR = (unsigned char volatile *) 0xd02e;
+unsigned char volatile *BACKGROUND_COPPER_STARTSTOP = (unsigned char volatile *) 0xd006;
+unsigned short volatile *BACKGROUND_COPPER_CPUINPUT = (unsigned short volatile *) 0xd008;
+unsigned char volatile *BACKGROUND_COPPER_PROGRAM = (unsigned char volatile *) 0xd00a;
+unsigned char volatile *BACKGROUND_COPPER_ADDRESS = (unsigned char volatile *) 0xd00c;
+unsigned char volatile *BACKGROUND_COPPER_COMMAND = (unsigned char volatile *) 0xd00e;
+unsigned char volatile *BACKGROUND_COPPER_CONDITION = (unsigned char volatile *) 0xd010;
+unsigned short volatile *BACKGROUND_COPPER_COORDINATE = (unsigned short volatile *) 0xd012;
+unsigned char volatile *BACKGROUND_COPPER_MODE = (unsigned char volatile *) 0xd014;
+unsigned char volatile *BACKGROUND_COPPER_ALT = (unsigned char volatile *) 0xd016;
+unsigned char volatile *BACKGROUND_COPPER_COLOUR = (unsigned char volatile *) 0xd018;
 
 unsigned char volatile *LOWER_TM_X = (unsigned char volatile *) 0xd100;
 unsigned char volatile *LOWER_TM_Y = (unsigned char volatile *) 0xd102;

@@ -67,21 +67,23 @@ algorithm gpu_queue(
     );
 
     // QUEUE STORAGE
-    uint1   queue_busy = 0;
+    uint1   queue_busy = uninitialised;
     int11   queue_x = uninitialised;                int11   queue_y = uninitialised;
     uint7   queue_colour = uninitialised;           uint7   queue_colour_alt = uninitialised;
     int11   queue_param0 = uninitialised;           int11   queue_param1 = uninitialised;
     int11   queue_param2 = uninitialised;           int11   queue_param3 = uninitialised;
     int11   queue_param4 = uninitialised;           int11   queue_param5 = uninitialised;
     uint4   queue_dithermode = uninitialised;
-    uint4   queue_write = uninitialised;
+    uint4   queue_write = 0;
     uint9   queue_cropL = uninitialised;            uint8   queue_cropT = uninitialised;
     uint9   queue_cropR = uninitialised;            uint8   queue_cropB = uninitialised;
 
     GPU.gpu_write := 0; queue_full := vector_block_active | queue_busy ; queue_complete := ~( gpu_active | queue_full );
     bitmap_crop_left := GPU.crop_left; bitmap_crop_right := GPU.crop_right; bitmap_crop_top := GPU.crop_top; bitmap_crop_bottom := GPU.crop_bottom;
+    queue_busy := |queue_write;
 
-    always_before {
+    always_after {
+        // PUT INTO QUEUE
         if( vector_drawer_gpu_write ) {
             GPU.gpu_colour = vector_block_colour;
             GPU.gpu_x = vector_drawer_gpu_x; GPU.gpu_y = vector_drawer_gpu_y;
@@ -91,7 +93,7 @@ algorithm gpu_queue(
             GPU.gpu_write = 2;
         }
         if( |gpu_write ) {
-            queue_busy = 1; queue_dithermode = gpu_dithermode; queue_colour = gpu_colour; queue_colour_alt = gpu_colour_alt; queue_write = gpu_write;
+            queue_dithermode = gpu_dithermode; queue_colour = gpu_colour; queue_colour_alt = gpu_colour_alt; queue_write = gpu_write;
             ( queue_x, queue_y ) = copycoordinates( gpu_x, gpu_y );
             ( queue_param0, queue_param1 ) = copycoordinates( gpu_param0, gpu_param1 );
             ( queue_param2, queue_param3 ) = copycoordinates( gpu_param2, gpu_param3 );
@@ -99,8 +101,7 @@ algorithm gpu_queue(
             ( queue_cropL, queue_cropR ) = copycoordinates( crop_left, crop_right );
             ( queue_cropT, queue_cropB ) = copycoordinates( crop_top, crop_bottom );
         }
-    }
-    always_after {
+        // PROCESS QUEUE
         if( queue_busy & ~gpu_active ) {
             GPU.gpu_dithermode = queue_dithermode; GPU.gpu_colour = queue_colour; GPU.gpu_colour_alt = queue_colour_alt;
             GPU.gpu_x = queue_x; GPU.gpu_y = queue_y;
@@ -129,7 +130,6 @@ algorithm gpu_queue(
                 }
             }
         }
-        queue_busy = |queue_write;
     }
 }
 
@@ -218,36 +218,32 @@ algorithm gpu(
     gpu_active := ( |gpu_write[1,3] ) | gpu_busy;
 
     always_after {
-        switch( gpu_write ) {
-            case 0: {}
-            case 1: {
-                // SET PIXEL (X,Y) NO GPU ACTIVATION
-                gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  gpu_x, gpu_y ); bitmap_write = 1;
-            }
-            default: {
-                // START THE GPU DRAWING UNIT - RESET DITHERMODE TO 0 (most common)
-                gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; bitmap_colour_write_alt = gpu_colour_alt;
-                switch( gpu_write ) {
-                    default: {}
-                    case 2: { GPUline.start = 1; }                                                                          // DRAW LINE FROM (X,Y) to (PARAM0,PARAM1)
-                    case 3: { gpu_active_dithermode = gpu_dithermode; GPUrectangle.start = 1; }                             // DRAW RECTANGLE FROM (X,Y) to (PARAM0,PARAM1)
-                    case 4: { GPUcircle.filledcircle = 0; GPUcircle.start = 1; }                                            // DRAW CIRCLE CENTRE (X,Y) with RADIUS PARAM0
-                    case 5: { gpu_active_dithermode = gpu_dithermode; GPUcircle.filledcircle = 1; GPUcircle.start = 1; }    // DRAW FILLED CIRCLE CENTRE (X,Y) with RADIUS PARAM0
-                    case 6: { gpu_active_dithermode = gpu_dithermode; GPUtriangle.start = 1; }                              // DRAW FILLED TRIANGLE WITH VERTICES (X,Y) (PARAM0,PARAM1) (PARAM2,PARAM3)
-                    case 7: { GPUblit.tilecharacter = 1; GPUblit.start = 1; }                                               // BLIT 16 x 16 TILE PARAM0 TO (X,Y)
-                    case 8: { GPUblit.tilecharacter = 0; GPUblit.start = 1; }                                               // BLIT 8 x 8 CHARACTER PARAM0 TO (X,Y) as 8 x 8
-                    case 9: { GPUblit.tilecharacter = 1; GPUblit.start = 2; }                                               // BLIT 16 x 16 COLOUR TILE PARAM0 TO (X,Y) as 16 x 16
-                    case 10: { GPUpixelblock.start = 1; }                                                                   // START THE PIXELBLOCK WRITER AT (x,y) WITH WIDTH PARAM0, IGNORE COLOUR PARAM1
-                    // 11
-                    // 12
-                    // 13
-                    // 14
-                    // 15 is quadrilateral, handled by the queue
-                }
-            }
+        if( |gpu_write ) {
+            // START THE GPU DRAWING UNIT - RESET DITHERMODE TO 0 (most common)
+            gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; bitmap_colour_write_alt = gpu_colour_alt;
+            GPUcircle.filledcircle = gpu_write[0,1]; GPUblit.tilecharacter = gpu_write[0,1];
         }
+        switch( gpu_write ) {
+            default: {}
+            case 1: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  gpu_x, gpu_y ); bitmap_write = 1; }
+            case 2: { GPUline.start = 1; }                                                  // DRAW LINE FROM (X,Y) to (PARAM0,PARAM1)
+            case 3: { gpu_active_dithermode = gpu_dithermode; GPUrectangle.start = 1; }     // DRAW RECTANGLE FROM (X,Y) to (PARAM0,PARAM1)
+            case 4: { GPUcircle.start = 1; }                                                // DRAW CIRCLE CENTRE (X,Y) with RADIUS PARAM0
+            case 5: { gpu_active_dithermode = gpu_dithermode; GPUcircle.start = 1; }        // DRAW FILLED CIRCLE CENTRE (X,Y) with RADIUS PARAM0
+            case 6: { gpu_active_dithermode = gpu_dithermode; GPUtriangle.start = 1; }      // DRAW FILLED TRIANGLE WITH VERTICES (X,Y) (PARAM0,PARAM1) (PARAM2,PARAM3)
+            case 7: { GPUblit.start = 1; }                                                  // BLIT 16 x 16 TILE PARAM0 TO (X,Y)
+            case 8: { GPUblit.start = 1; }                                                  // BLIT 8 x 8 CHARACTER PARAM0 TO (X,Y) as 8 x 8
+            case 9: { GPUblit.start = 2; }                                                  // BLIT 16 x 16 COLOUR TILE PARAM0 TO (X,Y) as 16 x 16
+            case 10: { GPUpixelblock.start = 1; }                                           // START THE PIXELBLOCK WRITER AT (x,y) WITH WIDTH PARAM0, IGNORE COLOUR PARAM1
+            // 11
+            // 12
+            // 13
+            // 14
+            // 15 is quadrilateral, handled by the queue
+        }
+
+        // COPY OUTPUT TO THE BITMAP WRITER
         if( gpu_busy ) {
-            // COPY OUTPUT TO THE BITMAP WRITER
             onehot( gpu_busy_flags ) {
                 case 0: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUline.bitmap_x_write, GPUline.bitmap_y_write ); }
                 case 1: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUrectangle.bitmap_x_write, GPUrectangle.bitmap_y_write ); }
@@ -279,14 +275,35 @@ algorithm istodraw(
         draw = ~|{ ( max_x < crop_left ), ( max_y < crop_top ), ( min_x > crop_right ), ( min_y > crop_bottom ) };
     }
 }
-// RECTANGLE - OUTPUT PIXELS TO DRAW A RECTANGLE
-algorithm preprectangle(
-    input   uint1   start,
-    output  uint1   busy(0),
+// HELPER - APPLY CROPPING RECTANGLE FOR RECTANGLES AND TRIANGLES
+algorithm applycrop(
     input   int11   crop_left,
     input   int11   crop_right,
     input   int11   crop_top,
     input   int11   crop_bottom,
+    input   int11   x1,
+    input   int11   y1,
+    input   int11   x2,
+    input   int11   y2,
+    output  int11   min_x,
+    output  int11   min_y,
+    output  int11   max_x,
+    output  int11   max_y
+) <autorun> {
+    always_after {
+        min_x = ( x1 < crop_left ) ? crop_left : x1;   max_x = ( ( x2 > crop_right ) ? crop_right : x2 );
+        min_y = ( y1 < crop_top ) ? crop_top : y1;     max_y = 1 + ( ( y2 > crop_bottom ) ? crop_bottom : y2 );
+    }
+}
+
+// RECTANGLE - OUTPUT PIXELS TO DRAW A RECTANGLE
+algorithm preprectangle(
+    input   uint1   start,
+    output  uint1   busy(0),
+    input   uint9   crop_left,
+    input   uint9   crop_right,
+    input   uint8   crop_top,
+    input   uint8   crop_bottom,
     input   int11   x,
     input   int11   y,
     input   int11   param0,
@@ -300,18 +317,19 @@ algorithm preprectangle(
     uint1   xcompareparam0 <:: ( x < param0 );          uint1   ycompareparam1 <:: ( y < param1 );
     int11   x1 <:: xcompareparam0 ? x : param0;         int11   y1 <:: ycompareparam1 ? y : param1;
     int11   x2 <:: xcompareparam0 ? param0 : x;         int11   y2 <:: ycompareparam1 ? param1 : y;
+
+    applycrop CROP( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
+                    x1 <: x1, y1 <: y1, x2 <: x2, y2 <: y2, min_x :> min_x, min_y :> min_y, max_x :> max_x, max_y :> max_y );
+
     istodraw TODRAW( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
-                min_x <: min_x, min_y <: min_y, max_x <: max_x, max_y <: max_y );
+                min_x <: CROP.min_x, min_y <: CROP.min_y, max_x <: CROP.max_x, max_y <: CROP.max_y );
+
     todraw := 0;
 
     while(1) {
         if( start ) {
             busy = 1;
-            min_x = ( x1 < crop_left ) ? crop_left : x1;
-            min_y = ( y1 < crop_top ) ? crop_top : y1;
-            max_x = ( ( x2 > crop_right ) ? crop_right : x2 );
-            max_y = 1 + ( ( y2 > crop_bottom ) ? crop_bottom : y2 );
-            ++:
+            ++: ++:
             todraw = TODRAW.draw;
             busy = 0;
         }
@@ -328,20 +346,21 @@ algorithm drawrectangle(
     output  int11   bitmap_y_write,
     output  uint1   bitmap_write
 ) <autorun> {
+    int11   xPLUS1 <:: bitmap_x_write + 1;          int11   yPLUS1 <:: bitmap_y_write + 1;
     bitmap_write := 0;
 
     while(1) {
         if( start ) {
             busy = 1;
-            bitmap_x_write = min_x; bitmap_y_write = min_y; bitmap_write = 1;
+            bitmap_x_write = min_x; bitmap_y_write = min_y; bitmap_write = 1;           // Output 1st Pixel
             while( busy ) {
                 if( bitmap_x_write != max_x ) {
-                    bitmap_x_write = bitmap_x_write + 1;
+                    bitmap_x_write = xPLUS1;
                 } else {
-                    bitmap_x_write = min_x; bitmap_y_write = bitmap_y_write + 1;
+                    bitmap_x_write = min_x; bitmap_y_write = yPLUS1;
                 }
                 busy = ( bitmap_y_write != max_y );
-                bitmap_write = busy;
+                bitmap_write = busy;                                                    // Output subsequent pixels
             }
         }
     }
@@ -367,7 +386,6 @@ algorithm rectangle (
         crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
         x <: x, y <: y, param0 <: x1, param1 <: y1
     );
-
     drawrectangle RECTANGLE(
         min_x <: PREP.min_x, min_y <: PREP.min_y, max_x <: PREP.max_x, max_y <: PREP.max_y,
         bitmap_x_write :> bitmap_x_write, bitmap_y_write :> bitmap_y_write, bitmap_write :> bitmap_write,
@@ -493,6 +511,37 @@ algorithm line(
 }
 
 //  CIRCLE - OUTPUT PIXELS TO DRAW AN OUTLINE OR FILLED CIRCLE
+algorithm arccoords(
+    input   int11   xc,
+    input   int11   yc,
+    input   int11   active_x,
+    input   int11   count,
+    input   uint3   arc,
+    output  int11   bitmap_x_write,
+    output  int11   bitmap_y_write,
+    output  uint1   centrepixel
+) <autorun> {
+    // PLUS OR MINUS OFFSETS
+    int11   xcpax <:: xc + active_x;                     int11   xcnax <:: xc - active_x;
+    int11   xcpc <:: xc + count;                         int11   xcnc <:: xc - count;
+    int11   ycpax <:: yc + active_x;                     int11   ycnax <:: yc - active_x;
+    int11   ycpc <:: yc + count;                         int11   ycnc <:: yc - count;
+
+    centrepixel := ( ~|count & ~|active_x );
+
+    always {
+        switch( arc ) {
+            case 0: { bitmap_x_write = xcpax; bitmap_y_write = ycpc; }
+            case 1: { bitmap_y_write = ycnc; }
+            case 2: { bitmap_x_write = xcnax; }
+            case 3: { bitmap_y_write = ycpc; }
+            case 4: { bitmap_x_write = xcpc; bitmap_y_write = ycpax; }
+            case 5: { bitmap_y_write = ycnax; }
+            case 6: { bitmap_x_write = xcnc; }
+            case 7: { bitmap_y_write = ycpax; }
+        }
+    }
+}
 algorithm drawcircle(
     input   uint1   start,
     output  uint1   busy(0),
@@ -514,32 +563,29 @@ algorithm drawcircle(
     int11   min_count = uninitialised;                  int11   min_countNEXT <:: min_count + 1;
     uint1   drawingcircle <:: ( active_y >= active_x ); uint1   finishsegment <:: ( countNEXT == min_count );
 
-    // PLUS OR MINUS OFFSETS
-    int11   xcpax <:: xc + active_x;                    int11   xcnax <:: xc - active_x;
-    int11   xcpc <:: xc + count;                        int11   xcnc <:: xc - count;
-    int11   ycpax <:: yc + active_x;                    int11   ycnax <:: yc - active_x;
-    int11   ycpc <:: yc + count;                        int11   ycnc <:: yc - count;
+    uint4   arc = uninitialised;                        uint4   arcNEXT <:: arc + 1;
+    arccoords ARC( xc <: xc, yc <: yc, active_x <: active_x, count <: count, arc <: arc );
 
     bitmap_write := 0;
+
+    always_after {
+        bitmap_x_write = ARC.centrepixel ? xc : ARC.bitmap_x_write;
+        bitmap_y_write = ARC.centrepixel ? yc : ARC.bitmap_y_write;
+    }
 
     while(1) {
         if( start ) {
             busy = 1;
             active_x = 0; active_y = radius; count = radius; min_count = (-1); numerator = start_numerator;
             while( drawingcircle ) {
-                if( ~|count & ~|active_x & |draw_sectors ) {
+                if( ARC.centrepixel ) {
                     // DETECT IF CENTRE PIXEL, OUTPUT ONCE
-                    bitmap_x_write = xc; bitmap_y_write = yc; bitmap_write = 1;
+                    bitmap_write = |draw_sectors;
                 } else {
-                    // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
-                    bitmap_x_write = xcpax; bitmap_y_write = ycpc;      bitmap_write = draw_sectors[0,1]; ++:
-                    bitmap_y_write = ycnc;                              bitmap_write = draw_sectors[1,1]; ++:
-                    bitmap_x_write = xcnax;                             bitmap_write = draw_sectors[2,1]; ++:
-                    bitmap_y_write = ycpc;                              bitmap_write = draw_sectors[3,1]; ++:
-                    bitmap_x_write = xcpc; bitmap_y_write = ycpax;      bitmap_write = draw_sectors[4,1]; ++:
-                    bitmap_y_write = ycnax;                             bitmap_write = draw_sectors[5,1]; ++:
-                    bitmap_x_write = xcnc;                              bitmap_write = draw_sectors[6,1]; ++:
-                    bitmap_y_write = ycpax;                             bitmap_write = draw_sectors[7,1];
+                    arc = 0; while( ~arc[3,1] ) {
+                        // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
+                        bitmap_write = draw_sectors[arc,1]; arc = arcNEXT;
+                    }
                 }
                 if( finishsegment ) {
                     active_x = active_xNEXT; active_y = active_yNEXT; count = active_y; min_count = min_countNEXT; numerator = new_numerator;
@@ -591,7 +637,7 @@ algorithm swaponcondition(
     output  int11   nx2,
     output  int11   ny1,
     output  int11   ny2
-) <autorun,reginputs> {
+) <autorun> {
     always_after {
         if( condition ) {
             nx1 = x2; ny1 = y2;
@@ -647,38 +693,40 @@ algorithm preptriangle(
     output  uint8   max_y,
     output  uint1   todraw
 ) <autorun> {
-    swaponcondition SWAP();
+    swaponcondition SWAP1( x1 <: param0, y1 <: param1, x2 <: param2, y2 <: param3 );                                                            // -> ( x2, y2 ) and ( x3, y3 )
+    swaponcondition SWAP2( x1 <: x, y1 <: y, x2 <: SWAP1.nx1, y2 <: SWAP1.ny1 );                                                                // -> ( x1, y1 ) and ( x2, y2 )
+    swaponcondition SWAP3( x1 <: SWAP2.nx1, y1 <: SWAP2.ny1, x2 <: SWAP1.nx2, y2 <: SWAP1.ny2 );                                                // -> ( x1, y1 ) and ( x3, y3 )
+    swaponcondition SWAP4( x1 <: SWAP2.nx2, y1 <: SWAP2.ny2, x2 <: SWAP3.nx2, y2 <: SWAP3.ny2 );                                                // -> ( x2, y2 ) and ( x3, y3 )
+    swaponcondition SWAP5( x1 <: SWAP3.nx1, y1 <: SWAP3.ny1, x2 <: SWAP4.nx1, y2 <: SWAP4.ny1, nx1 :> x1, ny1 :> y1 );                          // -> ( x1, y1 ) and ( x2, y2 )
+    swaponcondition SWAP6( x1 <: SWAP5.nx2, y1 <: SWAP5.ny2, x2 <: SWAP4.nx2, y2 <: SWAP4.ny2, nx1 :> x2, ny1 :> y2, nx2 :> x3, ny2 :> y3 );    // -> ( x2, y2 ) and ( x3, y3 )
 
     // Find minimum and maximum of x, x1, x2, y, y1 and y2 for the bounding box
     min3 Xmin( n1 <: x1, n2 <: x2, n3 <: x3 );      min3 Ymin( n1 <: y1, n2 <: y2, n3 <: y3 );
     max3 Xmax( n1 <: x1, n2 <: x2, n3 <: x3 );      max3 Ymax( n1 <: y1, n2 <: y2, n3 <: y3 );
 
+    applycrop CROP( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
+                    x1 <: Xmin.min, y1 <: Ymin.min, x2 <: Xmax.max, y2 <: Ymax.max, min_x :> min_x, min_y :> min_y, max_x :> max_x, max_y :> max_y );
+
     istodraw TODRAW( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
-                min_x <: min_x, min_y <: min_y, max_x <: max_x, max_y <: max_y );
+                min_x <: CROP.min_x, min_y <: CROP.min_y, max_x <: CROP.max_x, max_y <: CROP.max_y );
+
     todraw := 0;
+
+    always_after {
+        SWAP1.condition = ( param3 < param1 );                                                                                                  // ( y3 < y2 )
+        SWAP2.condition = ( SWAP1.ny1 < y );                                                                                                    // ( y2 < y1 )
+        SWAP3.condition = ( SWAP1.ny2 < SWAP2.ny1 );                                                                                            // ( y3 < y1 )
+        SWAP4.condition = ( SWAP3.ny2 < SWAP2.ny2 );                                                                                            // ( y3 < y2 )
+        SWAP5.condition = ( SWAP4.ny1 == SWAP3.ny1 ) & ( SWAP4.nx1 < SWAP3.nx1 ) ;                                                              // ( y2 == y1 ) & ( x2 < x1 )
+        SWAP6.condition = ( ( SWAP5.ny2 != SWAP5.ny1 ) & ( SWAP4.ny2 >= SWAP5.ny2 ) & ( SWAP5.nx2 < SWAP4.nx2 ) );                              // ( y2 != y1 ) & ( y3 >= y2 ) & ( x2 < x3 )
+    }
 
     while(1) {
         if( start ) {
             busy = 1;
-            // Setup drawing a filled triangle x,y param0, param1, param2, param3 ( Copy to x1, y1, x2, y2, x3, y3 )
-            ( x1, y1 ) = copycoordinates ( x, y );
-            ( x2, y2 ) = copycoordinates ( param0, param1 );
-            ( x3, y3 ) = copycoordinates ( param2, param3 );
-
-            // Put points in order so that ( x1, y1 ) is at top, then ( x2, y2 ) and ( x3, y3 ) are clockwise from there
-            SWAP.x1 = x2; SWAP.y1 = y2; SWAP.x2 = x3; SWAP.y2 = y3; SWAP.condition = ( y3 < y2 ); ++: x2 = SWAP.nx1; y2 = SWAP.ny1; x3 = SWAP.nx2; y3 = SWAP.ny2;
-            SWAP.x1 = x1; SWAP.y1 = y1; SWAP.x2 = x2; SWAP.y2 = y2; SWAP.condition = ( y2 < y1 ); ++: x1 = SWAP.nx1; y1 = SWAP.ny1; x2 = SWAP.nx2; y2 = SWAP.ny2;
-            SWAP.x1 = x1; SWAP.y1 = y1; SWAP.x2 = x3; SWAP.y2 = y3; SWAP.condition = ( y3 < y1 ); ++: x1 = SWAP.nx1; y1 = SWAP.ny1; x3 = SWAP.nx2; y3 = SWAP.ny2;
-            SWAP.x1 = x2; SWAP.y1 = y2; SWAP.x2 = x3; SWAP.y2 = y3; SWAP.condition = ( y3 < y2 ); ++: x2 = SWAP.nx1; y2 = SWAP.ny1; x3 = SWAP.nx2; y3 = SWAP.ny2;
-            SWAP.x1 = x1; SWAP.y1 = y1; SWAP.x2 = x2; SWAP.y2 = y2; SWAP.condition = ( ( y2 == y1 ) & ( x2 < x1 ) ); ++: x1 = SWAP.nx1; y1 = SWAP.ny1; x2 = SWAP.nx2; y2 = SWAP.ny2;
-            SWAP.x1 = x2; SWAP.y1 = y2; SWAP.x2 = x3; SWAP.y2 = y3; SWAP.condition = ( ( y2 != y1 ) & ( y3 >= y2 ) & ( x2 < x3 ) ); ++: x2 = SWAP.nx1; y2 = SWAP.ny1; x3 = SWAP.nx2; y3 = SWAP.ny2;
-
-            // Apply cropping rectangle
-            min_x = ( Xmin.min < crop_left ) ? crop_left : Xmin.min;
-            min_y = ( Ymin.min < crop_top ) ? crop_top : Ymin.min;
-            max_x = ( Xmax.max > crop_right ) ? crop_right : Xmax.max;
-            max_y = 1 + ( ( Ymax.max > crop_bottom ) ? crop_bottom : Ymax.max );
-            ++:
+            // Setup drawing a filled triangle x,y param0, param1, param2, param3
+            // Allow the cascade for the coordinates
+            ++: ++: ++: ++: ++: ++: ++:
             todraw = TODRAW.draw;
             busy = 0;
         }
@@ -800,10 +848,9 @@ algorithm blitscale(
     input   uint2   scale,
     output  uint7   base,
     output  int11   scaled
-) <autorun> {
-    base := offset;
+) <autorun,reginputs> {
     always_after {
-        scaled = offset << scale;
+        base = offset; scaled = offset << scale;
     }
 }
 algorithm   blittilexy(
@@ -815,9 +862,9 @@ algorithm   blittilexy(
     output  uint4   yinblittile,
     output  uint3   yinchartile
 ) <autorun> {
-    uint4   revx4 <:: ~px[0,4];                     uint4   revy4 <:: ~py[0,4];
-    uint3   revx3 <:: ~px[0,3];                     uint3   revy3 <:: ~py[0,3];
-    uint1   action00 <:: ( ~|action[0,2] );         uint1   action01 <:: ( action[0,2] == 2b01 );           uint1   action10 <:: ( action[0,2] == 2b10 );
+    uint4   revx4 <:: ~px[0,4];                      uint4   revy4 <:: ~py[0,4];
+    uint3   revx3 <:: ~px[0,3];                      uint3   revy3 <:: ~py[0,3];
+    uint1   action00 <:: ( ~|action[0,2] );          uint1   action01 <:: ( action[0,2] == 2b01 );        uint1   action10 <:: ( action[0,2] == 2b10 );
 
     // find y and x positions within the tile/character bitmap handling rotation or reflection
     always_after {
@@ -834,8 +881,8 @@ algorithm cololurblittilexy(
     output  uint4   xintile,
     output  uint4   yintile
 ) <autorun> {
-    uint4   revx <:: 4b1111 - px[0,4];              uint4   revy <:: 4b1111 - py[0,4];
-    uint1   action00 <:: ( ~|action[0,2] );         uint1   action01 <:: ( action[0,2] == 2b01 );           uint1   action10 <:: ( action[0,2] == 2b10 );
+    uint4   revx <:: ~px[0,4];                       uint4   revy <:: ~py[0,4];
+    uint1   action00 <:: ( ~|action[0,2] );          uint1   action01 <:: ( action[0,2] == 2b01 );        uint1   action10 <:: ( action[0,2] == 2b10 );
 
     // find y and x positions within the tile bitmap handling rotation or reflection
     always_after {
@@ -870,14 +917,18 @@ algorithm blit(
     blitscale PYS( scale <: scale );                    int11   pyNEXT <:: PYS.base + 1;
 
     // MAX PIXELS IN TILE AND NUMBER OF TIMES TO USE EACH PIXEL
-    uint5   max_pixels <:: tilecharacter ? 16 : 8;      uint4   max_count <:: ( 1 << scale );
+    uint5   max_pixels <:: tilecharacter ? 16 : 8;       uint4   max_count <:: ( 1 << scale );
 
     // FIND X AND Y WITHIN THE TILE/CHARACTER BITMAP
     blittilexy BTXY( px <: PXS.base, py <: PYS.base, action <: action );
     cololurblittilexy CBTXY( px <: PXS.base, py <: PYS.base, action <: action );
 
     blit1tilemap.addr0 := { tile, BTXY.yinblittile }; characterGenerator8x8.addr0 := { tile, BTXY.yinchartile }; colourblittilemap.addr0 := { tile, CBTXY.yintile, CBTXY.xintile };
-    bitmap_x_write := x + PXS.scaled + x2; bitmap_y_write := y + PYS.scaled + y2; bitmap_colour_write := colourblittilemap.rdata0; bitmap_write := 0;
+    bitmap_colour_write := colourblittilemap.rdata0; bitmap_write := 0;
+
+    always_after {
+        bitmap_x_write = x + PXS.scaled + x2; bitmap_y_write = y + PYS.scaled + y2;
+    }
 
     while(1) {
         if( |start ) {
@@ -932,12 +983,14 @@ algorithm pixelblock(
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
     uint1   update = uninitialised;                 uint2   toprocess = uninitialised;                  uint1   lineend <:: ( bitmap_x_write == x + width - 1 );
-    uint7   grrggbb <:: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };                 uint7   grey <:: ( ( colour8r + colour8g + colour8b ) * 341 ) >> 11;
+    uint7   grrggbb <:: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };                  uint7   grey <:: ( ( colour8r + colour8g + colour8b ) * 341 ) >> 11;
+
+    int11   xPLUS1 <:: bitmap_x_write + 1;          int11   yPLUS1 <:: bitmap_y_write + 1;
 
     // LOOKUP THE COLOUR FROM THE REMAPPER
     colourmap.addr0 := colour;
 
-    bitmap_write := 0;
+    bitmap_write := ( ( toprocess == 1 ) & ( colour != ignorecolour ) ) | ( toprocess == 2 );
     bitmap_colour_write := ( toprocess == 1 ) ? mode ? colourmap.rdata0 : colour :
                             mode ? ( grey == 64 ) ? 65 : grey : ( grrggbb == 64 ) ? 80 : grrggbb;
 
@@ -948,9 +1001,9 @@ algorithm pixelblock(
             if( busy ) {
                 if( update ) {
                     if( lineend ) {
-                        bitmap_x_write = x; bitmap_y_write = bitmap_y_write + 1;
+                        bitmap_x_write = x; bitmap_y_write = yPLUS1;
                     } else {
-                        bitmap_x_write = bitmap_x_write + 1;
+                        bitmap_x_write = xPLUS1;
                     }
                     update = 0;
                 }
@@ -958,7 +1011,6 @@ algorithm pixelblock(
                     if( &toprocess ) {
                         busy = 0;
                     } else {
-                        bitmap_write = ( ( toprocess == 1 ) & ( colour != ignorecolour ) ) | ( toprocess == 2 );
                         update = 1;
                     }
                 }
@@ -985,8 +1037,36 @@ algorithm scaledetla(
 ) <autorun> {
     // SIGN EXTEND THE DELTA, THEN SCALE
     int11   extdelta <:: { {11{delta[5,1]}}, delta };
+
     always_after {
         scaled = ( scale[2,1] ? ( __signed(extdelta) >>> scale[0,2] ) : ( extdelta << scale[0,2] ) );
+    }
+}
+algorithm cpm(
+    input   int11   xc,
+    input   uint6   dx,
+    input   int11   yc,
+    input   uint6   dy,
+    input   uint3   scale,
+    input   uint3   action,
+    output  int11   xcpdx,
+    output  int11   xcndx,
+    output  int11   ycpdy,
+    output  int11   ycndy,
+    output  int11   xcpdy,
+    output  int11   xcndy,
+    output  int11   ycpdx,
+    output  int11   ycndx,
+) <autorun> {
+    // SIGN EXTEND DELTAS AND APPLY SCALE
+    scaledetla SDX( scale <: scale, delta <: dx ); scaledetla SDY( scale <: scale, delta <: dy );
+
+    // PLUS OR MINUS SCALE
+    always_after {
+        xcpdx = xc + SDX.scaled;                       xcndx = xc - SDX.scaled;
+        ycpdy = yc + SDY.scaled;                       ycndy = yc - SDY.scaled;
+        xcpdy = xc + SDY.scaled;                       xcndy = xc - SDY.scaled;
+        ycpdx = yc + SDX.scaled;                       ycndx = yc - SDX.scaled;
     }
 }
 // ADJUST COORDINATES BY DELTAS AND SCALE
@@ -1000,28 +1080,21 @@ algorithm centreplusdelta(
     output  int11   xdx,
     output  int11   ydy
 ) <autorun> {
-    // SIGN EXTEND DELTAS AND APPLY SCALE
-    scaledetla SDX( scale <: scale, delta <: dx ); scaledetla SDY( scale <: scale, delta <: dy );
-
-    // PLUS OR MINUS SCALE
-    int11   xcpdx <:: xc + SDX.scaled;                  int11   xcndx <:: xc - SDX.scaled;
-    int11   ycpdy <:: yc + SDY.scaled;                  int11   ycndy <:: yc - SDY.scaled;
-    int11   xcpdy <:: xc + SDY.scaled;                  int11   xcndy <:: xc - SDY.scaled;
-    int11   ycpdx <:: yc + SDX.scaled;                  int11   ycndx <:: yc - SDX.scaled;
+    cpm CPM( xc <: xc, yc <: yc, dx <: dx, dy <: dy, scale <: scale, action <: action );
 
     always_after {
         if( action[2,1] ) {
             // ROTATION
             switch( action[0,2] ) {
-                case 0: { xdx = xcpdx; ydy = ycpdy; }
-                case 1: { xdx = xcndy; ydy = ycpdx; }
-                case 2: { xdx = xcndx; ydy = ycndy; }
-                case 3: { xdx = xcpdy; ydy = ycndx; }
+                case 0: { xdx = CPM.xcpdx; ydy = CPM.ycpdy; }
+                case 1: { xdx = CPM.xcndy; ydy = CPM.ycpdx; }
+                case 2: { xdx = CPM.xcndx; ydy = CPM.ycndy; }
+                case 3: { xdx = CPM.xcpdy; ydy = CPM.ycndx; }
             }
         } else {
             // REFLECTION
-            xdx = action[0,1] ? xcndx : xcpdx;
-            ydy = action[1,1] ? ycndy : ycpdy;
+            xdx = action[0,1] ? CPM.xcndx : CPM.xcpdx;
+            ydy = action[1,1] ? CPM.ycndy : CPM.ycpdy;
         }
     }
 }

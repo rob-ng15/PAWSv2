@@ -253,8 +253,8 @@ algorithm ps2(
 
     valid := 0;                                     error := 0;                                         clk_edge := 0;
 
-    // Filter the PS/2 clock
-    always_before {
+    always_after {
+        // Filter the PS/2 clock
         clk_filter = { ps2clk_ext, clk_filter[1,3] };
         switch( clk_filter ) {
             case 4b1100: { ps2_clk_in = 1; }
@@ -266,8 +266,7 @@ algorithm ps2(
             }
             default: {}
         }
-    }
-    always_after {
+
         // Process the PS/2 data bit
         if( clk_edge ) {
             switch( bit_count ) {
