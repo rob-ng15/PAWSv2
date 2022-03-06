@@ -80,6 +80,7 @@ algorithm PAWSCPU(
     uint32  result <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
     uint16  storeLOW <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[0,16] : EXECUTESLOW.memoryoutput[0,16];
     uint16  storeHIGH <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[16,16] : EXECUTESLOW.memoryoutput[16,16];
+    uint1   STOREIO168 <:: ( ~AGU.storeAddress & AGU.storeAddress ) & ~accesssize[1,1];
 
     // CLASSIFY THE INSTRUCTION AND SPLIT INTO FAST/SLOW FAST/SLOW
     whatis IS <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, function7 <: RV32DECODER.function7 );
@@ -146,6 +147,7 @@ algorithm PAWSCPU(
     );
 
     // MINI DMA CONTROLLER
+    uint1   DMAIO <:: ( ~DMA.dmadest[26,1] & DMA.dmadest[15,1] );
     dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE );
 
     DMA.start :=0; DMA.update := 0;
@@ -194,7 +196,8 @@ algorithm PAWSCPU(
         COMMIT = 1;                                                                                                                                 // COMMIT REGISTERS
 
         if( MEMACCESS.memorystore ) {
-            address = AGU.storeAddress; writedata = storeLOW; writememory = 1; while( memorybusy ) {}                                               // STORE 8 OR 16 BIT
+            address = AGU.storeAddress; writedata = storeLOW; writememory = 1;                                                                      // STORE 8 OR 16 BIT
+            if( STOREIO168 ) { readmemory = 0; } else { while( memorybusy ) {} }
             if( accesssize[1,1] ) {
                 address = SA2.addressplus2; writedata = storeHIGH; writememory = 1;  while( memorybusy ) {}                                         // 32 BIT WRITE 2ND 16 BITS
             }
@@ -207,7 +210,8 @@ algorithm PAWSCPU(
             DMAACTIVE = 1; DMA.start = 1;
             while( |DMA.dmacount ) {
                 address = DMA.dmasrc; readmemory = 1; while( memorybusy ) {}                                                                        // DMA FETCH
-                address = DMA.dmadest; writedata = readdata[ { DMA.dmasrc[0,1], 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}               // DMA STORE
+                address = DMA.dmadest; writedata = readdata[ { DMA.dmasrc[0,1], 3b000 }, 8 ]; writememory = 1;                                      // DMA STORE
+                if( DMAIO ) { readmemory = 0; } else { while( memorybusy ) {} }
                 DMA.update = 1;
             }
             DMAACTIVE = 0;
