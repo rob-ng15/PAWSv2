@@ -78,9 +78,11 @@ algorithm PAWSCPU(
     // CPU EXECUTE BLOCKS
     uint32  memoryinput = uninitialized;
     uint32  result <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
+
+    // STORE HIGH/LOW PARTS + BYPASS FLAG IF 16/8 BIT WRITE TO I/O MEMORY
     uint16  storeLOW <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[0,16] : EXECUTESLOW.memoryoutput[0,16];
     uint16  storeHIGH <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput[16,16] : EXECUTESLOW.memoryoutput[16,16];
-    uint1   STOREIO168 <:: ( ~AGU.storeAddress & AGU.storeAddress ) & ~accesssize[1,1];
+    uint1   STORE168FAST <:: ( ~AGU.storeAddress[26,1] & AGU.storeAddress[15,1] & ~accesssize[1,1] );
 
     // CLASSIFY THE INSTRUCTION AND SPLIT INTO FAST/SLOW FAST/SLOW
     whatis IS <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, function7 <: RV32DECODER.function7 );
@@ -146,8 +148,8 @@ algorithm PAWSCPU(
         loadAddress <: AGU.loadAddress
     );
 
-    // MINI DMA CONTROLLER
-    uint1   DMAIO <:: ( ~DMA.dmadest[26,1] & DMA.dmadest[15,1] );
+    // MINI DMA CONTROLLER + BYPASS FLAG IF TO BRAM OR I/O MEMORY
+    uint1   DMASTOREFAST <:: ( ~DMA.dmadest[26,1] );
     dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE );
 
     DMA.start :=0; DMA.update := 0;
@@ -186,7 +188,7 @@ algorithm PAWSCPU(
             } else {
                 memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
             }
-        }
+        } else { readmemory = 0; }
 
         if( ~IFASTSLOW.FASTPATH ) {
             EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                                     // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
@@ -196,12 +198,16 @@ algorithm PAWSCPU(
         COMMIT = 1;                                                                                                                                 // COMMIT REGISTERS
 
         if( MEMACCESS.memorystore ) {
-            address = AGU.storeAddress; writedata = storeLOW; writememory = 1;                                                                      // STORE 8 OR 16 BIT
-            if( STOREIO168 ) { readmemory = 0; } else { while( memorybusy ) {} }
-            if( accesssize[1,1] ) {
-                address = SA2.addressplus2; writedata = storeHIGH; writememory = 1;  while( memorybusy ) {}                                         // 32 BIT WRITE 2ND 16 BITS
+            address = AGU.storeAddress; writedata = storeLOW;                                                                                       // STORE 8 OR 16 BIT
+            if( STORE168FAST ) {
+                writememory = 1;                                                                                                                    // FAST STORE FOR 16 * TO LOW MEMORY
+            } else {
+                writememory = 1; while( memorybusy ) {}
+                if( accesssize[1,1] ) {
+                    address = SA2.addressplus2; writedata = storeHIGH; writememory = 1;  while( memorybusy ) {}                                     // 32 BIT WRITE 2ND 16 BITS
+                }
             }
-        }
+        } else { writememory = 0; }
 
         pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                                                  // UPDATE PC AND SMT
 
@@ -210,8 +216,8 @@ algorithm PAWSCPU(
             DMAACTIVE = 1; DMA.start = 1;
             while( |DMA.dmacount ) {
                 address = DMA.dmasrc; readmemory = 1; while( memorybusy ) {}                                                                        // DMA FETCH
-                address = DMA.dmadest; writedata = readdata[ { DMA.dmasrc[0,1], 3b000 }, 8 ]; writememory = 1;                                      // DMA STORE
-                if( DMAIO ) { readmemory = 0; } else { while( memorybusy ) {} }
+                address = DMA.dmadest; writedata = readdata[ { DMA.dmasrc[0,1], 3b000 }, 8 ];                                                       // DMA STORE
+                if( DMASTOREFAST ) { writememory = 1; } else { writememory = 1; while( memorybusy ) {} }                                            // CHECK IF FAST STORE IS POSSIBLE
                 DMA.update = 1;
             }
             DMAACTIVE = 0;
@@ -311,10 +317,10 @@ algorithm cpuexecuteSLOWPATH(
     uint4   operation <:: { ~|{fpufast,isATOMIC,isCSR}, fpufast, isATOMIC, isCSR };
 
     // START FLAGS
-    ALUMD.start := start & isALUM;                                                          // INTEGER DIVISION
-    ALUBCLMUL.start := start & isALUCLM;                                                    // CARRYLESS MULTIPLY
-    FPUCALC.start := start & fpucalc;                                                       // FPU CALCULATIONS
-    CSR.start := start & isCSR & |function3;                                                  // CSR
+    ALUMD.start := start & isALUM;                                                                          // INTEGER DIVISION
+    ALUBCLMUL.start := start & isALUCLM;                                                                    // CARRYLESS MULTIPLY
+    FPUCALC.start := start & fpucalc;                                                                       // FPU CALCULATIONS
+    CSR.start := start & isCSR & |function3;                                                                // CSR
 
     // Deal with updating fpuflags and writing to fpu registers
     CSR.updateFPUflags := 0; frd := fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0;
@@ -323,18 +329,18 @@ algorithm cpuexecuteSLOWPATH(
         if( start ) {
             busy = 1;
             onehot( operation ) {
-                case 0: { ++: result = |function3 ? CSR.result : 0; }                        // CSR
-                case 1: {                                                                   // ATOMIC OPERATIONS
+                case 0: { ++: result = |function3 ? CSR.result : 0; }                                       // CSR
+                case 1: {                                                                                   // ATOMIC OPERATIONS
                     if( function7[3,1] ) {
-                        result = memoryinput; memoryoutput = ALUA.result;                   // ATOMIC LOAD - MODIFY - STORE
+                        result = memoryinput; memoryoutput = ALUA.result;                                   // ATOMIC LOAD - MODIFY - STORE
                     } else {
-                        result = function7[2,1] ? 0 : memoryinput;                          // LR.W SC.W
+                        result = function7[2,1] ? 0 : memoryinput;                                          // LR.W SC.W
                         memoryoutput = sourceReg2;
                     }
                 }
-                case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }       // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }                       // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                 case 3: {
-                        while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {}              // FPU CALCULATIONS AND INTEGER DIVISION
+                        while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {}                              // FPU CALCULATIONS AND INTEGER DIVISION
                         result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result;
                 }
             }
@@ -385,12 +391,12 @@ algorithm cpuexecuteFASTPATH(
     aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
     always_after {
-        takeBranch = isBRANCH & BRANCHUNIT.takeBranch;    // BRANCH
-        memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2;         // FLOAT STORE OR STORE
-        result = isAUIPCLUI ? AUIPCLUI :                               // LUI AUIPC
-                            isJAL ? nextPC :                         // JAL[R]
-                            isLOAD ? memoryinput :                   // [FLOAT]LOAD
-                            isALUMM ? ALUMM.result : ALU.result;     // INTEGER ALU AND MULTIPLICATION
+        takeBranch = isBRANCH & BRANCHUNIT.takeBranch;                  // BRANCH
+        memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2;          // FLOAT STORE OR STORE
+        result = isAUIPCLUI ? AUIPCLUI :                                // LUI AUIPC
+                            isJAL ? nextPC :                            // JAL[R]
+                            isLOAD ? memoryinput :                      // [FLOAT]LOAD
+                            isALUMM ? ALUMM.result : ALU.result;        // INTEGER ALU AND MULTIPLICATION
     }
 }
 
