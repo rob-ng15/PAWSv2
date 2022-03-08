@@ -262,13 +262,20 @@ algorithm aluMD(
     douintdivide DODIVIDE( dividend <: sourceReg1_unsigned, divisor <: sourceReg2_unsigned );
     DODIVIDE.start := 0; busy := start | DODIVIDE.busy;
 
+    // EXTRACT RESULT
+    always_after {
+        if( busy ) {
+            result = ( ~|sourceReg2 ) ? function3[1,1] ? sourceReg1 : 32hffffffff :
+                                        function3[1,1] ? DODIVIDE.remainder : ( quotientremaindersign ? -DODIVIDE.quotient : DODIVIDE.quotient );
+        }
+    }
+
     while(1) {
         if( start ) {
-            if( ~|sourceReg2 ) {
-                result = function3[1,1] ? sourceReg1 : 32hffffffff;
-            } else {
+            if( |sourceReg2 ) {
                 DODIVIDE.start = 1; while( DODIVIDE.busy ) {}
-                result = function3[1,1] ? DODIVIDE.remainder : ( quotientremaindersign ? -DODIVIDE.quotient : DODIVIDE.quotient );
+            } else {
+                DODIVIDE.start = 0;
             }
         }
     }
@@ -305,23 +312,22 @@ algorithm doclmul(
     output  uint32  result
 ) <autorun,reginputs> {
     uint6   count = uninitialised;                  uint6   countPLUS1 <:: count + 1;
-    uint32  shift = uninitialised;
+    uint32  shift <:: ( mode[1,1] ) ? ( sourceReg1 >> ( ( mode[0,1] ? 31 : 32 ) - count ) ) : ( sourceReg1 << count );
+
+    always_after {
+        if( start ) {
+            result = 0;
+        } else {
+            if( busy & sourceReg2[ count, 1 ] ) {
+                result = result ^ shift;
+            }
+        }
+    }
 
     while(1) {
         if( start ) {
-            busy = 1; count = startat; result = 0;
-
-            while( count != stopat ) {
-                if( sourceReg2[ count, 1 ] ) {
-                    switch( mode[1,1] ) {
-                        case 0: { shift = ( sourceReg1 << count ); }                                // CLMUL
-                        case 1: { shift = ( sourceReg1 >> ( ( mode[0,1] ? 31 : 32 ) - count ) ); }  // CLMULH CLMULR
-                    }
-                }
-                result = result ^ shift;
-                count = countPLUS1;
-            }
-
+            busy = 1; count = startat;
+            while( count != stopat ) { count = countPLUS1; }
             busy = 0;
         }
     }

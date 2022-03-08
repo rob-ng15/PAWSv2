@@ -222,24 +222,24 @@ algorithm gpu(
             // START THE GPU DRAWING UNIT - RESET DITHERMODE TO 0 (most common)
             gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; bitmap_colour_write_alt = gpu_colour_alt;
             GPUcircle.filledcircle = gpu_write[0,1]; GPUblit.tilecharacter = gpu_write[0,1];
-        }
-        switch( gpu_write ) {
-            default: {}
-            case 1: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  gpu_x, gpu_y ); bitmap_write = 1; }
-            case 2: { GPUline.start = 1; }                                                  // DRAW LINE FROM (X,Y) to (PARAM0,PARAM1)
-            case 3: { gpu_active_dithermode = gpu_dithermode; GPUrectangle.start = 1; }     // DRAW RECTANGLE FROM (X,Y) to (PARAM0,PARAM1)
-            case 4: { GPUcircle.start = 1; }                                                // DRAW CIRCLE CENTRE (X,Y) with RADIUS PARAM0
-            case 5: { gpu_active_dithermode = gpu_dithermode; GPUcircle.start = 1; }        // DRAW FILLED CIRCLE CENTRE (X,Y) with RADIUS PARAM0
-            case 6: { gpu_active_dithermode = gpu_dithermode; GPUtriangle.start = 1; }      // DRAW FILLED TRIANGLE WITH VERTICES (X,Y) (PARAM0,PARAM1) (PARAM2,PARAM3)
-            case 7: { GPUblit.start = 1; }                                                  // BLIT 16 x 16 TILE PARAM0 TO (X,Y)
-            case 8: { GPUblit.start = 1; }                                                  // BLIT 8 x 8 CHARACTER PARAM0 TO (X,Y) as 8 x 8
-            case 9: { GPUblit.start = 2; }                                                  // BLIT 16 x 16 COLOUR TILE PARAM0 TO (X,Y) as 16 x 16
-            case 10: { GPUpixelblock.start = 1; }                                           // START THE PIXELBLOCK WRITER AT (x,y) WITH WIDTH PARAM0, IGNORE COLOUR PARAM1
-            // 11
-            // 12
-            // 13
-            // 14
-            // 15 is quadrilateral, handled by the queue
+            switch( gpu_write ) {
+                default: {}
+                case 1: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  gpu_x, gpu_y ); bitmap_write = 1; }
+                case 2: { GPUline.start = 1; }                                                  // DRAW LINE FROM (X,Y) to (PARAM0,PARAM1)
+                case 3: { gpu_active_dithermode = gpu_dithermode; GPUrectangle.start = 1; }     // DRAW RECTANGLE FROM (X,Y) to (PARAM0,PARAM1)
+                case 4: { GPUcircle.start = 1; }                                                // DRAW CIRCLE CENTRE (X,Y) with RADIUS PARAM0
+                case 5: { gpu_active_dithermode = gpu_dithermode; GPUcircle.start = 1; }        // DRAW FILLED CIRCLE CENTRE (X,Y) with RADIUS PARAM0
+                case 6: { gpu_active_dithermode = gpu_dithermode; GPUtriangle.start = 1; }      // DRAW FILLED TRIANGLE WITH VERTICES (X,Y) (PARAM0,PARAM1) (PARAM2,PARAM3)
+                case 7: { GPUblit.start = 1; }                                                  // BLIT 16 x 16 TILE PARAM0 TO (X,Y)
+                case 8: { GPUblit.start = 1; }                                                  // BLIT 8 x 8 CHARACTER PARAM0 TO (X,Y) as 8 x 8
+                case 9: { GPUblit.start = 2; }                                                  // BLIT 16 x 16 COLOUR TILE PARAM0 TO (X,Y) as 16 x 16
+                case 10: { GPUpixelblock.start = 1; }                                           // START THE PIXELBLOCK WRITER AT (x,y) WITH WIDTH PARAM0, IGNORE COLOUR PARAM1
+                // 11
+                // 12
+                // 13
+                // 14
+                // 15 is quadrilateral, handled by the queue
+            }
         }
 
         // COPY OUTPUT TO THE BITMAP WRITER
@@ -462,21 +462,17 @@ algorithm drawline(
 
     while(1) {
         if( start ) {
-            busy = 1;  x = start_x; y = start_y; numerator = start_numerator; count = 0;
-            if( width == 1 ) {
-                offset_x = 0; offset_y = 0;
-                while( count != max_count ) {
+            busy = 1;  x = start_x; y = start_y; numerator = start_numerator; count = 0; offset_x = 0; offset_y = 0;
+            while( count != max_count ) {
+                if( width == 1 ) {
                     bitmap_write = 1;
-                    numerator = newnumerator; x = xNEXT; y = yNEXT; count = countNEXT;
-                }
-            } else {
-                while( count != max_count ) {
+                } else {
                     pixel_count = 0; offset_x = dxdy ? 0 : offset_start; offset_y = dxdy ? offset_start : 0;
                     while( pixel_count != width ) {
                         bitmap_write = 1; offset_y = offset_xNEXT; offset_x = offset_yNEXT; pixel_count = pixel_countNEXT;
                     }
-                    numerator = newnumerator; x = xNEXT; y = yNEXT; count = countNEXT;
                 }
+                numerator = newnumerator; x = xNEXT; y = yNEXT; count = countNEXT;
             }
             busy = 0;
         }
@@ -529,7 +525,7 @@ algorithm arccoords(
 
     centrepixel := ( ~|count & ~|active_x );
 
-    always {
+    always_after {
         switch( arc ) {
             case 0: { bitmap_x_write = xcpax; bitmap_y_write = ycpc; }
             case 1: { bitmap_y_write = ycnc; }
