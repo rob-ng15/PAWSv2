@@ -325,30 +325,41 @@ algorithm cpuexecuteSLOWPATH(
     // Deal with updating fpuflags and writing to fpu registers
     CSR.updateFPUflags := 0; frd := fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0;
 
-    while(1) {
-        if( start ) {
-            busy = 1;
+    // COLLECT THE APPROPRIATE RESULT
+    always_after {
+        if( busy ) {
             onehot( operation ) {
-                case 0: { ++: result = |function3 ? CSR.result : 0; }                                       // CSR
-                case 1: {                                                                                   // ATOMIC OPERATIONS
+                case 0: { result = |function3 ? CSR.result : 0; }                                                   // CSR
+                case 1: {
                     if( function7[3,1] ) {
-                        result = memoryinput; memoryoutput = ALUA.result;                                   // ATOMIC LOAD - MODIFY - STORE
+                        result = memoryinput; memoryoutput = ALUA.result;                                           // ATOMIC LOAD - MODIFY - STORE
                     } else {
-                        result = function7[2,1] ? 0 : memoryinput;                                          // LR.W SC.W
+                        result = function7[2,1] ? 0 : memoryinput;                                                  // LR.W SC.W
                         memoryoutput = sourceReg2;
                     }
                 }
-                case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }                       // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                case 3: {
-                        while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {}                              // FPU CALCULATIONS AND INTEGER DIVISION
-                        result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result;
-                }
+                case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }                               // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                case 3: { result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result; }   // FPU CALCULATIONS AND INTEGER DIVISION
+            }
+        }
+    }
+
+    // PROVIDE WAIT STATE FOR APPROPRIATE OPERATION
+    while(1) {
+        if( start ) {
+            busy = 1;
+        onehot( operation ) {
+                case 0: { ++:  }                                                                                    // CSR
+                case 1: {}                                                                                          // ATOMIC OPERATIONS
+                case 2: {}                                                                                          // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                case 3: { while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {} }                                  // FPU CALCULATIONS AND INTEGER DIVISION
             }
             busy = 0;
             CSR.updateFPUflags = fpuconvert | fpucalc;
         }
     }
 }
+
 algorithm cpuexecuteFASTPATH(
     input   uint5   opCode,
     input   uint3   function3,

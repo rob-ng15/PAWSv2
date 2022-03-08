@@ -140,12 +140,30 @@ algorithm background_display(
     input   uint7   b_alt,
     input   uint4   b_mode
 ) <autorun,reginputs> {
-    // TRUE FOR COLOUR, FALSE FOR ALT
-    pattern PATTERN( pix_x <: pix_x, pix_y <: pix_y, b_mode <: b_mode );                                rainbow RAINBOW( y <: pix_y[6,3] );
+    uint1   tophalf <: ( pix_y < 240 );             uint1   lefthalf <: ( pix_x < 320 );                uint2   checkmode <: b_mode - 7;
+    uint2   condition = uninitialised;
+
+    rainbow RAINBOW( y <: pix_y[6,3] );             starfield STARS( pix_x <: pix_x, pix_y <: pix_y );
 
     always_after {
         // RENDER - SELECT ACTUAL COLOUR
-        switch( PATTERN.condition ) {
+        // SELECT COLOUR OR ALT
+        switch( b_mode ) {
+            case 0: { condition = 1; }                                              // SOLID
+            case 1: { condition = tophalf; }                                        // 50:50 HORIZONTAL SPLIT
+            case 2: { condition = ( lefthalf ); }                                   // 50:50 VERTICAL SPLIT
+            case 3: { condition = ( lefthalf ^ tophalf ); }                         // QUARTERS
+            case 5: { condition  = STARS.star; }                                    // SNOW (from @sylefeb)
+            case 11: { condition = ( pix_x[0,1] | pix_y[0,1] ); }                   // CROSSHATCH
+            case 12: { condition = ( pix_x[0,2] == pix_y[0,2] ); }                  // LSLOPE
+            case 13: { condition = ( pix_x[0,2] == ~pix_y[0,2] ); }                 // RSLOPE
+            case 14: { condition = pix_x[0,1]; }                                    // VSTRIPES
+            case 15: { condition = pix_y[0,1]; }                                    // HSTRIPES
+            case 4: { condition = 2; } case 6: { condition = 3; }                   // STATIC AND RAINBOW (placeholder, done in main)
+            default: { condition = ( pix_x[checkmode,1] ^ pix_y[checkmode,1] ); }   // CHECKERBOARDS (7,8,9,10)
+        }
+
+        switch( condition ) {
             case 0: { pixel = b_alt; }                                              // EVERYTHING ELSE
             case 1: { pixel = b_colour; }
             case 2: { pixel = RAINBOW.colour; }                                     // RAINBOW
@@ -180,33 +198,5 @@ algorithm starfield(
 
         rand_x = ( ~|pix_x )  ? 1 : new_rand_x;        speed  = rand_x[10,2];                             dotpos = ( frame >> speed ) + rand_x;
         star = ( pix_y == dotpos );
-    }
-}
-
-algorithm pattern(
-    input   uint10  pix_x,
-    input   uint9   pix_y,
-    input   uint4   b_mode,
-    output! uint2   condition
-) <autorun> {
-    uint1   tophalf <: ( pix_y < 240 );             uint1   lefthalf <: ( pix_x < 320 );                uint2   checkmode <: b_mode - 7;
-    starfield STARS( pix_x <: pix_x, pix_y <: pix_y );
-
-    always_after {
-        // SELECT COLOUR OR ALT
-        switch( b_mode ) {
-            case 0: { condition = 1; }                                              // SOLID
-            case 1: { condition = tophalf; }                                        // 50:50 HORIZONTAL SPLIT
-            case 2: { condition = ( lefthalf ); }                                   // 50:50 VERTICAL SPLIT
-            case 3: { condition = ( lefthalf ^ tophalf ); }                         // QUARTERS
-            case 5: { condition  = STARS.star; }                                    // SNOW (from @sylefeb)
-            case 11: { condition = ( pix_x[0,1] | pix_y[0,1] ); }                   // CROSSHATCH
-            case 12: { condition = ( pix_x[0,2] == pix_y[0,2] ); }                  // LSLOPE
-            case 13: { condition = ( pix_x[0,2] == ~pix_y[0,2] ); }                 // RSLOPE
-            case 14: { condition = pix_x[0,1]; }                                    // VSTRIPES
-            case 15: { condition = pix_y[0,1]; }                                    // HSTRIPES
-            case 4: { condition = 2; } case 6: { condition = 3; }                   // STATIC AND RAINBOW (placeholder, done in main)
-            default: { condition = ( pix_x[checkmode,1] ^ pix_y[checkmode,1] ); }   // CHECKERBOARDS (7,8,9,10)
-        }
     }
 }

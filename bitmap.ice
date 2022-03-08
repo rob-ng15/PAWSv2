@@ -155,8 +155,8 @@ algorithm bitmapwriter(
         queue_complete :> gpu_queue_complete
     );
 
-    uint7   pixeltowrite <:: ( QUEUE.gpu_active_dithermode == 14 ) ? static6bit : DODITHER.condition ? QUEUE.bitmap_colour_write : QUEUE.bitmap_colour_write_alt;
-    dither DODITHER( bitmap_x_write <: QUEUE.bitmap_x_write, bitmap_y_write <: QUEUE.bitmap_y_write, dithermode <: QUEUE.gpu_active_dithermode, static1bit <: static6bit[0,1] );
+    uint7   pixeltowrite <:: ( QUEUE.gpu_active_dithermode == 14 ) ? static6bit : condition ? QUEUE.bitmap_colour_write : QUEUE.bitmap_colour_write_alt;
+    uint17  address <:: QUEUE.bitmap_y_write[0,8] * 320 + QUEUE.bitmap_x_write[0,9];
 
     // Write in range?
     uint1   write_pixel <:: ( QUEUE.bitmap_x_write >= QUEUE.bitmap_crop_left ) & (QUEUE. bitmap_x_write <= QUEUE.bitmap_crop_right ) &
@@ -164,8 +164,10 @@ algorithm bitmapwriter(
     uint1   write_buffer0 <:: write_pixel & ~framebuffer;
     uint1   write_buffer1 <:: write_pixel & framebuffer;
 
+    // DITHERMODE CALCULATIONS
+    uint2   checkmode <:: QUEUE.gpu_active_dithermode[0,2] - 1;     uint3   revbitmapx <:: ~QUEUE.bitmap_x_write[0,3];        uint1   condition = uninitialised;
+
     // LOCK BITMAP ADDRESSES, PIXEL VALUE, AND WRITE FLAGS
-    uint17  address <:: QUEUE.bitmap_y_write[0,8] * 320 + QUEUE.bitmap_x_write[0,9];
     bitmap_0A.wenable1 := write_buffer0; bitmap_0R.wenable1 := write_buffer0; bitmap_0G.wenable1 := write_buffer0; bitmap_0B.wenable1 := write_buffer0;
     bitmap_1A.wenable1 := write_buffer1; bitmap_1R.wenable1 := write_buffer1; bitmap_1G.wenable1 := write_buffer1; bitmap_1B.wenable1 := write_buffer1;
 
@@ -174,38 +176,29 @@ algorithm bitmapwriter(
 
     bitmap_0A.addr1 := address; bitmap_0A.wdata1 := pixeltowrite[6,1];                                  bitmap_0R.addr1 := address; bitmap_0R.wdata1 := pixeltowrite[4,2];
     bitmap_0G.addr1 := address; bitmap_0G.wdata1 := pixeltowrite[2,2];                                  bitmap_0B.addr1 := address; bitmap_0B.wdata1 := pixeltowrite[0,2];
-}
 
-algorithm dither(
-    input   uint9   bitmap_x_write,
-    input   uint8   bitmap_y_write,
-    input   uint4   dithermode,
-    input   uint1   static1bit,
-    output! uint1   condition
-) <autorun> {
-    uint2   checkmode <:: dithermode[0,2] - 1;      uint3   revbitmapx <:: ~bitmap_x_write[0,3];
-
+    // CALCULATE DITHER PATTERN
     always_after {
         // DITHER PATTERNS
         // == 0 SOLID == 1 SMALL CHECKERBOARD == 2 MED CHECKERBOARD == 3 LARGE CHECKERBOARD
         // == 4 VERTICAL STRIPES == 5 HORIZONTAL STRIPES == 6 CROSSHATCH == 7 LEFT SLOPE
         // == 8 RIGHT SLOPE == 9 LEFT TRIANGLE == 10 RIGHT TRIANGLE == 11 X
         // == 12 + == 13 BRICK == 14 COLOUR STATIC == 15 STATIC
-        switch( dithermode ) {
-            case 0: { condition = 1; }                                                                                          // SOLID
-            default: { condition = ( bitmap_x_write[checkmode,1] ^ bitmap_y_write[checkmode,1] ); }                             // CHECKERBOARDS 1 2 AND 3
-            case 4: { condition = bitmap_x_write[0,1]; }                                                                        // VERTICAL STRIPES
-            case 5: { condition = bitmap_y_write[0,1]; }                                                                        // HORIZONTAL STRIPES
-            case 6: { condition = ( bitmap_x_write[0,1] | bitmap_y_write[0,1] ); }                                              // CROSSHATCH
-            case 7: { condition = ( bitmap_x_write[0,2] == bitmap_y_write[0,2] ); }                                             // LEFT SLOPE
-            case 8: { condition = ( bitmap_x_write[0,2] == ~bitmap_y_write[0,2] ); }                                            // RIGHT SLOPE
-            case 9: { condition = ( bitmap_x_write[0,3] <= bitmap_y_write[0,3] ); }                                             // LEFT TRIANGLE
-            case 10: { condition = ( revbitmapx <= bitmap_y_write[0,3] ); }                                                     // RIGHT TRIANGLE
-            case 11: { condition = ( bitmap_x_write[0,3] == bitmap_y_write[0,3] ) | ( revbitmapx == bitmap_y_write[0,3] ); }    // X
-            case 12: { condition = ( bitmap_x_write[1,2] == 2b10 ) | ( bitmap_y_write[1,2] == 2b10 ); }                         // +
-            case 13: { condition = ( ~|bitmap_y_write[0,2] ) | ( bitmap_x_write[0,2] == { bitmap_y_write[2,1], 1b0 } ); }       // BRICK
-            case 14: {}                                                                                                         // COLOUR STATIC (placeholder, done in main)
-            case 15: { condition = static1bit; }                                                                                // STATIC
+        switch( QUEUE.gpu_active_dithermode ) {
+            case 0: { condition = 1; }                                                                                                          // SOLID
+            default: { condition = ( QUEUE.bitmap_x_write[checkmode,1] ^ QUEUE.bitmap_y_write[checkmode,1] ); }                                 // CHECKERBOARDS 1 2 AND 3
+            case 4: { condition = QUEUE.bitmap_x_write[0,1]; }                                                                                  // VERTICAL STRIPES
+            case 5: { condition = QUEUE.bitmap_y_write[0,1]; }                                                                                  // HORIZONTAL STRIPES
+            case 6: { condition = ( QUEUE.bitmap_x_write[0,1] | QUEUE.bitmap_y_write[0,1] ); }                                                  // CROSSHATCH
+            case 7: { condition = ( QUEUE.bitmap_x_write[0,2] == QUEUE.bitmap_y_write[0,2] ); }                                                 // LEFT SLOPE
+            case 8: { condition = ( QUEUE.bitmap_x_write[0,2] == ~QUEUE.bitmap_y_write[0,2] ); }                                                // RIGHT SLOPE
+            case 9: { condition = ( QUEUE.bitmap_x_write[0,3] <= QUEUE.bitmap_y_write[0,3] ); }                                                 // LEFT TRIANGLE
+            case 10: { condition = ( revbitmapx <= QUEUE.bitmap_y_write[0,3] ); }                                                               // RIGHT TRIANGLE
+            case 11: { condition = ( QUEUE.bitmap_x_write[0,3] == QUEUE.bitmap_y_write[0,3] ) | ( revbitmapx == QUEUE.bitmap_y_write[0,3] ); }  // X
+            case 12: { condition = ( QUEUE.bitmap_x_write[1,2] == 2b10 ) | ( QUEUE.bitmap_y_write[1,2] == 2b10 ); }                             // +
+            case 13: { condition = ( ~|QUEUE.bitmap_y_write[0,2] ) | ( QUEUE.bitmap_x_write[0,2] == { QUEUE.bitmap_y_write[2,1], 1b0 } ); }     // BRICK
+            case 14: {}                                                                                                                         // COLOUR STATIC (placeholder, done in main)
+            case 15: { condition = static6bit[0,1]; }                                                                                           // STATIC
         }
     }
 }

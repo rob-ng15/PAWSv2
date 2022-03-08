@@ -835,6 +835,7 @@ algorithm tilemap_memmap(
     // Clocks
     input   uint1   video_clock,
     input   uint1   video_reset,
+    input   uint1   lorez,
 
     // Pixels
     input   uint10  pix_x,
@@ -875,11 +876,12 @@ algorithm tilemap_memmap(
     // 42 x 32 tile map, allows for pixel scrolling with border { 2 bit rotation/reflection, 6 bits tile number }
     simple_dualport_bram uint9 tiles <@video_clock,@clock> [1344] = uninitialized;
 
+    uint10  dopix_x <: lorez ? pix_x[1,9] : pix_x;  uint10  dopix_y <: lorez ? pix_y[1,9] : pix_y;
     tilemap tile_map <@video_clock,!video_reset> (
         tiles16x16 <:> tiles16x16,
         tiles <:> tiles,
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+        pix_x      <: dopix_x,
+        pix_y      <: dopix_y,
         pix_active <: pix_active,
         pix_vblank <: pix_vblank,
         pixel    :> pixel,
