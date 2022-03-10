@@ -50,6 +50,7 @@ extern void sample_upload( unsigned char channel_number, unsigned short length, 
 // DISPLAY
 //extern void await_vblank( void );
 extern void screen_mode( unsigned char, unsigned char, unsigned char );
+extern void screen_dimmer( unsigned char dimmerlevel );
 extern void bitmap_display( unsigned char );
 extern void bitmap_draw( unsigned char );
 

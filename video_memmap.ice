@@ -280,7 +280,8 @@ $$end
                     switch( memoryAddress[0,2] ) {
                         case 0: { display.display_order = writeData; }
                         case 1: { display.colour = writeData; }
-                        default: { hilorez = writeData;}
+                        case 2: { hilorez = writeData;}
+                        case 3: { display.dimmer = writeData; }
                     }
                 }
                 default: {}
@@ -289,8 +290,8 @@ $$end
     }
 
     if( ~reset ) {
-        // SET DEFAULT DISPLAY ORDER AND COLOUR MODE
-        display.display_order = 0; display.colour = 0;
+        // SET DEFAULT DISPLAY ORDER, COLOUR MODE AND DIMMER
+        display.display_order = 0; display.colour = 0; display.dimmer = 0;
     }
 }
 

@@ -695,7 +695,10 @@ void set_background_generator( void ) {
 }
 
 int main() {
+    unsigned char dimmerlevel = 8, counter = 3;
+
     // SETUP SCREEN
+    screen_dimmer( dimmerlevel );
     bitmap_draw( 0 ); gpu_cs();
     bitmap_draw( 1 ); gpu_cs();
     bitmap_display(0);
@@ -719,5 +722,8 @@ int main() {
         }
         framebuffer = !framebuffer;
         bitmap_display( framebuffer );
+        if( dimmerlevel ) {
+            if( !--counter ) { screen_dimmer( --dimmerlevel ); counter = 3; }
+        }
     }
 }

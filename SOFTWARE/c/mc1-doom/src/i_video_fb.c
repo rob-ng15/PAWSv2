@@ -77,7 +77,55 @@ void I_StartFrame (void) {
    // er?
 }
 
+unsigned char PAWSKEYtoDOOM( unsigned short keycode ) {
+    switch( keycode ) {
+        case 0x008: case 0x133: return KEY_BACKSPACE;
+        case 0x009:             return KEY_TAB;
+        case 0x00d:             return KEY_ENTER;
+        case 0x01b:             return KEY_ESCAPE;
+        case 0x020:             return ' ';
+        case 0x02b: case 0x03d: return KEY_EQUALS;
+        case 0x02d: case 0x5f:  return KEY_MINUS;
+        case 0x101: case 0x111: return KEY_F1;
+        case 0x102: case 0x112: return KEY_F2;
+        case 0x103: case 0x113: return KEY_F3;
+        case 0x104: case 0x114: return KEY_F4;
+        case 0x105: case 0x115: return KEY_F5;
+        case 0x106: case 0x116: return KEY_F6;
+        case 0x107: case 0x117: return KEY_F7;
+        case 0x108: case 0x118: return KEY_F8;
+        case 0x109: case 0x119: return KEY_F9;
+        case 0x10a: case 0x11a: return KEY_F10;
+        case 0x10b: case 0x11b: return KEY_F11;
+        case 0x10c: case 0x11c: return KEY_F12;
+        case 0x141:             return KEY_UPARROW;
+        case 0x142:             return KEY_DOWNARROW;
+        case 0x143:             return KEY_RIGHTARROW;
+        case 0x144:             return KEY_LEFTARROW;
+        default:    return 0;
+    }
+}
+
 void I_StartTic (void) {
+    event_t event;
+    static unsigned char toup_doomcode = 0;
+
+    if( toup_doomcode ) {
+        event.data1 = toup_doomcode;
+        event.type = ev_keyup; D_PostEvent( &event );
+        fprintf(stderr,"Key Up Event: %d\n",toup_doomcode);
+        toup_doomcode = 0;
+    } else {
+        if( ps2_character_available() ) {
+            unsigned char doomcode = PAWSKEYtoDOOM( ps2_inputcharacter() );
+            if( doomcode ) {
+                event.data1 = doomcode;
+                event.type = ev_keydown; D_PostEvent( &event );
+                toup_doomcode = doomcode;
+                fprintf(stderr,"Key Down Event: %d\n",doomcode);
+            }
+        }
+    }
 }
 
 void I_UpdateNoBlit (void) {

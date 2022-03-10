@@ -280,7 +280,8 @@ $$end
                     switch( memoryAddress[0,2] ) {
                         case 0: { display.display_order = writeData; }
                         case 1: { display.colour = writeData; }
-                        default: { hilorez = writeData;}
+                        case 2: { hilorez = writeData;}
+                        case 3: { display.dimmer = writeData; }
                     }
                 }
                 default: {}

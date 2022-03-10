@@ -323,6 +323,11 @@ void screen_mode( unsigned char screenmode, unsigned char colour, unsigned char 
     *REZ = tmresolution;
 }
 
+// SET THE DIMMER LEVEL FOR THE DISPLAY 0 == FULL BRIGHTNESS, 1 - 7 DIMMER, 8 - 15 BLANK
+void screen_dimmer( unsigned char dimmerlevel ) {
+    *DIMMER = dimmerlevel;
+}
+
 // SET THE FRAMEBUFFER TO DISPLAY / DRAW
 void bitmap_display( unsigned char framebuffer ) {
     await_vblank();

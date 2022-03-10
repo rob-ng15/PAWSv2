@@ -346,7 +346,8 @@ algorithm drawrectangle(
     output  int11   bitmap_y_write,
     output  uint1   bitmap_write
 ) <autorun> {
-    int11   xPLUS1 <:: bitmap_x_write + 1;          int11   yPLUS1 <:: bitmap_y_write + 1;
+    int11   xPLUS1 <:: bitmap_x_write + 1;          uint1   lineend <:: bitmap_x_write == max_x;
+    int11   yPLUS1 <:: bitmap_y_write + 1;
     bitmap_write := 0;
 
     while(1) {
@@ -354,10 +355,10 @@ algorithm drawrectangle(
             busy = 1;
             bitmap_x_write = min_x; bitmap_y_write = min_y; bitmap_write = 1;           // Output 1st Pixel
             while( busy ) {
-                if( bitmap_x_write != max_x ) {
-                    bitmap_x_write = xPLUS1;
-                } else {
+                if( lineend ) {
                     bitmap_x_write = min_x; bitmap_y_write = yPLUS1;
+                } else {
+                    bitmap_x_write = xPLUS1;
                 }
                 busy = ( bitmap_y_write != max_y );
                 bitmap_write = busy;                                                    // Output subsequent pixels
@@ -453,22 +454,24 @@ algorithm drawline(
     uint1   n2dx <:: numerator2 > (-dx);                uint1   n2dy <:: numerator2 < dy;
     uint1   dxdy <:: dx > dy;
     int11   count = uninitialized;                      int11   countNEXT <:: count + 1;
+    uint1   working <:: ( count != max_count );
     int11   offset_x = uninitialised;                   int11   offset_xNEXT <:: offset_y + dxdy;
     int11   offset_y = uninitialised;                   int11   offset_yNEXT <:: offset_x + ~dxdy;
     int11   offset_start <:: -( width >> 1 );
     uint8   pixel_count = uninitialised;                uint8   pixel_countNEXT <:: pixel_count + 1;
+    uint1   singlepixel <:: ( width == 1 );             uint1   morepixels <:: ( pixel_count != width );
 
     bitmap_x_write := x + offset_x; bitmap_y_write := y + offset_y; bitmap_write := 0;
 
     while(1) {
         if( start ) {
             busy = 1;  x = start_x; y = start_y; numerator = start_numerator; count = 0; offset_x = 0; offset_y = 0;
-            while( count != max_count ) {
-                if( width == 1 ) {
+            while( working ) {
+                if( singlepixel ) {
                     bitmap_write = 1;
                 } else {
                     pixel_count = 0; offset_x = dxdy ? 0 : offset_start; offset_y = dxdy ? offset_start : 0;
-                    while( pixel_count != width ) {
+                    while( morepixels ) {
                         bitmap_write = 1; offset_y = offset_xNEXT; offset_x = offset_yNEXT; pixel_count = pixel_countNEXT;
                     }
                 }
@@ -907,10 +910,10 @@ algorithm blit(
     input   uint1   tilecharacter
 ) <autorun,reginputs> {
     // START POSITION ON THE SCREEN, POSITION IN TILE/CHARACTER AND PIXEL COUNT FOR SCALING
-    uint4   x2 = uninitialised;                         int11   x2NEXT <:: x2 + 1;
-    uint4   y2 = uninitialised;                         int11   y2NEXT <:: y2 + 1;
-    blitscale PXS( scale <: scale );                    int11   pxNEXT <:: PXS.base + 1;
-    blitscale PYS( scale <: scale );                    int11   pyNEXT <:: PYS.base + 1;
+    uint4   x2 = uninitialised;                         int11   x2NEXT <:: x2 + 1;                      uint1   x2working <:: x2 != max_count;
+    uint4   y2 = uninitialised;                         int11   y2NEXT <:: y2 + 1;                      uint1   y2working <:: y2 != max_count;
+    blitscale PXS( scale <: scale );                    int11   pxNEXT <:: PXS.base + 1;                uint1   pxworking <:: PXS.offset != max_pixels;
+    blitscale PYS( scale <: scale );                    int11   pyNEXT <:: PYS.base + 1;                uint1   pyworking <:: PYS.offset != max_pixels;
 
     // MAX PIXELS IN TILE AND NUMBER OF TIMES TO USE EACH PIXEL
     uint5   max_pixels <:: tilecharacter ? 16 : 8;       uint4   max_count <:: ( 1 << scale );
@@ -930,13 +933,13 @@ algorithm blit(
         if( |start ) {
             busy = start;
             PYS.offset = 0;
-            while( PYS.offset != max_pixels ) {
+            while( pyworking ) {
                 PXS.offset = 0;
-                while( PXS.offset != max_pixels ) {
+                while( pxworking ) {
                     y2 = 0;
-                    while( y2 != max_count ) {
+                    while( y2working ) {
                         x2 = 0;
-                        while( x2 != max_count ) {
+                        while( x2working ) {
                             onehot( busy ) {
                                 case 0: { bitmap_write = tilecharacter ? blit1tilemap.rdata0[BTXY.xinblittile, 1] : characterGenerator8x8.rdata0[BTXY.xinchartile, 1]; }
                                 case 1: { bitmap_write = ~colour7( colourblittilemap.rdata0 ).alpha; }
