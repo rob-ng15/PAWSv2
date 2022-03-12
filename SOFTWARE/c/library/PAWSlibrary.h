@@ -22,9 +22,11 @@ extern char uart_inputcharacter( void );
 //extern unsigned char uart_character_available( void );
 
 // PS/2
-//extern char ps2_character_available( void );
-extern short ps2_inputcharacter( void );
-//extern void ps2_keyboardmode( unsigned char );
+extern char ps2_event_available( void );
+extern short ps2_event_get( void );
+extern unsigned char ps2_character_available( void );
+extern unsigned char ps2_inputcharacter( void );
+extern void ps2_keyboardmode( unsigned char mode );
 
 // BASIC I/O
 //extern void set_leds( unsigned char );
@@ -270,18 +272,10 @@ static inline float frng( void ) {
 
 // I/O
 extern unsigned char volatile *UART_STATUS;
-extern unsigned char volatile *PS2_AVAILABLE;
-extern unsigned char volatile *PS2_MODE;
 extern unsigned short volatile *BUTTONS;
 extern unsigned char volatile *LEDS;
 static inline unsigned char uart_character_available( void ) {
     return( *UART_STATUS & 1 );
-}
-static inline char ps2_character_available( void ) {
-    return *PS2_AVAILABLE;
-}
-static inline void ps2_keyboardmode( unsigned char mode ) {
-    *PS2_MODE = mode;
 }
 static inline void set_leds( unsigned char value ) {
     *LEDS = value;

@@ -103,7 +103,7 @@ $$end
                 case 4h1: {
                     if( memoryAddress[1,1] ) {
                         if( PS2.inavailable ) {
-                            readData = PS2.inchar; PS2inread = 2b11;
+                            readData = PS2.inkey; PS2inread = 2b11;
                         } else {
                             readData = 0;
                         }
@@ -111,7 +111,7 @@ $$end
                         readData = PS2.inavailable;
                     }
                 }
-                case 4h2: { readData = PS2.outputascii ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
+                case 4h2: { readData = { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
                 case 4h4: { readData = SDCARD.ready; }
                 case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = INPLUS1.addressplus1; }
                 $$end
@@ -128,7 +128,7 @@ $$end
             switch( memoryAddress[4,4] ) {
                 $$if not SIMULATION then
                 case 4h0: { UART_OUT.outchar = writeData[0,8]; UARToutwrite = 2b11; }
-                case 4h1: { PS2.outputascii = writeData; }
+                case 4h1: { PS2.outputkeycodes = writeData; }
                 case 4h4: {
                     switch( memoryAddress[1,2] ) {
                         case 2h0: { SDCARDreadsector = 1; }
@@ -164,12 +164,11 @@ $$end
         if( DMAACTIVE ) { DMAMODE = 0; }
     }
 
-    // DISBLE SMT ON STARTUP, KEYBOARD DEFAULTS TO JOYSTICK MODE
+    // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE
     if( ~reset ) {
         SMTRUNNING = 0;
-
         $$if not SIMULATION then
-        PS2.outputascii = 0;
+            PS2.outputkeycodes = 0;
         $$end
     }
 
@@ -513,10 +512,10 @@ algorithm fifo9(
     output  uint1   available,
     input   uint1   read,
     input   uint1   write,
-    output  uint9   first,
-    input   uint9   last
+    output  uint10  first,
+    input   uint10  last
 ) <autorun> {
-    simple_dualport_bram uint9 queue[256] = uninitialized;
+    simple_dualport_bram uint10 queue[256] = uninitialized;
     uint8   top = 0;                                uint8   next = 0;
 
     available := ( top != next );
@@ -533,17 +532,17 @@ algorithm ps2buffer(
     // USB for PS/2
     input   uint1   us2_bd_dp,
     input   uint1   us2_bd_dn,
-    output  uint9   inchar,
+    output  uint10  inkey,
     output  uint1   inavailable,
     input   uint1   inread,
-    input   uint1   outputascii,
+    input   uint1   outputkeycodes,
     output  uint16  joystick
 ) <autorun> {
     // PS/2 input FIFO (256 character) - 9 bit to deal with special characters
-    fifo9 FIFO( available :> inavailable, read <: inread, write <: PS2.asciivalid, first :> inchar, last <: PS2.ascii );
+    fifo9 FIFO( available :> inavailable, read <: inread, write <: PS2.keycodevalid, first :> inkey, last <: PS2.keycode );
 
-    // PS 2 KEYCODE TO ASCII CONVERTER AND JOYSTICK EMULATION MAPPER
-    ps2ascii PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn, outputascii <: outputascii, joystick :> joystick );
+    // PS/2 KEYCODE AND JOYSTICK EMULATION MAPPER
+    ps2ascii PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn, outputkeycodes <: outputkeycodes, joystick :> joystick );
 }
 
 // SDCARD CONTROLLER

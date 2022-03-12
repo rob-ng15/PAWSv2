@@ -4,11 +4,6 @@ unsigned char volatile *UART_STATUS = (unsigned char volatile *) 0xf102;
 unsigned short volatile *BUTTONS = (unsigned short volatile *) 0xf120;
 unsigned char volatile *LEDS = (unsigned char volatile *) 0xf130;
 
-// PS/2 KEYBOARD
-unsigned char volatile *PS2_AVAILABLE = (unsigned char volatile *) 0xf110;
-unsigned char volatile *PS2_MODE = (unsigned char volatile *) 0xf110;
-unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf112;
-
 // SDCARD
 unsigned char volatile *SDCARD_READY = (unsigned char volatile *) 0xf140;
 unsigned char volatile *SDCARD_READSTART = (unsigned char volatile *) 0xf140;

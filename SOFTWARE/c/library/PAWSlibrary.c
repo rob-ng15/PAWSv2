@@ -100,27 +100,6 @@ char uart_inputcharacter( void ) {
     return *UART_DATA;
 }
 
-// INPUT FROM PS2
-// RETURN IF A CHARACTER IS AVAILABLE
-char ps2_character_available( void ) {
-    return *PS2_AVAILABLE;
-}
-
-// RETURN A DECODED ASCII CHARACTER
-// 0x0xx is an ascii character from the keyboard
-// 0x1xx is an escaped character from the keyboard
-// F1 to F12 map to 0x101 to 0x10c, SHIFT F1 to F12 map to 0x111 to 0x11c
-// CURSOR KEYS UP = 0x141, RIGHT = 0x143, DOWN = 0x142, LEFT = 0x144
-// INSERT = 0x132 HOME = 0x131 PGUP = 0x135 DELETE = 0x133 END = 0x134 PGDN = 0x136
-unsigned short ps2_inputcharacter( void ) {
-    while( !*PS2_AVAILABLE ) {}
-    return *PS2_DATA;
-}
-// SET KEYBOARD MODE TO == 0 JOYSTICK == 1 KEYBOARD
-void ps2_keyboardmode( unsigned char mode ) {
-    *PS2_MODE = mode;
-}
-
 // TIMER AND PSEUDO RANDOM NUMBER GENERATOR
 
 // PSEUDO RANDOM NUMBER GENERATOR
@@ -1901,10 +1880,13 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
 #endif
 
 // Standard i/o directs to the curses terminal, input is from the ps_keyboard
+extern unsigned char ps2_character_available( void );
+extern unsigned char ps2_inputcharacter( void );
+extern void ps2_keyboardmode( unsigned char mode );
 
 unsigned char *_heap = NULL;
 unsigned char *_sbrk( int incr ) {
-  unsigned char *prev_heap;
+unsigned char *prev_heap;
 
   if (_heap == NULL) {
     _heap = (unsigned char *)MEMORYTOP - MALLOC_MEMORY - 32;
@@ -1922,7 +1904,7 @@ unsigned char *_sbrk( int incr ) {
 
 // PAWS INITIALISATION FOR THE TERMNAL AND THE SDCARD for fat_io_lib
 void __start_stdinout( void ) {
-    initscr(); start_color(); autorefresh( TRUE ); ps2_keyboardmode( TRUE );
+    initscr(); start_color(); autorefresh( TRUE ); ps2_keyboardmode( PS2_KEYBOARD );
     __stdinout_init = TRUE;
 }
 void __start_sdmedia( void ) {
