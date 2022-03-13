@@ -111,7 +111,7 @@ $$end
                         readData = PS2.inavailable;
                     }
                 }
-                case 4h2: { readData = { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
+                case 4h2: { readData = PS2.outputkeycodes ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
                 case 4h4: { readData = SDCARD.ready; }
                 case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = INPLUS1.addressplus1; }
                 $$end

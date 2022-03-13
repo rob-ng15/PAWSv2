@@ -390,9 +390,6 @@ algorithm cachecontroller(
     uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
     uint1   doreadsdram <:: ( doread | ( dowrite & byteaccess ) );
 
-    //  FOR QUICK RETURN IF READING FROM LAST DATA CACHE ADDRESS
-    uint25  lastaddress = uninitialized;            uint1   lastdcacheaddress <:: cacheselect & ( lastaddress == address[1,25] );
-
     // SDRAM ACCESS
     SDRAM.readflag := 0; SDRAM.writeflag := 0;
 
@@ -404,42 +401,35 @@ algorithm cachecontroller(
     ICW.writedata := dowrite ? writethrough : SDRAM.readdata; ICW.update := 0;
 
     // 16 bit READ
-    readdata := ( ~cacheselect & Icachetagmatch ) ? Icache.rdata0 : ( doread & lastdcacheaddress ) | cachetagmatch ? cache.rdata0 : SDRAM.readdata;
+    readdata := ( ~cacheselect & Icachetagmatch ) ? Icache.rdata0 : cachetagmatch ? cache.rdata0 : SDRAM.readdata;
 
     while(1) {
         doread = readflag; dowrite = writeflag;
-        if( doread & lastdcacheaddress ) {                                                                                                          // USING LAST READ DATA CACHE ADDRESS
-            busy = 0;
-        } else {
-            if( doread | dowrite ) {
-                busy = 1;                                                                                                                           // MARK BUSY,
-                ++:                                                                                                                                 // WAIT FOR CACHE
-                if( doread & ( ( ~cacheselect & Icachetagmatch ) | ( cacheselect & cachetagmatch ) ) ) {                                                // READ IN CACHE
+        if( doread | dowrite ) {
+            busy = 1;                                                                                                                           // MARK BUSY,
+            ++:                                                                                                                                 // WAIT FOR CACHE
+            if( doread & ( ( ~cacheselect & Icachetagmatch ) | ( cacheselect & cachetagmatch ) ) ) {                                                // READ IN CACHE
+                busy = 0;
+            } else {
+                if( cacheselect & cachetagmatch ) {                                                                                                 // WRITE IN CACHE
+                    CW.update = 1;                                                                                                                  // UPDATE CACHE
+                    ICW.update = Icachetagmatch;                                                                                                    // UPDATE ICACHE IF NEEDED
                     busy = 0;
                 } else {
-                    if( cacheselect & cachetagmatch ) {                                                                                                 // WRITE IN CACHE
-                        CW.update = 1;                                                                                                                  // UPDATE CACHE
-                        ICW.update = Icachetagmatch;                                                                                                    // UPDATE ICACHE IF NEEDED
-                        busy = 0;
-                    } else {
-                        if( cachetag(tags.rdata0).needswrite ) {                                                                                        // CHECK IF CACHE LINE IS OCCUPIED
-                            while( SDRAM.busy ) {} SDRAM.address = addressfromcache;                                                                    // EVICT FROM CACHE TO SDRAM
-                            SDRAM.writeflag = 1;
-                        }
-                        if( doreadsdram ) {                                                                                                             // NEED TO READ SDRAM
-                            while( SDRAM.busy ) {} SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                  // READ FOR READ OR 8 BIT WRITE
-                            CW.update = cacheselect;                                                                                                    // UPDATE THE CACHE
-                            ICW.update = ~cacheselect;                                                                                                  // UPDATE ICACHE IF NEEDED
-                        } else {
-                            CW.update = dowrite;                                                                                                        // UPDATE CACHE FOR 16 BIT WRITE
-                            ICW.update = Icachetagmatch & dowrite;                                                                                      // UPDATE ICACHE IF NEEDED
-                        }
-                        busy = 0;
+                    if( cachetag(tags.rdata0).needswrite ) {                                                                                        // CHECK IF CACHE LINE IS OCCUPIED
+                        while( SDRAM.busy ) {} SDRAM.address = addressfromcache;                                                                    // EVICT FROM CACHE TO SDRAM
+                        SDRAM.writeflag = 1;
                     }
+                    if( doreadsdram ) {                                                                                                             // NEED TO READ SDRAM
+                        while( SDRAM.busy ) {} SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                  // READ FOR READ OR 8 BIT WRITE
+                        CW.update = cacheselect;                                                                                                    // UPDATE THE CACHE
+                        ICW.update = ~cacheselect;                                                                                                  // UPDATE ICACHE IF NEEDED
+                    } else {
+                        CW.update = dowrite;                                                                                                        // UPDATE CACHE FOR 16 BIT WRITE
+                        ICW.update = Icachetagmatch & dowrite;                                                                                      // UPDATE ICACHE IF NEEDED
+                    }
+                    busy = 0;
                 }
-                if( cacheselect ) { lastaddress = address[1,25]; }                                                                                  // LATCH LAST DATA CACHE ADDRESS
-            } else {
-                busy = 0;
             }
         }
     }
