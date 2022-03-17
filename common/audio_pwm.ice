@@ -9,21 +9,21 @@
 // TODO make it more general
 
 algorithm audio_pwm(
-  input  uint8 wave,
-  output uint4 audio,
-) <autorun> {
+    input   uint8   wave,
+    output  uint4   audio,
+) <autorun,reginputs> {
+    uint4   counter = 0;                            uint4 counterP1 <:: counter + 1;                    uint1 counterLOW <:: ( counter < pwm_threshold );
 
-  uint4  counter        = 0;
-  uint4  dac_low       <:: wave[4,4];   // tracks higher bits
-  uint4  dac_high      <:: dac_low + 1; // same plus on (we interpolate between dac_low and dac_high)
-  uint4  pwm_threshold <:: wave[0,4];   // threshold for pwm ratio, using lower bits
-                                       //   threshold == 0 => always low, threshold == 15 almost always high
-  always_after {
-    if (counter < pwm_threshold) {
-      audio = dac_high;
-    } else {
-      audio = dac_low;
+    uint4   dac_low <:: wave[4,4];                  // tracks higher bits
+    uint4   dac_high <:: dac_low + 1;               // same plus on (we interpolate between dac_low and dac_high)
+    uint4   pwm_threshold <:: wave[0,4];            // threshold for pwm ratio, using lower bits
+                                                    //   threshold == 0 => always low, threshold == 15 almost always high
+    always_after {
+        if (counterLOW) {
+          audio = dac_high;
+        } else {
+          audio = dac_low;
+        }
+        counter = counterP1;
     }
-    counter = counter + 1;
-  }
 }

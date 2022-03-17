@@ -7,7 +7,7 @@ algorithm alushift(
     output  uint32  SLL,
     output  uint32  SRL,
     output  uint32  SRA
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         SLL = sourceReg1 << shiftcount;
         SRL = sourceReg1 >> shiftcount;
@@ -20,7 +20,7 @@ algorithm alurotate(
     input   uint5   shiftcount,
     input   uint1   reverse,
     output  uint32  result,
-) <autorun> {
+) <autorun,reginputs> {
     uint6   shiftother <:: 32 - shiftcount;
 
     always_after {
@@ -35,7 +35,7 @@ algorithm alubits(
     output  uint32  INV,
     output  uint32  SET,
     output  uint1   EXT
-) <autorun> {
+) <autorun,reginputs> {
     uint32  mask <:: ( 1 << shiftcount );
 
     always_after {
@@ -50,7 +50,7 @@ algorithm aluaddsub(
     input   int32   operand2,
     input   int32   negoperand2,
     output  int32   AS
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         AS = sourceReg1 + ( dosub ? negoperand2 : operand2 );
     }
@@ -63,7 +63,7 @@ algorithm alulogic(
     output  uint32  AND,
     output  uint32  OR,
     output  uint32  XOR
-) <autorun> {
+) <autorun,reginputs> {
     uint32  operand <:: doinv ? ~operand2 : operand2;
 
     always_after {
@@ -77,7 +77,7 @@ algorithm alushxadd(
     input   uint32  sourceReg1,
     input   uint32  sourceReg2,
     output  uint32  result
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         result = sourceReg2 + ( sourceReg1 << function3 );
     }
@@ -87,7 +87,7 @@ algorithm alucount(
     input   uint2   shiftcount,
     input   uint32  sourceReg1,
     output  uint6   result
-) <autorun> {
+) <autorun,reginputs> {
     uint1   zero <:: ~|sourceReg1;
 
     always_after {
@@ -106,7 +106,7 @@ algorithm aluminmax(
     input   uint32  sourceReg1,
     input   uint32  sourceReg2,
     output  uint32  result
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         result = function3[1,1] ^ ( function3[0,1] ? unsignedcompare : signedcompare ) ? sourceReg1 : sourceReg2;
     }
@@ -126,7 +126,7 @@ algorithm aluorcrev(
     input   uint32  sourceReg1,
     output  uint32  ORC,
     output  uint32  REV8
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         ORC = { {8{ |sourceReg1[24,8] }}, {8{ |sourceReg1[16,8] }}, {8{ |sourceReg1[8,8] }}, {8{ |sourceReg1[0,8] }} };
         REV8 = { sourceReg1[0,8], sourceReg1[8,8], sourceReg1[16,8], sourceReg1[24,8] };
@@ -154,21 +154,26 @@ algorithm aludecode(
     output  uint1   dozerox,
     output  uint1   doorc,
     output  uint1   dorev
-) <autorun> {
+) <autorun,reginputs> {
+    uint1   f7010000 <:: ( function7 == 7b0100000 );
+    uint1   f70110000 <:: ( function7 == 7b0110000 );
+    uint1   f70110100 <:: ( function7 == 7b0110100 );
+    uint1   f70010100 <:: ( function7 == 7b0010100 );
+
     always_after {
-        doalt = regimm & ( function7 == 7b0100000 );                   // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
-        dosra = ( function7 == 7b0100000 );                            // SRL SRA
-        dorotate = ( function7 == 7b0110000 );                         // ROL ROR RORI
+        doalt = regimm & f7010000;                   // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
+        dosra = f7010000;                            // SRL SRA
+        dorotate = f70110000;                         // ROL ROR RORI
         dobclrext = ( function7 == 7b0100100 );                        // BCLR BCLRI BEXT BEXTI
-        dobinv = ( function7 == 7b0110100 );                           // BINV BINVI
-        dobset = ( function7 == 7b0010100 );                           // BSET BSETI
+        dobinv = f70110100;                           // BINV BINVI
+        dobset = f70010100;                           // BSET BSETI
         doshxadd = regimm & ( function7 == 7b0010000 );                // SH1ADD SH2ADD SH3ADD ( register - register only )
-        docount = ~regimm & ( function7 == 7b0110000 ) & ~rs2[2,1];    // CLZ CPOP CTZ ( immediate only )
+        docount = ~regimm & f70110000 & ~rs2[2,1];    // CLZ CPOP CTZ ( immediate only )
         dominmax = regimm & function3[2,1] & ( function7 == 7b0000101 );    // MAX MAXU MIN MINU ( register - register only )
-        dosignx = ~regimm & ( function7 == 7b0110000 ) & rs2[2,1];     // SEXT.B SEXT.H
+        dosignx = ~regimm & f70110000 & rs2[2,1];     // SEXT.B SEXT.H
         dozerox = regimm & ( function7 == 7b0000100 );                 // ZEXT.H
-        doorc = ~regimm & ( function7 == 7b0010100 );                  // ORC.B
-        dorev = ~regimm & ( function7 == 7b0110100 );                  // REV8
+        doorc = ~regimm & f70010100;                  // ORC.B
+        dorev = ~regimm & f70110100;                  // REV8
     }
 }
 
@@ -186,7 +191,7 @@ algorithm alu(
     input   uint1   LTU,                                                            // UNSIGNED COMPARE sourceReg1 < operand2
 
     output  int32   result
-) <autorun> {
+) <autorun,reginputs> {
     aludecode AD( regimm <: opCode[3,1], function7 <: function7, function3 <: function3, rs2 <: rs2, );
 
     uint5   shiftcount <:: opCode[3,1] ? sourceReg2[0,5] : rs2;
@@ -234,13 +239,16 @@ algorithm douintdivide(
     uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
 
     busy := start | ( ~&bit );
+
     always_after {
-        if( &bit ) {
-            if( start ) { bit = 31; quotient = 0; remainder = 0; }
+        if( start ) {
+            bit = 31; quotient = 0; remainder = 0;
         } else {
-            quotient[bit,1] = bitresult;
-            remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
-            bit = bitMINUS1;
+            if( ~&bit ) {
+                quotient[bit,1] = bitresult;
+                remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
+                bit = bitMINUS1;
+            }
         }
     }
 }
@@ -288,7 +296,7 @@ algorithm aluMM(
     input   int32   sourceReg1,
     input   int32   sourceReg2,
     output  int32   result
-) <autorun> {
+) <autorun,reginputs> {
     uint1   doupper <:: |function3;
     uint2   dosigned <:: function3[1,1] ? function3[0,1] ? 2b00 : 2b01 : 2b11;
     int33   factor_1 <:: { dosigned[0,1] ? sourceReg1[ 31, 1 ] : 1b0, sourceReg1 }; // SIGN EXTEND IF SIGNED MULTIPLY
@@ -316,19 +324,14 @@ algorithm doclmul(
 
     always_after {
         if( start ) {
-            result = 0;
+            busy = 1; result = 0; count = startat;
         } else {
-            if( busy & sourceReg2[ count, 1 ] ) {
-                result = result ^ shift;
+            if( busy ) {
+                if( sourceReg2[ count, 1 ] ) {
+                    result = result ^ shift;
+                }
+                if( count == stopat ) { busy = 0; } else { count = countPLUS1; }
             }
-        }
-    }
-
-    while(1) {
-        if( start ) {
-            busy = 1; count = startat;
-            while( count != stopat ) { count = countPLUS1; }
-            busy = 0;
         }
     }
 }
@@ -351,7 +354,7 @@ algorithm aluA (
     input   uint32  memoryinput,
     input   uint32  sourceReg2,
     output  uint32  result
-) <autorun> {
+) <autorun,reginputs> {
     uint1   comparison <:: function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) : ( __signed(memoryinput) < __signed(sourceReg2) );
     alulogic LOGIC( sourceReg1 <: memoryinput, operand2 <: sourceReg2 );
 

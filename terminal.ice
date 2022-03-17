@@ -44,7 +44,7 @@ algorithm terminalcursor(
     output  uint7   NEXT,
     output  uint7   PREV,
     output  uint10  ADDRESS
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         endofline = ( terminal_x == 79 );
         NEXT = endofline ? 0 : terminal_x + 1;

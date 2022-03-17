@@ -10,7 +10,7 @@ algorithm decode(
     output  uint5   rd,
     output  int32   immediateValue,
     output  uint1   AMO
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         opCode = instruction[2,5];
         AMO = ( instruction[2,5] == 5b01011 );
@@ -36,7 +36,7 @@ algorithm memoryaccess(
     output  uint1   memoryload,
     output  uint1   memorystore,
     output  uint2   accesssize
-) <autorun> {
+) <autorun,reginputs> {
     uint1   FLOAD <:: opCode == 5b00001;             uint1   FSTORE <:: opCode == 5b01001;
 
     always_after {
@@ -59,7 +59,7 @@ algorithm whatis(
     output  uint1   CSR,
     output  uint1   ATOMIC,
     output  uint1   FPU
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         AUIPCLUI = ( opCode[0,3] == 3b101 );
         JAL = ( opCode[2,3] == 3b110 ) & opCode[0,1];
@@ -82,7 +82,7 @@ algorithm Iclass(
     output  uint1   writeRegister,
     output  uint1   incPC,
     output  uint1   FASTPATH
-) <autorun> {
+) <autorun,reginputs> {
     // CHECK FOR FLOATING POINT, OR INTEGER DIVIDE
     frd := 0; writeRegister := 1; incPC := 1; FASTPATH := 1;
     always_after {
@@ -109,7 +109,7 @@ algorithm Fclass(
     input   uint5   opCode,
     input   uint7   function7,
     output  uint1   FASTPATHFPU
-) <autorun> {
+) <autorun,reginputs> {
     // FUSED OPERATIONS + CALCULATIONS & CONVERSIONS GO VIA SLOW PATH
     // SIGN MANIPULATION, COMPARISONS + MIN/MAX, MOVE AND CLASSIFICATION GO VIA FAST PATH
     always_after {
@@ -124,7 +124,7 @@ algorithm signextend(
     input   uint1   byteaccess,
     input   uint1   dounsigned,
     output  uint32  memory168
-) <autorun> {
+) <autorun,reginputs> {
     uint4   byteoffset <:: { byteaccess, 3b000 };
     uint1   sign <:: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1] );
 
@@ -138,7 +138,7 @@ algorithm absolute(
     input   int32   number,
     input   int32   negative,
     output  int32   value
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         value = number[31,1] ? negative : number;
     }
@@ -148,7 +148,7 @@ algorithm absolute(
 algorithm addrplus2(
     input   uint27  address,
     output  uint27  addressplus2
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         addressplus2 = address + 2;
     }
@@ -157,7 +157,7 @@ algorithm addrplus2(
 algorithm addrplus1(
     input   uint27  address,
     output  uint27  addressplus1
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         addressplus1 = address + 1;
     }
@@ -166,7 +166,7 @@ algorithm addrplus1(
 algorithm addrsub1(
     input   uint27  address,
     output  uint27  addresssub1
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         addresssub1 = address - 1;
     }
@@ -176,7 +176,7 @@ algorithm addrsub1(
 algorithm bufferaddrplus1(
     input   uint9  address,
     output  uint9  addressplus1
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         addressplus1 = address + 1;
     }
@@ -194,7 +194,7 @@ algorithm addressgenerator(
     output  uint27  loadAddress,
     output  uint27  storeAddress,
     input   uint1   AMO
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
         branchAddress = { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
@@ -216,7 +216,7 @@ algorithm newpc(
     input   uint27  loadAddress,
     output  uint27  nextPC,
     output  uint27  newPC
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         nextPC = PC + ( compressed ? 2 : 4 );
         newPC = ( incPC ) ? ( takeBranch ? branchAddress : nextPC ) : ( opCode[1,1] ? jumpAddress : loadAddress );
@@ -231,7 +231,7 @@ algorithm registers(
     input   uint1   write,
     input   uint32  result,
     output  uint32  contents
-) <autorun> {
+) <autorun,reginputs> {
     simple_dualport_bram int32 registers[64] = { 0, pad(uninitialized) };
 
     always_after {
@@ -250,7 +250,7 @@ algorithm compare(
     output  uint1   LT,
     output  uint1   LTU,
     output  uint1   EQ
-) <autorun> {
+) <autorun,reginputs> {
     int32   operand2 <:: regimm ? sourceReg2 : immediateValue;
 
     always_after {
@@ -269,7 +269,7 @@ algorithm branchcomparison(
     input   uint1   LTU,
     input   uint1   EQ,
     output  uint1   takeBranch
-) <autorun> {
+) <autorun,reginputs> {
     uint4   flags <:: { LTU, LT, 1b0, EQ };
 
     always_after {
@@ -281,7 +281,7 @@ algorithm branchcomparison(
 algorithm compressed00(
     input   uint16  i16,
     output  uint30  i32
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         if( |i16[13,3] ) {
             if( i16[15,1] ) {
@@ -302,7 +302,7 @@ algorithm compressed00(
 algorithm compressed01(
     input   uint16  i16,
     output  uint30  i32
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         switch( i16[13,3] ) {
             case 3b000: {
@@ -364,7 +364,7 @@ algorithm compressed01(
 algorithm compressed10(
     input   uint16  i16,
     output  uint30  i32
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         switch( i16[13,3] ) {
             case 3b000: {

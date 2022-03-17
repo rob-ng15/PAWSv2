@@ -76,7 +76,7 @@ unsigned char ps2_character_available() {
                     // NUMBER KEYS
                     case 0x16:  availablecharacter = shift ? '!' : '1'; break;
                     case 0x1e:  availablecharacter = shift ? '\"' : '2'; break;
-                    case 0x26:  availablecharacter = shift ? 0x00 : '3'; break; // £ not available
+                    case 0x26:  availablecharacter = shift ? 0x9c : '3'; break; // £
                     case 0x25:  availablecharacter = shift ? '$' : '4'; break;  // € not available
                     case 0x2e:  availablecharacter = shift ? '%' : '5'; break;
                     case 0x36:  availablecharacter = shift ? '^' : '6'; break;
@@ -86,7 +86,7 @@ unsigned char ps2_character_available() {
                     case 0x45:  availablecharacter = shift ? ')' : '0'; break;
 
                     // PUNCTUATION
-                    case 0x0e:  availablecharacter = ralt ? '|' : 0; break;   // ` ¬ not available
+                    case 0x0e:  availablecharacter = ralt ? '|' : shift ? 0xaa : 0x60; break; // top left key
                     case 0x4e:  availablecharacter = shift ? '_' : '-'; break;
                     case 0x55:  availablecharacter = shift ? '+' : '='; break;
                     case 0x54:  availablecharacter = shift ? '{' : '['; break;

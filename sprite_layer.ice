@@ -98,7 +98,7 @@ algorithm sprite_generator(
     simple_dualport_bram_port0 tiles,
     output! uint1   pix_visible,
     output! uint7   pixel
-) <autorun> {
+) <autorun,reginputs> {
     int11   x <: { 1b0, pix_x };                                                                        int11   xspritex <: ( x - sprite_x ) + pix_active;
     int11   y <: { 2b0, pix_y };                                                                        int11   yspritey <: ( y - sprite_y );
     int11   xspriteshift <: ( xspritex >>> sprite_actions[3,1] );                                       int11   yspriteshift <: yspritey >>> sprite_actions[3,1];

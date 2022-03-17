@@ -41,7 +41,7 @@ algorithm sdcard(
   // storage
   simple_dualport_bram_port0 buffer_out,
   simple_dualport_bram_port1 buffer_in
-) <autorun> {
+) <autorun,reginputs> {
 
   // assert(sizeof(io.addr_sector) == 32);
 
@@ -71,9 +71,9 @@ algorithm sdcard(
     readwrites      sd_clk,
     writes          sd_mosi
   ) {
-    uint2   count = 0;
+    uint8   count = 0;
     uint8   shift = uninitialized;
-    uint6   n = 0;
+    uint4   n = 0;
     shift        = byte;
     while( n != 8 ) {
       if ( &count ) { // swap clock
@@ -94,11 +94,11 @@ algorithm sdcard(
     writes          sd_mosi,
     reads           sd_miso
   ) {
-    uint2 count = 0; uint1 finished = 0;
+    uint8 count = 0; uint1 finished = 0;
     while( ~finished ) {
         if( &count ) {
             sd_clk = ~sd_clk;
-            finished = sd_miso;
+            if (!sd_clk) { finished = sd_miso; }
         }
         count = count + 1;
     }
@@ -259,7 +259,6 @@ if (do_write_sector) {
       () <- sendbyte <- ( 8hff ); () <- sendbyte <- ( 8hff ); () <- sendbyte <- ( 8hff ); () <- sendbyte <- ( 8hfe );
 
       // send 512 bytes, starting at position 0 in the buffer
-      buffer_out.addr0 = 0;
       while( progress != 512 ) {
           () <- sendbyte <- ( buffer_out.rdata0 );
           buffer_out.addr0 = buffer_out.addr0 + 1;
@@ -267,8 +266,8 @@ if (do_write_sector) {
       }
 
       //send CRC = 0xff 0xff
-      //() <- sendbyte <- ( 8hff );
-      //() <- sendbyte <- ( 8hff );
+      () <- sendbyte <- ( 8hff );
+      () <- sendbyte <- ( 8hff );
 
       // Wait for response ( should be 0x05 )
       ( status ) <- read <- ( 8,1,3);

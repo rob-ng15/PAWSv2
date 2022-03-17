@@ -175,7 +175,7 @@ algorithm background_display(
 algorithm rainbow(
     input   uint3   y,
     output  uint7   colour
-) <autorun> {
+) <autorun,reginputs> {
     uint7   rainbow[] = { 7b100000, 7b110000, 7b111000, 7b111100, 7b001100, 7b000011, 7b010010, 7b011011 };
 
     always_after {
@@ -187,7 +187,7 @@ algorithm starfield(
     input   uint10  pix_x,
     input   uint9   pix_y,
     output  uint1   star
-) <autorun> {
+) <autorun,reginputs> {
     // Variables for SNOW (from @sylefeb)
     int10   dotpos = 0;                             int2    speed = 0;                                  int2    inv_speed = 0;
     int12   rand_x = 0;                             int12   new_rand_x <:: rand_x * 31421 + 6927;       int32   frame = 0;

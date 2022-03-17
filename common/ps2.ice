@@ -6,29 +6,14 @@ algorithm ps2ascii(
     input   uint1   outputkeycodes,
     output  uint10  keycode,
     output  uint1   keycodevalid,
-    output  uint16  joystick
-) <autorun> {
-    // MODIFIER KEYS + JOYSTICK MODE
-    uint1   lctrl = 0;                              uint1   rctrl = 0;
-    uint1   lalt = 0;                               uint1   ralt = 0;
-    uint1   lwin = 0;                               uint1   rwin = 0;
-    uint1   application = 0;
-    uint1   left = 0;                               uint1   right = 0;
-    uint1   up = 0;                                 uint1   down = 0;
-    uint1   npleft = 0;                             uint1   npright = 0;
-    uint1   npup = 0;                               uint1   npdown = 0;
-    uint1   npleftup = 0;                           uint1   npleftdown = 0;
-    uint1   nprightup = 0;                          uint1   nprightdown = 0;
-
-    uint1   startbreak = 0;                         uint1   startmulti = 0;
-
+    output  uint16  joystick(0)
+) <autorun,reginputs> {
     // PS2 KEYBOARD CODE READER
     ps2 PS2( ps2clk_ext <: us2_bd_dp, ps2data_ext <: us2_bd_dn );
 
-    uint10  newkeycode = uninitialised;
+    uint10  newkeycode = uninitialised;             uint1   startbreak = 0;                         uint1   startmulti = 0;
 
     newkeycode := 0; keycodevalid := 0;
-    joystick := { application, nprightup, nprightdown, npleftdown, npleftup, rctrl, rwin, ralt, lalt, npright | right, npleft | left, npdown | down, npup | up, lwin, lctrl, 1b0 };
 
     always_after {
         if( PS2.valid ) {
@@ -40,16 +25,8 @@ algorithm ps2ascii(
                         case 2b00: {
                             // KEY PRESS - SINGLE
                             switch( PS2.data ) {
-                                case 8h14: { lctrl = 1; }
-                                case 8h11: { lalt = 1; }
-                                case 8h69: { npleftdown = 1; }
-                                case 8h72: { npdown = 1; }
-                                case 8h7a: { nprightdown = 1; }
-                                case 8h6b: { npleft = 1; }
-                                case 8h74: { npright = 1; }
-                                case 8h6c: { npleftup = 1; }
-                                case 8h75: { npup = 1; }
-                                case 8h7d: { nprightup = 1; }
+                                case 8h14: { joystick[1,1] = 1; }
+                                case 8h11: { joystick[7,1] = 1; }
                                 default: {}
                             }
                             newkeycode = { 2b10, PS2.data };
@@ -57,15 +34,8 @@ algorithm ps2ascii(
                         case 2b01: {
                             // KEY RELEASE - SINGLE
                             switch( PS2.data ) {
-                                case 8h14: { lctrl = 0; }
-                                case 8h69: { npleftdown = 0; }
-                                case 8h72: { npdown = 0; }
-                                case 8h7a: { nprightdown = 0; }
-                                case 8h6b: { npleft = 0; }
-                                case 8h74: { npright = 0; }
-                                case 8h6c: { npleftup = 0; }
-                                case 8h75: { npup = 0; }
-                                case 8h7d: { nprightup = 0; }
+                                case 8h14: { joystick[1,1] = 0; }
+                                case 8h11: { joystick[7,1] = 0; }
                                 default: {}
                             }
                             newkeycode = { 2b00, PS2.data }; startbreak = 0;
@@ -73,15 +43,15 @@ algorithm ps2ascii(
                         case 2b10: {
                             // MULTICODE KEY PRESS
                             switch( PS2.data ) {
-                                case 8h14: { rctrl = 1; }
-                                case 8h11: { ralt = 1; }
-                                case 8h1f: { lwin = 1; }
-                                case 8h27: { rwin = 1; }
-                                case 8h2f: { application = 1; }
-                                case 8h6b: { left = 1; }
-                                case 8h75: { up = 1; }
-                                case 8h72: { down = 1; }
-                                case 8h74: { right = 1; }
+                                case 8h14: { joystick[10,1] = 1; }
+                                case 8h11: { joystick[8,1] = 1; }
+                                case 8h1f: { joystick[2,1] = 1; }
+                                case 8h27: { joystick[9,1] = 1; }
+                                case 8h2f: { joystick[15,1] = 1; }
+                                case 8h6b: { joystick[5,1] = 1; }
+                                case 8h75: { joystick[3,1] = 1; }
+                                case 8h72: { joystick[4,1] = 1; }
+                                case 8h74: { joystick[6,1] = 1; }
                                 default: {}
                             }
                             newkeycode = { 2b11, PS2.data }; startmulti = 0;
@@ -89,15 +59,15 @@ algorithm ps2ascii(
                         case 2b11: {
                             // MULTICODE KEY RELEASE
                             switch( PS2.data ) {
-                                case 8h6b: { left = 0; }
-                                case 8h75: { up = 0; }
-                                case 8h72: { down = 0; }
-                                case 8h74: { right = 0; }
-                                case 8h14: { rctrl = 0; }
-                                case 8h11: { ralt = 0; }
-                                case 8h1f: { lwin = 0; }
-                                case 8h27: { rwin = 0; }
-                                case 8h2f: { application = 0; }
+                                case 8h14: { joystick[10,1] = 0; }
+                                case 8h11: { joystick[8,1] = 0; }
+                                case 8h1f: { joystick[2,1] = 0; }
+                                case 8h27: { joystick[9,1] = 0; }
+                                case 8h2f: { joystick[15,1] = 0; }
+                                case 8h6b: { joystick[5,1] = 0; }
+                                case 8h75: { joystick[3,1] = 0; }
+                                case 8h72: { joystick[4,1] = 0; }
+                                case 8h74: { joystick[6,1] = 0; }
                                 default: {}
                             }
                             newkeycode = { 2b01, PS2.data }; startmulti = 0; startbreak = 0;
@@ -160,9 +130,10 @@ algorithm ps2(
     output  uint1   valid,
     output  uint1   error,
     output  uint8   data
-) < autorun> {
+) < autorun,reginputs> {
     uint4 clk_filter = 4b1111;                      uint1 ps2_clk_in = 1;                               uint1 clk_edge = 0;
     uint4 bit_count = 0;                            uint9 shift_reg = 0;                                uint1 parity = 0;
+    uint4 bitP1 <:: bit_count + 1;
 
     valid := 0;                                     error := 0;                                         clk_edge := 0;
 
@@ -185,14 +156,13 @@ algorithm ps2(
             switch( bit_count ) {
                 case 0: {
                     parity = 0;
-                    //bit_count = bit_count + ( ~ps2data_ext );
                     if( ~ps2data_ext ) {
                         // Start bit
-                        bit_count = bit_count + 1;
+                        bit_count = bitP1;
                     }
                 }
                 default: {
-                    bit_count = bit_count + 1;
+                    bit_count = bitP1;
                     shift_reg = { ps2data_ext, shift_reg[1,8] };
                     parity = parity ^ ps2data_ext;
                 }

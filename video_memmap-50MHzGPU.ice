@@ -291,7 +291,7 @@ $$end
 
     if( ~reset ) {
         // SET DEFAULT DISPLAY ORDER AND COLOUR MODE
-        display.display_order = 0; display.colour = 0;
+        display.display_order = 0; display.colour = 0; display.dimmer = 0;
     }
 }
 

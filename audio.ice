@@ -83,7 +83,7 @@ algorithm audiocounter(
     uint12  counter25mhz = uninitialised;           uint16  counter1khz = uninitialised;                uint16  duration = uninitialised;
     uint1   updateduration <:: active & ( ~|counter1khz );
 
-    active := ( |duration ); updatepoint := active & ( ~|counter25mhz );
+//    active := ( |duration ); updatepoint := active & ( ~|counter25mhz );
 
     always_after {
         if( start ) {
@@ -95,5 +95,7 @@ algorithm audiocounter(
             counter1khz = updateduration ? 25000 : counter1khz - 1;
             duration = duration - updateduration;
         }
+
+        active = ( |duration ); updatepoint = active & ( ~|counter25mhz );
     }
 }

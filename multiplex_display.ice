@@ -115,7 +115,7 @@ algorithm selectlayer(
     input   uint7   upper_tilemap,
     input   uint7   background,
     output! uint7   pixel
-) <autorun> {
+) <autorun,reginputs> {
     // CONVERT TERMINAL COLOUR TO BLUE OR WHITE
     uint7   terminalcolour <: { 1b0, {4{terminal}}, 2b11 };
 

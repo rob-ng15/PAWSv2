@@ -101,6 +101,8 @@ algorithm gpu_queue(
             ( queue_cropL, queue_cropR ) = copycoordinates( crop_left, crop_right );
             ( queue_cropT, queue_cropB ) = copycoordinates( crop_top, crop_bottom );
         }
+    }
+    while(1) {
         // PROCESS QUEUE
         if( queue_busy & ~gpu_active ) {
             GPU.gpu_dithermode = queue_dithermode; GPU.gpu_colour = queue_colour; GPU.gpu_colour_alt = queue_colour_alt;
@@ -218,6 +220,22 @@ algorithm gpu(
     gpu_active := ( |gpu_write[1,3] ) | gpu_busy;
 
     always_after {
+        // COPY OUTPUT TO THE BITMAP WRITER
+        if( gpu_busy ) {
+            onehot( gpu_busy_flags ) {
+                case 0: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUline.bitmap_x_write, GPUline.bitmap_y_write ); }
+                case 1: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUrectangle.bitmap_x_write, GPUrectangle.bitmap_y_write ); }
+                case 2: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUcircle.bitmap_x_write, GPUcircle.bitmap_y_write ); }
+                case 3: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUtriangle.bitmap_x_write, GPUtriangle.bitmap_y_write ); }
+                case 4: {
+                    ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUblit.bitmap_x_write, GPUblit.bitmap_y_write );
+                    if( GPUblit.busy[1,1] ) { bitmap_colour_write = GPUblit.bitmap_colour_write; }
+                }
+                case 5: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUpixelblock.bitmap_x_write, GPUpixelblock.bitmap_y_write ); bitmap_colour_write = GPUpixelblock.bitmap_colour_write; }
+            }
+        }
+    }
+    while(1) {
         if( |gpu_write ) {
             // START THE GPU DRAWING UNIT - RESET DITHERMODE TO 0 (most common)
             gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; bitmap_colour_write_alt = gpu_colour_alt;
@@ -241,21 +259,6 @@ algorithm gpu(
                 // 15 is quadrilateral, handled by the queue
             }
         }
-
-        // COPY OUTPUT TO THE BITMAP WRITER
-        if( gpu_busy ) {
-            onehot( gpu_busy_flags ) {
-                case 0: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUline.bitmap_x_write, GPUline.bitmap_y_write ); }
-                case 1: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUrectangle.bitmap_x_write, GPUrectangle.bitmap_y_write ); }
-                case 2: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUcircle.bitmap_x_write, GPUcircle.bitmap_y_write ); }
-                case 3: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUtriangle.bitmap_x_write, GPUtriangle.bitmap_y_write ); }
-                case 4: {
-                    ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUblit.bitmap_x_write, GPUblit.bitmap_y_write );
-                    if( GPUblit.busy[1,1] ) { bitmap_colour_write = GPUblit.bitmap_colour_write; }
-                }
-                case 5: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUpixelblock.bitmap_x_write, GPUpixelblock.bitmap_y_write ); bitmap_colour_write = GPUpixelblock.bitmap_colour_write; }
-            }
-        }
     }
 }
 
@@ -270,7 +273,7 @@ algorithm istodraw(
     input   int11   max_x,
     input   int11   max_y,
     output  uint1   draw
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         draw = ~|{ ( max_x < crop_left ), ( max_y < crop_top ), ( min_x > crop_right ), ( min_y > crop_bottom ) };
     }
@@ -289,7 +292,7 @@ algorithm applycrop(
     output  int11   min_y,
     output  int11   max_x,
     output  int11   max_y
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         min_x = ( x1 < crop_left ) ? crop_left : x1;   max_x = ( ( x2 > crop_right ) ? crop_right : x2 );
         min_y = ( y1 < crop_top ) ? crop_top : y1;     max_y = 1 + ( ( y2 > crop_bottom ) ? crop_bottom : y2 );
@@ -313,7 +316,7 @@ algorithm preprectangle(
     output  int11   max_x,
     output  int11   max_y,
     output  uint1   todraw
-) <autorun> {
+) <autorun,reginputs> {
     uint1   xcompareparam0 <:: ( x < param0 );          uint1   ycompareparam1 <:: ( y < param1 );
     int11   x1 <:: xcompareparam0 ? x : param0;         int11   y1 <:: ycompareparam1 ? y : param1;
     int11   x2 <:: xcompareparam0 ? param0 : x;         int11   y2 <:: ycompareparam1 ? param1 : y;
@@ -345,24 +348,25 @@ algorithm drawrectangle(
     output  int11   bitmap_x_write,
     output  int11   bitmap_y_write,
     output  uint1   bitmap_write
-) <autorun> {
-    int11   xPLUS1 <:: bitmap_x_write + 1;          uint1   lineend <:: bitmap_x_write == max_x;
-    int11   yPLUS1 <:: bitmap_y_write + 1;
-    bitmap_write := 0;
+) <autorun,reginputs> {
+    uint9   px = uninitialized;                         uint9   pxNEXT <:: px + 1;                      uint1   lineend <:: px == max_x;
+    uint8   py = uninitialized;                         uint8   pyNEXT <:: py + 1;                      uint1   working <:: ( py != max_y );
+
+    bitmap_x_write := px; bitmap_y_write := py; bitmap_write := 0;
 
     while(1) {
         if( start ) {
             busy = 1;
-            bitmap_x_write = min_x; bitmap_y_write = min_y; bitmap_write = 1;           // Output 1st Pixel
-            while( busy ) {
+            px = min_x; py = min_y;
+            while( working ) {
+                bitmap_write = 1;
                 if( lineend ) {
-                    bitmap_x_write = min_x; bitmap_y_write = yPLUS1;
+                    px = min_x; py = pyNEXT;
                 } else {
-                    bitmap_x_write = xPLUS1;
+                    px = pxNEXT;
                 }
-                busy = ( bitmap_y_write != max_y );
-                bitmap_write = busy;                                                    // Output subsequent pixels
             }
+            busy = 0;
         }
     }
 }
@@ -411,7 +415,7 @@ algorithm prepline(
     output  uint1   dv,
     output  int11   numerator,
     output  int11   max_count
-) <autorun> {
+) <autorun,reginputs> {
     uint1 ylessparam1 <:: ( y < param1 );
 
     todraw := 0;
@@ -446,7 +450,7 @@ algorithm drawline(
     output  int11   bitmap_x_write,
     output  int11   bitmap_y_write,
     output  uint1   bitmap_write
-) <autorun> {
+) <autorun,reginputs> {
     int11   x = uninitialized;                          int11   xNEXT <:: x + n2dx;
     int11   y = uninitialized;                          int11   yNEXT <:: n2dy ? (y + ( dv ? 1 : -1 )) : y;
     int11   numerator = uninitialized;
@@ -519,7 +523,7 @@ algorithm arccoords(
     output  int11   bitmap_x_write,
     output  int11   bitmap_y_write,
     output  uint1   centrepixel
-) <autorun> {
+) <autorun,reginputs> {
     // PLUS OR MINUS OFFSETS
     int11   xcpax <:: xc + active_x;                     int11   xcnax <:: xc - active_x;
     int11   xcpc <:: xc + count;                         int11   xcnc <:: xc - count;
@@ -553,7 +557,7 @@ algorithm drawcircle(
     output  int11   bitmap_x_write,
     output  int11   bitmap_y_write,
     output  uint1   bitmap_write
-) <autorun> {
+) <autorun,reginputs> {
     int11   numerator = uninitialised;                  int11   new_numerator <:: numerator[10,1] ? numerator + { active_x, 2b00 } + 6 : numerator + { (active_x - active_y), 2b00 } + 10;
     uint1   positivenumerator <:: ~numerator[10,1] & ( |numerator );
     int11   active_x = uninitialized;                   int11   active_xNEXT <:: active_x + 1;
@@ -636,7 +640,7 @@ algorithm swaponcondition(
     output  int11   nx2,
     output  int11   ny1,
     output  int11   ny2
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         if( condition ) {
             nx1 = x2; ny1 = y2;
@@ -652,7 +656,7 @@ algorithm min3(
     input   int11   n2,
     input   int11   n3,
     output  int11   min
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         min = ( n1 < n2 ) ? ( ( n1 < n3 ) ? n1 : n3 ) : ( ( n2 < n3 ) ? n2 : n3 );
     }
@@ -662,7 +666,7 @@ algorithm max3(
     input   int11   n2,
     input   int11   n3,
     output  int11   max
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         max = ( n1 > n2 ) ? ( ( n1 > n3 ) ? n1 : n3 ) : ( ( n2 > n3 ) ? n2 : n3 );
     }
@@ -691,7 +695,7 @@ algorithm preptriangle(
     output  uint9   max_x,
     output  uint8   max_y,
     output  uint1   todraw
-) <autorun> {
+) <autorun,reginputs> {
     swaponcondition SWAP1( x1 <: param0, y1 <: param1, x2 <: param2, y2 <: param3 );                                                            // -> ( x2, y2 ) and ( x3, y3 )
     swaponcondition SWAP2( x1 <: x, y1 <: y, x2 <: SWAP1.nx1, y2 <: SWAP1.ny1 );                                                                // -> ( x1, y1 ) and ( x2, y2 )
     swaponcondition SWAP3( x1 <: SWAP2.nx1, y1 <: SWAP2.ny1, x2 <: SWAP1.nx2, y2 <: SWAP1.ny2 );                                                // -> ( x1, y1 ) and ( x3, y3 )
@@ -741,7 +745,7 @@ algorithm intriangle(
     input   int11   px,
     input   int11   py,
     output  uint1   IN
-) <autorun> {
+) <autorun,reginputs> {
     int22   step1 <:: (( x2 - x1 ) * ( py - y1 ) - ( y2 - y1 ) * ( px - x1 ));
     int22   step2 <:: (( x0 - x2 ) * ( py - y2 ) - ( y0 - y2 ) * ( px - x2 ));
     int22   step3 <:: (( x1 - x0 ) * ( py - y0 ) - ( y1 - y0 ) * ( px - x0 ));
@@ -766,7 +770,7 @@ algorithm drawtriangle(
     output  int11   bitmap_x_write,
     output  int11   bitmap_y_write,
     output  uint1   bitmap_write
-) <autorun> {
+) <autorun,reginputs> {
     // Filled triangle calculations
     // Is the point px,py inside the triangle given by x0,x1 x1,y1 x2,y2?
     intriangle IS( x0 <: x0, x1 <: x1, x2 <: x2, px <: px, y0 <: y0, y1 <: y1, y2 <: y2, py <: py );
@@ -786,11 +790,10 @@ algorithm drawtriangle(
 
     bitmap_x_write := px; bitmap_y_write := py; bitmap_write := busy & IS.IN;
 
-    always_after {
+    while(1) {
         if( start ) {
             busy = 1; dx = 1; px = min_x; py = min_y;
-        } else {
-            if( working ) {
+            while( working ) {
                 beenInTriangle = IS.IN | beenInTriangle;
                 if( beenInTriangle ^ IS.IN ) {
                     // Exited the triangle, move to the next line
@@ -799,9 +802,8 @@ algorithm drawtriangle(
                     // MOVE TO THE NEXT PIXEL ON THE LINE LEFT/RIGHT OR DOWN AND SWITCH DIRECTION IF AT END
                     if( stillinline ) { px = pxNEXT; } else { dx = ~dx; beenInTriangle = 0; py = pyNEXT; }
                 }
-            } else {
-                busy = 0;
             }
+            busy = 0;
         }
     }
 }
@@ -860,7 +862,7 @@ algorithm   blittilexy(
     output  uint3   xinchartile,
     output  uint4   yinblittile,
     output  uint3   yinchartile
-) <autorun> {
+) <autorun,reginputs> {
     uint4   revx4 <:: ~px[0,4];                      uint4   revy4 <:: ~py[0,4];
     uint3   revx3 <:: ~px[0,3];                      uint3   revy3 <:: ~py[0,3];
     uint1   action00 <:: ( ~|action[0,2] );          uint1   action01 <:: ( action[0,2] == 2b01 );        uint1   action10 <:: ( action[0,2] == 2b10 );
@@ -879,7 +881,7 @@ algorithm cololurblittilexy(
     input   uint3   action,
     output  uint4   xintile,
     output  uint4   yintile
-) <autorun> {
+) <autorun,reginputs> {
     uint4   revx <:: ~px[0,4];                       uint4   revy <:: ~py[0,4];
     uint1   action00 <:: ( ~|action[0,2] );          uint1   action01 <:: ( action[0,2] == 2b01 );        uint1   action10 <:: ( action[0,2] == 2b10 );
 
@@ -981,40 +983,38 @@ algorithm pixelblock(
     output  uint7   bitmap_colour_write,
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
-    uint1   update = uninitialised;                 uint2   toprocess = uninitialised;                  uint1   lineend <:: ( bitmap_x_write == x + width - 1 );
     uint7   grrggbb <:: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };                  uint7   grey <:: ( ( colour8r + colour8g + colour8b ) * 341 ) >> 11;
+    uint2   toprocess = uninitialised;
 
-    int11   xPLUS1 <:: bitmap_x_write + 1;          int11   yPLUS1 <:: bitmap_y_write + 1;
+    uint9   px = uninitialized;                         uint9   pxNEXT <:: px + 1;                      uint1   lineend <:: px == ( x + width - 1);
+    uint8   py = uninitialized;                         uint8   pyNEXT <:: py + 1;
 
     // LOOKUP THE COLOUR FROM THE REMAPPER
     colourmap.addr0 := colour;
 
-    bitmap_write := ( ( toprocess == 1 ) & ( colour != ignorecolour ) ) | ( toprocess == 2 );
-    bitmap_colour_write := ( toprocess == 1 ) ? mode ? colourmap.rdata0 : colour :
-                            mode ? ( grey == 64 ) ? 65 : grey : ( grrggbb == 64 ) ? 80 : grrggbb;
+    bitmap_x_write := px; bitmap_y_write := py; bitmap_write := 0;
+    bitmap_colour_write := ( toprocess == 1 ) ? mode ? colourmap.rdata0 : colour : mode ? ( grey == 64 ) ? 65 : grey : ( grrggbb == 64 ) ? 80 : grrggbb;
 
-    always_after {
+    while(1) {
         if( start ) {
-            busy = 1; bitmap_x_write = x; bitmap_y_write = y;
-        } else {
-            if( busy ) {
-                if( update ) {
-                    if( lineend ) {
-                        bitmap_x_write = x; bitmap_y_write = yPLUS1;
-                    } else {
-                        bitmap_x_write = xPLUS1;
-                    }
-                    update = 0;
+            busy = 1; toprocess = 0; px = x; py = y;
+            while( busy ) {
+                switch( toprocess ) {
+                    case 0: {}
+                    case 1: { bitmap_write = ( colour != ignorecolour ); }
+                    case 2: { bitmap_write = 1; }
+                    case 3: { busy = 0; }
                 }
                 if( |toprocess ) {
-                    if( &toprocess ) {
-                        busy = 0;
+                    if( lineend ) {
+                        px = x; py = pyNEXT;
                     } else {
-                        update = 1;
+                        px = pxNEXT;
                     }
                 }
                 toprocess = newpixel;
             }
+
         }
     }
 
@@ -1033,7 +1033,7 @@ algorithm scaledetla(
     input   uint3   scale,
     input   uint6   delta,
     output  int11   scaled
-) <autorun> {
+) <autorun,reginputs> {
     // SIGN EXTEND THE DELTA, THEN SCALE
     int11   extdelta <:: { {11{delta[5,1]}}, delta };
 
@@ -1056,7 +1056,7 @@ algorithm cpm(
     output  int11   xcndy,
     output  int11   ycpdx,
     output  int11   ycndx,
-) <autorun> {
+) <autorun,reginputs> {
     // SIGN EXTEND DELTAS AND APPLY SCALE
     scaledetla SDX( scale <: scale, delta <: dx ); scaledetla SDY( scale <: scale, delta <: dy );
 
@@ -1078,7 +1078,7 @@ algorithm centreplusdelta(
     input   uint3   action,
     output  int11   xdx,
     output  int11   ydy
-) <autorun> {
+) <autorun,reginputs> {
     cpm CPM( xc <: xc, yc <: yc, dx <: dx, dy <: dy, scale <: scale, action <: action );
 
     always_after {
@@ -1114,7 +1114,7 @@ algorithm vectors(
     output  int11   gpu_param1,
     output  uint1   gpu_write,
     input   uint1   gpu_active
-) <autorun> {
+) <autorun,reginputs> {
     // Add deltas to the centres
     centreplusdelta CENTREPLUSDELTA(
         xc <: vector_block_xc, yc <: vector_block_yc,

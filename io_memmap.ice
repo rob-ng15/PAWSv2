@@ -44,14 +44,14 @@ $$end
     output  uint32  DMADEST,
     output  uint32  DMACOUNT,
     output  uint3   DMAMODE(0),
-    input   uint1   DMAACTIVE
+    input   uint2   DMAACTIVE
 ) <autorun,reginputs> {
 $$if not SIMULATION then
     // UART CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
     uint2   UARTinread = 0;                                                                                                         // 2 BIT LATCH ( bit 0 is the signal ) due to clock boundary change
     uint2   UARToutwrite = 0;                                                                                                       // 2 BIT LATCH ( bit 0 is the signal )
     uart_IN UART_IN <@clock_25mhz> ( uart_rx <: uart_rx, inread <: UARTinread[0,1] );
-    uart_OUT UART_OUT <@clock_25mhz> ( uart_tx :> uart_tx, outwrite <: UARToutwrite[0,1] );
+    uart_OUT UART_OUT <@clock_25mhz> ( uart_tx :> uart_tx, outchar <: writeData[0,8], outwrite <: UARToutwrite[0,1] );
 
     // PS2 CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
     uint2   PS2inread = 0;                                                                                                          // 2 BIT LATCH ( bit 0 is the signal )
@@ -61,16 +61,11 @@ $$if not SIMULATION then
     simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                          bufferaddrplus1 INPLUS1( address <: buffer_in.addr0 );      // READ FROM SDCARD
     simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                         bufferaddrplus1 OUTPLUS1( address <: buffer_out.addr1 );    // WRITE TO SDCARD
 
-    uint1   SDCARDreadsector = uninitialized;       uint1   SDCARDwritesector = uninitialized;
-    uint32  SDCARDsectoraddress = uninitialized;
     sdcardcontroller SDCARD(
         sd_clk :> sd_clk,
         sd_mosi :> sd_mosi,
         sd_csn :> sd_csn,
         sd_miso <: sd_miso,
-        readsector <: SDCARDreadsector,
-        writesector <: SDCARDwritesector,
-        sectoraddress <: SDCARDsectoraddress,
         buffer_in <:> buffer_in,
         buffer_out <:> buffer_out
     );
@@ -80,7 +75,7 @@ $$end
 
 $$if not SIMULATION then
     // I/O FLAGS
-    SDCARDreadsector := 0; SDCARDwritesector := 0; buffer_out.wenable1 := 0;
+    SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0;
 $$end
 
      always_before {
@@ -127,13 +122,13 @@ $$end
         if( memoryWrite ) {
             switch( memoryAddress[4,4] ) {
                 $$if not SIMULATION then
-                case 4h0: { UART_OUT.outchar = writeData[0,8]; UARToutwrite = 2b11; }
+                case 4h0: { UARToutwrite = 2b11; }
                 case 4h1: { PS2.outputkeycodes = writeData; }
                 case 4h4: {
                     switch( memoryAddress[1,2] ) {
-                        case 2h0: { SDCARDreadsector = 1; }
-                        case 2h1: { SDCARDwritesector = 1; }
-                        default: { SDCARDsectoraddress[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 2h0: { SDCARD.readsector = 1; }
+                        case 2h1: { SDCARD.writesector = 1; }
+                        default: { SDCARD.sectoraddress[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
                     }
                 }
                 case 4h5: {
@@ -161,7 +156,7 @@ $$end
                 default: {}
             }
         }
-        if( DMAACTIVE ) { DMAMODE = 0; }
+        if( |DMAACTIVE ) { DMAMODE = 0; }
     }
 
     // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE
@@ -478,7 +473,7 @@ algorithm uart_IN(
     output  uint1   inavailable,
     output  uint8   inchar,
     input   uint1   inread
-) <autorun> {
+) <autorun,reginputs> {
     uart_in ui; uart_receiver urecv( io <:> ui, uart_rx <: uart_rx );
     fifo8 IN(
         available :> inavailable,
@@ -494,7 +489,7 @@ algorithm uart_OUT(
     output  uint1   outfull,
     input   uint8   outchar,
     input   uint1   outwrite
-) <autorun> {
+) <autorun,reginputs> {
     uart_out uo; uart_sender usend( io <:> uo, uart_tx :> uart_tx );
     fifo8 OUT(
         full :> outfull,
@@ -514,7 +509,7 @@ algorithm fifo9(
     input   uint1   write,
     output  uint10  first,
     input   uint10  last
-) <autorun> {
+) <autorun,reginputs> {
     simple_dualport_bram uint10 queue[256] = uninitialized;
     uint8   top = 0;                                uint8   next = 0;
 
@@ -537,7 +532,7 @@ algorithm ps2buffer(
     input   uint1   inread,
     input   uint1   outputkeycodes,
     output  uint16  joystick
-) <autorun> {
+) <autorun,reginputs> {
     // PS/2 input FIFO (256 character) - 9 bit to deal with special characters
     fifo9 FIFO( available :> inavailable, read <: inread, write <: PS2.keycodevalid, first :> inkey, last <: PS2.keycode );
 
@@ -561,7 +556,7 @@ algorithm sdcardcontroller(
   simple_dualport_bram_port0 buffer_out,
   simple_dualport_bram_port1 buffer_in
 
-) <autorun> {
+) <autorun,reginputs> {
     // SDCARD - Code for the SDCARD from @sylefeb
     sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, buffer_in <:> buffer_in, buffer_out <:> buffer_out );
 

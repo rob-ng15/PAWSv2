@@ -12,7 +12,7 @@ algorithm tilemap(
     // For scrolling/wrapping
     input   int5    tm_offset_x,
     input   int5    tm_offset_y
-) <autorun> {
+) <autorun,reginputs> {
     int11   xscreen <: pix_active ? pix_x + 1 : 0;
     int11   yscreen <: pix_vblank ? 0 : pix_y;
 
@@ -49,7 +49,7 @@ algorithm   calcoffset(
     output  int5    PREV,
     output  uint1   MAX,
     output  int5    NEXT
-) <autorun> {
+) <autorun,reginputs> {
     int6    offsetPLUS <:: { offset[4,1], offset } + adjust;
     int6    offsetMINUS <:: { offset[4,1], offset } - adjust;
 
@@ -64,7 +64,7 @@ algorithm tmxaddresses(
     output  uint6   xNEXT,
     output  uint6   xPREV,
     output  uint11  xSAVED
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         xNEXT = x_cursor + 1;
         xPREV = x_cursor - 1;
@@ -77,7 +77,7 @@ algorithm tmyaddresses(
     output  uint11  yNEXT,
     output  uint11  yPREV,
     output  uint11  ySAVED
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         yNEXT = y_cursor_addr + 42;
         yPREV = y_cursor_addr - 42;

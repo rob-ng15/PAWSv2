@@ -45,7 +45,7 @@ algorithm cmcursorx(
     input   uint7   tpu_active_x,
     output  uint7   NEXT,
     output  uint1   ATLAST
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         ATLAST = ( tpu_active_x == 79 );
         NEXT = tpu_active_x + 1;
@@ -54,7 +54,7 @@ algorithm cmcursorx(
 algorithm cmcursory(
     input   uint6   tpu_active_y,
     output  uint6   NEXT,
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         NEXT = ( tpu_active_y == 59 ) ? 0 : tpu_active_y + 1;
     }
@@ -66,7 +66,7 @@ algorithm cmaddresses(
     output  uint13  WRITEADDR,
     output  uint13  YSTARTADDR,
     output  uint13  YENDADDR
-) <autorun> {
+) <autorun,reginputs> {
     always_after {
         WRITEADDR = tpu_active_x + tpu_active_y * 80;
         YSTARTADDR = tpu_y * 80;
