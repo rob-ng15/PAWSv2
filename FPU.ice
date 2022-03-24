@@ -626,7 +626,7 @@ algorithm dofloatdivide(
     input   uint50  sigB,
     output  uint50  quotient(0)
 ) <autorun,reginputs> {
-    uint6   bit(63); uint6 bitNEXT <:: bit - 1;
+    uint6   bit(63);
     uint50  remainder = uninitialised;
     uint50  temporary <:: { remainder[0,49], sigA[bit,1] };
     uint1   bitresult <:: __unsigned(temporary) >= __unsigned(sigB);
@@ -641,7 +641,7 @@ algorithm dofloatdivide(
         } else {
             remainder = __unsigned(temporary) - ( bitresult ? __unsigned(sigB) : 0 );
             quotient[bit,1] = bitresult;
-            bit = bitNEXT;
+            bit = bit - 1;
         }
     }
 }

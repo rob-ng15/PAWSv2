@@ -230,7 +230,7 @@ algorithm douintdivide(
     output  uint32  quotient,
     output  uint32  remainder
 ) <autorun,reginputs> {
-    uint6   bit(63); uint6  bitNEXT <:: bit - 1;
+    uint6   bit(63);
     uint32  temporary <:: { remainder[0,31], dividend[bit,1] };
     uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
 
@@ -242,7 +242,7 @@ algorithm douintdivide(
         } else {
             quotient[bit,1] = bitresult;
             remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
-            bit = bitNEXT;
+            bit = bit - 1;
         }
     }
 }
