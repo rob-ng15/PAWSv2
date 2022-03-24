@@ -14,11 +14,6 @@ algorithm bitmap(
     input   uint1   pix_vblank,
     output! uint7   pixel,
     output! uint1   bitmap_display,
-
-    // Pixel reader
-    input   uint9   bitmap_x_read,
-    input   uint9   bitmap_y_read,
-    output  uint7   bitmap_colour_read
 ) <autorun,reginputs> {
     // Pixel x and y fetching 1 in advance due to bram latency
     uint9   x_plus_one <: pix_x[1,9] + pix_x[0,1];  uint8   y_line <: pix_vblank ? 0 : pix_y[1,8];
@@ -26,11 +21,6 @@ algorithm bitmap(
 
     uint7   colour1 <: { bitmap_1A.rdata0, bitmap_1R.rdata0, bitmap_1G.rdata0, bitmap_1B.rdata0 };
     uint7   colour0 <: { bitmap_0A.rdata0, bitmap_0R.rdata0, bitmap_0G.rdata0, bitmap_0B.rdata0 };
-
-    // Pixel being read?
-    bitmap_colour_read := ( pix_x == bitmap_x_read ) & ( pix_y == bitmap_y_read ) ?
-                            ( framebuffer ? { bitmap_1A.rdata0, bitmap_1R.rdata0, bitmap_1G.rdata0, bitmap_1B.rdata0 } : { bitmap_0A.rdata0, bitmap_0R.rdata0, bitmap_0G.rdata0, bitmap_0B.rdata0 } )
-                            : bitmap_colour_read;
 
     // Setup the address in the bitmap for the pixel being rendered
     // Use pre-fetching of the next pixel ready for the next cycle

@@ -86,6 +86,7 @@ unsigned char ps2_character_available() {
                     case 0x45:  availablecharacter = shift ? ')' : '0'; break;
 
                     // PUNCTUATION
+                    case 0x29:  availablecharacter = ' '; break; // space
                     case 0x0e:  availablecharacter = ralt ? '|' : shift ? 0xaa : 0x60; break; // top left key
                     case 0x4e:  availablecharacter = shift ? '_' : '-'; break;
                     case 0x55:  availablecharacter = shift ? '+' : '='; break;

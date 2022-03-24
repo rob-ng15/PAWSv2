@@ -101,8 +101,7 @@ algorithm gpu_queue(
             ( queue_cropL, queue_cropR ) = copycoordinates( crop_left, crop_right );
             ( queue_cropT, queue_cropB ) = copycoordinates( crop_top, crop_bottom );
         }
-    }
-    while(1) {
+
         // PROCESS QUEUE
         if( queue_busy & ~gpu_active ) {
             GPU.gpu_dithermode = queue_dithermode; GPU.gpu_colour = queue_colour; GPU.gpu_colour_alt = queue_colour_alt;
@@ -234,8 +233,7 @@ algorithm gpu(
                 case 5: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(  GPUpixelblock.bitmap_x_write, GPUpixelblock.bitmap_y_write ); bitmap_colour_write = GPUpixelblock.bitmap_colour_write; }
             }
         }
-    }
-    while(1) {
+
         if( |gpu_write ) {
             // START THE GPU DRAWING UNIT - RESET DITHERMODE TO 0 (most common)
             gpu_active_dithermode = 0; bitmap_colour_write = gpu_colour; bitmap_colour_write_alt = gpu_colour_alt;
@@ -349,24 +347,22 @@ algorithm drawrectangle(
     output  int11   bitmap_y_write,
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
-    uint9   px = uninitialized;                         uint9   pxNEXT <:: px + 1;                      uint1   lineend <:: px == max_x;
-    uint8   py = uninitialized;                         uint8   pyNEXT <:: py + 1;                      uint1   working <:: ( py != max_y );
-
-    bitmap_x_write := px; bitmap_y_write := py; bitmap_write := 0;
+     int11   xPLUS1 <:: bitmap_x_write + 1;          int11   yPLUS1 <:: bitmap_y_write + 1;
+    bitmap_write := 0;
 
     while(1) {
         if( start ) {
             busy = 1;
-            px = min_x; py = min_y;
-            while( working ) {
-                bitmap_write = 1;
-                if( lineend ) {
-                    px = min_x; py = pyNEXT;
+            bitmap_x_write = min_x; bitmap_y_write = min_y; bitmap_write = 1;           // Output 1st Pixel
+            while( busy ) {
+                if( bitmap_x_write != max_x ) {
+                    bitmap_x_write = xPLUS1;
                 } else {
-                    px = pxNEXT;
+                    bitmap_x_write = min_x; bitmap_y_write = yPLUS1;
                 }
+                busy = ( bitmap_y_write != max_y );
+                bitmap_write = busy;                                                    // Output subsequent pixels
             }
-            busy = 0;
         }
     }
 }
@@ -530,8 +526,6 @@ algorithm arccoords(
     int11   ycpax <:: yc + active_x;                     int11   ycnax <:: yc - active_x;
     int11   ycpc <:: yc + count;                         int11   ycnc <:: yc - count;
 
-    centrepixel := ( ~|count & ~|active_x );
-
     always_after {
         switch( arc ) {
             case 0: { bitmap_x_write = xcpax; bitmap_y_write = ycpc; }
@@ -543,6 +537,7 @@ algorithm arccoords(
             case 6: { bitmap_x_write = xcnc; }
             case 7: { bitmap_y_write = ycpax; }
         }
+        centrepixel = ( ~|count & ~|active_x );
     }
 }
 algorithm drawcircle(

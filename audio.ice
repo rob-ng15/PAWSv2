@@ -1,47 +1,30 @@
 // Runs at 25MHz
 algorithm apu(
     input   uint3   waveform,
-    input   uint6   frequency,
+    input   uint12  frequency,
     input   uint16  duration,
     input   uint1   apu_write,
     input   uint8   staticGenerator,
     output  uint1   audio_active,
     output  uint8   audio_output
 ) <autorun,reginputs> {
-    brom uint12 frequency_table[64] = {
-        0,
-        2986, 2819, 2660, 2511, 2314, 2237, 2112, 1993, 1881, 1776, 1676, 1582,     // 1 = C 2 or Deep C
-        1493, 1409, 1330, 1256, 1185, 1119, 1056, 996, 941, 888, 838, 791,          // 13 = C 3
-        747, 705, 665, 628, 593, 559, 528, 498, 470, 444, 419, 395,                 // 25 = C 4 or Middle C
-        373, 352, 333, 314, 296, 280, 264, 249, 235, 222, 209, 198,                 // 37 = C 5 or Tenor C
-        187, 176, 166, 157, 148, 140, 132, 125, 118, 111, 105, 99,                  // 49 = C 6 or Soprano C
-        93, 88, 83                                                                  // 61 = C 7 or Double High C
-    };
-
-    waveform WAVEFORM( staticGenerator <: staticGenerator );
-    audiocounter COUNTER( active :> audio_active );
-
-    frequency_table.addr := frequency;              COUNTER.start := 0;                                 audio_output := audio_active ? COUNTER.updatepoint ? WAVEFORM.audio_output : audio_output : 0;
+    waveform WAVEFORM( start <: apu_write, update <: COUNTER.updatepoint, selected_waveform <: waveform, staticGenerator <: staticGenerator );
+    audiocounter COUNTER( selected_frequency <: frequency, selected_duration <: duration, start <: apu_write, active :> audio_active );
 
     always_after {
-        if( apu_write ) {
-            WAVEFORM.point = 0;
-            WAVEFORM.selected_waveform = waveform;
-            COUNTER.selected_frequency = frequency_table.rdata;
-            COUNTER.selected_duration = duration;
-            COUNTER.start = 1;
-        } else {
-            WAVEFORM.point = WAVEFORM.point + COUNTER.updatepoint;
-        }
+        audio_output = audio_active ? COUNTER.updatepoint ? WAVEFORM.audio_output : audio_output : 0;
     }
 }
 
 algorithm waveform(
-    input   uint8   point,
+    input   uint1   start,
+    input   uint1   update,
     input   uint3   selected_waveform,
     input   uint8   staticGenerator,
     output  uint8   audio_output
 ) <autorun,reginputs> {
+    uint8   point = uninitialised;
+
     brom uint8 sine[256] = {
         128,131,134,137,140,144,147,150,153,156,159,162,165,168,171,174,
         177,179,182,185,188,191,193,196,199,201,204,206,209,211,213,216,
@@ -63,6 +46,7 @@ algorithm waveform(
     sine.addr := point;
 
     always_after  {
+        point = start ? 0 : point + update;
         switch( selected_waveform ) {
             case 0: { audio_output = { point[7,1], 7b1111111 }; }                                   // SQUARE
             case 1: { audio_output = point; }                                                       // SAWTOOTH
@@ -83,7 +67,7 @@ algorithm audiocounter(
     uint12  counter25mhz = uninitialised;           uint16  counter1khz = uninitialised;                uint16  duration = uninitialised;
     uint1   updateduration <:: active & ( ~|counter1khz );
 
-//    active := ( |duration ); updatepoint := active & ( ~|counter25mhz );
+    active := ( |duration ); updatepoint := active & ( ~|counter25mhz );
 
     always_after {
         if( start ) {
@@ -95,7 +79,5 @@ algorithm audiocounter(
             counter1khz = updateduration ? 25000 : counter1khz - 1;
             duration = duration - updateduration;
         }
-
-        active = ( |duration ); updatepoint = active & ( ~|counter25mhz );
     }
 }

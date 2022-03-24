@@ -478,7 +478,6 @@ void beepboop( void ) {
         draw_score();
 
         last_timer = get_timer1hz( 0 );
-
         (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_LEFT, 1 );
         (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_RIGHT, 2 );
 
@@ -521,7 +520,6 @@ void beepboop( void ) {
                 break;
 
             case 3:
-                // MOVE TILEMAP UP
                 if( lives == 0 ) {
                     tpu_print_centre( 6, TRANSPARENT, DKRED, 0, "Controls: UP - MOVE" );
                     tpu_print_centre( 52, TRANSPARENT, RED, 0, "Written in Silice by @sylefeb" );
@@ -530,7 +528,7 @@ void beepboop( void ) {
                         beep( 1, 3, 63, 32 );
                     }
                 }
-                (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_DOWN, 1 );
+                //(void)tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_DOWN, 1 );
                 (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_UP, 2 );
                 break;
         }

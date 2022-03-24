@@ -252,7 +252,6 @@ $$end
                         case 7h0b: { readData = BITMAP.gpu_queue_full; }
                         case 7h0c: { readData = BITMAP.gpu_queue_complete; }
                         case 7h15: { readData = BITMAP.vector_block_active; }
-                        case 7h6a: { readData = BITMAP.bitmap_colour_read; }
                         default: { readData = 0; }
                     }
                 }
@@ -559,13 +558,6 @@ algorithm bitmap_memmap(
                             default: {}
                         }
                     }
-                    case 4hd: {
-                        if( memoryAddress[1,1] ) {
-                             bitmap_window.bitmap_y_read = writeData;
-                        } else {
-                             bitmap_window.bitmap_x_read = writeData;
-                        }
-                    }
                     case 4he: {
                         switch( memoryAddress[1,2] ) {
                             case 2h1: { pixel_writer.crop_left = writeData; }
@@ -858,7 +850,7 @@ algorithm tilemap_memmap(
     input   uint1   memoryWrite,
     input   uint16  writeData,
     output  uint4   tm_lastaction,
-    output  uint2   tm_active
+    output  uint3   tm_active
 ) <autorun,reginputs> {
     // Tiles 64 x 16 x 16 ARRGGBB ( first tile defaults to transparent )
     simple_dualport_bram uint7 tiles16x16 <@video_clock,@clock> [ 16384 ] = {

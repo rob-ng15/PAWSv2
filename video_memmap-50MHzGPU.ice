@@ -851,7 +851,7 @@ algorithm tilemap_memmap(
     input   uint1   memoryWrite,
     input   uint16  writeData,
     output  uint4   tm_lastaction,
-    output  uint2   tm_active
+    output  uint3   tm_active
 ) <autorun,reginputs> {
     // Tiles 64 x 16 x 16 ARRGGBB ( first tile defaults to transparent )
     simple_dualport_bram uint7 tiles16x16 <@video_clock,@clock> [ 16384 ] = {

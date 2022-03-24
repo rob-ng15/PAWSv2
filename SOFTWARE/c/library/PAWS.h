@@ -98,9 +98,6 @@ unsigned char volatile *PB_MODE = (unsigned char volatile *) 0xd67a;
 unsigned char volatile *PB_CMNUMBER = (unsigned char volatile *) 0xd67c;
 unsigned char volatile *PB_CMENTRY = (unsigned char volatile *) 0xd67e;
 
-unsigned char volatile *BITMAP_X_READ = (unsigned char volatile *) 0xd6d0;
-unsigned short volatile *BITMAP_Y_READ = (unsigned short volatile *) 0xd6d2;
-unsigned short volatile *BITMAP_PIXEL_READ = (unsigned short volatile *) 0xd6d4;
 unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e2;
 unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e4;
 unsigned short volatile *CROP_TOP = (unsigned short volatile *) 0xd6e6;

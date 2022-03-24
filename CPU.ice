@@ -185,7 +185,7 @@ algorithm PAWSCPU(
             } else {
                 memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
             }
-        }// else { readmemory = 0; }
+        } else { readmemory = 0; }
 
         if( ~IFASTSLOW.FASTPATH ) {
             EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                                     // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
@@ -204,7 +204,7 @@ algorithm PAWSCPU(
                     address = SA2.addressplus2; writedata = store[16,16]; writememory = 1;  while( memorybusy ) {}                                  // 32 BIT WRITE 2ND 16 BITS
                 }
             }
-        }// else { writememory = 0; }
+        } else { writememory = 0; }
 
         pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                                                  // UPDATE PC AND SMT
 
@@ -224,9 +224,9 @@ algorithm PAWSCPU(
                 DMA.update = 1;
             }
             DMAACTIVE = 0;
-        }// else {
-        //    DMAACTIVE = 0;
-        //}
+        } else {
+            DMAACTIVE = 0;
+        }
 
         cacheselect = 0; address = PC; readmemory = 1;                                                                                              // START FETCH OF NEXT INSTRUCTION
     } // RISC-V
@@ -351,7 +351,7 @@ algorithm cpuexecuteSLOWPATH(
     while(1) {
         if( start ) {
             busy = 1;
-        onehot( operation ) {
+            onehot( operation ) {
                 case 0: { ++:  }                                                                                    // CSR
                 case 1: {}                                                                                          // ATOMIC OPERATIONS
                 case 2: {}                                                                                          // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
@@ -436,21 +436,18 @@ algorithm dma(
     uint1   dmadestblue <:: ( dmadest == 27hd676 );
 
     always_after {
-        if( start ) {
-            dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT;
-        } else {
-            if( update ) {
-                switch( dmamode ) {
-                    default: {}                                                                                             // INACTIVE / UNDEFINED
-                    case 1: { dmasrc = dmasrc1; }                                                                           // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
-                    case 2: { dmasrc = dmasrc1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }     // DMA SPECIAL PIXEL BLOCK RGB
-                    case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                       // DMA multi-src to multi-dest MEMCPY
-                    case 4: { dmadest = dmadest1; }                                                                         // DMA single-src to multi-dest MEMSET + SDCARD WRITE
-                    case 5: {}                                                                                              // DMA single-src to single-dest SET TILE/CBLITTER to single value
-                    case 7: { dmasrc = dmasrc2; }                                                                           // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
-                }
-                dmacount = dmacount1;
+        if( start ) { dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; }
+        if( update ) {
+            switch( dmamode ) {
+                default: {}                                                                                             // INACTIVE / UNDEFINED
+                case 1: { dmasrc = dmasrc1; }                                                                           // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
+                case 2: { dmasrc = dmasrc1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }     // DMA SPECIAL PIXEL BLOCK RGB
+                case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                       // DMA multi-src to multi-dest MEMCPY
+                case 4: { dmadest = dmadest1; }                                                                         // DMA single-src to multi-dest MEMSET + SDCARD WRITE
+                case 5: {}                                                                                              // DMA single-src to single-dest SET TILE/CBLITTER to single value
+                case 7: { dmasrc = dmasrc2; }                                                                           // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
             }
+            dmacount = dmacount1;
         }
     }
 }
