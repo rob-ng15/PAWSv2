@@ -40,6 +40,7 @@ algorithm PAWSCPU(
     memoryaccess MEMACCESS <@clock_CPUdecoder> ( cacheselect <: cacheselect, DMAACTIVE <: DMAACTIVE[0,1], opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
 
     // RISC-V REGISTERS
+    uint32  result <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
     riscvregisters REGISTERS <@clock_CPUdecoder> (
         SMT <:: SMT,
         rs1 <: RV32DECODER.rs1,
@@ -77,7 +78,6 @@ algorithm PAWSCPU(
 
     // CPU EXECUTE BLOCKS
     uint32  memoryinput = uninitialized;
-    uint32  result <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
 
     // STORE SELECTION + BYPASS FLAG IF 16/8 BIT WRITE TO I/O MEMORY
     uint32  store <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
@@ -157,7 +157,6 @@ algorithm PAWSCPU(
         DMAACTIVE = 0;                                                                                                                              // ON RESET CANCEL DMA
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
     }
-
     cacheselect = 0; address = 0; readmemory = 1;                                                                                                   // FETCH FIRST INSTRUCTION
 
     while(1) {
@@ -311,12 +310,9 @@ algorithm cpuexecuteSLOWPATH(
     );
 
     // Classify the instruction
-    uint1   alufpu <:: ~isCSR & ~isATOMIC;
-
     uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( function7[4,3] == 3b110 );
     uint1   fpufast <:: ( isFPU & FCLASS.FASTPATHFPU ) | fpuconvert;
     uint1   fpucalc <:: isFPU & ~fpufast;
-
     uint4   operation <:: { ~|{fpufast,isATOMIC,isCSR}, fpufast, isATOMIC, isCSR };
 
     // START FLAGS
@@ -429,25 +425,23 @@ algorithm dma(
     input   uint1   update
 ) <autorun,reginputs> {
     uint3   dmamode = uninitialized;
-    uint27  dmasrc1 <:: dmasrc + 1;                 uint27  dmasrc2 <:: dmasrc + 2;
-    uint27  dmadest1 <:: dmadest + 1;               uint27  dmadest2 <:: dmadest + 2;
-    uint27  dmacount1 <:: dmacount - 1;
-
-    uint1   dmadestblue <:: ( dmadest == 27hd676 );
+    uint27  dmasrc1 <:: dmasrc + 1;
+    uint27  dmadest1 <:: dmadest + 1;
 
     always_after {
-        if( start ) { dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; }
-        if( update ) {
-            switch( dmamode ) {
-                default: {}                                                                                             // INACTIVE / UNDEFINED
-                case 1: { dmasrc = dmasrc1; }                                                                           // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
-                case 2: { dmasrc = dmasrc1; if( dmadestblue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }     // DMA SPECIAL PIXEL BLOCK RGB
-                case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                       // DMA multi-src to multi-dest MEMCPY
-                case 4: { dmadest = dmadest1; }                                                                         // DMA single-src to multi-dest MEMSET + SDCARD WRITE
-                case 5: {}                                                                                              // DMA single-src to single-dest SET TILE/CBLITTER to single value
-                case 7: { dmasrc = dmasrc2; }                                                                           // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
+        if( start ) { dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; } else {
+            if( update ) {
+                switch( dmamode ) {
+                    default: {}                                                                                                     // INACTIVE / UNDEFINED
+                    case 1: { dmasrc = dmasrc1; }                                                                                   // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
+                    case 2: { dmasrc = dmasrc1; if( dmadest[0,4] == 4h6 ) { dmadest = 27hd672; } else { dmadest = dmadest + 2; } }  // DMA SPECIAL PIXEL BLOCK RGB
+                    case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                               // DMA multi-src to multi-dest MEMCPY
+                    case 4: { dmadest = dmadest1; }                                                                                 // DMA single-src to multi-dest MEMSET + SDCARD WRITE
+                    case 5: {}                                                                                                      // DMA single-src to single-dest SET TILE/CBLITTER to single value
+                    case 7: { dmasrc = dmasrc + 2; }                                                                                // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
+                }
+                dmacount = dmacount - 1;
             }
-            dmacount = dmacount1;
         }
     }
 }
@@ -469,11 +463,11 @@ algorithm riscvregisters(
     output  int32   sourceReg3F
 ) <autorun,reginputs> {
     // RISC-V REGISTERS
+    uint1   Iwrite <:: write & ~frd & |rd;          uint1   Fwrite <:: write & frd;
+
     registers RS1( SMT <: SMT, rs <: rs1, rd <: rd, write <: Iwrite, result <: result, contents :> sourceReg1 );
     registers RS2( SMT <: SMT, rs <: rs2, rd <: rd, write <: Iwrite, result <: result, contents :> sourceReg2 );
     registers RS1F( SMT <: SMT, rs <: rs1, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg1F );
     registers RS2F( SMT <: SMT, rs <: rs2, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg2F );
     registers RS3F( SMT <: SMT, rs <: rs3, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg3F );
-
-    uint1   Iwrite <:: write & ~frd & |rd;          uint1   Fwrite <:: write & frd;
 }

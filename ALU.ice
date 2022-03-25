@@ -10,10 +10,9 @@ algorithm alushift(
     output  uint32  SRA,
     output  uint32  ROTATE
 ) <autorun,reginputs> {
-    uint32  altSLL <:: sourceReg1 << shiftother;
-    uint32  altSRL <:: sourceReg1 >> shiftother;
-
+    uint32  altSLL <:: sourceReg1 << shiftother;    uint32  altSRL <:: sourceReg1 >> shiftother;
     uint6   shiftother <:: 32 - shiftcount;
+
     always_after {
         SLL = sourceReg1 << shiftcount;
         SRL = sourceReg1 >> shiftcount;

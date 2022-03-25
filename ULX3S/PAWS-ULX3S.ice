@@ -23,7 +23,7 @@ $$end
 
 // IO - UART, SDCARD and PS/2 KEYBOARD
 $include('../common/uart.ice')
-$include('../common/sdcard.ice')
+$include('../common/sdcard_write.ice')
 $include('../common/ps2.ice')
 
 // SDRAM

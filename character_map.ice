@@ -100,9 +100,9 @@ algorithm character_map_writer(
     simple_dualport_bram uint23 charactermap_copy[4800] = uninitialized;
 
     // Counter for clearscreen/copyscreen/scroll
-    uint13  tpu_start_cs_addr = uninitialized;      uint13  tpu_cs_addr = uninitialized;                    uint13  tpu_cs_addr_next <:: tpu_cs_addr + 1;
-    uint13  tpu_max_count = uninitialized;          uint13  tpu_cs_addr_nextline <:: tpu_cs_addr + 80;      uint13  tpu_cs_addr_prevline <:: tpu_cs_addr - 80;
-    uint1   tpu_cs_addr_lastline <:: ( tpu_cs_addr > 4719 );                                                uint23  curses_wipe <:: { curses_wipe_background, curses_wipe_foreground, 9h0 };
+    uint13  tpu_start_cs_addr = uninitialized;      uint13  tpu_cs_addr = uninitialized;                uint13  tpu_cs_addr_next <:: tpu_cs_addr + 1;
+    uint13  tpu_max_count = uninitialized;          uint13  tpu_cs_addr_prevline <:: tpu_cs_addr - 80;  uint1   tpu_cs_addr_lastline <:: ( tpu_cs_addr > 4719 );
+    uint23  curses_wipe <:: { curses_wipe_background, curses_wipe_foreground, 9h0 };
 
     // TPU character position
     uint7   tpu_active_x = 0;                       cmcursorx TPUX( tpu_active_x <: tpu_active_x );

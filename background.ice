@@ -189,14 +189,15 @@ algorithm starfield(
     output  uint1   star
 ) <autorun,reginputs> {
     // Variables for SNOW (from @sylefeb)
-    int10   dotpos = 0;                             int2    speed = 0;                                  int2    inv_speed = 0;
-    int12   rand_x = 0;                             int12   new_rand_x <:: rand_x * 31421 + 6927;       int32   frame = 0;
+    int10   dotpos <:: ( frame >> speed ) + rand_x;
+    int2    speed <:: rand_x[10,2];
+    int12   rand_x = 0;
+    int32   frame = 0;
 
     always_after {
         // Increment frame number for the snow/star field
         frame = frame + ( ( pix_x == 639 ) & ( pix_y == 479 ) );
-
-        rand_x = ( ~|pix_x )  ? 1 : new_rand_x;        speed  = rand_x[10,2];                             dotpos = ( frame >> speed ) + rand_x;
+        rand_x = ( ~|pix_x )  ? 1 : rand_x * 31421 + 6927;
         star = ( pix_y == dotpos );
     }
 }

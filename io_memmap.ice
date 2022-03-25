@@ -186,7 +186,6 @@ algorithm timers_memmap(
 ) <autorun,reginputs> {
     // TIMERS and RNG
     timers_rng timers <@clock_25mhz> ( seconds :> cursor, g_noise_out :> static16bit );
-    uint3   timerreset <:: memoryAddress[1,3] + 1;
     uint32  floatrng <:: { 1b0, 5b01111, &timers.u_noise_out[0,3] ? 3b110 : timers.u_noise_out[0,3], timers.g_noise_out[0,16], timers.u_noise_out[3,7] };
 
     // LATCH MEMORYWRITE
@@ -218,7 +217,7 @@ algorithm timers_memmap(
     always_after {
         // WRITE IO Memory
         switch( { memoryWrite, LATCHmemoryWrite } ) {
-            case 2b10: { timers.counter = writeData; timers.resetcounter = timerreset; }
+            case 2b10: { timers.counter = writeData; timers.resetcounter = memoryAddress[1,3] + 1; }
             case 2b00: { timers.resetcounter = 0; }
             default: {}
         }
@@ -297,7 +296,6 @@ algorithm audio_memmap(
 
     // POINTERS WITHIN THE BUFFERS
     uint11  MAXSAMPLES[2] = uninitialised;
-    uint11  MAXS0P1 <:: MAXSAMPLES[0] + 1;          uint11  MAXS1P1 <:: MAXSAMPLES[1] + 1;
 
     // Left and Right audio channels
     audio apu_processor <@clock_25mhz> ( samples_left <:> samples_left, samples_right <:> samples_right, staticGenerator <: static8bit, audio_l :> audio_l, audio_r :> audio_r, samples_MAX_L <: MAXSAMPLES[0], samples_MAX_R <: MAXSAMPLES[1] );
@@ -321,8 +319,8 @@ algorithm audio_memmap(
                 if( memoryAddress[3,1] ) {                                                                              // HANDLE WRITING OF SAMPLES TO MEMORY
                     switch( memoryAddress[0,2] ) {
                         default: { if( writeData[0,1] ) { MAXSAMPLES[0] = 0; }  if( writeData[1,1] ) { MAXSAMPLES[1] = 0; } }
-                        case 1: { samples_left.wenable1 = 1; MAXSAMPLES[0] = MAXS0P1; }
-                        case 2: { samples_right.wenable1 = 1; MAXSAMPLES[1] = MAXS1P1; }
+                        case 1: { samples_left.wenable1 = 1; MAXSAMPLES[0] = MAXSAMPLES[0] + 1; }
+                        case 2: { samples_right.wenable1 = 1; MAXSAMPLES[1] = MAXSAMPLES[1] + 1; }
                     }
                 } else {
                     switch( memoryAddress[1,2] ) {
@@ -569,7 +567,7 @@ algorithm sdcardcontroller(
 
 ) <autorun,reginputs> {
     // SDCARD - Code for the SDCARD from @sylefeb
-    sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, buffer_in <:> buffer_in, buffer_out <:> buffer_out );
+    sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, buffer_read <:> buffer_in, buffer_write <:> buffer_out );
 
     // SDCARD Commands
     always_after {

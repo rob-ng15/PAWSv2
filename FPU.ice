@@ -153,8 +153,8 @@ algorithm floatcalc(
                     }
                 }
             } else {
-                FPUmultiply.start = 1; while( unitbusy ) {}                                             // START 3 REGISTER FUSED FPU OPERATION - MULTIPLY
-                FPUaddsub.start = 1; while( unitbusy ) {}                                               //                                        ADD / SUBTRACT
+                FPUmultiply.start = 1; while( |unitbusy ) {}                                            // START 3 REGISTER FUSED FPU OPERATION - MULTIPLY
+                FPUaddsub.start = 1; while( |unitbusy ) {}                                              //                                        ADD / SUBTRACT
                 result = FPUaddsub.result; flags = FNFfused;                                            // EXTRACT RESULT AND FLAGS
             }
             busy = 0;
@@ -233,10 +233,8 @@ algorithm floatsign(
     input   uint32  sourceReg2F,
     output  uint32  result,
 ) <autorun,reginputs> {
-    uint1   sign <:: function3[1,1] ? sourceReg1F[31,1] ^ sourceReg2F[31,1] : function3[0,1] ^ sourceReg2F[31,1];
-
     always_after {
-        result = { sign, sourceReg1F[0,31] };
+        result = { function3[1,1] ? sourceReg1F[31,1] ^ sourceReg2F[31,1] : function3[0,1] ^ sourceReg2F[31,1], sourceReg1F[0,31] };
     }
 }
 
@@ -324,11 +322,11 @@ algorithm clz48(
     uint16  bitstreamh <:: bitstream[32,16];        uint32  bitstreaml <:: bitstream[0,32];               uint6   clz = uninitialised;
 
     always_after {
-        if( ~|bitstreamh ) {
+        if( |bitstreamh ) {
+            ( count ) = clz_silice_16( bitstreamh );
+        } else {
             ( clz ) = clz_silice_32( bitstreaml );
             count = 16 + clz;
-        } else {
-            ( count ) = clz_silice_16( bitstreamh );
         }
     }
 }
@@ -470,15 +468,14 @@ algorithm dofloataddsub(
     output  uint1   resultsign,
     output  uint48  resultfraction
 ) <autorun,reginputs> {
-    uint48  sigAminussigB <:: sigA - sigB;          uint48  sigBminussigA <:: sigB - sigA;
-    uint48  sigAplussigB <:: sigA + sigB;           uint1   AvB <:: ( sigA > sigB );
+    uint1   AvB <:: ( sigA > sigB );
 
     always_after {
         // PERFORM ADDITION HANDLING SIGNS
         if( ^{ signA, signB } ) {
-            resultsign = signA ? AvB : ~AvB; resultfraction = signA ^ resultsign ? ( sigBminussigA ) : ( sigAminussigB );
+            resultsign = signA ? AvB : ~AvB; resultfraction = signA ^ resultsign ? ( sigB - sigA ) : ( sigA - sigB );
         } else {
-            resultsign = signA; resultfraction = sigAplussigB;
+            resultsign = signA; resultfraction = sigA + sigB;
         }
     }
 }
@@ -655,11 +652,9 @@ algorithm prepdivide(
 ) <autorun,reginputs> {
     // BREAK DOWN INITIAL float32 INPUTS AND FIND SIGN OF RESULT AND EXPONENT OF QUOTIENT ( -1 IF DIVISOR > DIVIDEND )
     // ALIGN DIVIDEND TO THE LEFT, DIVISOR TO THE RIGHT
-    uint1   AvB <:: ( fp32(b).fraction > fp32(a).fraction );
-
     always_after {
         quotientsign = fp32( a ).sign ^ fp32( b ).sign;
-        quotientexp = fp32( a ).exponent - fp32( b ).exponent - AvB;
+        quotientexp = fp32( a ).exponent - fp32( b ).exponent - ( fp32(b).fraction > fp32(a).fraction );
         sigA = { 1b1, fp32(a).fraction, 26b0 };
         sigB = { 27b1, fp32(b).fraction };
     }
@@ -740,7 +735,7 @@ algorithm dofloatsqrt(
     input   uint48  start_x,
     output  uint48  squareroot
 ) <autorun,reginputs> {
-    uint6   i(47);                                  uint6   iPLUS1 <:: i + 1;
+    uint6   i(47);
     uint50  test_res <:: ac - { squareroot, 2b01 }; uint50  ac = uninitialised;
     uint48  x = uninitialised;
 
@@ -753,7 +748,7 @@ algorithm dofloatsqrt(
             ac = { test_res[49,1] ? ac[0,47] : test_res[0,47], x[46,2] };
             squareroot = { squareroot[0,47], ~test_res[49,1] };
             x = { x[0,46], 2b00 };
-            i = iPLUS1;
+            i = i + 1;
         }
     }
 }
@@ -869,16 +864,14 @@ algorithm floatcompare(
     output  uint1   less,
     output  uint1   equal
 ) <autorun,reginputs> {
-    uint1   INF <:: classA[3,1] | classB[3,1];
     uint1   NAN <:: classA[2,1] | classB[2,1] | classA[1,1] | classB[1,1];
 
     uint1   aequalb <:: ( a == b );                 uint1   aorbleft1equal0 <:: ~|( ( a | b ) << 1 );
-    uint1   avb <:: ( a < b );
 
     // IDENTIFY NaN, RETURN 0 IF NAN, OTHERWISE RESULT OF COMPARISONS
     always_after {
-        flags = { INF, {2{NAN}}, 4b0000 };
-        less = ~NAN & ( ( fp32( a ).sign ^ fp32( b ).sign ) ? fp32( a ).sign & ~aorbleft1equal0 : ~aequalb & ( fp32( a ).sign ^ avb ) );
+        flags = { classA[3,1] | classB[3,1], {2{NAN}}, 4b0000 };
+        less = ~NAN & ( ( fp32( a ).sign ^ fp32( b ).sign ) ? fp32( a ).sign & ~aorbleft1equal0 : ~aequalb & ( fp32( a ).sign ^ ( a < b ) ) );
         equal = ~NAN & ( aequalb | aorbleft1equal0 );
     }
 }

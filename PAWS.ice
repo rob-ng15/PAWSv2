@@ -297,6 +297,7 @@ algorithm bramcontroller(
     input   uint1   readflag,
     output  uint16  readdata
 ) <autorun,reginputs> {
+// SELECT BIOS FOR FPGA OR SIMULATION
 $$if not SIMULATION then
     // RISC-V FAST BRAM and BIOS
     bram uint16 ram[16384] = {file("ROM/BIOS.bin"), pad(uninitialized)};
@@ -304,7 +305,6 @@ $$else
     // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
     bram uint16 ram[16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
 $$end
-
     uint1   update = uninitialized;
 
     // FLAGS FOR BRAM ACCESS
@@ -417,7 +417,6 @@ algorithm cachecontroller(
     }
 
     while(1) {
-//        doread = readflag; dowrite = writeflag;
         if( doread | dowrite ) {
             busy = 1;                                                                                                                           // MARK BUSY,
             ++:                                                                                                                                 // WAIT FOR CACHE
@@ -476,6 +475,7 @@ algorithm Icachewriter(
     }
 }
 
+// START READ/WRITE FROM SDRAM, 16BIT
 algorithm sdramcontroller(
     sdram_user      sio,
     input   uint$sdram_addr_width$  address,
@@ -486,7 +486,6 @@ algorithm sdramcontroller(
     output  uint1   busy(0)
 ) <autorun,reginputs> {
     always_after {
-        // MEMORY ACCESS FLAGS
         sio.addr = { address[1,$sdram_addr_width-1$], 1b0 };             sio.in_valid = ( readflag | writeflag );           sio.data_in = writedata;
         sio.rw = writeflag;
         readdata = sio.data_out;

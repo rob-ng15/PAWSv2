@@ -354,8 +354,8 @@ algorithm background_memmap(
         copper <:> copper
     );
     background_writer BACKGROUND_WRITER( copper <:> copper );
-
     BACKGROUND_WRITER.background_update := 0; BACKGROUND_WRITER.copper_program := 0;
+
     always_after {
         if( memoryWrite ) {
             switch( memoryAddress[1,4] ) {
@@ -472,9 +472,9 @@ algorithm bitmap_memmap(
     uint1   LATCHmemoryWrite = uninitialized;
 
     // BLITTER TILEBITMAP WRITERS - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT
-    uint6   BTWtile = uninitialized;                uint4   BTWline = uninitialised;                    uint4   BTWlineNEXT <:: BTWline + 1;
-    uint9   CTWtile = uninitialized;                uint3   CTWline = uninitialised;                    uint3   CTWlineNEXT <:: CTWline + 1;
-    uint6   CBTWtile = uninitialized;               uint8   CBTWpixel = uninitialised;                  uint8   CBTWpixelNEXT <:: CBTWpixel + 1;
+    uint6   BTWtile = uninitialized;                uint4   BTWline = uninitialised;
+    uint9   CTWtile = uninitialized;                uint3   CTWline = uninitialised;
+    uint6   CBTWtile = uninitialized;               uint8   CBTWpixel = uninitialised;
 
     blit1tilemap.wdata1 := writeData; blit1tilemap.wenable1 := 0;
     characterGenerator8x8.wdata1 := writeData; characterGenerator8x8.wenable1 := 0;
@@ -530,19 +530,19 @@ algorithm bitmap_memmap(
                     case 4h4: {
                         switch( memoryAddress[1,1] ) {
                             case 0: { BTWtile = writeData; BTWline = 0; }
-                            case 1: { blit1tilemap.addr1 = { BTWtile, BTWline }; blit1tilemap.wenable1 = 1; BTWline = BTWlineNEXT; }
+                            case 1: { blit1tilemap.addr1 = { BTWtile, BTWline }; blit1tilemap.wenable1 = 1; BTWline = BTWline + 1; }
                         }
                     }
                     case 4h5: {
                         switch( memoryAddress[1,1] ) {
                             case 0: { CTWtile = writeData; CTWline = 0; }
-                            case 1: { characterGenerator8x8.addr1 = { CTWtile, CTWline }; characterGenerator8x8.wenable1 = 1; CTWline = CTWlineNEXT; }
+                            case 1: { characterGenerator8x8.addr1 = { CTWtile, CTWline }; characterGenerator8x8.wenable1 = 1; CTWline = CTWline + 1; }
                         }
                     }
                     case 4h6: {
                         switch( memoryAddress[1,1] ) {
                             case 0: { CBTWtile = writeData; CBTWpixel = 0; }
-                            case 1: { colourblittilemap.addr1 = { CBTWtile, CBTWpixel }; colourblittilemap.wenable1 = 1; CBTWpixel = CBTWpixelNEXT; }
+                            case 1: { colourblittilemap.addr1 = { CBTWtile, CBTWpixel }; colourblittilemap.wenable1 = 1; CBTWpixel = CBTWpixel + 1; }
                         }
                     }
                     case 4h7: {
@@ -745,7 +745,7 @@ algorithm sprite_memmap(
     );
 
     // SPRITE BITMAP WRITER - SETTING THE SPRITE NUMBER RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
-    uint12  writerpixel = uninitialised;            uint12  writerpixelNEXT <:: writerpixel + 1;
+    uint12  writerpixel = uninitialised;
     uint4   writerspritenumber = uninitialised;
 
     $$for i=0,15 do
@@ -766,7 +766,7 @@ algorithm sprite_memmap(
                                 case $i$: { tiles_$i$.addr1 = writerpixel; tiles_$i$.wenable1 = 1; }
                             $$end
                         }
-                        writerpixel = writerpixelNEXT;
+                        writerpixel = writerpixel + 1;
                     }
                 }
             } else {
@@ -893,7 +893,7 @@ algorithm tilemap_memmap(
     tile_map_writer TMW( tiles <:> tiles, tm_lastaction :> tm_lastaction, tm_active :> tm_active );
 
     // TILEBITMAP WRITER - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
-    uint6   TBMWtile = uninitialised;               uint8   TBMWpixel = uninitialised;                  uint8   TBMWpixelNEXT <:: TBMWpixel + 1;
+    uint6   TBMWtile = uninitialised;               uint8   TBMWpixel = uninitialised;
 
     tiles16x16.wdata1 := writeData; tiles16x16.wenable1 := 0; TMW.tm_write := 0; TMW.tm_scrollwrap := 0;
 
@@ -906,7 +906,7 @@ algorithm tilemap_memmap(
                 case 3h3: { TMW.tm_actions = writeData; }
                 case 3h4: { TMW.tm_write = 1; }
                 case 3h5: { TBMWtile = writeData; TBMWpixel = 0; }
-                case 3h6: { tiles16x16.addr1 = { TBMWtile, TBMWpixel }; tiles16x16.wenable1 = 1; TBMWpixel = TBMWpixelNEXT; }
+                case 3h6: { tiles16x16.addr1 = { TBMWtile, TBMWpixel }; tiles16x16.wenable1 = 1; TBMWpixel = TBMWpixel + 1; }
                 case 3h7: { if( memoryAddress[0,1] ) { TMW.tm_adjust = writeData; } else { TMW.tm_scrollwrap = writeData; } }
             }
         }

@@ -110,8 +110,7 @@ algorithm tile_map_writer(
     calcoffset TMOX( offset <: tm_offset_x, adjust <: tm_adjust );       calcoffset TMOY( offset <: tm_offset_y, adjust <: tm_adjust );
 
     // Scroller/Wrapper FLAGS
-    uint1   tm_scroll = uninitialized;              uint1   tm_sw <:: ( tm_scrollwrap < 5 );                uint2   tm_action <:: ( tm_scrollwrap - 1 ) & 3;
-    uint1   tm_dodir = uninitialized;
+    uint1   tm_scroll = uninitialized;              uint1   tm_dodir = uninitialized;
 
     // CURSORS AND ADDRESSES FOR SCROLLING WRAPPING
     uint6   x_cursor = uninitialized;               tmxaddresses TMX( x_cursor <: x_cursor, tm_dodir <: tm_dodir );
@@ -142,8 +141,8 @@ algorithm tile_map_writer(
             case 0: {}                                                                                                      // NO ACTION
             case 9: { tm_active = 4; tm_lastaction = 9; }                                                                   // CLEAR
             default: {                                                                                                      // SCROLL / WRAP
-                tm_scroll = tm_sw;
-                switch( tm_action ) {
+                tm_scroll = ( tm_scrollwrap < 5 );
+                switch( ( tm_scrollwrap - 1 ) & 3 ) {
                     case 0: { if( TMOX.MAX ) { tm_dodir = 1; tm_active = 1; } tm_offset_x = TMOX.NEXT; }                    // LEFT
                     case 1: { if( TMOY.MAX ) { tm_dodir = 1; tm_active = 2; } tm_offset_y = TMOY.NEXT; }                    // UP
                     case 2: { if( TMOX.MIN ) { tm_dodir = 0; tm_active = 1; } tm_offset_x = TMOX.PREV; }                    // RIGHT
