@@ -10,14 +10,13 @@ algorithm alushift(
     output  uint32  SRA,
     output  uint32  ROTATE
 ) <autorun,reginputs> {
-    uint32  altSLL <:: sourceReg1 << shiftother;    uint32  altSRL <:: sourceReg1 >> shiftother;
     uint6   shiftother <:: 32 - shiftcount;
 
     always_after {
         SLL = sourceReg1 << shiftcount;
         SRL = sourceReg1 >> shiftcount;
         SRA = __signed(sourceReg1) >>> shiftcount;
-        ROTATE = reverse ? ( altSLL | SRL ) : ( SLL | altSRL );
+        ROTATE = reverse ? ( ( sourceReg1 << shiftother ) | SRL ) : ( SLL | ( sourceReg1 >> shiftother ) );
     }
 }
 // CALCULATES BCLR BCLRI BEXT BEXTI BIN BINI BSET BSETI
@@ -81,10 +80,8 @@ algorithm alucount(
     input   uint32  sourceReg1,
     output  uint6   result
 ) <autorun,reginputs> {
-    uint1   zero <:: ~|sourceReg1;
-
     always_after {
-        if( zero ) {
+        if( ~|sourceReg1 ) {
             result = { ~shiftcount[1,1], 5b00000 };
         } else {
             switch( shiftcount ) {
@@ -256,18 +253,16 @@ algorithm aluMD(
     input   uint32  abssourceReg2,
     output  uint32  result
 ) <autorun,reginputs> {
-    uint1   quotientremaindersign <:: ~function3[0,1] & ( sourceReg1[31,1] ^ sourceReg2[31,1] );
-    uint32  sourceReg1_unsigned <:: function3[0,1] ? sourceReg1 : abssourceReg1;
-    uint32  sourceReg2_unsigned <:: function3[0,1] ? sourceReg2 : abssourceReg2;
-
-    douintdivide DODIVIDE( dividend <: sourceReg1_unsigned, divisor <: sourceReg2_unsigned );
+    douintdivide DODIVIDE();
+    DODIVIDE.dividend := function3[0,1] ? sourceReg1 : abssourceReg1;
+    DODIVIDE.divisor := function3[0,1] ? sourceReg2 : abssourceReg2;
     DODIVIDE.start := start & |sourceReg2; busy := start | DODIVIDE.busy;
 
     // START DIVIDER AND EXTRACT RESULT
     always_after {
         if( busy ) {
             result = ( ~|sourceReg2 ) ? function3[1,1] ? sourceReg1 : 32hffffffff :
-                                        function3[1,1] ? DODIVIDE.remainder : ( quotientremaindersign ? -DODIVIDE.quotient : DODIVIDE.quotient );
+                                        function3[1,1] ? DODIVIDE.remainder : ( ( ~function3[0,1] & ( sourceReg1[31,1] ^ sourceReg2[31,1] ) ) ? -DODIVIDE.quotient : DODIVIDE.quotient );
         }
     }
 }
@@ -280,14 +275,13 @@ algorithm aluMM(
     input   int32   sourceReg2,
     output  int32   result
 ) <autorun,reginputs> {
-    uint1   doupper <:: |function3;
     uint2   dosigned <:: function3[1,1] ? function3[0,1] ? 2b00 : 2b01 : 2b11;
     int33   factor_1 <:: { dosigned[0,1] & sourceReg1[ 31, 1 ], sourceReg1 }; // SIGN EXTEND IF SIGNED MULTIPLY
     int33   factor_2 <:: { dosigned[1,1] & sourceReg2[ 31, 1 ], sourceReg2 }; // SIGN EXTEND IF SIGNED MULTIPLY
     int66   product <:: factor_1 * factor_2;
 
     always_after {
-        result = product[ { doupper, 5b0 }, 32 ];
+        result = product[ { |function3, 5b0 }, 32 ];
     }
 }
 
@@ -303,14 +297,13 @@ algorithm doclmul(
     output  uint32  result
 ) <autorun,reginputs> {
     uint6   count = uninitialised;
-    uint32  shift <:: ( mode[1,1] ) ? ( sourceReg1 >> ( ( mode[0,1] ? 31 : 32 ) - count ) ) : ( sourceReg1 << count );
 
     always_after {
         if( start ) {
             busy = 1; result = 0; count = startat;
         } else {
             if( busy & sourceReg2[ count, 1 ] ) {
-                result = result ^ shift;
+                result = result ^ ( ( mode[1,1] ) ? ( sourceReg1 >> ( ( mode[0,1] ? 31 : 32 ) - count ) ) : ( sourceReg1 << count ) );
             }
             if( count != stopat ) { count = count + 1; } else { busy = 0; }
         }
@@ -336,12 +329,12 @@ algorithm aluA (
     input   uint32  sourceReg2,
     output  uint32  result
 ) <autorun,reginputs> {
-    uint1   comparison <:: function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) : ( __signed(memoryinput) < __signed(sourceReg2) );
     alulogic LOGIC( sourceReg1 <: memoryinput, operand2 <: sourceReg2 );
 
     always_after {
         if( function7[4,1] ) {
-            result = ( function7[2,1] ^ comparison ) ? memoryinput : sourceReg2;    // AMOMAX[U] AMOMIN[U]
+            result = ( function7[2,1] ^ ( function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) :
+                                                           ( __signed(memoryinput) < __signed(sourceReg2) ) ) ) ? memoryinput : sourceReg2;    // AMOMAX[U] AMOMIN[U]
         } else {
             switch( function7[0,4] ) {
                 default: { result = memoryinput + sourceReg2; }                     // AMOADD

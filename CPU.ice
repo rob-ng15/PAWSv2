@@ -315,7 +315,8 @@ algorithm cpuexecuteSLOWPATH(
     uint1   fpucalc <:: isFPU & ~fpufast;
     uint4   operation <:: { ~|{fpufast,isATOMIC,isCSR}, fpufast, isATOMIC, isCSR };
 
-    // START FLAGS
+    // START AND BUSY FLAGS
+    uint1   unitbusy <:: ( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy );
     ALUMD.start := start & isALUM;                                                                          // INTEGER DIVISION
     ALUBCLMUL.start := start & isALUCLM;                                                                    // CARRYLESS MULTIPLY
     FPUCALC.start := start & fpucalc;                                                                       // FPU CALCULATIONS
@@ -351,7 +352,7 @@ algorithm cpuexecuteSLOWPATH(
                 case 0: { ++:  }                                                                                    // CSR
                 case 1: {}                                                                                          // ATOMIC OPERATIONS
                 case 2: {}                                                                                          // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                case 3: { while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {} }                                  // FPU CALCULATIONS AND INTEGER DIVISION
+                case 3: { while( unitbusy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
             }
             busy = 0;
             CSR.updateFPUflags = fpuconvert | fpucalc;

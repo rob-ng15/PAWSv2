@@ -453,11 +453,9 @@ algorithm cachewriter(
     simple_dualport_bram_port1 cache,
     simple_dualport_bram_port1 tags
 ) <autorun,reginputs> {
-    always_after {
-        cache.wenable1 = update; tags.wenable1 = update;
-        cache.addr1 = address[1,$cacheaddrwidth$]; cache.wdata1 = writedata;
-        tags.addr1 = address[1,$cacheaddrwidth$]; tags.wdata1 = { needwritetosdram, 1b1, address[$partaddressstart$,$partaddresswidth$] };
-    }
+    cache.wenable1 := update; tags.wenable1 := update;
+    cache.addr1 := address[1,$cacheaddrwidth$]; cache.wdata1 := writedata;
+    tags.addr1 := address[1,$cacheaddrwidth$]; tags.wdata1 := { needwritetosdram, 1b1, address[$partaddressstart$,$partaddresswidth$] };
 }
 
 // WRITE TO INSTRCUTION CACHE
@@ -468,11 +466,9 @@ algorithm Icachewriter(
     simple_dualport_bram_port1 Icache,
     simple_dualport_bram_port1 Itags
 ) <autorun,reginputs> {
-    always_after {
-        Icache.wenable1 = update; Itags.wenable1 = update;
-        Icache.addr1 = address[1,$Icacheaddrwidth$]; Icache.wdata1 = writedata;
-        Itags.addr1 = address[1,$Icacheaddrwidth$]; Itags.wdata1 = { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] };
-    }
+    Icache.wenable1 := update; Itags.wenable1 := update;
+    Icache.addr1 := address[1,$Icacheaddrwidth$]; Icache.wdata1 := writedata;
+    Itags.addr1 := address[1,$Icacheaddrwidth$]; Itags.wdata1 := { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] };
 }
 
 // START READ/WRITE FROM SDRAM, 16BIT
@@ -485,10 +481,10 @@ algorithm sdramcontroller(
     output  uint16  readdata,
     output  uint1   busy(0)
 ) <autorun,reginputs> {
+    sio.addr := { address[1,$sdram_addr_width-1$], 1b0 }; sio.data_in := writedata; readdata := sio.data_out; sio.rw := writeflag;
+
     always_after {
-        sio.addr = { address[1,$sdram_addr_width-1$], 1b0 };             sio.in_valid = ( readflag | writeflag );           sio.data_in = writedata;
-        sio.rw = writeflag;
-        readdata = sio.data_out;
+        sio.in_valid = ( readflag | writeflag );
         busy = ( sio.done ) ? 0 : ( readflag | writeflag ) ? 1 : busy;
     }
 }

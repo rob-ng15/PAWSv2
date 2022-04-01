@@ -56,9 +56,9 @@ algorithm floatconvert(
     inttofloat FPUfloat( a <: sourceReg1, absa <: abssourceReg1, dounsigned <: rs2 );
     floattoint FPUint( a <: sourceReg1F, classA <: classA, dounsigned <: rs2 );
 
+    frd := function7[1,1];                          result := function7[1,1] ? FPUfloat.result : FPUint.result;
+
     always_after {
-        frd = function7[1,1];
-        result = function7[1,1] ? FPUfloat.result : FPUint.result;
         FPUnewflags = FPUflags | ( function7[1,1] ?  FPUfloat.flags : FPUint.flags );
     }
 }
@@ -96,14 +96,11 @@ algorithm floatcalc(
     doroundcombine MAKERESULT();
 
     // NEW FPU FLAGS
-    uint5   FNFas <:: FPUaddsub.flags & 5b00110;    uint5   FNFm <:: FPUmultiply.flags & 5b00110;       uint5   FNFd <:: FPUdivide.flags & 5b01110;
-    uint5   FNFs <:: FPUsqrt.flags & 5b00110;       uint5   FNFfused <:: ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
     uint5   flags = uninitialised;
 
     // UNIT BUSY FLAG
     uint4   unitbusy <:: { FPUsqrt.busy, FPUdivide.busy, FPUmultiply.busy, FPUaddsub.busy };
 
-    DONORMAL.bitstream := opCode[2,1] & ( &function7[0,2] ) ? FPUdivide.tonormalisebitstream : FPUaddsub.tonormalisebitstream;
     FPUaddsub.start := 0; FPUmultiply.start := 0; FPUdivide.start := 0; FPUsqrt.start := 0;
 
     always_after {
@@ -118,6 +115,8 @@ algorithm floatcalc(
             FPUmultiply.a = { opCode[1,1] ^ sourceReg1F[31,1], sourceReg1F[0,31] };
         }
 
+        DONORMAL.bitstream = opCode[2,1] & ( &function7[0,2] ) ? FPUdivide.tonormalisebitstream : FPUaddsub.tonormalisebitstream;
+
         // CONTROL INPUTS TO ROUNDING AND COMBINING
         if( |unitbusy ) {
             onehot( unitbusy ) {
@@ -126,6 +125,22 @@ algorithm floatcalc(
                 case 2: { MAKERESULT.exponent = FPUdivide.quotientexp; MAKERESULT.bitstream = DONORMAL.normalfraction; MAKERESULT.sign = FPUdivide.quotientsign; }
                 case 3: { MAKERESULT.exponent = FPUsqrt.squarerootexp; MAKERESULT.bitstream = FPUsqrt.normalfraction; MAKERESULT.sign = 0; }
             }
+        }
+
+        if( opCode[2,1] ) {
+            switch( function7[0,2] ) {                                                                              // EXTRACT RESULT AND FLAGS
+                default: { result = FPUaddsub.result; flags = FPUaddsub.flags & 5b00110; }                          // FADD.S FSUB.S
+                case 2b10: { result = FPUmultiply.result; flags = FPUmultiply.flags & 5b00110; }                    // FMUL.S
+                case 2b11: {
+                    if( function7[3,1] ) {
+                        result = FPUsqrt.result; flags = FPUsqrt.flags & 5b00110;                                   // FSQRT.S
+                    } else {
+                        result = FPUdivide.result; flags = FPUdivide.flags & 5b01110;                               // FDIV.S
+                    }
+                }
+            }
+        } else {
+            result = FPUaddsub.result; flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );     // FUSED
         }
 
         FPUnewflags = FPUflags | flags;
@@ -141,21 +156,9 @@ algorithm floatcalc(
                     case 2b11: { FPUsqrt.start = function7[3,1]; FPUdivide.start = ~function7[3,1]; }   // FSQRT.S // FDIV.S
                 }
                 while( |unitbusy ) {}                                                                   // WAIT FOR FINISH
-                switch( function7[0,2] ) {                                                              // EXTRACT RESULT AND FLAGS
-                    default: { result = FPUaddsub.result; flags = FNFas; }                              // FADD.S FSUB.S
-                    case 2b10: { result = FPUmultiply.result; flags = FNFm; }                           // FMUL.S
-                    case 2b11: {
-                        if( function7[3,1] ) {
-                            result = FPUsqrt.result; flags = FNFs;                                      // FSQRT.S
-                        } else {
-                            result = FPUdivide.result; flags = FNFd;                                    // FDIV.S
-                        }
-                    }
-                }
             } else {
                 FPUmultiply.start = 1; while( |unitbusy ) {}                                            // START 3 REGISTER FUSED FPU OPERATION - MULTIPLY
                 FPUaddsub.start = 1; while( |unitbusy ) {}                                              //                                        ADD / SUBTRACT
-                result = FPUaddsub.result; flags = FNFfused;                                            // EXTRACT RESULT AND FLAGS
             }
             busy = 0;
         }
@@ -200,8 +203,9 @@ algorithm floatminmax(
 ) <autorun,reginputs> {
     uint1   NAN <:: ( classA[2,1] | classB[2,1] ) | ( classA[1,1] & classB[1,1] );
 
+    flags := { NAN, 4b0000 };
+
     always_after {
-        flags = { NAN, 4b0000 };
         result = NAN ? 32h7fc00000 : classA[1,1] ? ( classB[1,1] ? 32h7fc00000 : sourceReg2F ) : classB[1,1] | ( function3 ^ less ) ? sourceReg1F : sourceReg2F;
     }
 }
@@ -340,8 +344,10 @@ algorithm normalise24(
     // COUNT LEADING ZEROS
     clz48 CLZ48( bitstream <: bitstream );          uint48  temporary <:: ( bitstream << CLZ48.count );
 
+    normalfraction := temporary[23,24];
+
     always_after {
-        normalfraction = temporary[23,24]; newexponent = exp - CLZ48.count;
+        newexponent = exp - CLZ48.count;
     }
 }
 
@@ -350,9 +356,7 @@ algorithm fastnormal24(
     input   uint48  tonormal,
     output  uint24  normalfraction
 ) <autorun,reginputs> {
-    always_after {
-        normalfraction = tonormal[ tonormal[47,1] ? 23 : 22,24 ];
-    }
+    normalfraction := tonormal[ tonormal[47,1] ? 23 : 22,24 ];
 }
 
 // ROUND 23 BIT FRACTION FROM NORMALISED FRACTION USING NEXT TRAILING BIT
@@ -400,8 +404,9 @@ algorithm inttofloat(
     uint1   sign <:: ~dounsigned & a[31,1];        uint1   NX <:: ( ~|CLZ.zeros[3,2] );
     int10   exponent <:: 158 - CLZ.zeros;          int23  fraction <:: NX ? number >> ( 8 - CLZ.zeros ) : number << ( CLZ.zeros - 8 );
 
+    flags := { 6b0, NX };
+
     always_after {
-        flags = { 6b0, NX };
         result = ( |a ) ? { sign, exponent[0,8], fraction } : 0;
     }
 }
@@ -419,6 +424,8 @@ algorithm floattoint(
     uint33  sig <:: ( exp < 24 ) ? { 9b1, fp32( a ).fraction, 1b0 } >> ( 23 - exp ) : { 9b1, fp32( a ).fraction, 1b0 } << ( exp - 24);
     int10   exp <:: fp32( a ).exponent - 127;
     uint32  unsignedfraction <:: ( sig[1,32] + sig[0,1] );
+
+    flags := { classA[3,1], NN, NV, 4b0000 };
 
     always_after {
         if( classA[0,1] ) {
@@ -438,7 +445,6 @@ algorithm floattoint(
                 }
             }
         }
-        flags = { classA[3,1], NN, NV, 4b0000 };
     }
 }
 
@@ -509,8 +515,25 @@ algorithm floataddsub(
     // PERFORM THE ADDITION/SUBTRACION USING THE EQUALISED FRACTIONS, 1 IS ADDED TO THE EXPONENT IN CASE OF OVERFLOW - NORMALISING WILL ADJUST WHEN SHIFTING
     dofloataddsub ADDSUB( signA <: fp32( a ).sign, sigA <: EQUALISEEXP.newsigA, signB <: fp32( b).sign, sigB <: EQUALISEEXP.newsigB, resultsign :> resultsign, resultfraction :> tonormalisebitstream );
 
+    flags := { IF, NN, NV, 1b0, OF, UF, 1b0 };
+
     always_after {
-        flags = { IF, NN, NV, 1b0, OF, UF, 1b0 };
+        switch( { IF | NN, classA[0,1] | classB[0,1] } ) {
+            case 2b00: {
+                if( |ADDSUB.resultfraction ) {
+                    OF = cOF; UF = cUF; result = f32;
+                } else {
+                    result = 0;
+                }
+            }
+            case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 0 : ( classB[0,1] ) ? a : b; }
+            default: {
+                switch( { IF, NN } ) {
+                    case 2b10: { result = NV ? 32hffc00000 : classA[3,1] ? a : b; }
+                    default: { result = 32hffc00000; }
+                }
+            }
+        }
     }
 
     while(1) {
@@ -520,20 +543,10 @@ algorithm floataddsub(
             switch( { IF | NN, classA[0,1] | classB[0,1] } ) {
                 case 2b00: {
                     if( |ADDSUB.resultfraction ) {
-                        ++: // ALLOW FOR NORMALISATION AND COMBINING OF FINAL RESULT
-                        ++:
-                        OF = cOF; UF = cUF; result = f32;
-                    } else {
-                        result = 0;
+                        ++: ++: // ALLOW FOR NORMALISATION AND COMBINING OF FINAL RESULT
                     }
                 }
-                case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 0 : ( classB[0,1] ) ? a : b; }
-                default: {
-                    switch( { IF, NN } ) {
-                        case 2b10: { result = NV ? 32hffc00000 : classA[3,1] ? a : b; }
-                        default: { result = 32hffc00000; }
-                    }
-                }
+                default: {}
             }
             busy = 0;
         }
@@ -586,29 +599,31 @@ algorithm floatmultiply(
     uint1   OF = uninitialised;
     uint1   UF = uninitialised;
 
+    flags := { IF, NN, NV, 1b0, OF, UF, 1b0 };
+
     always_after {
-        flags = { IF, NN, NV, 1b0, OF, UF, 1b0 };
+        switch( { IF | NN, ZERO } ) {
+            case 2b00: { OF = cOF; UF = cUF; result = f32; }
+            case 2b01: { result = { PREP.productsign, 31b0 }; }
+            default: {
+                switch( { IF, ZERO } ) {
+                    case 2b11: { result = 32hffc00000; }
+                    case 2b10: { result = NN ? 32hffc00000 : { PREP.productsign, 31h7f800000 }; }
+                    default: { result = 32hffc00000; }
+                }
+            }
+        }
     }
 
     while(1) {
         if( start ) {
-            busy = 1;
-            OF = 0; UF = 0;
+            busy = 1; OF = 0; UF = 0;
             switch( { IF | NN, ZERO } ) {
                 case 2b00: {
                     // STEPS: SETUP -> DOMUL -> NORMALISE -> ROUND -> ADJUSTEXP -> COMBINE
-                    ++: // ALLOW 2 CYCLES TO PERFORM THE MULTIPLICATION, NORMALISATION AND ROUNDING
-                    ++:
-                    OF = cOF; UF = cUF; result = f32;
+                    ++: ++: // ALLOW 2 CYCLES TO PERFORM THE MULTIPLICATION, NORMALISATION AND ROUNDING
                 }
-                case 2b01: { result = { PREP.productsign, 31b0 }; }
-                default: {
-                    switch( { IF, ZERO } ) {
-                        case 2b11: { result = 32hffc00000; }
-                        case 2b10: { result = NN ? 32hffc00000 : { PREP.productsign, 31h7f800000 }; }
-                        default: { result = 32hffc00000; }
-                    }
-                }
+                default: {}
             }
             busy = 0;
         }
@@ -690,6 +705,8 @@ algorithm floatdivide(
 
     DODIVIDE.start := start & ~|ACTION; busy := start | DODIVIDE.busy;
 
+    flags := { IF, NN, 1b0, classB[0,1], OF, UF, 1b0};
+
     always_after {
         if( start ) {
             OF = 0; UF = 0;
@@ -700,7 +717,6 @@ algorithm floatdivide(
                 default: { result = ( classA[3,1] & classB[3,1] ) | NN | classB[0,1] ? 32hffc00000 : { PREP.quotientsign, (classA[0,1] | classB[3,1] ) ? 31b0 : 31h7f800000 }; }
             }
         }
-        flags = { IF, NN, 1b0, classB[0,1], OF, UF, 1b0};
     }
 }
 
@@ -796,6 +812,8 @@ algorithm floatsqrt(
 
     DOSQRT.start := start & ~|ACTION; busy := start | DOSQRT.busy;
 
+    flags := { classA[3,1], NN, NV, 1b0, OF, UF, 1b0 };
+
     always_after {
         if( start ) {
             OF = 0; UF = 0;
@@ -809,7 +827,6 @@ algorithm floatsqrt(
                 default: { result = fp32( a ).sign ? 32hffc00000 : a; }
             }
         }
-        flags = { classA[3,1], NN, NV, 1b0, OF, UF, 1b0 };
     }
 }
 
