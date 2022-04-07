@@ -343,8 +343,8 @@ algorithm drawrectangle(
     input   uint8   min_y,
     input   uint9   max_x,
     input   uint8   max_y,
-    output  int11   bitmap_x_write,
-    output  int11   bitmap_y_write,
+    output  uint9   bitmap_x_write,
+    output  uint8   bitmap_y_write,
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
     bitmap_write := 0;
@@ -377,8 +377,8 @@ algorithm rectangle (
     input   int11   x1,
     input   int11   y1,
 
-    output  int11   bitmap_x_write,
-    output  int11   bitmap_y_write,
+    output  uint9   bitmap_x_write,
+    output  uint8   bitmap_y_write,
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
     preprectangle PREP(
@@ -460,7 +460,11 @@ algorithm drawline(
     uint8   pixel_count = uninitialised;                uint8   pixel_countNEXT <:: pixel_count + 1;
     uint1   singlepixel <:: ( width == 1 );             uint1   morepixels <:: ( pixel_count != width );
 
-    bitmap_x_write := x + offset_x; bitmap_y_write := y + offset_y; bitmap_write := 0;
+    bitmap_write := 0;
+
+    always_after {
+        bitmap_x_write = x + offset_x; bitmap_y_write = y + offset_y;
+    }
 
     while(1) {
         if( start ) {
@@ -560,7 +564,11 @@ algorithm drawcircle(
     uint4   arc = uninitialised;                        uint4   arcNEXT <:: arc + 1;
     arccoords ARC( xc <: xc, yc <: yc, active_x <: active_x, count <: count, arc <: arc );
 
-    bitmap_x_write := ARC.centrepixel ? xc : ARC.bitmap_x_write; bitmap_y_write := ARC.centrepixel ? yc : ARC.bitmap_y_write; bitmap_write := 0;
+    bitmap_write := 0;
+
+    always_after {
+        bitmap_x_write = ARC.centrepixel ? xc : ARC.bitmap_x_write; bitmap_y_write = ARC.centrepixel ? yc : ARC.bitmap_y_write;
+    }
 
     while(1) {
         if( start ) {
@@ -752,8 +760,8 @@ algorithm drawtriangle(
     input   int11   y1,
     input   int11   x2,
     input   int11   y2,
-    output  int11   bitmap_x_write,
-    output  int11   bitmap_y_write,
+    output  uint9   bitmap_x_write,
+    output  uint8   bitmap_y_write,
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
     // Filled triangle calculations
@@ -765,7 +773,7 @@ algorithm drawtriangle(
     uint1   leftright <:: ( px - min_x ) < ( max_x - px );
 
     // WORK COORDINATES AND DIRECTION
-    uint9   px = uninitialized;                         uint9   pxNEXT <:: px + ( dx ? 1 : (-1) );
+    uint9   px = uninitialized;
     uint8   py = uninitialized;                         uint8   pyNEXT <:: py + 1;
     uint1   dx = uninitialized;
 
@@ -786,7 +794,7 @@ algorithm drawtriangle(
                     beenInTriangle = 0; py = pyNEXT; px = leftright ? min_x : max_x; dx = leftright;
                 } else {
                     // MOVE TO THE NEXT PIXEL ON THE LINE LEFT/RIGHT OR DOWN AND SWITCH DIRECTION IF AT END
-                    if( stillinline ) { px = pxNEXT; } else { dx = ~dx; beenInTriangle = 0; py = pyNEXT; }
+                    if( stillinline ) { px = px + ( dx ? 1 : (-1) ); } else { dx = ~dx; beenInTriangle = 0; py = pyNEXT; }
                 }
             } else {
                 busy = 0;
@@ -807,8 +815,8 @@ algorithm triangle(
     input   int11   y1,
     input   int11   x2,
     input   int11   y2,
-    output  int11   bitmap_x_write,
-    output  int11   bitmap_y_write,
+    output  uint9   bitmap_x_write,
+    output  uint8   bitmap_y_write,
     output  uint1   bitmap_write
 ) <autorun,reginputs> {
     // VERTEX COORDINATES AND BOUNDING BOX
@@ -912,8 +920,11 @@ algorithm blit(
     cololurblittilexy CBTXY( px <: PXS.base, py <: PYS.base, action <: action );
 
     blit1tilemap.addr0 := { tile, BTXY.yinblittile }; characterGenerator8x8.addr0 := { tile, BTXY.yinchartile }; colourblittilemap.addr0 := { tile, CBTXY.yintile, CBTXY.xintile };
+    bitmap_write := 0;
 
-    bitmap_x_write := x + PXS.scaled + x2; bitmap_y_write := y + PYS.scaled + y2; bitmap_colour_write := colourblittilemap.rdata0; bitmap_write := 0;
+    always_after {
+        bitmap_x_write = x + PXS.scaled + x2; bitmap_y_write = y + PYS.scaled + y2; bitmap_colour_write = colourblittilemap.rdata0;
+    }
 
     while(1) {
         if( |start ) {
@@ -970,13 +981,9 @@ algorithm pixelblock(
     uint7   grrggbb <:: { colour8g[7,1], colour8r[6,2], colour8g[5,2], colour8b[6,2] };                  uint7   grey <:: ( ( colour8r + colour8g + colour8b ) * 341 ) >> 11;
     uint1   update = uninitialised;                 uint2   toprocess = uninitialised;
 
-    uint1   lineend <:: bitmap_x_write == ( x + width - 1);
-
     // LOOKUP THE COLOUR FROM THE REMAPPER
     colourmap.addr0 := colour;
-
-    bitmap_write := ( ( toprocess == 1 ) & ( colour != ignorecolour ) ) | ( toprocess == 2 );
-    bitmap_colour_write := ( toprocess == 1 ) ? mode ? colourmap.rdata0 : colour : mode ? ( grey == 64 ) ? 65 : grey : ( grrggbb == 64 ) ? 80 : grrggbb;
+    bitmap_write := 0;
 
     always_after {
         if( start ) {
@@ -984,7 +991,7 @@ algorithm pixelblock(
         } else {
             if( busy ) {
                 if( update ) {
-                    if( lineend ) {
+                    if( bitmap_x_write == ( x + width - 1) ) {
                         bitmap_x_write = x; bitmap_y_write = bitmap_y_write + 1;
                     } else {
                         bitmap_x_write = bitmap_x_write + 1;
@@ -995,6 +1002,8 @@ algorithm pixelblock(
                     if( &toprocess ) {
                         busy = 0;
                     } else {
+                        bitmap_write = ( ( toprocess == 1 ) & ( colour != ignorecolour ) ) | ( toprocess == 2 );
+                        bitmap_colour_write = ( toprocess == 1 ) ? mode ? colourmap.rdata0 : colour : mode ? ( grey == 64 ) ? 65 : grey : ( grrggbb == 64 ) ? 80 : grrggbb;
                         update = 1;
                     }
                 }
@@ -1032,7 +1041,6 @@ algorithm cpm(
     input   int11   yc,
     input   uint6   dy,
     input   uint3   scale,
-    input   uint3   action,
     output  int11   xcpdx,
     output  int11   xcndx,
     output  int11   ycpdy,
@@ -1064,7 +1072,7 @@ algorithm centreplusdelta(
     output  int11   xdx,
     output  int11   ydy
 ) <autorun,reginputs> {
-    cpm CPM( xc <: xc, yc <: yc, dx <: dx, dy <: dy, scale <: scale, action <: action );
+    cpm CPM( xc <: xc, yc <: yc, dx <: dx, dy <: dy, scale <: scale );
 
     always_after {
         if( action[2,1] ) {

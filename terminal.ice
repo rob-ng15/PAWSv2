@@ -22,10 +22,10 @@ algorithm terminal(
     uint3   yterminalpos <: ( pix_vblank ? 0 : pix_y - 416 ) >> 3;
 
     // Determine if cursor, and if cursor is flashing
-    uint1 is_cursor <: blink & ( xterminalpos == terminal_x ) & ( &yterminalpos );
+    uint1 is_cursor <:: blink & ( xterminalpos == terminal_x ) & ( &yterminalpos );
 
     // Derive the actual pixel in the current terminal
-    uint1 terminalpixel <: characterGenerator8x8.rdata[ ~pix_x[0,3], 1 ];
+    uint1 terminalpixel <:: characterGenerator8x8.rdata[ ~pix_x[0,3], 1 ];
 
     // Setup the reading of the terminal memory
     terminal.addr0 := xterminalpos + yterminalpos * 80;
@@ -34,8 +34,10 @@ algorithm terminal(
     characterGenerator8x8.addr :=  { terminal.rdata0, pix_y[0,3] };
 
     // Default to transparent and active pixels always blue
-    terminal_display := pix_active & showterminal & ( pix_y > 415 );
-    pixel := terminalpixel ^ is_cursor;
+    always_after {
+        terminal_display = pix_active & showterminal & ( pix_y > 415 );
+        pixel = terminalpixel ^ is_cursor;
+    }
 }
 
 algorithm terminalcursor(

@@ -73,7 +73,6 @@ algorithm background_copper(
 
     // COPPER PROGRAM ENTRY
     uint10  value <:: CU(copper.rdata0).valueflag ? copper_cpu_input : CU(copper.rdata0).value;
-    uint10  negvalue <:: -value;
 
     // COPPER FLAGS
     copper.addr0 := PC; copper_execute := 0; copper_branch := 0;
@@ -102,7 +101,7 @@ algorithm background_copper(
                         case 3b100: { copper_execute = ( pix_x == value ); }
                         case 3b101: { copper_execute = ( copper_variable == ( value[0,1] ? pix_x : pix_y ) ); }
                         case 3b110: {
-                            copper_variable = CU(copper.rdata0).flag[0,1] ? value : copper_variable + ( CU(copper.rdata0).flag[2,1] ? negvalue : value );
+                            copper_variable = CU(copper.rdata0).flag[0,1] ? value : copper_variable + ( CU(copper.rdata0).flag[2,1] ? ( -value ) : value );
                             copper_branch = 1;
                         }
                         default: {
@@ -189,8 +188,7 @@ algorithm starfield(
     output  uint1   star
 ) <autorun,reginputs> {
     // Variables for SNOW (from @sylefeb)
-    int10   dotpos <:: ( frame >> speed ) + rand_x;
-    int2    speed <:: rand_x[10,2];
+    int10   dotpos <:: ( frame >> rand_x[10,2] ) + rand_x;
     int12   rand_x = 0;
     int32   frame = 0;
 

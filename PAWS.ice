@@ -265,9 +265,6 @@ $$end
                 AUDIO ? AUDIO_Map.readData :
                 IO? IO_Map.readData : 0;
 
-    // SDRAM -> CPU BUSY STATE
-    CPU.memorybusy := DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM );
-
     always_after {
         DRAM.readflag = SDRAM & CPU.readmemory;
         RAM.readflag = BRAM & CPU.readmemory;
@@ -282,6 +279,9 @@ $$end
         IO_Map.memoryWrite = IO & CPU.writememory;
         TIMERS_Map.memoryWrite = TIMERS & CPU.writememory;
         VIDEO_Map.memoryWrite = VIDEO & CPU.writememory;
+
+        // SDRAM -> CPU BUSY STATE
+        CPU.memorybusy = DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM );
     }
 }
 
@@ -309,11 +309,11 @@ $$end
 
     // FLAGS FOR BRAM ACCESS
     ram.wenable := 0; ram.addr := address[1,14]; readdata := ram.rdata;
-    ram.wdata := byteaccess ? ( address[0,1] ? { writedata[0,8], ram.rdata[0,8] } : { ram.rdata[8,8], writedata[0,8] } ) : writedata;
 
     always_after {
+        ram.wdata = byteaccess ? ( address[0,1] ? { writedata[0,8], ram.rdata[0,8] } : { ram.rdata[8,8], writedata[0,8] } ) : writedata;
         if( writeflag ) {
-            ram.wenable = update | ~byteaccess;
+            ram.wenable = ~byteaccess;
             update = byteaccess;
         } else {
             ram.wenable = update;
@@ -402,11 +402,6 @@ algorithm cachecontroller(
 
     CW.update := 0; ICW.update := 0;
 
-    always_before {
-        doread = readflag ? 1 : doread;
-        dowrite = writeflag ? 1 : dowrite;
-    }
-
     always_after {
         // 16 bit READ
         readdata = Icachematch ? Icache.rdata0 : cachetagmatch ? cache.rdata0 : SDRAM.readdata;
@@ -417,6 +412,8 @@ algorithm cachecontroller(
     }
 
     while(1) {
+        doread = readflag; dowrite = writeflag;
+
         if( doread | dowrite ) {
             busy = 1;                                                                                                                           // MARK BUSY,
             ++:                                                                                                                                 // WAIT FOR CACHE
@@ -439,7 +436,6 @@ algorithm cachecontroller(
                 }
                 busy = 0;
             }
-            doread = 0; dowrite = 0;
         }
     }
 }
@@ -453,9 +449,11 @@ algorithm cachewriter(
     simple_dualport_bram_port1 cache,
     simple_dualport_bram_port1 tags
 ) <autorun,reginputs> {
-    cache.wenable1 := update; tags.wenable1 := update;
-    cache.addr1 := address[1,$cacheaddrwidth$]; cache.wdata1 := writedata;
-    tags.addr1 := address[1,$cacheaddrwidth$]; tags.wdata1 := { needwritetosdram, 1b1, address[$partaddressstart$,$partaddresswidth$] };
+    always_after {
+        cache.wenable1 = update; tags.wenable1 = update;
+        cache.addr1 = address[1,$cacheaddrwidth$]; cache.wdata1 = writedata;
+        tags.addr1 = address[1,$cacheaddrwidth$]; tags.wdata1 = { needwritetosdram, 1b1, address[$partaddressstart$,$partaddresswidth$] };
+    }
 }
 
 // WRITE TO INSTRCUTION CACHE
@@ -466,9 +464,11 @@ algorithm Icachewriter(
     simple_dualport_bram_port1 Icache,
     simple_dualport_bram_port1 Itags
 ) <autorun,reginputs> {
-    Icache.wenable1 := update; Itags.wenable1 := update;
-    Icache.addr1 := address[1,$Icacheaddrwidth$]; Icache.wdata1 := writedata;
-    Itags.addr1 := address[1,$Icacheaddrwidth$]; Itags.wdata1 := { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] };
+    always_after {
+        Icache.wenable1 = update; Itags.wenable1 = update;
+        Icache.addr1 = address[1,$Icacheaddrwidth$]; Icache.wdata1 = writedata;
+        Itags.addr1 = address[1,$Icacheaddrwidth$]; Itags.wdata1 = { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] };
+    }
 }
 
 // START READ/WRITE FROM SDRAM, 16BIT
@@ -481,9 +481,9 @@ algorithm sdramcontroller(
     output  uint16  readdata,
     output  uint1   busy(0)
 ) <autorun,reginputs> {
-    sio.addr := { address[1,$sdram_addr_width-1$], 1b0 }; sio.data_in := writedata; readdata := sio.data_out; sio.rw := writeflag;
 
     always_after {
+        sio.addr = { address[1,$sdram_addr_width-1$], 1b0 }; sio.data_in = writedata; readdata = sio.data_out; sio.rw = writeflag;
         sio.in_valid = ( readflag | writeflag );
         busy = ( sio.done ) ? 0 : ( readflag | writeflag ) ? 1 : busy;
     }

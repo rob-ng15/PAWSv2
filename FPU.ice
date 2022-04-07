@@ -1,4 +1,4 @@
-algorithm fpufast(
+unit fpufast(
     input   uint2   function3,
     input   uint5   function7,
     input   uint32  sourceReg1,
@@ -11,7 +11,7 @@ algorithm fpufast(
     output  uint1   frd,
     input   uint5   FPUflags,
     output  uint5   FPUnewflags
-) <autorun,reginputs> {
+) <reginputs> {
     floatcompare FPUlteq( a <: sourceReg1F, b <: sourceReg2F, classA <: classA, classB <: classB );
     floatminmax FPUminmax( sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, classA <: classA, classB <: classB, less <: FPUlteq.less, function3 <: function3[0,1] );
     floatcomparison FPUcompare( sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, classA <: classA, classB <: classB, less <: FPUlteq.less, equal <: FPUlteq.equal, function3 <: function3[0,2], );
@@ -40,7 +40,7 @@ algorithm fpufast(
 }
 
 // FCVT.W.S FCVT.WU.S  FCVT.S.W FCVT.S.WU
-algorithm floatconvert(
+unit floatconvert(
     input   uint5   function7,
     input   uint1   rs2,
     input   uint32  sourceReg1,
@@ -52,19 +52,19 @@ algorithm floatconvert(
     output  uint1   frd,
     input   uint5   FPUflags,
     output  uint5   FPUnewflags
-) <autorun,reginputs> {
+) <reginputs> {
     inttofloat FPUfloat( a <: sourceReg1, absa <: abssourceReg1, dounsigned <: rs2 );
     floattoint FPUint( a <: sourceReg1F, classA <: classA, dounsigned <: rs2 );
 
-    frd := function7[1,1];                          result := function7[1,1] ? FPUfloat.result : FPUint.result;
-
     always_after {
+        frd = function7[1,1];
+        result = function7[1,1] ? FPUfloat.result : FPUint.result;
         FPUnewflags = FPUflags | ( function7[1,1] ?  FPUfloat.flags : FPUint.flags );
     }
 }
 
 // FPU CALCULATION BLOCKS FUSED ADD SUB MUL DIV SQRT
-algorithm floatcalc(
+unit floatcalc(
     input   uint1   start,
     output  uint1   busy(0),
     input   uint5   opCode,
@@ -79,7 +79,7 @@ algorithm floatcalc(
     input   uint5   FPUflags,
     output  uint5   FPUnewflags,
     output  uint32  result
-) <autorun,reginputs> {
+) <reginputs> {
     // CLASSIFY THE RESULT OF MULTIPLICATION
     classifyF classM( a <: FPUmultiply.result );
 
@@ -103,7 +103,7 @@ algorithm floatcalc(
 
     FPUaddsub.start := 0; FPUmultiply.start := 0; FPUdivide.start := 0; FPUsqrt.start := 0;
 
-    always_after {
+    always_before {
         // PREPARE INPUTS FOR ADDITION/SUBTRACTION AND MULTIPLICATION
         if( opCode[2,1] ) {
             FPUaddsub.a = sourceReg1F; FPUaddsub.b = { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] };
@@ -126,7 +126,29 @@ algorithm floatcalc(
                 case 3: { MAKERESULT.exponent = FPUsqrt.squarerootexp; MAKERESULT.bitstream = FPUsqrt.normalfraction; MAKERESULT.sign = 0; }
             }
         }
+    }
 
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                busy = 1;
+                if( opCode[2,1] ) {
+                    switch( function7[0,2] ) {                                                              // START 2 REGISTER FPU OPERATIONS
+                        default: { FPUaddsub.start = 1; }                                                   // FADD.S FSUB.S
+                        case 2b10: { FPUmultiply.start = 1; }                                               // FMUL.S
+                        case 2b11: { FPUsqrt.start = function7[3,1]; FPUdivide.start = ~function7[3,1]; }   // FSQRT.S // FDIV.S
+                    }
+                    while( |unitbusy ) {}                                                                   // WAIT FOR FINISH
+                } else {
+                    FPUmultiply.start = 1; while( |unitbusy ) {}                                            // START 3 REGISTER FUSED FPU OPERATION - MULTIPLY
+                    FPUaddsub.start = 1; while( |unitbusy ) {}                                              //                                        ADD / SUBTRACT
+                }
+                busy = 0;
+            }
+        }
+    }
+
+    always_after {
         if( opCode[2,1] ) {
             switch( function7[0,2] ) {                                                                              // EXTRACT RESULT AND FLAGS
                 default: { result = FPUaddsub.result; flags = FPUaddsub.flags & 5b00110; }                          // FADD.S FSUB.S
@@ -145,35 +167,17 @@ algorithm floatcalc(
 
         FPUnewflags = FPUflags | flags;
     }
-
-    while(1) {
-        if( start ) {
-            busy = 1;
-            if( opCode[2,1] ) {
-                switch( function7[0,2] ) {                                                              // START 2 REGISTER FPU OPERATIONS
-                    default: { FPUaddsub.start = 1; }                                                   // FADD.S FSUB.S
-                    case 2b10: { FPUmultiply.start = 1; }                                               // FMUL.S
-                    case 2b11: { FPUsqrt.start = function7[3,1]; FPUdivide.start = ~function7[3,1]; }   // FSQRT.S // FDIV.S
-                }
-                while( |unitbusy ) {}                                                                   // WAIT FOR FINISH
-            } else {
-                FPUmultiply.start = 1; while( |unitbusy ) {}                                            // START 3 REGISTER FUSED FPU OPERATION - MULTIPLY
-                FPUaddsub.start = 1; while( |unitbusy ) {}                                              //                                        ADD / SUBTRACT
-            }
-            busy = 0;
-        }
-    }
 }
 
 // CLASSIFICATION 10 bits { qNAN, sNAN +INF, +ve normal, +ve subnormal, +0, -0, -ve subnormal, -ve normal, -INF }
-algorithm floatclassify(
+unit floatclassify(
     input   uint32  sourceReg1F,
     input   uint4   classA,
     output  uint10  classification
-) <autorun,reginputs> {
+) <reginputs> {
     uint4   bit = uninitialised;
 
-    always_after {
+    always_before{
         if( |classA ) {
             // INFINITY, NAN OR ZERO
             onehot( classA ) {
@@ -186,12 +190,14 @@ algorithm floatclassify(
             // NUMBER
             bit = fp32( sourceReg1F ).sign ? 1 : 6;
         }
+    }
+    always_after {
         classification = 1 << bit;
     }
 }
 
 // MIN / MAX
-algorithm floatminmax(
+unit floatminmax(
     input   uint1   less,
     input   uint1   function3,
     input   uint32  sourceReg1F,
@@ -200,18 +206,17 @@ algorithm floatminmax(
     input   uint4   classB,
     output  uint5   flags,
     output  uint32  result
-) <autorun,reginputs> {
+) <reginputs> {
     uint1   NAN <:: ( classA[2,1] | classB[2,1] ) | ( classA[1,1] & classB[1,1] );
 
-    flags := { NAN, 4b0000 };
-
     always_after {
+        flags = { NAN, 4b0000 };
         result = NAN ? 32h7fc00000 : classA[1,1] ? ( classB[1,1] ? 32h7fc00000 : sourceReg2F ) : classB[1,1] | ( function3 ^ less ) ? sourceReg1F : sourceReg2F;
     }
 }
 
 // COMPARISONS
-algorithm floatcomparison(
+unit floatcomparison(
     input   uint1   less,
     input   uint1   equal,
     input   uint2   function3,
@@ -221,7 +226,7 @@ algorithm floatcomparison(
     input   uint4   classB,
     output  uint5   flags,
     output  uint1   result
-) <autorun,reginputs> {
+) <reginputs> {
     uint1   NAN <:: ( classA[1,1] | classA[2,1] | classB[1,1] | classB[2,1] );
     uint4   comparison <:: { 1b0, equal, less, less | equal };
 
@@ -231,12 +236,12 @@ algorithm floatcomparison(
     }
 }
 
-algorithm floatsign(
+unit floatsign(
     input   uint2   function3,
     input   uint32  sourceReg1F,
     input   uint32  sourceReg2F,
     output  uint32  result,
-) <autorun,reginputs> {
+) <reginputs> {
     always_after {
         result = { function3[1,1] ? sourceReg1F[31,1] ^ sourceReg2F[31,1] : function3[0,1] ^ sourceReg2F[31,1], sourceReg1F[0,31] };
     }
@@ -459,7 +464,7 @@ algorithm equaliseexpaddsub(
     // BREAK DOWN INITIAL float32 INPUTS - SWITCH SIGN OF B IF SUBTRACTION
     int10   expA <:: fp32(a).exponent;              uint48  sigA <:: { 2b01, fp32(a).fraction, 23b0 };
     int10   expB <:: fp32(b).exponent;              uint48  sigB <:: { 2b01, fp32(b).fraction, 23b0 };
-    uint1   AvB <:: ( expA < expB );                uint48  aligned <:: ( AvB ? sigA : sigB ) >> ( AvB ? ( expB - expA ) : ( expA - expB ) );
+    uint1   AvB <:: ( expA < expB );                uint48  aligned <:: ( AvB ? sigA : sigB ) >> ( ( AvB ? expB : expA ) - ( AvB ? expA : expB ) );
 
     always_after {
         newsigA = AvB ? aligned : sigA;                newsigB = AvB ? sigB : aligned;
@@ -479,7 +484,7 @@ algorithm dofloataddsub(
     always_after {
         // PERFORM ADDITION HANDLING SIGNS
         if( ^{ signA, signB } ) {
-            resultsign = signA ? AvB : ~AvB; resultfraction = signA ^ resultsign ? ( sigB - sigA ) : ( sigA - sigB );
+            resultsign = signA ? AvB : ~AvB; resultfraction = ( signA ^ resultsign ? sigB : sigA ) - ( signA ^ resultsign ? sigA : sigB );
         } else {
             resultsign = signA; resultfraction = sigA + sigB;
         }

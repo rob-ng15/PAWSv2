@@ -24,10 +24,10 @@ algorithm character_map(
     // Character position on the screen x 0-79, y 0-59 * 80 ( fetch it two pixels ahead of the actual x pixel, so it is always ready )
     uint6   ycharacterpos <: ( ( pix_vblank ? 0 : pix_y ) >> 3 );
     uint13  ycharacteraddress <: 80 * ycharacterpos;
-    uint1   is_cursor <: tpu_showcursor & blink & ( cursor_x == ( pix_x >> 3 ) ) & ( cursor_y == ycharacterpos );
 
-    // Derive the actual pixel in the current character
-    uint1 characterpixel <: characterGenerator8x8.rdata[ ~pix_x[0,3], 1 ];
+    // Derive the actual pixel in the current character + determine if cursor and visible/flashing
+    uint1   characterpixel <:: characterGenerator8x8.rdata[ ~pix_x[0,3], 1 ];
+    uint1   is_cursor <:: tpu_showcursor & blink & ( cursor_x == ( pix_x >> 3 ) ) & ( cursor_y == ycharacterpos );
 
     // Set up reading of the charactermap
     charactermap.addr0 := ( ( pix_active ?  pix_x + 2 : 0 ) >> 3 ) + ycharacteraddress; colourmap.addr0 := ( ( pix_active ?  pix_x + 1 : 0 ) >> 3 ) + ycharacteraddress;
@@ -36,9 +36,11 @@ algorithm character_map(
     characterGenerator8x8.addr := { charactermap.rdata0, pix_y[0,3] };
 
     // RENDER - Default to transparent
-    character_map_display := pix_active & ( characterpixel | ( colour14(colourmap.rdata0).background != 64 ) | is_cursor );
-    pixel := is_cursor ? characterpixel ? tpu_background : tpu_foreground
-                        : characterpixel ? colour14(colourmap.rdata0).foreground : colour14(colourmap.rdata0).background;
+    always_after {
+        character_map_display = pix_active & ( characterpixel | ( colour14(colourmap.rdata0).background != 64 ) | is_cursor );
+        pixel = is_cursor ? characterpixel ? tpu_background : tpu_foreground :
+                            characterpixel ? colour14(colourmap.rdata0).foreground : colour14(colourmap.rdata0).background;
+    }
 }
 
 algorithm cmcursorx(

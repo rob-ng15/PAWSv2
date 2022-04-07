@@ -125,11 +125,10 @@ algorithm signextend(
     input   uint1   dounsigned,
     output  uint32  memory168
 ) <autorun,reginputs> {
-    uint4   byteoffset <:: { byteaccess, 3b000 };
-    uint1   sign <:: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1] );
+    uint1   sign <:: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
 
     always_after {
-        memory168 = is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[byteoffset, 8] };
+        memory168 = is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };
     }
 }
 

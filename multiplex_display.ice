@@ -55,13 +55,13 @@ algorithm multiplex_display(
     );
 
     // Grey calculations
-    uint8   grey <: GREY[ LAYER.pixel[0,3] ];                                                           // PAWSv2
-    uint8   greyv1 <: { LAYER.pixel[0,6], LAYER.pixel[0,2] };                                           // PAWSv1 Grey
-    uint8   greyv2 <: { LAYER.pixel[0,7], LAYER.pixel[0,1] };                                           // PAWSv2 Grey
+    uint8   grey <:: GREY[ LAYER.pixel[0,3] ];                                                           // PAWSv2
+    uint8   greyv1 <:: { LAYER.pixel[0,6], LAYER.pixel[0,2] };                                           // PAWSv1 Grey
+    uint8   greyv2 <:: { LAYER.pixel[0,7], LAYER.pixel[0,1] };                                           // PAWSv2 Grey
 
     // SPECIAL COLOUR PALETTES
     uint8   R[] = { 153, 255, 034, 070, 138, 255, 135, 229 };                                           uint8   G[] = { 076, 215, 139, 130, 043, 192, 206, 255 };
-    uint8   B[] = { 000, 000, 034, 180, 226, 203, 235, 204 };                                           uint3   lookup <: LAYER.pixel[0,3];
+    uint8   B[] = { 000, 000, 034, 180, 226, 203, 235, 204 };                                           uint3   lookup <:: LAYER.pixel[0,3];
 
     // GRADIENTS
     uint8   GREY[] = { 26, 51, 77, 102, 128, 153, 179, 204 };                                           // GRADIENTS AT 10%, 20% ... 80%
@@ -71,7 +71,7 @@ algorithm multiplex_display(
     uint8   red = uninitialised;                    uint8   green = uninitialised;                      uint8   blue = uninitialised;
     red := {4{LAYER.pixel[4,2]}};                   green := {4{LAYER.pixel[2,2]}};                     blue := {4{LAYER.pixel[0,2]}};
 
-    always {
+    always_after {
         switch( colour ) {
             case 2b00: {                                                                            // PAWSv2 PALETTE, V1 + GRADIENTS
                 if( LAYER.pixel[6,1] ) {
@@ -117,9 +117,9 @@ algorithm selectlayer(
     output! uint7   pixel
 ) <autorun,reginputs> {
     // CONVERT TERMINAL COLOUR TO BLUE OR WHITE
-    uint7   terminalcolour <: { 1b0, {4{terminal}}, 2b11 };
+    uint7   terminalcolour <:: { 1b0, {4{terminal}}, 2b11 };
 
-    always {
+    always_after {
         switch( display_order ) {
             case 0: { // BACKGROUND -> LOWER TILEMAP -> UPPER TILEMAP -> LOWER_SPRITES -> BITMAP -> UPPER_SPRITES -> CHARACTER_MAP -> TERMINAL
                 pixel = ( terminal_display ) ? terminalcolour :

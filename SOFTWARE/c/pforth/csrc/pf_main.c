@@ -80,16 +80,16 @@ int main( int argc, char **argv )
     ThrowCode Result;
 
     // IF DICTIONARY EXISTS LOAD IT, OTHERWISE USE INIT MODE
-    struct stat fileinfo;
-    if( !fstat( DicNameFile, &fileinfo ) ) {
-        IfInit = FALSE;
-        DicName = PF_DEFAULT_DICTIONARY;
-        SourceName = NULL;
-    } else {
+    //struct stat fileinfo;
+    //if( !fstat( DicNameFile, &fileinfo ) ) {
+    //    IfInit = FALSE;
+    //    DicName = PF_DEFAULT_DICTIONARY;
+    //    SourceName = NULL;
+    //} else {
         IfInit = TRUE;
         DicName = NULL;
         SourceName = NULL;
-    }
+    //}
 
 
 #ifdef PF_UNIT_TEST

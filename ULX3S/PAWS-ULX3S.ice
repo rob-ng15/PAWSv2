@@ -30,7 +30,7 @@ $include('../common/ps2.ice')
 $include('../common/sdram_interfaces.ice')
 $include('../common/sdram_controller_autoprecharge_r16_w16.ice')
 $include('../common/sdram_utils.ice')
-$include('../common/clean_reset.ice')
+$include('../common/clean_reset.si')
 
 // Headers
 $include('../definitions.ice')
@@ -45,8 +45,8 @@ $include('../sprite_layer.ice')
 $include('../terminal.ice')
 $include('../tile_map.ice')
 $include('../multiplex_display.ice')
-$include('../common/audio_pwm.ice')
-$include('../audio.ice')
+$include('../common/audio_pwm.si')
+$include('../audio.si')
 $$if gpu_50_mhz then
 $include('../video_memmap-50MHzGPU.ice')
 $$else

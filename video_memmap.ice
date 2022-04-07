@@ -204,7 +204,7 @@ $$end
     BACKGROUND.memoryWrite := 0; BITMAP.memoryWrite := 0; CHARACTER_MAP.memoryWrite := 0; LOWER_SPRITE.memoryWrite := 0; UPPER_SPRITE.memoryWrite := 0; TERMINAL.memoryWrite := 0;
     LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0;
 
-    always_before {
+    always_after {
         // READ IO Memory
         if( memoryRead ) {
             switch( memoryAddress[8,4] ) {
@@ -260,8 +260,7 @@ $$end
                 default: { readData = 0; }
             }
         }
-    }
-    always_after {
+
         // WRITE IO Memory
         if( memoryWrite ) {
             switch( memoryAddress[8,4] ) {

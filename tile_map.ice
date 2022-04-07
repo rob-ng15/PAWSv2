@@ -37,8 +37,10 @@ algorithm tilemap(
     // Setup the reading and writing of the tiles16x16 using rotation/reflection
     tiles16x16.addr0 := { tmentry( tiles.rdata0 ).tilenumber, ypixel, xpixel };
 
-    tilemap_display := pix_active & ( tiles16x16.rdata0 != 64 );
-    pixel := tiles16x16.rdata0;
+    always_after {
+        tilemap_display = pix_active & ( tiles16x16.rdata0 != 64 );
+        pixel = tiles16x16.rdata0;
+    }
 }
 
 // CALCULATE NEW OFFSETS AND IF AT MIN/MAX

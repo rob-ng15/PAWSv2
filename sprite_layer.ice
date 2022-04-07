@@ -51,22 +51,23 @@ algorithm sprite_layer(
     $$end
 
     // Collisions in frame
-    uint4   layer_collision_frame <: { collision_layer_1, collision_layer_2, collision_layer_3, collision_layer_4 };
-    uint16  sprite_collision_frame <: { SPRITE_15.pix_visible, SPRITE_14.pix_visible, SPRITE_13.pix_visible, SPRITE_12.pix_visible, SPRITE_11.pix_visible,
+    uint4   layer_collision_frame <:: { collision_layer_1, collision_layer_2, collision_layer_3, collision_layer_4 };
+    uint16  sprite_collision_frame <:: { SPRITE_15.pix_visible, SPRITE_14.pix_visible, SPRITE_13.pix_visible, SPRITE_12.pix_visible, SPRITE_11.pix_visible,
                                         SPRITE_10.pix_visible, SPRITE_9.pix_visible, SPRITE_8.pix_visible, SPRITE_7.pix_visible,
                                         SPRITE_6.pix_visible, SPRITE_5.pix_visible, SPRITE_4.pix_visible, SPRITE_3.pix_visible,
                                         SPRITE_2.pix_visible, SPRITE_1.pix_visible, SPRITE_0.pix_visible };
-    uint1   output_collisions <: ( pix_x == 639 ) & ( pix_y == 479 );
+    uint1   output_collisions <:: ( pix_x == 639 ) & ( pix_y == 479 );
 
-    // Default to transparent
-    sprite_layer_display := pix_active & ( |sprite_collision_frame );
-    pixel :=
-        $$for i=0,14 do
-                SPRITE_$15-i$.pix_visible ? SPRITE_$15-i$.pixel :
-        $$end
-        SPRITE_0.pixel;
 
     always {
+        // Default to transparent
+        sprite_layer_display = pix_active & ( |sprite_collision_frame );
+        pixel =
+            $$for i=0,14 do
+                    SPRITE_$15-i$.pix_visible ? SPRITE_$15-i$.pixel :
+            $$end
+            SPRITE_0.pixel;
+
         if( pix_active ) {
             $$for i=0,15 do
                 // UPDATE COLLISION DETECTION FLAGS
@@ -107,9 +108,9 @@ algorithm sprite_generator(
     uint1   action00 <: ( ~|sprite_actions[0,2] );         uint1   action01 <: ( sprite_actions[0,2] == 2b01 );         uint1   action10 <: ( sprite_actions[0,2] == 2b10 );
 
     // Calculate position in sprite, handling rotation/reflection and doubling
-    uint6 spritesize <: sprite_actions[3,1] ? 32 : 16;
-    uint1 xinrange <: ( x >= __signed(sprite_x) ) & ( x < __signed( sprite_x + spritesize ) );
-    uint1 yinrange <: ( y >= __signed(sprite_y) ) & ( y < __signed( sprite_y + spritesize ) );
+    uint6 spritesize <:: sprite_actions[3,1] ? 32 : 16;
+    uint1 xinrange <:: ( x >= __signed(sprite_x) ) & ( x < __signed( sprite_x + spritesize ) );
+    uint1 yinrange <:: ( y >= __signed(sprite_y) ) & ( y < __signed( sprite_y + spritesize ) );
     uint4 xinsprite <: sprite_actions[2,1] ? action00 ? xspriteshift : action01 ? yspriteshift : action10 ? revx : revy :
                             sprite_actions[0,1] ? revx : xspriteshift;
     uint4 yinsprite <: sprite_actions[2,1] ? action00 ? yspriteshift : action01 ? revx : action10 ? revy : xspriteshift :
@@ -119,8 +120,10 @@ algorithm sprite_generator(
     tiles.addr0 := { sprite_tile_number, yinsprite, xinsprite };
 
     // Determine if pixel is visible
-    pix_visible := sprite_active & xinrange & yinrange & ( tiles.rdata0 != 64 );
-    pixel := tiles.rdata0;
+    always_after {
+        pix_visible = sprite_active & xinrange & yinrange & ( tiles.rdata0 != 64 );
+        pixel = tiles.rdata0;
+    }
 }
 
 algorithm sprite_layer_writer(
@@ -146,8 +149,8 @@ algorithm sprite_layer_writer(
     int10   sprite_y[16] = uninitialised;
     uint3   sprite_tile_number[16] = uninitialised;
 
-    int11   sprite_offscreen_negative <: sprite_actions[ sprite_set_number ][0,1] ? -32 : -16;
-    int11   sprite_to_negative <: sprite_actions[ sprite_set_number ][0,1] ? -31 : -15;
+    int11   sprite_offscreen_negative <:: sprite_actions[ sprite_set_number ][0,1] ? -32 : -16;
+    int11   sprite_to_negative <:: sprite_actions[ sprite_set_number ][0,1] ? -31 : -15;
     uint1   sprite_offscreen_x = uninitialised;
     uint1   sprite_offscreen_y = uninitialised;
     uint1   sprite_off_left = uninitialised;
@@ -164,13 +167,13 @@ algorithm sprite_layer_writer(
         sprite_read_tile_$i$ := sprite_tile_number[$i$];
     $$end
 
-    // CALCULATE HELPER VALUES FOR SPRITE UPDATE
-    sprite_off_left := ( __signed( sprite_x[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
-    sprite_off_top := ( __signed( sprite_y[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
-    sprite_offscreen_x := sprite_off_left | ( __signed( sprite_x[ sprite_set_number  ] ) > __signed(640) );
-    sprite_offscreen_y := sprite_off_top | ( __signed( sprite_y[ sprite_set_number ] ) > __signed(480) );
-
     always_after {
+        // CALCULATE HELPER VALUES FOR SPRITE UPDATE
+        sprite_off_left = ( __signed( sprite_x[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
+        sprite_off_top = ( __signed( sprite_y[ sprite_set_number ] ) < __signed( sprite_offscreen_negative ) );
+        sprite_offscreen_x = sprite_off_left | ( __signed( sprite_x[ sprite_set_number  ] ) > __signed(640) );
+        sprite_offscreen_y = sprite_off_top | ( __signed( sprite_y[ sprite_set_number ] ) > __signed(480) );
+
         // SET ATTRIBUTES + PERFORM UPDATE
         switch( sprite_layer_write ) {
             case 0: {}
