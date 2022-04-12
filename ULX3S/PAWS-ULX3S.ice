@@ -23,8 +23,8 @@ $$end
 
 // IO - UART, SDCARD and PS/2 KEYBOARD
 $include('../common/uart.ice')
-$include('../common/sdcard_write.ice')
-$include('../common/ps2.ice')
+$include('../common/sdcard_write.si')
+$include('../common/ps2.si')
 
 // SDRAM
 $include('../common/sdram_interfaces.ice')
@@ -37,10 +37,10 @@ $include('../definitions.ice')
 $include('../circuitry.ice')
 
 // Multiplexed Display Includes
-$include('../background.ice')
-$include('../bitmap.ice')
-$include('../GPU.ice')
-$include('../character_map.ice')
+$include('../background.si')
+$include('../bitmap.si')
+$include('../GPU.si')
+$include('../character_map.si')
 $include('../sprite_layer.ice')
 $include('../terminal.ice')
 $include('../tile_map.ice')
@@ -50,16 +50,16 @@ $include('../audio.si')
 $$if gpu_50_mhz then
 $include('../video_memmap-50MHzGPU.ice')
 $$else
-$include('../video_memmap.ice')
+$include('../video_memmap.si')
 $$end
-$include('../io_memmap.ice')
-$include('../timers_random.ice')
+$include('../io_memmap.si')
+$include('../timers_random.si')
 
 // CPU SPECIFICATION
 $$CPUISA = 0x40001027
-$include('../cpu_functionblocks.ice')
-$include('../ALU.ice')
-$include('../FPU.ice')
+$include('../cpu_functionblocks.si')
+$include('../ALU.si')
+$include('../FPU.si')
 $include('../CPU.ice')
 
 // MAIN

@@ -427,7 +427,10 @@ algorithm dma(
 ) <autorun,reginputs> {
     uint3   dmamode = uninitialized;
     uint27  dmasrc1 <:: dmasrc + 1;
+    uint27  dmasrc2 <:: dmasrc + 2;
     uint27  dmadest1 <:: dmadest + 1;
+    uint27  dmadest2 <:: dmadest + 2;
+    uint1   dmablue <:: ( dmadest[0,4] == 4h6 );
 
     always_after {
         if( start ) { dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; } else {
@@ -435,11 +438,11 @@ algorithm dma(
                 switch( dmamode ) {
                     default: {}                                                                                                     // INACTIVE / UNDEFINED
                     case 1: { dmasrc = dmasrc1; }                                                                                   // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
-                    case 2: { dmasrc = dmasrc1; if( dmadest[0,4] == 4h6 ) { dmadest = 27hd672; } else { dmadest = dmadest + 2; } }  // DMA SPECIAL PIXEL BLOCK RGB
+                    case 2: { dmasrc = dmasrc1; if( dmablue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }                 // DMA SPECIAL PIXEL BLOCK RGB
                     case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                               // DMA multi-src to multi-dest MEMCPY
                     case 4: { dmadest = dmadest1; }                                                                                 // DMA single-src to multi-dest MEMSET + SDCARD WRITE
                     case 5: {}                                                                                                      // DMA single-src to single-dest SET TILE/CBLITTER to single value
-                    case 7: { dmasrc = dmasrc + 2; }                                                                                // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
+                    case 7: { dmasrc = dmasrc2; }                                                                                   // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
                 }
                 dmacount = dmacount - 1;
             }

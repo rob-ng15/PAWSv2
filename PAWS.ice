@@ -312,12 +312,11 @@ $$end
 
     always_after {
         ram.wdata = byteaccess ? ( address[0,1] ? { writedata[0,8], ram.rdata[0,8] } : { ram.rdata[8,8], writedata[0,8] } ) : writedata;
+
         if( writeflag ) {
-            ram.wenable = ~byteaccess;
-            update = byteaccess;
+            ram.wenable = ~byteaccess; update = byteaccess;
         } else {
-            ram.wenable = update;
-            update = 0;
+            ram.wenable = update; update = 0;
         }
     }
 }
