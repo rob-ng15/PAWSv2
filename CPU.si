@@ -6,7 +6,7 @@
 // RISC-V - MAIN CPU LOOP
 //          ALU FUNCTIONALITY LISTED IN ALU-
 
-algorithm PAWSCPU(
+unit PAWSCPU(
     input   uint1   clock_CPUdecoder,
     output  uint2   accesssize,
     output  uint27  address(0),
@@ -27,7 +27,7 @@ algorithm PAWSCPU(
     input   uint27  DMACOUNT,
     input   uint3   DMAMODE,
     output  uint2   DMAACTIVE(0)
-) <autorun,reginputs> {
+) <reginputs> {
     // COMMIT TO REGISTERS FLAG AND HART (0/1) SELECT
     uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
 
@@ -153,85 +153,88 @@ algorithm PAWSCPU(
     REGISTERS.frd := IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd; REGISTERS.write := COMMIT & IFASTSLOW.writeRegister;
     DMA.start := 0; DMA.update := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
 
-    if( ~reset ) {
-        DMAACTIVE = 0;                                                                                                                              // ON RESET CANCEL DMA
-        while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
-    }
-    cacheselect = 0; address = 0; readmemory = 1;                                                                                                   // FETCH FIRST INSTRUCTION
-
-    while(1) {
-        while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
-        compressed = ( ~&readdata[0,2] );
-        if( compressed ) {
-            switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
-                case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
-                case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
-                case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
-                default: {}
-            }
-            ++:
-        } else {
-            instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
-            ++: ++:
+    algorithm <autorun> {
+        if( ~reset ) {
+            DMAACTIVE = 0;                                                                                                                              // ON RESET CANCEL DMA
+            while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
         }
-        // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
 
-        cacheselect = 1;
-        if( MEMACCESS.memoryload ) {
-            address = AGU.loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
-            if( accesssize[1,1] ) {
-                memoryinput[0,16] = readdata; address = LA2.addressplus2; readmemory = 1; while( memorybusy ) {} memoryinput[16,16] = readdata;     // READ 2ND 16 BITS
+        cacheselect = 0; address = 0; readmemory = 1;                                                                                                   // FETCH FIRST INSTRUCTION
+
+        while(1) {
+            while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
+            compressed = ( ~&readdata[0,2] );
+            if( compressed ) {
+                switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
+                    case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
+                    case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
+                    case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
+                    default: {}
+                }
+                ++:
             } else {
-                memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
+                instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
+                ++: ++:
             }
-        } else { readmemory = 0; }
+            // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
 
-        if( ~IFASTSLOW.FASTPATH ) {
-            EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                                     // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
-        } else {
-            COMMIT = 0;                                                                                                                             // INTEGER ALU, LOAD, STORE, BRANCH, JUMP, ETC
-        }
-        COMMIT = 1;                                                                                                                                 // COMMIT REGISTERS
-
-        if( MEMACCESS.memorystore ) {
-            address = AGU.storeAddress; writedata = store[0,16];                                                                                    // STORE 8 OR 16 BIT
-            if( STORE168FAST ) {
-                writememory = 1;                                                                                                                    // FAST STORE FOR 16 * TO LOW MEMORY
-            } else {
-                writememory = 1; while( memorybusy ) {}
+            cacheselect = 1;
+            if( MEMACCESS.memoryload ) {
+                address = AGU.loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
                 if( accesssize[1,1] ) {
-                    address = SA2.addressplus2; writedata = store[16,16]; writememory = 1;  while( memorybusy ) {}                                  // 32 BIT WRITE 2ND 16 BITS
-                }
-            }
-        } else { writememory = 0; }
-
-        pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                                                  // UPDATE PC AND SMT
-
-        if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
-            // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE IF NOT SPECIAL MODE
-            DMAACTIVE = &DMAMODE ? 2 : 1; DMA.start = 1;
-            while( |DMA.dmacount ) {
-                address = DMA.dmasrc; readmemory = 1; while( memorybusy ) {}                                                                        // DMA FETCH
-                memoryinput[0,16] = readdata; address = DMA.dmadest;                                                                                // DMA SET DESTINATION ADDRESS
-                if( DMAACTIVE[1,1] ) {
-                    writedata = memoryinput[0,8]; writememory = 1; ++: ++:                                                                          // STORE TWO PIXELS TO PIXELBLOCK IN SPECIAL MODE
-                    writedata = memoryinput[8,8]; writememory = 1;
+                    memoryinput[0,16] = readdata; address = LA2.addressplus2; readmemory = 1; while( memorybusy ) {} memoryinput[16,16] = readdata;     // READ 2ND 16 BITS
                 } else {
-                    writedata = memoryinput[ { DMA.dmasrc[0,1], 3b000 }, 8 ];                                                                       // DMA STORE 8 BIT
-                    if( DMA.dmadest[26,1] ) { writememory = 1; while( memorybusy ) {} } else { writememory = 1;  }                                  // CHECK IF FAST STORE IS POSSIBLE
+                    memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
                 }
-                DMA.update = 1;
-            }
-            DMAACTIVE = 0;
-        } else {
-            DMAACTIVE = 0;
-        }
+            } else { readmemory = 0; }
 
-        cacheselect = 0; address = PC; readmemory = 1;                                                                                              // START FETCH OF NEXT INSTRUCTION
-    } // RISC-V
+            if( ~IFASTSLOW.FASTPATH ) {
+                EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                                     // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
+            } else {
+                COMMIT = 0;                                                                                                                             // INTEGER ALU, LOAD, STORE, BRANCH, JUMP, ETC
+            }
+            COMMIT = 1;                                                                                                                                 // COMMIT REGISTERS
+
+            if( MEMACCESS.memorystore ) {
+                address = AGU.storeAddress; writedata = store[0,16];                                                                                    // STORE 8 OR 16 BIT
+                if( STORE168FAST ) {
+                    writememory = 1;                                                                                                                    // FAST STORE FOR 16 * TO LOW MEMORY
+                } else {
+                    writememory = 1; while( memorybusy ) {}
+                    if( accesssize[1,1] ) {
+                        address = SA2.addressplus2; writedata = store[16,16]; writememory = 1;  while( memorybusy ) {}                                  // 32 BIT WRITE 2ND 16 BITS
+                    }
+                }
+            } else { writememory = 0; }
+
+            pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                                                  // UPDATE PC AND SMT
+
+            if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
+                // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE IF NOT SPECIAL MODE
+                DMAACTIVE = &DMAMODE ? 2 : 1; DMA.start = 1;
+                while( |DMA.dmacount ) {
+                    address = DMA.dmasrc; readmemory = 1; while( memorybusy ) {}                                                                        // DMA FETCH
+                    memoryinput[0,16] = readdata; address = DMA.dmadest;                                                                                // DMA SET DESTINATION ADDRESS
+                    if( DMAACTIVE[1,1] ) {
+                        writedata = memoryinput[0,8]; writememory = 1; ++: ++:                                                                          // STORE TWO PIXELS TO PIXELBLOCK IN SPECIAL MODE
+                        writedata = memoryinput[8,8]; writememory = 1;
+                    } else {
+                        writedata = memoryinput[ { DMA.dmasrc[0,1], 3b000 }, 8 ];                                                                       // DMA STORE 8 BIT
+                        if( DMA.dmadest[26,1] ) { writememory = 1; while( memorybusy ) {} } else { writememory = 1;  }                                  // CHECK IF FAST STORE IS POSSIBLE
+                    }
+                    DMA.update = 1;
+                }
+                DMAACTIVE = 0;
+            } else {
+                DMAACTIVE = 0;
+            }
+
+            cacheselect = 0; address = PC; readmemory = 1;                                                                                              // START FETCH OF NEXT INSTRUCTION
+        } // RISC-V
+    }
 }
 
-algorithm cpuexecuteSLOWPATH(
+unit cpuexecuteSLOWPATH(
     input   uint1   start,
     output  uint1   busy(0),
     input   uint1   SMT,
@@ -258,7 +261,7 @@ algorithm cpuexecuteSLOWPATH(
     input   uint1   isFPU,
     input   uint1   isALUM,
     input   uint1   isALUCLM
-) <autorun,reginputs> {
+) <reginputs> {
     // M EXTENSION - DIVISION
     aluMD ALUMD( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, abssourceReg1 <: abssourceReg1, abssourceReg2 <: abssourceReg2 );
 
@@ -325,6 +328,23 @@ algorithm cpuexecuteSLOWPATH(
     // Deal with updating fpuflags and writing to fpu registers
     CSR.updateFPUflags := 0; frd := fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0;
 
+    algorithm <autorun> {
+        // PROVIDE WAIT STATE FOR APPROPRIATE OPERATION
+        while(1) {
+            if( start ) {
+                busy = 1;
+                onehot( operation ) {
+                    case 0: { ++:  }                                                                                    // CSR
+                    case 1: {}                                                                                          // ATOMIC OPERATIONS
+                    case 2: {}                                                                                          // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                    case 3: { while( unitbusy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
+                }
+                busy = 0;
+                CSR.updateFPUflags = fpuconvert | fpucalc;
+            }
+        }
+    }
+
     // COLLECT THE APPROPRIATE RESULT
     always_after {
         if( busy ) {
@@ -343,24 +363,9 @@ algorithm cpuexecuteSLOWPATH(
             }
         }
     }
-
-    // PROVIDE WAIT STATE FOR APPROPRIATE OPERATION
-    while(1) {
-        if( start ) {
-            busy = 1;
-            onehot( operation ) {
-                case 0: { ++:  }                                                                                    // CSR
-                case 1: {}                                                                                          // ATOMIC OPERATIONS
-                case 2: {}                                                                                          // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                case 3: { while( unitbusy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
-            }
-            busy = 0;
-            CSR.updateFPUflags = fpuconvert | fpucalc;
-        }
-    }
 }
 
-algorithm cpuexecuteFASTPATH(
+unit cpuexecuteFASTPATH(
     input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
@@ -382,7 +387,7 @@ algorithm cpuexecuteFASTPATH(
     output  uint1   takeBranch,
     output  int32   memoryoutput,
     output  int32   result
-) <autorun,reginputs> {
+) <reginputs> {
     // COMPARISON UNIT
     compare COMPARE( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, immediateValue <: immediateValue, regimm <: opCode[3,1] );
 
@@ -412,7 +417,7 @@ algorithm cpuexecuteFASTPATH(
 }
 
 // MINI DMA CONTROLLER ADDRESS GENERATOR
-algorithm dma(
+unit dma(
     input   uint27  DMASOURCE,
     input   uint27  DMADEST,
     input   uint27  DMACOUNT,
@@ -424,7 +429,7 @@ algorithm dma(
 
     input   uint1   start,
     input   uint1   update
-) <autorun,reginputs> {
+) <reginputs> {
     uint3   dmamode = uninitialized;
     uint27  dmasrc1 <:: dmasrc + 1;
     uint27  dmasrc2 <:: dmasrc + 2;
@@ -451,7 +456,7 @@ algorithm dma(
 }
 
 // RISC-V CPU REGISTERS
-algorithm riscvregisters(
+unit riscvregisters(
     input   uint1   SMT,
     input   uint5   rs1,
     input   uint5   rs2,
@@ -465,7 +470,7 @@ algorithm riscvregisters(
     output  int32   sourceReg1F,
     output  int32   sourceReg2F,
     output  int32   sourceReg3F
-) <autorun,reginputs> {
+) <reginputs> {
     // RISC-V REGISTERS
     uint1   Iwrite <:: write & ~frd & |rd;          uint1   Fwrite <:: write & frd;
 

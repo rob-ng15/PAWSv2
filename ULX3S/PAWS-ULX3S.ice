@@ -30,21 +30,24 @@ $include('../common/ps2.si')
 $include('../common/sdram_interfaces.ice')
 $include('../common/sdram_controller_autoprecharge_r16_w16.ice')
 $include('../common/sdram_utils.ice')
+
+// CLEAN RESET - WIDTH 1
+$$ clean_reset_width = 1
 $include('../common/clean_reset.si')
 
 // Headers
-$include('../definitions.ice')
-$include('../circuitry.ice')
+$include('../definitions.si')
+$include('../circuitry.si')
 
 // Multiplexed Display Includes
 $include('../background.si')
 $include('../bitmap.si')
 $include('../GPU.si')
 $include('../character_map.si')
-$include('../sprite_layer.ice')
-$include('../terminal.ice')
-$include('../tile_map.ice')
-$include('../multiplex_display.ice')
+$include('../sprite_layer.si')
+$include('../terminal.si')
+$include('../tile_map.si')
+$include('../multiplex_display.si')
 $include('../common/audio_pwm.si')
 $include('../audio.si')
 $$if gpu_50_mhz then
@@ -60,8 +63,8 @@ $$CPUISA = 0x40001027
 $include('../cpu_functionblocks.si')
 $include('../ALU.si')
 $include('../FPU.si')
-$include('../CPU.ice')
+$include('../CPU.si')
 
 // MAIN
-$include('../PAWS.ice')
+$include('../PAWS.si')
 
