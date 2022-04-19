@@ -346,6 +346,13 @@ $$ Ipartaddresswidth = sdram_addr_width - 1 - Icacheaddrwidth
 $$ Ipartaddressstart = 1 + Icacheaddrwidth
 bitfield Icachetag{ uint1 valid, uint$Ipartaddresswidth$ partaddress }
 
+// L1 CACHE IS NUMBER OF 16bit ENTRIES
+$$ L1size = 32
+$$ L1cacheaddrwidth = clog2(L1size)
+$$ L1partaddresswidth = sdram_addr_width - 1 - L1cacheaddrwidth
+$$ L1partaddressstart = 1 + L1cacheaddrwidth
+bitfield L1cachetag{ uint1 valid, uint$L1partaddresswidth$ partaddress }
+
 unit cachecontroller(
     sdram_user      sio,
     input   uint1   cacheselect,
@@ -357,9 +364,10 @@ unit cachecontroller(
     output  uint16  readdata,
     output  uint1   busy(0)
 ) <reginputs> {
-    // CACHE WRITERS
+    // CACHES
     dcache DCACHE( needwritetosdram <: dowrite, address <: address, writedata <: cachewritevalue );
     icache ICACHE( address <: address, writedata <: cachewritevalue );
+    l1cache L1I( address <: address, writedata <: cachewritevalue );
 
     // SDRAM CONTROLLER
     sdramcontroller SDRAM( sio <:> sio, writedata <: DCACHE.rdata );
@@ -368,6 +376,8 @@ unit cachecontroller(
     uint1   Dcachematch <:: ( cacheselect & DCACHE.tagmatch );
     uint1   Icachematch <:: ( ~cacheselect & ICACHE.tagmatch );
     uint1   Icacheupdate <:: dowrite & ICACHE.tagmatch;
+    uint1   L1Icacheupdate <:: dowrite & L1I.tagmatch;
+    uint1   useL1I = 0;
 
     // VALUE TO WRITE TO CACHE ( deals with correctly mapping 8 bit writes and 16 bit writes, using sdram or cache as base )
     uint16  writethrough <:: ( byteaccess ) ? ( address[0,1] ? { writedata[0,8], DCACHE.tagmatch ? DCACHE.rdata[0,8] : SDRAM.readdata[0,8] } :
@@ -381,33 +391,40 @@ unit cachecontroller(
     // SDRAM ACCESS
     SDRAM.readflag := 0; SDRAM.writeflag := 0;
 
-    DCACHE.update := 0; ICACHE.update := 0;
+    DCACHE.update := 0; ICACHE.update := 0; L1I.update := 0;
 
     algorithm <autorun> {
         while(1) {
             doread = readflag; dowrite = writeflag;
 
-            if( doread | dowrite ) {
-                busy = 1;                                                                                                                           // MARK BUSY,
-                ++:                                                                                                                                 // WAIT FOR CACHE
-                if( ( doread & Icachematch ) | Dcachematch ) {                                                                                          // READ/WRITE IN CACHE
-                    DCACHE.update = dowrite;                                                                                                            // UPDATE CACHE IF WRITE
-                    ICACHE.update = Icacheupdate;                                                                                                       // UPDATE ICACHE IF NEEDED
-                    busy = 0;
-                } else {
-                    if( DCACHE.needswrite ) {                                                                                                       // CHECK IF CACHE LINE IS OCCUPIED
-                        while( SDRAM.busy ) {} SDRAM.address = DCACHE.cacheaddress;                                                                 // EVICT FROM CACHE TO SDRAM
-                        SDRAM.writeflag = 1;
-                    }
-                    if( doreadsdram ) {                                                                                                             // NEED TO READ SDRAM
-                        while( SDRAM.busy ) {} SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                  // READ FOR READ OR 8 BIT WRITE
-                        DCACHE.update = cacheselect;                                                                                                // UPDATE THE CACHE
-                        ICACHE.update = ~cacheselect;                                                                                               // UPDATE ICACHE IF NEEDED
+            if( doread & ( ~cacheselect & L1I.tagmatch ) ) {
+                useL1I = 1;
+            } else {
+                if( doread | dowrite ) {
+                     useL1I = 0; busy = 1;                                                                                                              // MARK BUSY,
+                    ++:                                                                                                                                 // WAIT FOR CACHE
+                    if( ( doread & Icachematch ) | Dcachematch ) {                                                                                          // READ/WRITE IN CACHE
+                        DCACHE.update = dowrite;                                                                                                            // UPDATE CACHE IF WRITE
+                        ICACHE.update = Icacheupdate;                                                                                                       // UPDATE ICACHE IF NEEDED
+                        L1I.update = L1Icacheupdate;
+                        busy = 0;
                     } else {
-                        DCACHE.update = dowrite;                                                                                                    // UPDATE CACHE FOR 16 BIT WRITE
-                        ICACHE.update = Icacheupdate;                                                                                               // UPDATE ICACHE IF NEEDED
+                        if( DCACHE.needswrite ) {                                                                                                       // CHECK IF CACHE LINE IS OCCUPIED
+                            while( SDRAM.busy ) {} SDRAM.address = DCACHE.cacheaddress;                                                                 // EVICT FROM CACHE TO SDRAM
+                            SDRAM.writeflag = 1;
+                        }
+                        if( doreadsdram ) {                                                                                                             // NEED TO READ SDRAM
+                            while( SDRAM.busy ) {} SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                  // READ FOR READ OR 8 BIT WRITE
+                            DCACHE.update = cacheselect;                                                                                                // UPDATE THE CACHE
+                            ICACHE.update = ~cacheselect;                                                                                               // UPDATE ICACHE IF NEEDED
+                            L1I.update = ~cacheselect;
+                        } else {
+                            DCACHE.update = dowrite;                                                                                                    // UPDATE CACHE FOR 16 BIT WRITE
+                            ICACHE.update = Icacheupdate;                                                                                               // UPDATE ICACHE IF NEEDED
+                            L1I.update = L1Icacheupdate;
+                        }
+                        busy = 0;
                     }
-                    busy = 0;
                 }
             }
         }
@@ -415,7 +432,7 @@ unit cachecontroller(
 
     always_after {
         // 16 bit READ
-        readdata = Icachematch ? ICACHE.rdata : Dcachematch ? DCACHE.rdata : SDRAM.readdata;
+        readdata = useL1I ? L1I.rdata : Icachematch ? ICACHE.rdata : Dcachematch ? DCACHE.rdata : SDRAM.readdata;
     }
 }
 
@@ -468,6 +485,31 @@ unit icache(
         cache.wenable1 = update; tags.wenable1 = update;
         cache.addr1 = address[1,$Icacheaddrwidth$]; cache.wdata1 = writedata;
         tags.addr1 = address[1,$Icacheaddrwidth$]; tags.wdata1 = { 1b1, address[$Ipartaddressstart$,$Ipartaddresswidth$] };
+    }
+}
+
+// L1 SMALL FAST CACHE
+unit l1cache(
+    input!  uint$sdram_addr_width$  address,
+    input   uint16  writedata,
+    input   uint1   update,
+    output! uint16  rdata,
+    output! uint1   tagmatch
+) <reginputs> {
+    // L1 INSTRUCTION CACHE
+    // AS ABOVE, BUT BASED IN LUTRAM FOR NO LATENCY ACCESS
+    uint16  L1cache[$L1size$] = uninitialized;
+    uint$L1partaddresswidth+1$ L1tags[$L1size$] = uninitialized;
+    uint$L1cacheaddrwidth$ L1addr <: address[1,$L1cacheaddrwidth$];
+
+    tagmatch := ( L1tags[ L1addr ] == { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] } );
+    rdata := L1cache[ L1addr ];
+
+    always_after {
+        if( update ) {
+            L1tags[ L1addr ] = { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
+            L1cache[ L1addr ] = writedata;
+        }
     }
 }
 

@@ -66,5 +66,5 @@ $include('../FPU.si')
 $include('../CPU.si')
 
 // MAIN
-$include('../PAWS.si')
+$include('../PAWS-L1.si')
 
