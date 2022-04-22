@@ -1,0 +1,104 @@
+// Runs at 25MHz
+unit apu(
+    input   uint3   waveform,
+    input   uint12  frequency,
+    input   uint16  duration,
+    input   uint1   apu_write,
+    input   uint8   staticGenerator,
+    output  uint1   audio_active,
+    output  uint8   audio_output,
+    output  uint8   point,
+    input   uint8   sine
+) <reginputs> {
+    waveform WAVEFORM( start <: apu_write, update <: COUNTER.updatepoint, selected_waveform <: waveform, staticGenerator <: staticGenerator, point :> point, sine <: sine );
+    audiocounter COUNTER( selected_frequency <: frequency, selected_duration <: duration, start <: apu_write, active :> audio_active );
+
+    always_after {
+        audio_output = audio_active ? COUNTER.updatepoint ? WAVEFORM.audio_output : audio_output : 0;
+    }
+}
+
+unit waveform(
+    input   uint1   start,
+    input   uint1   update,
+    input   uint3   selected_waveform,
+    input   uint8   staticGenerator,
+    output  uint8   audio_output,
+    output  uint8   point,
+    input   uint8   sine
+) <reginputs> {
+    point := start ? 0 : point + update;
+
+    always  {
+        switch( selected_waveform ) {
+            case 0: { audio_output = { point[7,1], 7b1111111 }; }                                   // SQUARE
+            case 1: { audio_output = point; }                                                       // SAWTOOTH
+            case 2: { audio_output = point[7,1] ? { point[0,7], 1b0 } : ~{ point[0,7], 1b0 }; }     // TRIANGLE
+            case 3: { audio_output = sine; }                                                        // SINE
+            default: { audio_output = staticGenerator; }                                            // NOISE
+        }
+    }
+}
+
+unit audiocounter(
+    input   uint1   start,
+    input   uint12  selected_frequency,
+    input   uint16  selected_duration,
+    output  uint1   updatepoint,
+    output  uint1   active(0)
+) <reginputs> {
+    uint12  counter25mhz = uninitialised;           uint16  counter1khz = uninitialised;                uint16  duration = uninitialised;
+    uint12  c25mhzNEXT <:: counter25mhz - 1;        uint16  c1khzNEXT <:: counter1khz - 1;              uint16  dureationNEXT <:: duration - 1;
+    uint1   updateduration <:: active & ( ~|counter1khz );
+
+    active ::= ( |duration ); updatepoint ::= active & ( ~|counter25mhz );
+
+    always_after {
+        if( start ) {
+            counter25mhz = 0;
+            counter1khz = 25000;
+            duration = selected_duration;
+        } else {
+            counter25mhz = updatepoint ? selected_frequency : c25mhzNEXT;
+            counter1khz = updateduration ? 25000 : c1khzNEXT;
+            if( updateduration ) { duration = dureationNEXT; }
+        }
+    }
+}
+
+// GIVEN THE FREQUENCY INDEX, CONVERT TO 1 to 12, PLUS SHIFT AMOUNT
+// ALLOWS FREQUENCY TABLE TO BE 13 ENTRIES LONG
+unit octave(
+    input   uint6   frequency,
+    output  uint4   basefrequency,
+    output  uint3   shift
+) <reginputs> {
+    always_after {
+        shift = ( frequency > 60 ) ? 5 : ( frequency > 48 ) ? 4 : ( frequency > 36 ) ? 3 : ( frequency > 24 ) ? 2 : ( frequency > 12 ) ? 1 : 0;
+        basefrequency = frequency - ( shift * 12 );
+    }
+}
+
+// OUTPUT THE SINEWAVE FOR THE POINT IN THE FEQUENCY WAVE
+// TWO INPUT/OUTPUT FOR SHARING BETWEEN LEFT/RIGHT AUDIO
+// EFFECTIVELY A DUALPORT_BROM
+unit sinegenerator(
+    input   uint6   point0,
+    input   uint6   point1,
+    output  uint8   sine0,
+    output  uint8   sine1
+) <reginputs> {
+    uint8 sine[64] = {
+        128,140,153,165,177,188,199,209,
+        218,226,234,240,245,250,253,254,
+        255,254,253,250,245,240,234,226,
+        218,209,199,188,177,165,153,140,
+        128,116,103,91,79,68,57,47,
+        38,30,22,16,11,6,3,2,
+        1,2,3,6,11,16,22,30,
+        38,47,57,68,79,91,103,116
+    };
+    always_after {
+        sine0 = sine[ point0 ]; sine1 = sine[ point1 ];
+    }
+}

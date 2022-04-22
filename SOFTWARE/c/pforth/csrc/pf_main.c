@@ -33,6 +33,10 @@
 
 #include "pforth.h"
 
+// USE fstat TO CHECK FOR PRECOMPILED DICTIONARY
+#include <sys/stat.h>
+#include <unistd.h>
+
 #ifndef PF_DEFAULT_DICTIONARY
 #define PF_DEFAULT_DICTIONARY "pforth.dic"
 #endif
@@ -68,74 +72,25 @@ int main( int argc, char **argv )
 #else /* PF_STATIC_DIC */
     const char *DicName = PF_DEFAULT_DICTIONARY;
 #endif /* !PF_STATIC_DIC */
-
+    const char *DicNameFile = "COMPUTER/PFORTH/pforth.dic";
     const char *SourceName = NULL;
     char IfInit = FALSE;
     char *s;
     cell_t i;
     ThrowCode Result;
 
-/* For Metroworks on Mac */
-#ifdef __MWERKS__
-    argc = ccommand(&argv);
-#endif
+    // IF DICTIONARY EXISTS LOAD IT, OTHERWISE USE INIT MODE
+    //struct stat fileinfo;
+    //if( !fstat( DicNameFile, &fileinfo ) ) {
+    //    IfInit = FALSE;
+    //    DicName = PF_DEFAULT_DICTIONARY;
+    //    SourceName = NULL;
+    //} else {
+        IfInit = TRUE;
+        DicName = NULL;
+        SourceName = NULL;
+    //}
 
-    pfSetQuiet( FALSE );
-/* Parse command line. */
-    for( i=1; i<argc; i++ )
-    {
-        s = argv[i];
-
-        if( *s == '-' )
-        {
-            char c;
-            s++; /* past '-' */
-            c = *s++;
-            switch(c)
-            {
-            case 'i':
-                IfInit = TRUE;
-                DicName = NULL;
-                break;
-
-            case 'q':
-                pfSetQuiet( TRUE );
-                break;
-
-            case 'd':
-                if( *s != '\0' ) DicName = s;
-                /* Allow space after -d (Thanks Aleksej Saushev) */
-                /* Make sure there is another argument. */
-                else if( (i+1) < argc )
-                {
-                    DicName = argv[++i];
-                }
-                if (DicName == NULL || *DicName == '\0')
-                {
-                    DicName = PF_DEFAULT_DICTIONARY;
-                }
-                break;
-
-            default:
-                ERR(("Unrecognized option!\n"));
-                ERR(("pforth {-i} {-q} {-dfilename.dic} {sourcefilename}\n"));
-                Result = 1;
-                goto on_error;
-                break;
-            }
-        }
-        else
-        {
-            SourceName = s;
-        }
-    }
-/* Force Init */
-#ifdef PF_INIT_MODE
-    IfInit = TRUE;
-    DicName = NULL;
-    SourceName = NULL;
-    //SourceName = "system.fth"; // WILL BOOTSTRAP THE SYSTEM - MODIFIED TO NOT SAVE THE COMPILED DICTIONARY
-#endif
 
 #ifdef PF_UNIT_TEST
     if( (Result = pfUnitTest()) != 0 )

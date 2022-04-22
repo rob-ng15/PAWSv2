@@ -100,27 +100,6 @@ char uart_inputcharacter( void ) {
     return *UART_DATA;
 }
 
-// INPUT FROM PS2
-// RETURN IF A CHARACTER IS AVAILABLE
-char ps2_character_available( void ) {
-    return *PS2_AVAILABLE;
-}
-
-// RETURN A DECODED ASCII CHARACTER
-// 0x0xx is an ascii character from the keyboard
-// 0x1xx is an escaped character from the keyboard
-// F1 to F12 map to 0x101 to 0x10c, SHIFT F1 to F12 map to 0x111 to 0x11c
-// CURSOR KEYS UP = 0x141, RIGHT = 0x143, DOWN = 0x142, LEFT = 0x144
-// INSERT = 0x132 HOME = 0x131 PGUP = 0x135 DELETE = 0x133 END = 0x134 PGDN = 0x136
-unsigned short ps2_inputcharacter( void ) {
-    while( !*PS2_AVAILABLE ) {}
-    return *PS2_DATA;
-}
-// SET KEYBOARD MODE TO == 0 JOYSTICK == 1 KEYBOARD
-void ps2_keyboardmode( unsigned char mode ) {
-    *PS2_MODE = mode;
-}
-
 // TIMER AND PSEUDO RANDOM NUMBER GENERATOR
 
 // PSEUDO RANDOM NUMBER GENERATOR
@@ -321,6 +300,11 @@ void screen_mode( unsigned char screenmode, unsigned char colour, unsigned char 
     *SCREENMODE = screenmode;
     *COLOUR = colour;
     *REZ = tmresolution;
+}
+
+// SET THE DIMMER LEVEL FOR THE DISPLAY 0 == FULL BRIGHTNESS, 1 - 7 DIMMER, 8 - 15 BLANK
+void screen_dimmer( unsigned char dimmerlevel ) {
+    *DIMMER = dimmerlevel;
 }
 
 // SET THE FRAMEBUFFER TO DISPLAY / DRAW
@@ -729,7 +713,11 @@ void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsi
     *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_COLOUR, w*h, 1 );
+    if( ( (int)buffer & 1 ) || ( ( w*h ) & 1) ) {
+        DMASTART( buffer, (void *)PB_COLOUR, w*h, 1 );      // UNALIGNED OR ODD NUMBER OF PIXELS, USE 8 BIT MODE
+    } else {
+        DMASTART( buffer, (void *)PB_COLOUR, w*h/2, 7 );    // ALIGNED AND EVEN NUMBER OF PIXELS, USE 16 BIT MODE
+    }
     *PB_STOP = 3;
 }
 
@@ -1896,10 +1884,13 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
 #endif
 
 // Standard i/o directs to the curses terminal, input is from the ps_keyboard
+extern unsigned char ps2_character_available( void );
+extern unsigned char ps2_inputcharacter( void );
+extern void ps2_keyboardmode( unsigned char mode );
 
 unsigned char *_heap = NULL;
 unsigned char *_sbrk( int incr ) {
-  unsigned char *prev_heap;
+unsigned char *prev_heap;
 
   if (_heap == NULL) {
     _heap = (unsigned char *)MEMORYTOP - MALLOC_MEMORY - 32;
@@ -1917,7 +1908,7 @@ unsigned char *_sbrk( int incr ) {
 
 // PAWS INITIALISATION FOR THE TERMNAL AND THE SDCARD for fat_io_lib
 void __start_stdinout( void ) {
-    initscr(); start_color(); autorefresh( TRUE ); ps2_keyboardmode( TRUE );
+    initscr(); start_color(); autorefresh( TRUE ); ps2_keyboardmode( PS2_KEYBOARD );
     __stdinout_init = TRUE;
 }
 void __start_sdmedia( void ) {

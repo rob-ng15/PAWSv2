@@ -30,6 +30,9 @@ CRT0OBJ=	$(PAWSBASE)library/build/crt0.o
 LIBPAWSSOURCE=	$(PAWSBASE)library/PAWS.h $(PAWSBASE)library/PAWSdefinitions.h $(PAWSBASE)library/PAWSlibrary.c
 LIBPAWSOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/libPAWS.o
 
+PAWSP2SOURCE=	$(PAWSBASE)library/PAWSPS2driver.c
+PAWSPS2OBJ=		$(PAWSBASE)library/$(BUILD_DIR)/PAWSPS2driver.o
+
 NANOJPEGSOURCE= $(PAWSBASE)library/nanojpeg/nanojpeg.c
 NANOJPEGOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/nanojpeg.o
 
@@ -43,10 +46,13 @@ FATIOLIBOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o \
 		$(PAWSBASE)library/$(BUILD_DIR)/fat_cache.o \
 		$(PAWSBASE)library/$(BUILD_DIR)/fat_format.o
 
-LIBPAWS=$(CRT0OBJ) $(LIBPAWSOBJ) $(NANOJPEGOBJ) $(FATIOLIBOBJ)
+LIBPAWS=$(CRT0OBJ) $(LIBPAWSOBJ) $(PAWSPS2OBJ) $(NANOJPEGOBJ) $(FATIOLIBOBJ)
 
 $(LIBPAWSOBJ) : $(LIBPAWSSOURCE)
-	$(CC) $(CFLAGS) -finline -c $(PAWSBASE)library/PAWSlibrary.c -o $@
+	$(CC) $(CFLAGS) -c $(PAWSBASE)library/PAWSlibrary.c -o $@
+
+$(PAWSPS2OBJ) : $(PAWSP2SOURCE)
+	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
 
 $(NANOJPEGOBJ) : $(NANOJPEGSOURCE)
 	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@

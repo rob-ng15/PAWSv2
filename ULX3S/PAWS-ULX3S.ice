@@ -23,45 +23,48 @@ $$end
 
 // IO - UART, SDCARD and PS/2 KEYBOARD
 $include('../common/uart.ice')
-$include('../common/sdcard.ice')
-$include('../common/ps2.ice')
+$include('../common/sdcard_write.si')
+$include('../common/ps2.si')
 
 // SDRAM
 $include('../common/sdram_interfaces.ice')
 $include('../common/sdram_controller_autoprecharge_r16_w16.ice')
 $include('../common/sdram_utils.ice')
-$include('../common/clean_reset.ice')
+
+// CLEAN RESET - WIDTH 1
+$$ clean_reset_width = 1
+$include('../common/clean_reset.si')
 
 // Headers
-$include('../definitions.ice')
-$include('../circuitry.ice')
+$include('../definitions.si')
+$include('../circuitry.si')
 
 // Multiplexed Display Includes
-$include('../background.ice')
-$include('../bitmap.ice')
-$include('../GPU.ice')
-$include('../character_map.ice')
-$include('../sprite_layer.ice')
-$include('../terminal.ice')
-$include('../tile_map.ice')
-$include('../multiplex_display.ice')
-$include('../common/audio_pwm.ice')
-$include('../audio.ice')
+$include('../background.si')
+$include('../bitmap.si')
+$include('../GPU.si')
+$include('../character_map.si')
+$include('../sprite_layer.si')
+$include('../terminal.si')
+$include('../tile_map.si')
+$include('../multiplex_display.si')
+$include('../common/audio_pwm.si')
+$include('../audio.si')
 $$if gpu_50_mhz then
 $include('../video_memmap-50MHzGPU.ice')
 $$else
-$include('../video_memmap.ice')
+$include('../video_memmap.si')
 $$end
-$include('../io_memmap.ice')
-$include('../timers_random.ice')
+$include('../io_memmap.si')
+$include('../timers_random.si')
 
 // CPU SPECIFICATION
 $$CPUISA = 0x40001027
-$include('../cpu_functionblocks.ice')
-$include('../ALU.ice')
-$include('../FPU.ice')
-$include('../CPU.ice')
+$include('../cpu_functionblocks.si')
+$include('../ALU.si')
+$include('../FPU.si')
+$include('../CPU.si')
 
 // MAIN
-$include('../PAWS.ice')
+$include('../PAWS.si')
 

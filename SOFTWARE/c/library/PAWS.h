@@ -4,11 +4,6 @@ unsigned char volatile *UART_STATUS = (unsigned char volatile *) 0xf102;
 unsigned short volatile *BUTTONS = (unsigned short volatile *) 0xf120;
 unsigned char volatile *LEDS = (unsigned char volatile *) 0xf130;
 
-// PS/2 KEYBOARD
-unsigned char volatile *PS2_AVAILABLE = (unsigned char volatile *) 0xf110;
-unsigned char volatile *PS2_MODE = (unsigned char volatile *) 0xf110;
-unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf112;
-
 // SDCARD
 unsigned char volatile *SDCARD_READY = (unsigned char volatile *) 0xf140;
 unsigned char volatile *SDCARD_READSTART = (unsigned char volatile *) 0xf140;
@@ -22,6 +17,7 @@ unsigned char volatile *VBLANK = (unsigned char volatile *) 0xdf00;
 unsigned char volatile *SCREENMODE = (unsigned char volatile *) 0xdf00;
 unsigned char volatile *COLOUR = (unsigned char volatile *) 0xdf01;
 unsigned char volatile *REZ = (unsigned char volatile *) 0xdf02;
+unsigned char volatile *DIMMER = (unsigned char volatile *) 0xdf03;
 
 // BACKGROUND AND COPPER - BASE 0xd000
 unsigned char volatile *BACKGROUND_COLOUR = (unsigned char volatile *) 0xd000;
@@ -102,9 +98,6 @@ unsigned char volatile *PB_MODE = (unsigned char volatile *) 0xd67a;
 unsigned char volatile *PB_CMNUMBER = (unsigned char volatile *) 0xd67c;
 unsigned char volatile *PB_CMENTRY = (unsigned char volatile *) 0xd67e;
 
-unsigned char volatile *BITMAP_X_READ = (unsigned char volatile *) 0xd6d0;
-unsigned short volatile *BITMAP_Y_READ = (unsigned short volatile *) 0xd6d2;
-unsigned short volatile *BITMAP_PIXEL_READ = (unsigned short volatile *) 0xd6d4;
 unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e2;
 unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e4;
 unsigned short volatile *CROP_TOP = (unsigned short volatile *) 0xd6e6;
