@@ -8,6 +8,7 @@
 
 unit PAWSCPU(
     input   uint1   clock_CPUdecoder,
+    input   uint1   clock_CPUcache,
     output  uint2   accesssize,
     output  uint27  address(0),
     output  uint1   cacheselect(0),
@@ -150,6 +151,10 @@ unit PAWSCPU(
     // MINI DMA CONTROLLER
     dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE );
 
+    // SMALL ON CPU L0 CACHE
+    il0cache ICACHE <@clock_CPUcache> ( address <: PC, newinstruction <: instruction[2,30], newcompressed <: compressed );
+    ICACHE.update := 0;
+
     REGISTERS.frd := IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd; REGISTERS.write := COMMIT & IFASTSLOW.writeRegister;
     DMA.start := 0; DMA.update := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
 
@@ -162,20 +167,25 @@ unit PAWSCPU(
         cacheselect = 0; address = 0; readmemory = 1;                                                                                                   // FETCH FIRST INSTRUCTION
 
         while(1) {
-            while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
-            compressed = ( ~&readdata[0,2] );
-            if( compressed ) {
-                switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
-                    case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
-                    case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
-                    case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
-                    default: {}
-                }
-                ++:
+            if( ICACHE.tagmatch ) {                                                                                                                     // CHECK ICACHE
+                instruction = { ICACHE.instruction, 2b11 };
+                compressed = ICACHE.compressed;
             } else {
-                instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
-                ++: ++:
+                while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
+                compressed = ( ~&readdata[0,2] );
+                if( compressed ) {
+                    switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
+                        case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
+                        case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
+                        case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
+                        default: {}
+                    }
+                } else {
+                    instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
+                    ++:
+                }
             }
+            ++: ICACHE.update = ~ICACHE.tagmatch;                                                                                                       // UPDATE ICACHE IF NOT IN ICACHE
             // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
 
             cacheselect = 1;
@@ -234,8 +244,41 @@ $$end
                 DMAACTIVE = 0;
             }
 
-            cacheselect = 0; address = PC; readmemory = 1;                                                                                              // START FETCH OF NEXT INSTRUCTION
+            cacheselect = 0; address = PC; readmemory = ~ICACHE.tagmatch;                                                                               // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
         } // RISC-V
+    }
+}
+
+// ON CPU INSTRUCTION CACHE IS SMALL NUMBER OF INSTRUCTIONS + COMPRESSED FLAG
+$$ addr_width = 27
+$$ L0Isize = 8
+$$ L0Icacheaddrwidth = clog2(L0Isize)
+$$ L0Ipartaddresswidth = addr_width - 1 - L0Icacheaddrwidth
+$$ L0Ipartaddressstart = 1 + L0Icacheaddrwidth
+
+unit il0cache(
+    input   uint$addr_width$  address,
+    input   uint30  newinstruction,
+    input   uint1   newcompressed,
+    input   uint1   update,
+    output  uint30  instruction,
+    output  uint1   compressed,
+    output! uint1   tagmatch
+) <reginputs> {
+    // L0 INSTRUCTION CACHE
+    simple_dualport_bram uint$31+L0Ipartaddresswidth$ L0cache[$L0Isize$] = uninitialized; uint$L0Isize$ L0valid = 0;
+    uint$L0Icacheaddrwidth$ L0addr <:: address[1,$L0Icacheaddrwidth$];
+    L0cache.wenable1 := 1;
+
+    always_after {
+        L0cache.addr0 = L0addr;
+        tagmatch = L0valid[ L0addr, 1 ] & ( L0cache.rdata0[31,$L0Ipartaddresswidth$] == address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$] );
+        instruction = L0cache.rdata0[ 1, 30 ]; compressed = L0cache.rdata0[ 0, 1 ];
+
+        if( update ) {
+            L0cache.addr1 = L0addr; L0cache.wdata1 = { address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$], newinstruction, newcompressed };
+            L0valid[ L0addr, 1 ] = 1;
+        }
     }
 }
 
