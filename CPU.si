@@ -168,58 +168,7 @@ unit PAWSCPU(
         cacheselect = 0; address = 0; readmemory = 1;                                                                                               // FETCH FIRST INSTRUCTION
 
         while(1) {
-            if( L0match ) {                                                                      // CHECK ICACHE
-                instruction =  { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
-                compressed = SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
-            } else {
-                while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
-                compressed = ( ~&readdata[0,2] );
-                if( compressed ) {
-                    switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
-                        case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
-                        case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
-                        case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
-                        default: {}
-                    }
-                } else {
-                    instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
-                }
-            }
-            ++: ++:// DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
-            ICACHE_0.update = L0update_0; ICACHE_1.update = L0update_1;                                                                                     // UPDATE ICACHE
-
-            cacheselect = 1;
-            if( MEMACCESS.memoryload ) {
-                address = AGU.loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
-                if( accesssize[1,1] ) {
-                    memoryinput[0,16] = readdata; address = LA2.addressplus2; readmemory = 1; while( memorybusy ) {} memoryinput[16,16] = readdata;     // READ 2ND 16 BITS
-                } else {
-                    memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
-                }
-            } else { readmemory = 0; }
-
-            if( ~IFASTSLOW.FASTPATH ) {
-                EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                                     // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
-            } else {
-                COMMIT = 0;                                                                                                                             // INTEGER ALU, LOAD, STORE, BRANCH, JUMP, ETC
-            }
-            COMMIT = 1;                                                                                                                                 // COMMIT REGISTERS
-
-            if( MEMACCESS.memorystore ) {
-                address = AGU.storeAddress; writedata = store[0,16];                                                                                    // STORE 8 OR 16 BIT
-                if( STORE168FAST ) {
-                    writememory = 1;                                                                                                                    // FAST STORE FOR 16 * TO LOW MEMORY
-                } else {
-                    writememory = 1; while( memorybusy ) {}
-                    if( accesssize[1,1] ) {
-                        address = SA2.addressplus2; writedata = store[16,16]; writememory = 1;  while( memorybusy ) {}                                  // 32 BIT WRITE 2ND 16 BITS
-                    }
-                }
-            } else { writememory = 0; }
-
-            pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                                                  // UPDATE PC AND SMT
-
-            if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
+           if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
                 // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE IF NOT SPECIAL MODE
                 DMAACTIVE = &DMAMODE ? 2 : 1; DMA.start = 1;
                 while( |DMA.dmacount ) {
@@ -235,16 +184,67 @@ $$end
                         writedata = memoryinput[8,8]; writememory = 1;
                     } else {
                         writedata = memoryinput[ { DMA.dmasrc[0,1], 3b000 }, 8 ];                                                                       // DMA STORE 8 BIT
-                        if( DMA.dmadest[26,1] ) { writememory = 1; while( memorybusy ) {} } else { writememory = 1;  }                                  // CHECK IF FAST STORE IS POSSIBLE
+                        if( DMA.dmadest[26,1] ) { writememory = 1; while( memorybusy ) {} } else { writememory = 1; }                                   // CHECK IF FAST STORE IS POSSIBLE
                     }
                     DMA.update = 1;
                 }
                 DMAACTIVE = 0;
             } else {
-                DMAACTIVE = 0;
+                if( L0match ) {                                                                                                                         // CHECK ICACHE
+                    instruction =  { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
+                    compressed = SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
+                } else {
+                    while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
+                    compressed = ( ~&readdata[0,2] );
+                    if( compressed ) {
+                        switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
+                            case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
+                            case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
+                            case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
+                            default: {}
+                        }
+                    } else {
+                        instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
+                    }
+                }
+                ++: ++:// DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
+                ICACHE_0.update = L0update_0; ICACHE_1.update = L0update_1;                                                                                     // UPDATE ICACHE
+
+                cacheselect = 1;
+                if( MEMACCESS.memoryload ) {
+                    address = AGU.loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
+                    if( accesssize[1,1] ) {
+                        memoryinput[0,16] = readdata; address = LA2.addressplus2; readmemory = 1; while( memorybusy ) {} memoryinput[16,16] = readdata;     // READ 2ND 16 BITS
+                    } else {
+                        memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
+                    }
+                } else { readmemory = 0; }
+
+                if( ~IFASTSLOW.FASTPATH ) {
+                    EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                                     // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
+                } else {
+                    COMMIT = 0;                                                                                                                             // INTEGER ALU, LOAD, STORE, BRANCH, JUMP, ETC
+                }
+                COMMIT = 1;                                                                                                                                 // COMMIT REGISTERS
+
+                if( MEMACCESS.memorystore ) {
+                    address = AGU.storeAddress; writedata = store[0,16];                                                                                    // STORE 8 OR 16 BIT
+                    if( STORE168FAST ) {
+                        writememory = 1;                                                                                                                    // FAST STORE FOR 16 * TO LOW MEMORY
+                    } else {
+                        writememory = 1; while( memorybusy ) {}
+                        if( accesssize[1,1] ) {
+                            address = SA2.addressplus2; writedata = store[16,16]; writememory = 1;  while( memorybusy ) {}                                  // 32 BIT WRITE 2ND 16 BITS
+                        } else { writememory = 0; }
+                    }
+                } else { writememory = 0; }
+
+                pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                                                  // UPDATE PC AND SMT
             }
 
-            cacheselect = 0; address = PC; readmemory = ~L0match;                                                                                       // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
+            if( ~|DMAMODE ) {
+                cacheselect = 0; address = PC; readmemory = ~L0match;                                                                                       // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
+            }
         } // RISC-V
     }
 }
@@ -270,18 +270,19 @@ unit il0cache(
     uint$L0Icacheaddrwidth$ L0addr <:: address[1,$L0Icacheaddrwidth$];
 
     // L0 INSTRUCTION CACHE { tag, instruction, compressed, valid } split into units
-    simple_dualport_bram uint31 L0cache[$L0Isize$] = uninitialized;
-    simple_dualport_bram uint$L0Ipartaddresswidth$ L0tags[$L0Isize$] = uninitialized;
+    bram uint31 L0cache[$L0Isize$] = uninitialized;
+    bram uint$L0Ipartaddresswidth$ L0tags[$L0Isize$] = uninitialized;
     uint$L0Isize$ L0valid = 0;
-    L0cache.addr0 := L0addr; L0cache.wenable1 := 1; L0tags.addr0 := L0addr; L0tags.wenable1 := 1;
+    L0cache.addr := L0addr; L0tags.addr := L0addr;
+
+    tagmatch := ~invalidate & L0valid[ L0addr, 1 ] & ( L0tags.rdata == address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$] );
+    instruction := L0cacheI( L0cache.rdata ).instruction; compressed := L0cacheI( L0cache.rdata ).compressed;
+
+    L0cache.wdata := { newinstruction, newcompressed }; L0tags.wdata := address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$];
+    L0cache.wenable := update; L0tags.wenable := update;
 
     always_after {
-        tagmatch = ~invalidate & L0valid[ L0addr, 1 ] & ( L0tags.rdata0 == address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$] );
-        instruction = L0cacheI( L0cache.rdata0 ).instruction; compressed = L0cacheI( L0cache.rdata0 ).compressed;
-
         if( update ) {
-            L0cache.addr1 = L0addr; L0cache.wdata1 = { newinstruction, newcompressed };
-            L0tags.addr1 = L0addr; L0tags.wdata1 = address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$];
             L0valid[ L0addr, 1 ] = 1;
         } else {
             if( invalidate ) { L0valid = 0; }
