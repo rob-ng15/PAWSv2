@@ -6,9 +6,19 @@
 // RISC-V - MAIN CPU LOOP
 //          ALU FUNCTIONALITY LISTED IN ALU-
 
+// ON CPU INSTRUCTION CACHE DEFINITIONS
+$$ addr_width = 27
+$$ L0Isize = 64
+$$ L0Iblocks = 2
+$$ L0Icacheaddrwidth = clog2(L0Isize)
+$$ L0Icount = clog2(L0Iblocks)
+$$ L0Ipartaddresswidth = addr_width - 1 - L0Icount - L0Icacheaddrwidth
+$$ L0Ipartaddressstart = 1 + L0Icount + L0Icacheaddrwidth
+bitfield L0cacheI{ uint30 instruction, uint1 compressed }
+
 unit PAWSCPU(
     input   uint1   clock_CPUdecoder,
-    input   uint1   clock_CPUcache,
+    input   uint1   clock_cache,
     output  uint2   accesssize,
     output  uint27  address(0),
     output  uint1   cacheselect(0),
@@ -151,13 +161,54 @@ unit PAWSCPU(
     // MINI DMA CONTROLLER
     dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE );
 
-    // SMALL ON CPU L0 CACHE - 1 per HART - RESET when pc == 0 - START OF BIOS
-    il0cache ICACHE_0 <@clock_CPUcache> ( address <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed );
-    il0cache ICACHE_1 <@clock_CPUcache> ( address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed );
+    // SMALL ON CPU L0 CACHE - 1 per HART - RESET when pc == 0 @ START OF BIOS
+    // L0 INSTRUCTION CACHE { tag, instruction, compressed, valid } split into units
+    $$for i=0,(L0Iblocks*2-1) do
+        simple_dualport_bram uint31 L0cache_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+        simple_dualport_bram uint$L0Ipartaddresswidth$ L0tags_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+        simple_dualport_bram uint1 L0valid_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+    $$end
+
+    il0cache_read ICACHE_0 <@clock_cache> (
+        $$for i=0,(L0Iblocks-1) do
+            L0cache_$i$ <:> L0cache_$i$,
+            L0tags_$i$ <:> L0tags_$i$,
+            L0valid_$i$ <:> L0valid_$i$,
+        $$end
+        address <: pc
+    );
+    il0cache_read ICACHE_1 <@clock_cache> (
+        $$for i=L0Iblocks,(L0Iblocks*2-1) do
+            L0cache_$i-L0Iblocks$ <:> L0cache_$i$,
+            L0tags_$i-L0Iblocks$ <:> L0tags_$i$,
+            L0valid_$i-L0Iblocks$ <:> L0valid_$i$,
+        $$end
+        address <: pcSMT
+    );
+    il0cache_write ICACHE_0W(
+        $$for i=0,(L0Iblocks-1) do
+            L0cache_$i$ <:> L0cache_$i$,
+            L0tags_$i$ <:> L0tags_$i$,
+            L0valid_$i$ <:> L0valid_$i$,
+        $$end
+        address <: pc,
+        newinstruction <: instruction[2,30],
+        newcompressed <: compressed
+    );
+    il0cache_write ICACHE_1W(
+        $$for i=L0Iblocks,(L0Iblocks*2-1) do
+            L0cache_$i-L0Iblocks$ <:> L0cache_$i$,
+            L0tags_$i-L0Iblocks$ <:> L0tags_$i$,
+            L0valid_$i-L0Iblocks$ <:> L0valid_$i$,
+        $$end
+        address <: pcSMT,
+        newinstruction <: instruction[2,30],
+        newcompressed <: compressed
+    );
     uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );
     uint1   L0update_0 <:: ~SMT & ~ICACHE_0.tagmatch;
     uint1   L0update_1 <:: SMT & ~ICACHE_1.tagmatch;
-    ICACHE_0.update := 0; ICACHE_1.update := 0; ICACHE_0.invalidate := ~|pc; ICACHE_1.invalidate := ~|pc;
+    ICACHE_0W.update := 0; ICACHE_1W.update := 0; ICACHE_0.invalidate := ~|pc; ICACHE_1.invalidate := ~|pc; ICACHE_0W.invalidate := ~|pc; ICACHE_1W.invalidate := ~|pc;
 
     REGISTERS.frd := IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd; REGISTERS.write := COMMIT & IFASTSLOW.writeRegister;
     DMA.start := 0; DMA.update := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
@@ -168,7 +219,7 @@ unit PAWSCPU(
         cacheselect = 0; address = 0; readmemory = 1;                                                                                               // FETCH FIRST INSTRUCTION
 
         while(1) {
-           if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
+            if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
                 // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE IF NOT SPECIAL MODE
                 DMAACTIVE = &DMAMODE ? 2 : 1; DMA.start = 1;
                 while( |DMA.dmacount ) {
@@ -207,8 +258,8 @@ $$end
                         instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
                     }
                 }
-                ++: ++:// DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
-                ICACHE_0.update = L0update_0; ICACHE_1.update = L0update_1;                                                                                     // UPDATE ICACHE
+                ++: // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
+                ICACHE_0W.update = L0update_0; ICACHE_1W.update = L0update_1;                                                                                     // UPDATE ICACHE
 
                 cacheselect = 1;
                 if( MEMACCESS.memoryload ) {
@@ -249,43 +300,77 @@ $$end
     }
 }
 
-// ON CPU INSTRUCTION CACHE IS SMALL NUMBER OF INSTRUCTIONS + COMPRESSED FLAG
-$$ addr_width = 27
-$$ L0Isize = 64
-$$ L0Icacheaddrwidth = clog2(L0Isize)
-$$ L0Ipartaddresswidth = addr_width - 1 - L0Icacheaddrwidth
-$$ L0Ipartaddressstart = 1 + L0Icacheaddrwidth
-bitfield L0cacheI{ uint30 instruction, uint1 compressed }
-
-unit il0cache(
+// L0 ON CPU INSTRUCTION CACHE
+unit il0cache_read(
+$$for i=0,(L0Iblocks-1) do
+    simple_dualport_bram_port0 L0cache_$i$,
+    simple_dualport_bram_port0 L0tags_$i$,
+    simple_dualport_bram_port0 L0valid_$i$,
+$$end
     input   uint$addr_width$  address,
-    input   uint30  newinstruction,
-    input   uint1   newcompressed,
-    input   uint1   update,
     input   uint1   invalidate,
     output  uint30  instruction,
     output  uint1   compressed,
     output  uint1   tagmatch
 ) <reginputs> {
-    uint$L0Icacheaddrwidth$ L0addr <:: address[1,$L0Icacheaddrwidth$];
+    always_before {
+        $$for i=0,(L0Iblocks-1) do
+            L0cache_$i$.addr0 = address[$1+L0Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 = address[$1+L0Icount$,$L0Icacheaddrwidth$];
+            L0valid_$i$.addr0 = address[$1+L0Icount$,$L0Icacheaddrwidth$];
+        $$end
 
-    // L0 INSTRUCTION CACHE { tag, instruction, compressed, valid } split into units
-    bram uint31 L0cache[$L0Isize$] = uninitialized;
-    bram uint$L0Ipartaddresswidth$ L0tags[$L0Isize$] = uninitialized;
-    uint$L0Isize$ L0valid = 0;
-    L0cache.addr := L0addr; L0tags.addr := L0addr;
+        switch( address[1,$L0Icount$] ) {
+            $$for i=0,(L0Iblocks-1) do
+                case $i$: {
+                    tagmatch = ~invalidate & L0valid_$i$.rdata0 & ( L0tags_$i$.rdata0 == address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$] );
+                    instruction = L0cacheI ( L0cache_$i$.rdata0 ).instruction;
+                    compressed =  L0cacheI( L0cache_$i$.rdata0 ).compressed;
+                }
+            $$end
+        }
+    }
+}
 
-    tagmatch := ~invalidate & L0valid[ L0addr, 1 ] & ( L0tags.rdata == address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$] );
-    instruction := L0cacheI( L0cache.rdata ).instruction; compressed := L0cacheI( L0cache.rdata ).compressed;
+unit il0cache_write(
+$$for i=0,(L0Iblocks-1) do
+    simple_dualport_bram_port1 L0cache_$i$,
+    simple_dualport_bram_port1 L0tags_$i$,
+    simple_dualport_bram_port1 L0valid_$i$,
+$$end
+    input   uint$addr_width$  address,
+    input   uint30  newinstruction,
+    input   uint1   newcompressed,
+    input   uint1   update,
+    input   uint1   invalidate
+) <reginputs> {
+    uint$L0Icacheaddrwidth+1$ count = uninitialized; uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1; uint1 CLS <:: ( count < $L0Isize$ );
 
-    L0cache.wdata := { newinstruction, newcompressed }; L0tags.wdata := address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$];
-    L0cache.wenable := update; L0tags.wenable := update;
+    $$for i=0,(L0Iblocks-1) do
+        L0cache_$i$.wenable1 := 0; L0tags_$i$.wenable1 := 0; L0valid_$i$.wenable1 := 0;
+    $$end
 
-    always_after {
-        if( update ) {
-            L0valid[ L0addr, 1 ] = 1;
-        } else {
-            if( invalidate ) { L0valid = 0; }
+    algorithm <autorun> {
+        while(1) {
+            if( invalidate ) {
+                count = 0;
+                while( CLS ) {
+                    $$for i=0,(L0Iblocks-1) do
+                        L0valid_$i$.addr1 = count; L0valid_$i$.wdata1 = 0; L0valid_$i$.wenable1 = 1;
+                    $$end
+                    count = countP1;
+                }
+            } else {
+                switch( address[1,$L0Icount$] ) {
+                    $$for i=0,(L0Iblocks-1) do
+                        case $i$: {
+                            L0cache_$i$.addr1 = address[$1+L0Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr1 = address[$1+L0Icount$,$L0Icacheaddrwidth$];
+                            L0valid_$i$.addr1 = address[$1+L0Icount$,$L0Icacheaddrwidth$];
+                            L0cache_$i$.wdata1 = { newinstruction, newcompressed }; L0tags_$i$.wdata1 = address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$]; L0valid_$i$.wdata1 = 1;
+                            L0cache_$i$.wenable1 =  update; L0tags_$i$.wenable1 = update; L0valid_$i$.wenable1 = update;
+                        }
+                    $$end
+                }
+            }
         }
     }
 }
@@ -392,7 +477,7 @@ unit cpuexecuteSLOWPATH(
                 onehot( operation ) {
                     case 0: { ++:  }                                                                                    // CSR
                     case 1: {}                                                                                          // ATOMIC OPERATIONS
-                    case 2: {}                                                                                          // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                    case 2: { ++: }                                                                                     // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                     case 3: { while( unitbusy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
                 }
                 busy = 0;
