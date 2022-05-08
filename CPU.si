@@ -37,7 +37,7 @@ unit PAWSCPU(
     input   uint27  DMADEST,
     input   uint27  DMACOUNT,
     input   uint3   DMAMODE,
-    output  uint2   DMAACTIVE(0)
+    output! uint2   DMAACTIVE(0)
 ) <reginputs> {
     // COMMIT TO REGISTERS FLAG AND HART (0/1) SELECT
     uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
@@ -48,7 +48,15 @@ unit PAWSCPU(
 
     // RISC-V 32 BIT INSTRUCTION DECODER + MEMORY ACCESS SIZE
     decode RV32DECODER <@clock_CPUdecoder> ( instruction <: instruction );
-    memoryaccess MEMACCESS <@clock_CPUdecoder> ( cacheselect <: cacheselect, DMAACTIVE <: DMAACTIVE[0,1], opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
+    memoryaccess MEMACCESS <@clock_CPUdecoder> (
+        cacheselect <: cacheselect,
+        DMAACTIVE <: DMAACTIVE[0,1],
+        opCode <: RV32DECODER.opCode,
+        function7 <: RV32DECODER.function7[2,5],
+        function3 <: RV32DECODER.function3,
+        AMO <: RV32DECODER.AMO,
+        accesssize :> accesssize
+    );
 
     // RISC-V REGISTERS
     uint32  result <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
@@ -91,8 +99,14 @@ unit PAWSCPU(
     uint32  memoryinput = uninitialized;
 
     // STORE SELECTION + BYPASS FLAG IF 16/8 BIT WRITE TO I/O MEMORY
-    uint32  store <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
+    uint32  storeValue <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
     uint1   STORE168FAST <:: ( ~AGU.storeAddress[26,1] & AGU.storeAddress[15,1] & ~accesssize[1,1] );
+    store STORE(
+        storeAddress <: AGU.storeAddress,
+        storeValue <: storeValue,
+        accesssize <: accesssize,
+        memorybusy <: memorybusy
+    );
 
     // CLASSIFY THE INSTRUCTION AND SPLIT INTO FAST/SLOW FAST/SLOW
     whatis IS <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, function7 <: RV32DECODER.function7 );
@@ -159,7 +173,7 @@ unit PAWSCPU(
     );
 
     // MINI DMA CONTROLLER
-    dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE );
+    dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE, DMAACTIVE :> DMAACTIVE, readdata <: readdata, memorybusy <: memorybusy );
 
     // SMALL ON CPU L0 CACHE - 1 per HART - RESET when pc == 0 @ START OF BIOS
     // L0 INSTRUCTION CACHE { tag, instruction, compressed, valid } split into units
@@ -211,35 +225,15 @@ unit PAWSCPU(
     ICACHE_0W.update := 0; ICACHE_1W.update := 0; ICACHE_0.invalidate := ~|pc; ICACHE_1.invalidate := ~|pc; ICACHE_0W.invalidate := ~|pc; ICACHE_1W.invalidate := ~|pc;
 
     REGISTERS.frd := IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd; REGISTERS.write := COMMIT & IFASTSLOW.writeRegister;
-    DMA.start := 0; DMA.update := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
+    STORE.start := 0; DMA.start := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
 
     algorithm <autorun> {
-        DMAACTIVE = 0;                                                                                                                              // ON RESET CANCEL DMA
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
         cacheselect = 0; address = 0; readmemory = 1;                                                                                               // FETCH FIRST INSTRUCTION
 
         while(1) {
             if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
-                // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE IF NOT SPECIAL MODE
-                DMAACTIVE = &DMAMODE ? 2 : 1; DMA.start = 1;
-                while( |DMA.dmacount ) {
-                    address = DMA.dmasrc; readmemory = 1; while( memorybusy ) {}                                                                        // DMA FETCH
-                    memoryinput[0,16] = readdata; address = DMA.dmadest;                                                                                // DMA SET DESTINATION ADDRESS
-                    if( DMAACTIVE[1,1] ) {
-                        writedata = memoryinput[0,8]; writememory = 1;                                                                                  // STORE TWO PIXELS TO PIXELBLOCK IN SPECIAL MODE
-$$if gpu_50_mhz then
-                        ++:                                                                                                                             // 1 CYCLE FOR FASTER GPU, 2 FOR SLOWER
-$$else
-                        ++: ++:
-$$end
-                        writedata = memoryinput[8,8]; writememory = 1;
-                    } else {
-                        writedata = memoryinput[ { DMA.dmasrc[0,1], 3b000 }, 8 ];                                                                       // DMA STORE 8 BIT
-                        if( DMA.dmadest[26,1] ) { writememory = 1; while( memorybusy ) {} } else { writememory = 1; }                                   // CHECK IF FAST STORE IS POSSIBLE
-                    }
-                    DMA.update = 1;
-                }
-                DMAACTIVE = 0;
+                DMA.start = 1; while( |DMAACTIVE ) { }
             } else {
                 if( L0match ) {                                                                                                                         // CHECK ICACHE
                     instruction =  { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
@@ -279,14 +273,10 @@ $$end
                 COMMIT = 1;                                                                                                                                 // COMMIT REGISTERS
 
                 if( MEMACCESS.memorystore ) {
-                    address = AGU.storeAddress; writedata = store[0,16];                                                                                    // STORE 8 OR 16 BIT
                     if( STORE168FAST ) {
-                        writememory = 1;                                                                                                                    // FAST STORE FOR 16 * TO LOW MEMORY
+                        address = AGU.storeAddress; writedata = storeValue[0,16]; writememory = 1;                                                          // FAST STORE FOR 16 * TO LOW MEMORY
                     } else {
-                        writememory = 1; while( memorybusy ) {}
-                        if( accesssize[1,1] ) {
-                            address = SA2.addressplus2; writedata = store[16,16]; writememory = 1;  while( memorybusy ) {}                                  // 32 BIT WRITE 2ND 16 BITS
-                        } else { writememory = 0; }
+                        STORE.start = 1; while( STORE.busy ) {}
                     }
                 } else { writememory = 0; }
 
@@ -297,6 +287,15 @@ $$end
                 cacheselect = 0; address = PC; readmemory = ~L0match;                                                                                       // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
             }
         } // RISC-V
+    }
+
+    always_after {
+        if( |DMAACTIVE ) {
+            address = DMA.address; writedata = DMA.writedata; writememory = DMA.writememory; readmemory = DMA.readmemory;                       // COPY MEMORY REQUESTS FROM DMA ENGINE
+        }
+        if( STORE.busy ) {
+            address = STORE.address; writedata = STORE.writedata; writememory = STORE.writememory;                                              // COPY MEMORY REQUESTS FROM THE STORE UNIT
+        }
     }
 }
 
@@ -557,41 +556,93 @@ unit cpuexecuteFASTPATH(
     }
 }
 
-// MINI DMA CONTROLLER ADDRESS GENERATOR
+// STORE UNIT FOR NON-FAST STORES ( to BRAM/SDRAM or 32 bit )
+unit store(
+    input   uint1   start,
+    output! uint1   busy(0),
+    input   uint27  storeAddress,
+    input   int32   storeValue,
+    input   uint2   accesssize,
+
+    output! uint27  address,
+    output! uint16  writedata,
+    output! uint1   writememory,
+    input!  uint1   memorybusy
+) <reginputs> {
+
+    writememory := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                busy = 1;
+                    address = storeAddress; writedata = storeValue[0,16];                                                       // STORE 8 OR 16 BIT
+                    writememory = 1; while( memorybusy ) {}
+                    if( accesssize[1,1] ) {
+                        address = storeAddress + 2; writedata = storeValue[16,16]; writememory = 1;  while( memorybusy ) {}     // 32 BIT WRITE 2ND 16 BITS
+                    } else { writememory = 0; }
+                busy = 0;
+            }
+        }
+    }
+}
+
+// MINI DMA CONTROLLER
 unit dma(
     input   uint27  DMASOURCE,
     input   uint27  DMADEST,
     input   uint27  DMACOUNT,
     input   uint3   DMAMODE,
-
-    output  uint27  dmasrc,
-    output  uint27  dmadest,
-    output  uint27  dmacount,
+    output! uint2   DMAACTIVE,
 
     input   uint1   start,
-    input   uint1   update
+    output! uint27  address,
+    output! uint16  writedata,
+    output! uint1   writememory,
+    output! uint1   readmemory,
+    input!  uint16  readdata,
+    input!  uint1   memorybusy
 ) <reginputs> {
     uint3   dmamode = uninitialized;
-    uint27  dmasrc1 <:: dmasrc + 1;
-    uint27  dmasrc2 <:: dmasrc + 2;
-    uint27  dmadest1 <:: dmadest + 1;
-    uint27  dmadest2 <:: dmadest + 2;
-    uint1   dmablue <:: ( dmadest[0,4] == 4h6 );
+    uint27  dmasrc = uninitialised;                 uint27  dmasrc1 <:: dmasrc + 1;                     uint27  dmasrc2 <:: dmasrc + 2;
+    uint27  dmadest = uninitialised;                uint27  dmadest1 <:: dmadest + 1;                   uint27  dmadest2 <:: dmadest + 2;
+    uint1   dmablue <:: ( dmadest[0,4] == 4h6 );    uint27  dmacount = uninitialised;                   uint27  dmacount1 <:: dmacount - 1;
+    uint16  memoryinput = uninitialised;
 
-    always_after {
-        if( start ) { dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; } else {
-            if( update ) {
-                switch( dmamode ) {
-                    default: {}                                                                                                     // INACTIVE / UNDEFINED
-                    case 1: { dmasrc = dmasrc1; }                                                                                   // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
-                    case 2: { dmasrc = dmasrc1; if( dmablue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }                 // DMA SPECIAL PIXEL BLOCK RGB
-                    case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                               // DMA multi-src to multi-dest MEMCPY
-                    case 4: { dmadest = dmadest1; }                                                                                 // DMA single-src to multi-dest MEMSET + SDCARD WRITE
-                    case 5: {}                                                                                                      // DMA single-src to single-dest SET TILE/CBLITTER to single value
-                    case 7: { dmasrc = dmasrc2; }                                                                                   // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
+    writememory := 0; readmemory := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; DMAACTIVE = &DMAMODE ? 2 : 1;
+                while( |dmacount ) {
+                    address = dmasrc; readmemory = 1; while( memorybusy ) {}
+                    memoryinput = readdata; address = dmadest;
+                    if( DMAACTIVE[1,1] ) {
+                        writedata = memoryinput[0,8]; writememory = 1;                                                                  // STORE TWO PIXELS TO PIXELBLOCK IN SPECIAL MODE
+                        $$if gpu_50_mhz then
+                        ++:                                                                                                             // 1 CYCLE FOR FASTER GPU, 2 FOR SLOWER
+                        $$else
+                        ++: ++:
+                        $$end
+                        writedata = memoryinput[8,8]; writememory = 1;
+                    } else {
+                        writedata = memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];                                                           // DMA STORE 8 BIT
+                        if( dmadest[26,1] ) { writememory = 1; while( memorybusy ) {} } else { writememory = 1; }                       // CHECK IF FAST STORE IS POSSIBLE
+                    }
+                    switch( dmamode ) {
+                        default: {}                                                                                                     // INACTIVE / UNDEFINED
+                        case 1: { dmasrc = dmasrc1; }                                                                                   // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
+                        case 2: { dmasrc = dmasrc1; if( dmablue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }                 // DMA SPECIAL PIXEL BLOCK RGB
+                        case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                               // DMA multi-src to multi-dest MEMCPY
+                        case 4: { dmadest = dmadest1; }                                                                                 // DMA single-src to multi-dest MEMSET + SDCARD WRITE
+                        case 5: {}                                                                                                      // DMA single-src to single-dest SET TILE/CBLITTER to single value
+                        case 7: { dmasrc = dmasrc2; }                                                                                   // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
+                    }
+                    dmacount = dmacount1;
                 }
-                dmacount = dmacount - 1;
-            }
+                DMAACTIVE = 0;
+            } else { DMAACTIVE = 0; }
         }
     }
 }

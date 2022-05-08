@@ -139,6 +139,7 @@ extern void tpu_print_centre( unsigned char, unsigned char, unsigned char, char,
 extern void terminal_cs( void );
 extern void terminal_showhide( unsigned char );
 extern void terminal_output_character( char );
+extern void terminal_outputstring( char *s );
 extern void terminal_print( char *);
 extern void terminal_printf( const char *,... );
 

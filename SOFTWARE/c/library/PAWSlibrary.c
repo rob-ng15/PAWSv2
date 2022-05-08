@@ -1158,7 +1158,7 @@ void terminal_outputstring( char *s ) {
     }
 }
 void terminal_print( char *buffer ) {
-    terminal_outputstring(buffer );
+    terminal_outputstring( buffer );
 }
 void terminal_printf( const char *fmt,... ) {
     char *buffer = (char *)0x1000;

@@ -332,7 +332,12 @@ unit background_memmap(
 ) <reginputs> {
     // BACKGROUND CO-PROCESSOR PROGRAM STORAGE
     // { 3 bit command, 3 bit mask, { 1 bit for cpuinput flag, 10 bit coordinate }, 4 bit mode, 7 bit colour 2, 7 bit colour 1 }
-    simple_dualport_bram uint35 copper <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint3  copper_commands <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint3  copper_conditions <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint11 copper_coordinates <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint4  copper_modes <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint7  copper_alts <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint7  copper_colours <@video_clock,@clock> [ 128 ] = uninitialised;
 
     // BACKGROUND GENERATOR
     background_display BACKGROUND <@video_clock,!video_reset> (
@@ -354,9 +359,21 @@ unit background_memmap(
         backgroundcolour <: BACKGROUND_WRITER.BACKGROUNDcolour,
         backgroundcolour_alt <: BACKGROUND_WRITER.BACKGROUNDalt,
         backgroundcolour_mode <: BACKGROUND_WRITER.BACKGROUNDmode,
-        copper <:> copper
+        copper_commands <:> copper_commands,
+        copper_conditions <:> copper_conditions,
+        copper_coordinates <:> copper_coordinates,
+        copper_modes <:> copper_modes,
+        copper_alts <:> copper_alts,
+        copper_colours <:> copper_colours
     );
-    background_writer BACKGROUND_WRITER( copper <:> copper );
+    background_writer BACKGROUND_WRITER(
+        copper_commands <:> copper_commands,
+        copper_conditions <:> copper_conditions,
+        copper_coordinates <:> copper_coordinates,
+        copper_modes <:> copper_modes,
+        copper_alts <:> copper_alts,
+        copper_colours <:> copper_colours
+    );
     BACKGROUND_WRITER.background_update := 0; BACKGROUND_WRITER.copper_program := 0;
 
     always_after {
@@ -794,8 +811,8 @@ unit terminal_memmap(
 
     output  uint2   terminal_active
 ) <reginputs> {
-    // 80 x 4 character buffer for the input/output terminal
-    simple_dualport_bram uint8 terminal <@video_clock,@clock> [640] = uninitialized;
+    // 80 x 8 character buffer for the input/output terminal
+    dualport_bram uint8 terminal <@video_clock,@clock> [640] = uninitialized;
 
     terminal terminal_window <@video_clock,!video_reset> (
         terminal <:> terminal,
@@ -870,7 +887,7 @@ unit tilemap_memmap(
     };
 
     // 42 x 32 tile map, allows for pixel scrolling with border { 2 bit rotation/reflection, 6 bits tile number }
-    simple_dualport_bram uint9 tiles <@video_clock,@clock> [1344] = uninitialized;
+    dualport_bram uint9 tiles <@video_clock,@clock> [1344] = uninitialized;
 
     uint10  dopix_x <: lorez ? pix_x[1,9] : pix_x;  uint10  dopix_y <: lorez ? pix_y[1,9] : pix_y;
     tilemap tile_map <@video_clock,!video_reset> (

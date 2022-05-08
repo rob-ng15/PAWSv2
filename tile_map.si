@@ -1,6 +1,6 @@
 unit tilemap(
     simple_dualport_bram_port0 tiles16x16,
-    simple_dualport_bram_port0 tiles,
+    dualport_bram_port0 tiles,
 
     input   uint10  pix_x,
     input   uint9   pix_y,
@@ -87,7 +87,7 @@ unit tmyaddresses(
     }
 }
 unit tile_map_writer(
-    simple_dualport_bram_port1 tiles,
+    dualport_bram_port1 tiles,
 
     // Set TM at x, y, character with foreground, background and rotation
     input   uint6   tm_x,
@@ -105,9 +105,6 @@ unit tile_map_writer(
     output  uint4   tm_lastaction,
     output  uint3   tm_active
 ) <reginputs> {
-    // COPY OF TILEMAP FOR SCROLLING
-    simple_dualport_bram uint9 tiles_copy[1344] = uninitialized;
-
     // OFFSET CALCULATIONS
     calcoffset TMOX( offset <: tm_offset_x, adjust <: tm_adjust );       calcoffset TMOY( offset <: tm_offset_y, adjust <: tm_adjust );
 
@@ -131,55 +128,55 @@ unit tile_map_writer(
     uint11  tmcsaddr = uninitialized;               uint11  tmcsNEXT <:: tmcsaddr + 1;
 
     // TILEMAP WRITE FLAGS
-    tiles.wenable1 := 1; tiles_copy.wenable1 := 1;
+    tiles.wenable1 := 0;
 
     algorithm <autorun> {
         while(1) {
             if( |tm_active ) {
                 onehot( tm_active ) {
-                    default: {                                                                                                   // SCROLL/WRAP LEFT/RIGHT UP/DOWN
-                        while( tm_active[0,1] ? ( y_cursor_addr != 1344 ) : ( x_cursor != 42 ) ) {                                  // REPEAT UNTIL AT BOTTOM/RIGHT OF THE SCREEN
+                    default: {                                                                                      // SCROLL/WRAP LEFT/RIGHT UP/DOWN
+                        while( tm_active[0,1] ? ( y_cursor_addr != 1344 ) : ( x_cursor != 42 ) ) {                  // REPEAT UNTIL AT BOTTOM/RIGHT OF THE SCREEN
                             onehot( tm_active ) {
-                                case 0: { x_cursor = tm_dodir ? 0 : 41; }                                                                   // SAVE CHARACTER AT START/END OF LINE FOR WRAPPING
-                                default: {  y_cursor_addr = tm_dodir ? 0 : 1302; }                                                          // SAVE CHARACTER AT TOP/BOTTOM OF THE SCREEN FOR WRAPPING
+                                case 0: { x_cursor = tm_dodir ? 0 : 41; }                                           // SAVE CHARACTER AT START/END OF LINE FOR WRAPPING
+                                default: {  y_cursor_addr = tm_dodir ? 0 : 1302; }                                  // SAVE CHARACTER AT TOP/BOTTOM OF THE SCREEN FOR WRAPPING
                             }
                             temp_1 = y_cursor_addr + x_cursor;
-                            tiles_copy.addr0 = temp_1;
+                            tiles.addr1 = temp_1;
                             ++:
-                            new_tile = tm_scroll ? 0 : tiles_copy.rdata0;
-                            while( tm_active[0,1] ? tm_dodir ? ( x_cursor != 42 ) : ( |x_cursor ) :                                         // START AT THE LEFT/RIGHT OF THE LINE
-                                                    tm_dodir ? ( y_cursor_addr != 1302 ) : ( |y_cursor_addr ) ) {                           // START AT TOP/BOTTOM OF THE SCREEN
+                            new_tile = tm_scroll ? 0 : tiles.rdata1;
+                            while( tm_active[0,1] ? tm_dodir ? ( x_cursor != 42 ) : ( |x_cursor ) :                 // START AT THE LEFT/RIGHT OF THE LINE
+                                                    tm_dodir ? ( y_cursor_addr != 1302 ) : ( |y_cursor_addr ) ) {   // START AT TOP/BOTTOM OF THE SCREEN
                                 onehot( tm_active ) {
-                                    case 0: { temp_1 = temp_2NEXT1; }                                                                       // SAVE THE ADJACENT CHARACTER IN LINE
-                                    default: { temp_1 = temp_2NEXT42; }                                                                     // SAVE THE ADJACENT CHARACTER IN COLUMN
+                                    case 0: { temp_1 = temp_2NEXT1; }                                               // SAVE THE ADJACENT CHARACTER IN LINE
+                                    default: { temp_1 = temp_2NEXT42; }                                             // SAVE THE ADJACENT CHARACTER IN COLUMN
                                 }
-                                tiles_copy.addr0 = temp_1;
+                                tiles.addr1 = temp_1;
                                 ++:
-                                tiles.addr1 = temp_2; tiles_copy.addr1 = temp_2;                                                            // COPY INTO NEW LOCATION
-                                tiles.wdata1 = tiles_copy.rdata0; tiles_copy.wdata1 = tiles_copy.rdata0;
+                                tiles.addr1 = temp_2;                                                               // COPY INTO NEW LOCATION
+                                tiles.wdata1 = tiles.rdata1; tiles.wenable1 = 1;
                                 onehot( tm_active ) {
-                                    case 0: { x_cursor = tm_dodir ? TMX.xNEXT : TMX.xPREV;}                                                 // MOVE TO NEXT CHARACTER ON THE LINE
-                                    default: { y_cursor_addr = tm_dodir ? TMY.yNEXT : TMY.yPREV; }                                          // MOVE TO THE NEXT CHARACTER IN THE COLUMN
+                                    case 0: { x_cursor = tm_dodir ? TMX.xNEXT : TMX.xPREV;}                         // MOVE TO NEXT CHARACTER ON THE LINE
+                                    default: { y_cursor_addr = tm_dodir ? TMY.yNEXT : TMY.yPREV; }                  // MOVE TO THE NEXT CHARACTER IN THE COLUMN
                                 }
                             }
                             onehot( tm_active ) {
-                                case 0: { tiles.addr1 = TMY.ySAVED; tiles_copy.addr1 = TMY.ySAVED; y_cursor_addr = TMY.yNEXT; }             // SET SAVED ADDRESS, MOVE TO NEXT LINE
-                                default: { tiles.addr1 = TMX.xSAVED; tiles_copy.addr1 = TMX.xSAVED;  x_cursor = TMX.xNEXT; }                // SET SAVED ADDRESS, MOVE TO NEXT COLUMN
+                                case 0: { tiles.addr1 = TMY.ySAVED; y_cursor_addr = TMY.yNEXT; }                    // SET SAVED ADDRESS, MOVE TO NEXT LINE
+                                default: { tiles.addr1 = TMX.xSAVED; x_cursor = TMX.xNEXT; }                        // SET SAVED ADDRESS, MOVE TO NEXT COLUMN
                             }
-                            tiles.wdata1 = new_tile; tiles_copy.wdata1 = new_tile;                                                          // WRITE BLANK OR WRAPPED CHARACTER
+                            tiles.wdata1 = new_tile; tiles.wenable1 = 1;                                            // WRITE BLANK OR WRAPPED CHARACTER
                         }
                     }
-                    case 2: {                                                                                                   // CLEAR
-                        tiles.wdata1 = 0; tiles_copy.wdata1 = 0;
+                    case 2: {                                                                                       // CLEAR
+                        tiles.wdata1 = 0;
                         while( tmcsaddr != 1344 ) {
-                            tiles.addr1 = tmcsaddr; tiles_copy.addr1 = tmcsaddr; tmcsaddr = tmcsNEXT;
+                            tiles.addr1 = tmcsaddr; tiles.wenable1 = 1; tmcsaddr = tmcsNEXT;
                         }
                         tm_offset_x = 0; tm_offset_y = 0;
                     }
                 }
                 tm_active = 0;
             } else {
-                tmcsaddr = 0; y_cursor_addr = 0; x_cursor = 0;                                                                  // RESET SCROLL/WRAP
+                tmcsaddr = 0; y_cursor_addr = 0; x_cursor = 0;                                                      // RESET SCROLL/WRAP
             }
         }
     }
@@ -187,20 +184,19 @@ unit tile_map_writer(
     always_after {
         if( tm_write ) {
             // Write character to the tilemap
-            tiles.addr1 = write_address; tiles.wdata1 = { tm_actions, tm_character };
-            tiles_copy.addr1 = write_address; tiles_copy.wdata1 = { tm_actions, tm_character };
+            tiles.addr1 = write_address; tiles.wdata1 = { tm_actions, tm_character }; tiles.wenable1 = 1;
         }
 
-        switch( tm_scrollwrap ) {                                                                                           // ACT AS PER tm_scrollwrap
-            case 0: {}                                                                                                      // NO ACTION
-            case 9: { tm_active = 4; tm_lastaction = 9; }                                                                   // CLEAR
-            default: {                                                                                                      // SCROLL / WRAP
+        switch( tm_scrollwrap ) {                                                                                   // ACT AS PER tm_scrollwrap
+            case 0: {}                                                                                              // NO ACTION
+            case 9: { tm_active = 4; tm_lastaction = 9; }                                                           // CLEAR
+            default: {                                                                                              // SCROLL / WRAP
                 tm_scroll = doscrollwrap;
                 switch( doaction ) {
-                    case 0: { if( TMOX.MAX ) { tm_dodir = 1; tm_active = 1; } tm_offset_x = TMOX.NEXT; }                    // LEFT
-                    case 1: { if( TMOY.MAX ) { tm_dodir = 1; tm_active = 2; } tm_offset_y = TMOY.NEXT; }                    // UP
-                    case 2: { if( TMOX.MIN ) { tm_dodir = 0; tm_active = 1; } tm_offset_x = TMOX.PREV; }                    // RIGHT
-                    case 3: { if( TMOY.MIN ) { tm_dodir = 0; tm_active = 2; } tm_offset_y = TMOY.PREV; }                    // DOWN
+                    case 0: { if( TMOX.MAX ) { tm_dodir = 1; tm_active = 1; } tm_offset_x = TMOX.NEXT; }            // LEFT
+                    case 1: { if( TMOY.MAX ) { tm_dodir = 1; tm_active = 2; } tm_offset_y = TMOY.NEXT; }            // UP
+                    case 2: { if( TMOX.MIN ) { tm_dodir = 0; tm_active = 1; } tm_offset_x = TMOX.PREV; }            // RIGHT
+                    case 3: { if( TMOY.MIN ) { tm_dodir = 0; tm_active = 2; } tm_offset_y = TMOY.PREV; }            // DOWN
                 }
                 tm_lastaction = ( |tm_active ) ? tm_scrollwrap : 0;
             }
