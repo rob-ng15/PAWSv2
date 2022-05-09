@@ -39,12 +39,12 @@ unit PAWSCPU(
     input   uint3   DMAMODE,
     output! uint2   DMAACTIVE(0)
 ) <reginputs> {
-    // COMMIT TO REGISTERS FLAG AND HART (0/1) SELECT
+    // CPU REGISTERS AND THREAD SELECTION
     uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
-
-    // COMPRESSED INSTRUCTION EXPANDER
     uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
-    compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata ); compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata ); compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata );
+    uint27  pc = 0;                                 uint27  pc_next <:: SMT ? pc :  NEWPC.newPC;                                    // HART 0 pc + UPDATE
+    uint27  pcSMT = uninitialized;                  uint27  pcSMT_next <:: SMT ? NEWPC.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;     // HART 1 pc + update
+    uint27  PC <:: SMT ? pcSMT : pc;                                                                                                // SELECT PC FOR THIS CYCLE
 
     // RISC-V 32 BIT INSTRUCTION DECODER + MEMORY ACCESS SIZE
     decode RV32DECODER <@clock_CPUdecoder> ( instruction <: instruction );
@@ -74,12 +74,6 @@ unit PAWSCPU(
     // EXTRACT ABSOLUTE VALUE FOR MULTIPLICATION AND DIVISION
     absolute ARS1 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg1, negative <: negRS1 ); absolute ARS2 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg2, negative <: negRS2 );
 
-
-    // RISC-V PROGRAM COUNTERS AND STATUS - SMT -> RUNNING ON HART 1 WITH DUPLICATE PROGRAM COUNTER AND REGISTER FILE
-    uint27  pc = 0;                     uint27  pc_next <:: SMT ? pc :  NEWPC.newPC;                                    // HART 0 pc + UPDATE
-    uint27  pcSMT = uninitialized;      uint27  pcSMT_next <:: SMT ? NEWPC.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;     // HART 1 pc + update
-    uint27  PC <:: SMT ? pcSMT : pc;                                                                                    // SELECT PC FOR THIS CYCLE
-
     // RISC-V ADDRESS GENERATOR
     addressgenerator AGU <@clock_CPUdecoder> (
         instruction <: instruction,
@@ -89,14 +83,23 @@ unit PAWSCPU(
         AMO <: RV32DECODER.AMO
     );
 
-    // GENERATE PLUS 2 ADDRESSES FOR 32 BIT MEMORY OPERATIONS
-    addrplus2 PC2 <@clock_CPUdecoder> ( address <: PC ); addrplus2 LA2 <@clock_CPUdecoder> ( address <: AGU.loadAddress ); addrplus2 SA2 <@clock_CPUdecoder> ( address <: AGU.storeAddress );
+    // FETCH UNIT
+    fetch FETCH(
+        clock_CPUdecoder <: clock_CPUdecoder,
+        PC <: PC,
+        readdata <: readdata,
+        memorybusy <: memorybusy
+    );
 
-    // SIGN EXTENDER FOR 8 AND 16 BIT LOADS
-    signextend SIGNEXTEND <@clock_CPUdecoder> ( readdata <: readdata, is16or8 <: accesssize[0,1], byteaccess <: AGU.loadAddress[0,1], dounsigned <: RV32DECODER.function3[2,1] );
-
-    // CPU EXECUTE BLOCKS
-    uint32  memoryinput = uninitialized;
+    // LOAD UNIT
+    load LOAD(
+        clock_CPUdecoder <: clock_CPUdecoder,
+        loadAddress <: AGU.loadAddress,
+        accesssize <: accesssize,
+        dounsigned <: RV32DECODER.function3[2,1],
+        readdata <: readdata,
+        memorybusy <: memorybusy
+    );
 
     // STORE SELECTION + BYPASS FLAG IF 16/8 BIT WRITE TO I/O MEMORY
     uint32  storeValue <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
@@ -128,7 +131,7 @@ unit PAWSCPU(
         sourceReg1F <: REGISTERS.sourceReg1F,
         sourceReg2F <: REGISTERS.sourceReg2F,
         sourceReg3F <: REGISTERS.sourceReg3F,
-        memoryinput <: memoryinput,
+        memoryinput <: LOAD.memoryinput,
         incCSRinstret <: COMMIT,
         isALUM <: IS.ALUM,
         isALUCLM <: IS.ALUCLM,
@@ -150,7 +153,7 @@ unit PAWSCPU(
         negSourceReg2 <: negRS2,
         sourceReg2F <: REGISTERS.sourceReg2F,
         immediateValue <: RV32DECODER.immediateValue,
-        memoryinput <: memoryinput,
+        memoryinput <: LOAD.memoryinput,
         AUIPCLUI <: AGU.AUIPCLUI,
         nextPC <: NEWPC.nextPC,
         isALUMM <: IS.ALUM,
@@ -225,45 +228,30 @@ unit PAWSCPU(
     ICACHE_0W.update := 0; ICACHE_1W.update := 0; ICACHE_0.invalidate := ~|pc; ICACHE_1.invalidate := ~|pc; ICACHE_0W.invalidate := ~|pc; ICACHE_1W.invalidate := ~|pc;
 
     REGISTERS.frd := IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd; REGISTERS.write := COMMIT & IFASTSLOW.writeRegister;
-    STORE.start := 0; DMA.start := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
+    FETCH.start := 0; LOAD.start := 0; STORE.start := 0; DMA.start := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
 
     algorithm <autorun> {
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
-        cacheselect = 0; address = 0; readmemory = 1;                                                                                               // FETCH FIRST INSTRUCTION
+        cacheselect = 0; FETCH.start = 1;                                                                                               // FETCH FIRST INSTRUCTION
 
         while(1) {
             if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
                 DMA.start = 1; while( |DMAACTIVE ) { }
             } else {
-                if( L0match ) {                                                                                                                         // CHECK ICACHE
-                    instruction =  { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
+                if( L0match ) {                                                                                                         // FETCH INSTRUCTION
+                    instruction =  { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };                                             // FROM CACHE
                     compressed = SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
                 } else {
-                    while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
-                    compressed = ( ~&readdata[0,2] );
-                    if( compressed ) {
-                        switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
-                            case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
-                            case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
-                            case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
-                            default: {}
-                        }
-                    } else {
-                        instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
-                    }
+                    while( FETCH.busy ) {}                                                                                                  // FROM MEMORY
+                    instruction = FETCH.instruction; compressed = FETCH.compressed;
                 }
                 ++: // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
-                ICACHE_0W.update = L0update_0; ICACHE_1W.update = L0update_1;                                                                                     // UPDATE ICACHE
+                ICACHE_0W.update = L0update_0; ICACHE_1W.update = L0update_1;                                                               // UPDATE ICACHE
 
                 cacheselect = 1;
-                if( MEMACCESS.memoryload ) {
-                    address = AGU.loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
-                    if( accesssize[1,1] ) {
-                        memoryinput[0,16] = readdata; address = LA2.addressplus2; readmemory = 1; while( memorybusy ) {} memoryinput[16,16] = readdata;     // READ 2ND 16 BITS
-                    } else {
-                        memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
-                    }
-                } else { readmemory = 0; }
+                if( MEMACCESS.memoryload ) {                                                                                                                // LOAD FROM MEMORY
+                    LOAD.start = 1; while( LOAD.busy ) {}
+                } else { LOAD.start = 0; }
 
                 if( ~IFASTSLOW.FASTPATH ) {
                     EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                                     // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
@@ -278,13 +266,13 @@ unit PAWSCPU(
                     } else {
                         STORE.start = 1; while( STORE.busy ) {}
                     }
-                } else { writememory = 0; }
+                } else { STORE.start = 0; }
 
                 pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                                                  // UPDATE PC AND SMT
             }
 
             if( ~|DMAMODE ) {
-                cacheselect = 0; address = PC; readmemory = ~L0match;                                                                                       // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
+                cacheselect = 0; FETCH.start = ~L0match;                                                                                       // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
             }
         } // RISC-V
     }
@@ -295,6 +283,12 @@ unit PAWSCPU(
         }
         if( STORE.busy ) {
             address = STORE.address; writedata = STORE.writedata; writememory = STORE.writememory;                                              // COPY MEMORY REQUESTS FROM THE STORE UNIT
+        }
+        if( |LOAD.busy ) {
+            address = LOAD.address; readmemory = LOAD.readmemory;                                                                               // COPY MEMORY REQUESTS FROM DMA ENGINE
+        }
+        if( FETCH.busy ) {
+            address = FETCH.address; readmemory = FETCH.readmemory;                                                                             // COPY MEMORY REQUESTS FROM DMA ENGINE
         }
     }
 }
@@ -474,7 +468,7 @@ unit cpuexecuteSLOWPATH(
             if( start ) {
                 busy = 1;
                 onehot( operation ) {
-                    case 0: { ++:  }                                                                                    // CSR
+                    case 0: { ++: }                                                                                     // CSR
                     case 1: {}                                                                                          // ATOMIC OPERATIONS
                     case 2: { ++: }                                                                                     // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                     case 3: { while( unitbusy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
@@ -556,6 +550,92 @@ unit cpuexecuteFASTPATH(
     }
 }
 
+// FETCH UNIT, INCLUDING COMPRESSED INSTRUCTION EXPANSION
+unit fetch(
+    input   uint1   clock_CPUdecoder,
+    input   uint1   start,
+    output! uint1   busy(0),
+    input!  uint27  PC,
+    output  uint32  instruction,
+    output  uint1   compressed,
+
+    output! uint27  address,
+    input!  uint16  readdata,
+    output! uint1   readmemory,
+    input!  uint1   memorybusy
+) <reginputs> {
+    uint27  PC2 <:: PC + 2;
+
+    // COMPRESSED INSTRUCTION EXPANDER
+    compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata ); compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata ); compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata );
+
+    readmemory := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                busy = 1;
+                address = PC; readmemory = 1; while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
+                compressed = ( ~&readdata[0,2] );
+                if( compressed ) {
+                    switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
+                        case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
+                        case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
+                        case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
+                        default: {}
+                    }
+                } else {
+                    instruction[0,16] = readdata; address = PC2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
+                }
+                busy = 0;
+            } else { busy = 0; }
+        }
+    }
+}
+
+// LOAD UNIT - INCLUDING SIGN EXTENSION FOR 8/16 BIT SIGNED LOADS
+unit load(
+    input   uint1   clock_CPUdecoder,
+    input   uint1   start,
+    output! uint1   busy(0),
+    input   uint27  loadAddress,
+    input   uint2   accesssize,
+    input   uint1   dounsigned,
+    output  int32   memoryinput,
+
+    output! uint27  address,
+    input!  uint16  readdata,
+    output! uint1   readmemory,
+    input!  uint1   memorybusy
+) <reginputs> {
+    uint27  LA2 <:: loadAddress + 2;
+
+    // SIGN EXTENDER FOR 8 AND 16 BIT LOADS
+    signextend SIGNEXTEND <@clock_CPUdecoder> (
+        readdata <: readdata,
+        is16or8 <: accesssize[0,1],
+        byteaccess <: loadAddress[0,1],
+        dounsigned <: dounsigned
+    );
+
+    readmemory := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                busy = 1;
+                address = loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
+                if( accesssize[1,1] ) {
+                    memoryinput[0,16] = readdata; address = LA2; readmemory = 1; while( memorybusy ) {} memoryinput[16,16] = readdata;     // READ 2ND 16 BITS
+                } else {
+                    memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
+                }
+                busy = 0;
+            }
+        }
+    }
+}
+
 // STORE UNIT FOR NON-FAST STORES ( to BRAM/SDRAM or 32 bit )
 unit store(
     input   uint1   start,
@@ -569,18 +649,18 @@ unit store(
     output! uint1   writememory,
     input!  uint1   memorybusy
 ) <reginputs> {
-
+    uint27  SA2 <:: storeAddress + 2;
     writememory := 0;
 
     algorithm <autorun> {
         while(1) {
             if( start ) {
                 busy = 1;
-                    address = storeAddress; writedata = storeValue[0,16];                                                       // STORE 8 OR 16 BIT
-                    writememory = 1; while( memorybusy ) {}
-                    if( accesssize[1,1] ) {
-                        address = storeAddress + 2; writedata = storeValue[16,16]; writememory = 1;  while( memorybusy ) {}     // 32 BIT WRITE 2ND 16 BITS
-                    } else { writememory = 0; }
+                address = storeAddress; writedata = storeValue[0,16];                                                       // STORE 8 OR 16 BIT
+                writememory = 1; while( memorybusy ) {}
+                if( accesssize[1,1] ) {
+                    address = SA2; writedata = storeValue[16,16]; writememory = 1;  while( memorybusy ) {}                  // 32 BIT WRITE 2ND 16 BITS
+                } else { writememory = 0; }
                 busy = 0;
             }
         }
