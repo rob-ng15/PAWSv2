@@ -290,9 +290,12 @@ void wait_gpu_finished( void ) {
     while( !*GPU_FINISHED );
 }
 
-// WAIT FOR VBLANK TO START
+// WAIT FOR VBLANK TO START/FINISH
 void await_vblank( void ) {
     while( !*VBLANK );
+}
+void await_vblank_finish( void ) {
+    while( *VBLANK );
 }
 
 // SET THE LAYER ORDER FOR THE DISPLAY

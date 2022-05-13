@@ -1,5 +1,8 @@
-// RISC V INSTRUCTION DECODER
-unit decode(
+// RISC V INSTRUCTION DECODER + REGISTER BLOCK
+unit control(
+    input   uint1   cacheselect,
+    input   uint1   DMAACTIVE,
+    input   uint1   SMT,
     input   uint32  instruction,
     output  uint5   opCode,
     output  uint3   function3,
@@ -9,83 +12,114 @@ unit decode(
     output  uint5   rs3,
     output  uint5   rd,
     output  int32   immediateValue,
-    output  uint1   AMO
+    input   uint1   frd,
+    input   uint1   write,
+    input   int32   result,
+    output  int32   sourceReg1,
+    output  int32   sourceReg2,
+    output  int32   sourceReg1F,
+    output  int32   sourceReg2F,
+    output  int32   sourceReg3F,
+    output  int32   sourceReg1abs,
+    output  int32   sourceReg2abs,
+    output  int32   sourceReg2neg,
+    output  uint1   IS_AUIPCLUI,
+    output  uint1   IS_JAL,
+    output  uint1   IS_BRANCH,
+    output  uint1   IS_ALUM,
+    output  uint1   IS_ALUCLM,
+    output  uint1   IS_CSR,
+    output  uint1   IS_ATOMIC,
+    output  uint1   IS_FPU,
+    output  uint1   writeRegisterF,
+    output  uint1   writeRegister,
+    output  uint1   incPC,
+    output  uint1   FASTPATH,
+    output  uint1   FASTPATHFPU,
+    output  uint1   IS_LOAD,
+    output  uint1   IS_STORE,
+    output  uint2   accesssize
+
 ) <reginputs> {
-    always_after {
-        opCode = instruction[2,5];
-        AMO = ( instruction[2,5] == 5b01011 );
-        function3 = Rtype(instruction).function3;
-        function7 = Rtype(instruction).function7;
+    // REGISTERS I integer x 2, F float x 3, 0 for main thread, 1 for SMT thread
+    // Duplication is to allow for parallel read
+    $$for i=0,1 do
+        simple_dualport_bram int32 I1_$i$[32] = { 0, pad(uninitialized) };
+        simple_dualport_bram int32 I2_$i$[32] = { 0, pad(uninitialized) };
+        simple_dualport_bram int32 F1_$i$[32] = uninitialized;
+        simple_dualport_bram int32 F2_$i$[32] = uninitialized;
+        simple_dualport_bram int32 F3_$i$[32] = uninitialized;
+    $$end
+
+    // REGISTER WRITE SWITCH
+    uint1   I0write <:: ~SMT & write & ~frd & |rd;  uint1   F0write <:: ~SMT & write & frd;
+    uint1   I1write <:: SMT & write & ~frd & |rd;   uint1   F1write <:: SMT & write & frd;
+
+    // CHECK FOR FLOAT LOAD/STORE ( 32 bit memory access )
+    uint1   FLOAD <:: opCode == 5b00001;             uint1   FSTORE <:: opCode == 5b01001;
+
+    $$for i=0,1 do
+        I1_$i$.wenable1 := 0; I2_$i$.wenable1 := 0; F1_$i$.wenable1 := 0; F2_$i$.wenable1 := 0; F3_$i$.wenable1 := 0;
+    $$end
+
+    // INSTRUCTION ACTION FLAGS
+    writeRegisterF := 0; writeRegister := 1; incPC := 1; FASTPATH := 1;
+
+    always_before {
+        // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
         rs1 = Rtype(instruction).sourceReg1;
         rs2 = Rtype(instruction).sourceReg2;
         rs3 = R4type(instruction).sourceReg3;
         rd = Rtype(instruction).destReg;
+
+        // PARSE INSTRUCTION
+        opCode = instruction[2,5];
+        function3 = Rtype(instruction).function3;
+        function7 = Rtype(instruction).function7;
         immediateValue = { {20{instruction[31,1]}}, Itype(instruction).immediate };
-    }
-}
 
-// DETERMINE IF MEMORY LOAD OR STORE
-// AMO AND FLOAT LOAD/STORE ARE 32 BIT
-unit memoryaccess(
-    input   uint1   cacheselect,
-    input   uint1   DMAACTIVE,
-    input   uint5   opCode,
-    input   uint5   function7,
-    input   uint3   function3,
-    input   uint1   AMO,
-    output  uint1   memoryload,
-    output  uint1   memorystore,
-    output  uint2   accesssize
-) <reginputs> {
-    uint1   FLOAD <:: opCode == 5b00001;             uint1   FSTORE <:: opCode == 5b01001;
+        // SELECT SOURCE REGISTERS FROM APPROPRIATE HART
+        $$for i=0,1 do
+            I1_$i$.addr0 = rs1; I2_$i$.addr0 = rs2; F1_$i$.addr0 = rs1; F2_$i$.addr0 = rs2; F3_$i$.addr0 = rs3;
+        $$end
+        sourceReg1 = SMT ? I1_1.rdata0 : I1_0.rdata0;  sourceReg2 = SMT ? I2_1.rdata0 : I2_0.rdata0;
+        sourceReg1F = SMT ? F1_1.rdata0 : F1_0.rdata0; sourceReg2F = SMT ? F2_1.rdata0 : F2_0.rdata0; sourceReg3F = SMT ? F3_1.rdata0 : F3_0.rdata0;
+    }
+
+    algorithm <autorun> {
+        while(1) {
+            // WRITE TO REGISTERS
+            $$for i=0,1 do
+                I1_$i$.addr1 = rd;  I2_$i$.addr1 = rd;  F1_$i$.addr1 = rd;  F2_$i$.addr1 = rd;  F3_$i$.addr1 = rd;
+                I1_$i$.wdata1 = result; I2_$i$.wdata1 = result;
+                F1_$i$.wdata1 = result; F2_$i$.wdata1 = result; F3_$i$.wdata1 = result;
+                I1_$i$.wenable1 = I$i$write; I2_$i$.wenable1 = I$i$write;
+                F1_$i$.wenable1 = F$i$write; F2_$i$.wenable1 = F$i$write; F3_$i$.wenable1 = F$i$write;
+            $$end
+        }
+    }
 
     always_after {
-        memoryload = ( ~|opCode ) | FLOAD | ( AMO & ( function7 != 5b00011 ) );
-        memorystore = ( opCode == 5b01000 ) | FSTORE | ( AMO & ( function7 != 5b00010 ) );
-        accesssize = DMAACTIVE ? 2b00 : cacheselect ? AMO | FLOAD | FSTORE ? 2b10 : function3[0,2] : 2b01;
-    }
-}
+        // GENERATE ABSOLUTE AND NEGATIVE OF REGISTERS FOR MULTIPLICATION, ADDITION AND INT -> FLOAT CONVERSION
+        sourceReg1abs = sourceReg1[31,1] ? -sourceReg1 : sourceReg1;
+        sourceReg2neg = -sourceReg2; sourceReg2abs = sourceReg2[31,1] ? sourceReg2neg : sourceReg2;
 
-// CLASSIFY INSTRUCTION TYPE TO PASS TO OTHER BLOCKS
-unit whatis(
-    input   uint5   opCode,
-    input   uint3   function3,
-    input   uint7   function7,
-    output  uint1   AUIPCLUI,
-    output  uint1   JAL,
-    output  uint1   BRANCH,
-    output  uint1   ALUM,
-    output  uint1   ALUCLM,
-    output  uint1   CSR,
-    output  uint1   ATOMIC,
-    output  uint1   FPU
-) <reginputs> {
-    always_after {
-        AUIPCLUI = ( opCode[0,3] == 3b101 );
-        JAL = ( opCode[2,3] == 3b110 ) & opCode[0,1];
-        BRANCH = ( opCode == 5b11000 );
-        ALUM = ( opCode == 5b01100 ) & ( function7 == 7b0000001 );
-        ALUCLM = ( opCode == 5b01100 ) & ~function3[2,1] & ( function7 == 7b0000101 );
-        CSR = ( opCode == 5b11100 );
-        ATOMIC =  ( opCode == 5b01011 );
-        FPU = ( opCode[3,2] == 2b10 );
-    }
-}
-// DETERMINE IF FAST OR SLOW INSTRUCTION
-// SET CPU CONTROLS DEPENDING UPON INSTRUCTION TYPE
-unit Iclass(
-    input   uint5   opCode,
-    input   uint3   function3,
-    input   uint1   isALUM,
-    input   uint1   isALUCLM,
-    output  uint1   frd,
-    output  uint1   writeRegister,
-    output  uint1   incPC,
-    output  uint1   FASTPATH
-) <reginputs> {
-    // CHECK FOR FLOATING POINT, OR INTEGER DIVIDE
-    frd := 0; writeRegister := 1; incPC := 1; FASTPATH := 1;
-    always_after {
+        // CLASSIFY THE INSTRUCTION TYPE
+        IS_AUIPCLUI = ( opCode[0,3] == 3b101 );
+        IS_JAL = ( opCode[2,3] == 3b110 ) & opCode[0,1];
+        IS_BRANCH = ( opCode == 5b11000 );
+        IS_ALUM = ( opCode == 5b01100 ) & ( function7 == 7b0000001 );
+        IS_ALUCLM = ( opCode == 5b01100 ) & ~function3[2,1] & ( function7 == 7b0000101 );
+        IS_CSR = ( opCode == 5b11100 );
+        IS_ATOMIC =  ( opCode == 5b01011 );
+        IS_FPU = ( opCode[3,2] == 2b10 );
+        IS_LOAD = ( ~|opCode ) | FLOAD | ( IS_ATOMIC & ( function7 != 5b00011 ) );
+        IS_STORE = ( opCode == 5b01000 ) | FSTORE | ( IS_ATOMIC & ( function7 != 5b00010 ) );
+
+        // DETERMINE MEMORY ACCESS SIZE
+        accesssize = DMAACTIVE ? 2b00 : cacheselect ? IS_ATOMIC | FLOAD | FSTORE ? 2b10 : function3[0,2] : 2b01;
+
+        // DETERMINE CPU CONTROL FLAGS
         switch( opCode ) {
             case 5b01101: {}                        // LUI
             case 5b00101: {}                        // AUIPC
@@ -94,26 +128,44 @@ unit Iclass(
             case 5b11000: { writeRegister = 0; }    // BRANCH
             case 5b00000: {}                        // LOAD
             case 5b01000: { writeRegister = 0; }    // STORE
-            case 5b00001: { frd = 1; }              // FLOAT LOAD
+            case 5b00001: { writeRegisterF = 1; }   // FLOAT LOAD
             case 5b01001: { writeRegister = 0; }    // FLOAT STORE
             case 5b00011: {}                        // FENCE[I]
             case 5b11100: { FASTPATH = 0; }         // CSR
             case 5b01011: { FASTPATH = 0; }         // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
-            default: { FASTPATH = ~( opCode[4,1] | isALUCLM | ( isALUM & function3[2,1]) ); }    // FPU, CARRYLESS MULTIPLY OR INTEGER DIVIDE -> SLOWPATH ALL ELSE TO FASTPATH
+            default: { FASTPATH = ~( opCode[4,1] | IS_ALUCLM | ( IS_ALUM & function3[2,1]) ); }    // FPU, CARRYLESS MULTIPLY OR INTEGER DIVIDE -> SLOWPATH ALL ELSE TO FASTPATH
         }
+        FASTPATHFPU = opCode[2,1] & function7[4,1];
     }
 }
 
-// DETERMINE IN FAST OR SLOW FPU INSTRUCTION
-unit Fclass(
-    input   uint5   opCode,
-    input   uint7   function7,
-    output  uint1   FASTPATHFPU
+// RISC-V ADDRESS GENERATOR
+unit addressgenerator(
+    input   uint32  instruction,
+    input   int32   immediateValue,
+    input   uint27  PC,
+    input   int32   sourceReg1,
+    output  uint32  AUIPCLUI,
+    output  uint27  branchAddress,
+    output  uint27  jumpAddress,
+    output  uint27  loadAddress,
+    output  uint27  storeAddress,
+    output  uint27  nextPC,
+    output  uint27  newPC,
+    input   uint1   AMO,
+    input   uint1   compressed,
+    input   uint1   incPC,
+    input   uint1   takeBranch
 ) <reginputs> {
-    // FUSED OPERATIONS + CALCULATIONS & CONVERSIONS GO VIA SLOW PATH
-    // SIGN MANIPULATION, COMPARISONS + MIN/MAX, MOVE AND CLASSIFICATION GO VIA FAST PATH
     always_after {
-        FASTPATHFPU = opCode[2,1] & function7[4,1];
+        AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
+        branchAddress = { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
+        jumpAddress = { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
+        loadAddress = ( AMO ? 0 : immediateValue ) + sourceReg1;
+        storeAddress = ( AMO ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1;
+
+        nextPC = PC + ( compressed ? 2 : 4 );
+        newPC = ( incPC ) ? ( takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress );
     }
 }
 
@@ -129,116 +181,6 @@ unit signextend(
 
     always_after {
         memory168 = is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };
-    }
-}
-
-// FIND THE ABSOLUTE VALUE FOR A SIGNED 32 BIT NUMBER
-unit absolute(
-    input   int32   number,
-    input   int32   negative,
-    output  int32   value
-) <reginputs> {
-    always_after {
-        value = number[31,1] ? negative : number;
-    }
-}
-
-// ADD 2 TO AN ADDRESS FOR 32 BIT LOAD/STORES
-unit addrplus2(
-    input   uint27  address,
-    output  uint27  addressplus2
-) <reginputs> {
-    always_after {
-        addressplus2 = address + 2;
-    }
-}
-// ADD 1 TO AN ADDRESS FOR DMA
-unit addrplus1(
-    input   uint27  address,
-    output  uint27  addressplus1
-) <reginputs> {
-    always_after {
-        addressplus1 = address + 1;
-    }
-}
-// SUB 1 TO AN ADDRESS FOR DMA
-unit addrsub1(
-    input   uint27  address,
-    output  uint27  addresssub1
-) <reginputs> {
-    always_after {
-        addresssub1 = address - 1;
-    }
-}
-
-// ADD 1 TO A 9 BIT BUFFER POINTER FOR DMA
-unit bufferaddrplus1(
-    input   uint9  address,
-    output  uint9  addressplus1
-) <reginputs> {
-    always_after {
-        addressplus1 = address + 1;
-    }
-}
-
-// RISC-V ADDRESS GENERATOR
-unit addressgenerator(
-    input   uint32  instruction,
-    input   int32   immediateValue,
-    input   uint27  PC,
-    input   int32   sourceReg1,
-    output  uint32  AUIPCLUI,
-    output  uint27  branchAddress,
-    output  uint27  jumpAddress,
-    output  uint27  loadAddress,
-    output  uint27  storeAddress,
-    input   uint1   AMO
-) <reginputs> {
-    always_after {
-        AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
-        branchAddress = { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
-        jumpAddress = { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
-        loadAddress = ( AMO ? 0 : immediateValue ) + sourceReg1;
-        storeAddress = ( AMO ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1;
-    }
-}
-
-// RISC-V SELECT THE NEXT INSTRUCTION BASED ON CPU STATE FLAGS
-unit newpc(
-    input   uint5   opCode,
-    input   uint27  PC,
-    input   uint1   compressed,
-    input   uint1   incPC,
-    input   uint1   takeBranch,
-    input   uint27  branchAddress,
-    input   uint27  jumpAddress,
-    input   uint27  loadAddress,
-    output  uint27  nextPC,
-    output  uint27  newPC
-) <reginputs> {
-    always_after {
-        nextPC = PC + ( compressed ? 2 : 4 );
-        newPC = ( incPC ) ? ( takeBranch ? branchAddress : nextPC ) : ( opCode[1,1] ? jumpAddress : loadAddress );
-    }
-}
-
-// RISC-V REGISTERS
-unit registers(
-    input   uint1   SMT,
-    input   uint5   rs,
-    input   uint5   rd,
-    input   uint1   write,
-    input   uint32  result,
-    output  uint32  contents
-) <reginputs> {
-    simple_dualport_bram int32 registers0[32] = { 0, pad(uninitialized) };
-    simple_dualport_bram int32 registers1[32] = { 0, pad(uninitialized) };
-
-    always_after {
-        registers0.addr0 = rs; registers0.addr1 = rd; registers0.wdata1 = result; registers0.wenable1 = ~SMT & write;
-        registers1.addr0 = rs; registers1.addr1 = rd; registers1.wdata1 = result; registers1.wenable1 = SMT & write;
-
-        if( SMT ) { contents = registers1.rdata0; } else { contents = registers0.rdata0; }
     }
 }
 
@@ -311,10 +253,6 @@ unit compressed01(
                 // NOP if rd == 0 and nzimm == 5b000000
                 i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, CI50(i16).rd, 3b000, CI50(i16).rd, 5b00100 };
             }
-            case 3b001: {
-                // JAL -> jal x1, offset[11:1] { 001, imm[11|4|9:8|10|6|7|3:1|5] 01 } -> { imm[20|10:1|11|19:12] rd 1101111 }
-                i32 = { CJ(i16).ib_11, CJ(i16).ib_10, CJ(i16).ib_9_8, CJ(i16).ib_7, CJ(i16).ib_6, CJ(i16).ib_5, CJ(i16).ib_4, CJ(i16).ib_3_1, {8{CJ(i16).ib_11}}, 5h1, 5b11011 };
-            }
             case 3b010: {
                 // LI -> addi rd, x0, imm[5:0] { 010 imm[5] rd!=0 imm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
                 i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, 5h0, 3b000, CI(i16).rd, 5b00100 };
@@ -350,14 +288,16 @@ unit compressed01(
                     i32 = { { 1b0, i16[10,1], 5b00000 }, CBalu50(i16).ib_4_0, { 2b01, CBalu50(i16).rd_alt }, 3b101, { 2b01, CBalu50(i16).rd_alt }, 5b00100 };
                 }
             }
-            case 3b101: {
-                // J -> jal, x0, offset[11:1] { 101, imm[11|4|9:8|10|6|7|3:1|5] 01 } -> { imm[20|10:1|11|19:12] rd 1101111 }
-                i32 = { CJ(i16).ib_11, CJ(i16).ib_10, CJ(i16).ib_9_8, CJ(i16).ib_7, CJ(i16).ib_6, CJ(i16).ib_5, CJ(i16).ib_4, CJ(i16).ib_3_1, {9{CJ(i16).ib_11}}, 5h0, 5b11011 };
-            }
             default: {
-                // 3b110 -> BEQZ -> beq rs1', x0, offset[8:1] { 110, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011 }
-                // 3b111 -> BNEZ -> bne rs1', x0, offset[8:1] { 111, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011 }
-                i32 = { {4{CB(i16).offset_8}}, CB(i16).offset_7_6, CB(i16).offset_5, 5h0, {2b01,CB(i16).rs1_alt}, { 2b00, i16[13,1] }, CB(i16).offset_4_3, CB(i16).offset_2_1, CB(i16).offset_8, 5b11000 };
+                if( i16[14,1] ) {
+                    // 3b110 -> BEQZ -> beq rs1', x0, offset[8:1] { 110, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011 }
+                    // 3b111 -> BNEZ -> bne rs1', x0, offset[8:1] { 111, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011 }
+                    i32 = { {4{CB(i16).offset_8}}, CB(i16).offset_7_6, CB(i16).offset_5, 5h0, {2b01,CB(i16).rs1_alt}, { 2b00, i16[13,1] }, CB(i16).offset_4_3, CB(i16).offset_2_1, CB(i16).offset_8, 5b11000 };
+                } else {
+                    // 3b001 -> JAL -> jal x1, offset[11:1] { 001, imm[11|4|9:8|10|6|7|3:1|5] 01 } -> { imm[20|10:1|11|19:12] rd 1101111 }
+                    // 3b101 -> J -> jal, x0, offset[11:1] { 101, imm[11|4|9:8|10|6|7|3:1|5] 01 } -> { imm[20|10:1|11|19:12] rd 1101111 }
+                    i32 = { CJ(i16).ib_11, CJ(i16).ib_10, CJ(i16).ib_9_8, CJ(i16).ib_7, CJ(i16).ib_6, CJ(i16).ib_5, CJ(i16).ib_4, CJ(i16).ib_3_1, {9{CJ(i16).ib_11}}, 4h0, ~i16[15,1], 5b11011 };
+                }
             }
         }
     }
@@ -475,6 +415,9 @@ unit CSRblock(
 ) <reginputs> {
     // MAIN SYSTEM TIMER
     counter40always TIMER();
+    $$if ICARUS or VERILATOR then
+        uint40  lastTIMER = 0;
+    $$end
 
     // CPU HART CYCLE TIMERS
     counter40 CYCLE(); counter40 CYCLESMT();
@@ -499,6 +442,9 @@ unit CSRblock(
 
     algorithm <autorun> {
         while(1) {
+            $$if ICARUS or VERILATOR then
+                if( incCSRinstret ) { __write("%d",TIMER.counter-lastTIMER); lastTIMER = TIMER.counter; }
+            $$end
             if( start & ~|CSR(instruction).csr[4,8] ) {
                 switch( function3[0,2] ) {
                     case 2b00: {

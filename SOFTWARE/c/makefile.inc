@@ -13,8 +13,8 @@ RANLIB=$(ARCH)--elf-ranlib
 BUILD_DIR=build
 OUTPUT_DIR=../../PAWS/
 
-CFLAGS=-march=rv32imafc -mabi=ilp32f -mshorten-memrefs -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -ffast-math -Wno-stringop-overread
-LFLAGS=--as-needed --gc-sections -m elf32lriscv -b elf32-littleriscv --no-relax
+CFLAGS=-march=rv32imafc -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -ffast-math -Wno-stringop-overread
+LFLAGS=--as-needed --gc-sections -m elf32lriscv -b elf32-littleriscv
 LCONFIG=-T../config_c_SDRAM.ld
 
 PAWSBASE=../
@@ -22,7 +22,7 @@ INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I/usr/riscv32-elf/
 
 LIBRARY=/usr/riscv64-elf/lib/rv32imafc/ilp32f/libc.a \
 	/usr/riscv64-elf/lib/rv32imafc/ilp32f/libm.a \
-	/usr/lib/gcc/riscv64-elf/11.1.0/rv32imafc/ilp32f/libgcc.a \
+	/usr/lib/gcc/riscv64-elf/12.1.0/rv32imafc/ilp32f/libgcc.a \
 
 CRT0SOURCE=	$(PAWSBASE)library/crt0.c
 CRT0OBJ=	$(PAWSBASE)library/build/crt0.o
