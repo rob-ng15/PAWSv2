@@ -51,6 +51,7 @@ extern void sample_upload( unsigned char channel_number, unsigned short length, 
 
 // DISPLAY
 //extern void await_vblank( void );
+//extern void await_vblank_finish( void );
 extern void screen_mode( unsigned char, unsigned char, unsigned char );
 extern void screen_dimmer( unsigned char dimmerlevel );
 extern void bitmap_display( unsigned char );
@@ -139,6 +140,7 @@ extern void tpu_print_centre( unsigned char, unsigned char, unsigned char, char,
 extern void terminal_cs( void );
 extern void terminal_showhide( unsigned char );
 extern void terminal_output_character( char );
+extern void terminal_outputstring( char *s );
 extern void terminal_print( char *);
 extern void terminal_printf( const char *,... );
 
@@ -218,6 +220,9 @@ extern unsigned short volatile *BACKGROUND_COPPER_CPUINPUT;
 
 static inline void await_vblank( void ) {
     while( !*VBLANK );
+}
+static inline void await_vblank_finish( void ) {
+    while( *VBLANK );
 }
 
 static inline void gpu_pixelblock_pixel( unsigned char pixel ) {

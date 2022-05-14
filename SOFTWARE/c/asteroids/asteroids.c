@@ -264,7 +264,6 @@ unsigned char find_asteroid_space( void ) {
 void move_asteroids( void ) {
     while(1) {
         await_vblank();
-        set_timer1khz( 4, 1 );
 
         for( unsigned char asteroid_number = 0; asteroid_number < MAXASTEROIDS; asteroid_number++ ) {
             if( ( asteroid_active[asteroid_number] != 0 ) && ( asteroid_active[asteroid_number] < 3 ) ) {
@@ -291,7 +290,7 @@ void move_asteroids( void ) {
                 set_sprite( ASN( asteroid_number ), 0, 0, 0, 0, 0 );
             }
         }
-        wait_timer1khz( 1 );
+        await_vblank_finish();
     }
 }
 
@@ -726,9 +725,8 @@ int main( void ) {
             placeAsteroids = 4 + ( ( level < 4 ) ? level : 4 );
         }
 
-        // AWAIT VBLANK and SET DELAY
+        // AWAIT VBLANK
         await_vblank();
-        set_timer1khz( 4, 0 );
 
         // BEEP / BOOP
         beepboop();
@@ -895,6 +893,6 @@ int main( void ) {
         check_hit();
         check_ufo_bullet_hit();
 
-        wait_timer1khz( 0 );
+        await_vblank_finish();
     }
 }

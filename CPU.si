@@ -8,13 +8,26 @@
 
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 $$ addr_width = 27
+
+// L0 CACHE SIZES FOR HART ID 0 AND 1
+// MAX size is 64 due to bram limits
+// size and blocks must be a power of 2
 $$ L0Isize = 64
-$$ L0Iblocks = 2
 $$ L0Icacheaddrwidth = clog2(L0Isize)
-$$ L0Icount = clog2(L0Iblocks)
-$$ L0Ipartaddresswidth = addr_width - 1 - L0Icount - L0Icacheaddrwidth
-$$ L0Ipartaddressstart = 1 + L0Icount + L0Icacheaddrwidth
-bitfield L0cacheI{ uint30 instruction, uint1 compressed }
+
+// HART 0 - MAIN
+$$ L00Iblocks = 8
+$$ L00Icount = clog2(L00Iblocks)
+$$ L00Ipartaddresswidth = addr_width - 1 - L00Icount - L0Icacheaddrwidth
+$$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
+bitfield L00cacheI{ uint30 instruction, uint1 compressed }
+
+// HART 1 - SMT
+$$ L01Iblocks = 4
+$$ L01Icount = clog2(L01Iblocks)
+$$ L01Ipartaddresswidth = addr_width - 1 - L01Icount - L0Icacheaddrwidth
+$$ L01Ipartaddressstart = 1 + L01Icount + L0Icacheaddrwidth
+bitfield L01cacheI{ uint30 instruction, uint1 compressed }
 
 unit PAWSCPU(
     input   uint1   clock_CPUdecoder,
@@ -37,275 +50,234 @@ unit PAWSCPU(
     input   uint27  DMADEST,
     input   uint27  DMACOUNT,
     input   uint3   DMAMODE,
-    output  uint2   DMAACTIVE(0)
+    output! uint2   DMAACTIVE(0)
 ) <reginputs> {
-    // COMMIT TO REGISTERS FLAG AND HART (0/1) SELECT
-    uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
-
-    // COMPRESSED INSTRUCTION EXPANDER
+    // CPU REGISTERS AND THREAD SELECTION
+    uint1   COMMIT = uninitialized;                 uint1   SMT = 0;                                    uint1   COMMIT_SMT = uninitialised;
     uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
-    compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata ); compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata ); compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata );
+    uint27  pc = 0;                                 uint27  pc_next <:: SMT ? pc :  AGU.newPC;                                      // HART 0 pc + UPDATE
+    uint27  pcSMT = uninitialized;                  uint27  pcSMT_next <:: SMT ? AGU.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;       // HART 1 pc + update
+    uint27  PC <:: SMT ? pcSMT : pc;                                                                                                // SELECT PC FOR THIS CYCLE
 
-    // RISC-V 32 BIT INSTRUCTION DECODER + MEMORY ACCESS SIZE
-    decode RV32DECODER <@clock_CPUdecoder> ( instruction <: instruction );
-    memoryaccess MEMACCESS <@clock_CPUdecoder> ( cacheselect <: cacheselect, DMAACTIVE <: DMAACTIVE[0,1], opCode <: RV32DECODER.opCode, function7 <: RV32DECODER.function7[2,5], function3 <: RV32DECODER.function3, AMO <: RV32DECODER.AMO, accesssize :> accesssize );
-
-    // RISC-V REGISTERS
-    uint32  result <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
-    riscvregisters REGISTERS <@clock_CPUdecoder> (
+    // RISC-V 32 BIT CONTROLLER
+    uint32  result <: RV32CONTROL.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
+    uint1   frd <:: RV32CONTROL.FASTPATH ? RV32CONTROL.writeRegisterF : EXECUTESLOW.frd;
+    uint1   write <:: COMMIT & RV32CONTROL.writeRegister;
+    control RV32CONTROL <@clock_CPUdecoder> (
+        cacheselect <: cacheselect,
+        DMAACTIVE <: DMAACTIVE[0,1],
         SMT <:: SMT,
-        rs1 <: RV32DECODER.rs1,
-        rs2 <: RV32DECODER.rs2,
-        rs3 <: RV32DECODER.rs3,
-        rd <: RV32DECODER.rd,
-        result <: result
+        COMMIT_SMT <:: COMMIT_SMT,
+        frd <: frd,
+        write <: write,
+        result <: result,
+        instruction <: instruction,
+        accesssize :> accesssize
     );
-
-    // NEGATIVE OF REGISTERS FOR ABS AND ADD/SUB
-    int32   negRS1 <:: -REGISTERS.sourceReg1;                 int32   negRS2 <:: -REGISTERS.sourceReg2;
-    // EXTRACT ABSOLUTE VALUE FOR MULTIPLICATION AND DIVISION
-    absolute ARS1 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg1, negative <: negRS1 ); absolute ARS2 <@clock_CPUdecoder> ( number <: REGISTERS.sourceReg2, negative <: negRS2 );
-
-
-    // RISC-V PROGRAM COUNTERS AND STATUS - SMT -> RUNNING ON HART 1 WITH DUPLICATE PROGRAM COUNTER AND REGISTER FILE
-    uint27  pc = 0;                     uint27  pc_next <:: SMT ? pc :  NEWPC.newPC;                                    // HART 0 pc + UPDATE
-    uint27  pcSMT = uninitialized;      uint27  pcSMT_next <:: SMT ? NEWPC.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;     // HART 1 pc + update
-    uint27  PC <:: SMT ? pcSMT : pc;                                                                                    // SELECT PC FOR THIS CYCLE
 
     // RISC-V ADDRESS GENERATOR
     addressgenerator AGU <@clock_CPUdecoder> (
         instruction <: instruction,
-        immediateValue <: RV32DECODER.immediateValue,
+        immediateValue <: RV32CONTROL.immediateValue,
         PC <: PC,
-        sourceReg1 <: REGISTERS.sourceReg1,
-        AMO <: RV32DECODER.AMO
+        sourceReg1 <: RV32CONTROL.sourceReg1,
+        AMO <: RV32CONTROL.IS_ATOMIC,
+        compressed <: compressed,
+        incPC <: RV32CONTROL.incPC,
+        takeBranch <: takeBranch
     );
 
-    // GENERATE PLUS 2 ADDRESSES FOR 32 BIT MEMORY OPERATIONS
-    addrplus2 PC2 <@clock_CPUdecoder> ( address <: PC ); addrplus2 LA2 <@clock_CPUdecoder> ( address <: AGU.loadAddress ); addrplus2 SA2 <@clock_CPUdecoder> ( address <: AGU.storeAddress );
+    // FETCH UNIT
+    fetch FETCH(
+        clock_CPUdecoder <: clock_CPUdecoder,
+        PC <: PC,
+        readdata <: readdata,
+        memorybusy <: memorybusy
+    );
 
-    // SIGN EXTENDER FOR 8 AND 16 BIT LOADS
-    signextend SIGNEXTEND <@clock_CPUdecoder> ( readdata <: readdata, is16or8 <: accesssize[0,1], byteaccess <: AGU.loadAddress[0,1], dounsigned <: RV32DECODER.function3[2,1] );
-
-    // CPU EXECUTE BLOCKS
-    uint32  memoryinput = uninitialized;
+    // LOAD UNIT
+    load LOAD(
+        clock_CPUdecoder <: clock_CPUdecoder,
+        loadAddress <: AGU.loadAddress,
+        accesssize <: accesssize,
+        dounsigned <: RV32CONTROL.function3[2,1],
+        readdata <: readdata,
+        memorybusy <: memorybusy
+    );
 
     // STORE SELECTION + BYPASS FLAG IF 16/8 BIT WRITE TO I/O MEMORY
-    uint32  store <:: IFASTSLOW.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
+    uint32  storeValue <:: RV32CONTROL.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
     uint1   STORE168FAST <:: ( ~AGU.storeAddress[26,1] & AGU.storeAddress[15,1] & ~accesssize[1,1] );
-
-    // CLASSIFY THE INSTRUCTION AND SPLIT INTO FAST/SLOW FAST/SLOW
-    whatis IS <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, function7 <: RV32DECODER.function7 );
-    Iclass IFASTSLOW <@clock_CPUdecoder> ( opCode <: RV32DECODER.opCode, function3 <: RV32DECODER.function3, isALUM <: IS.ALUM, isALUCLM <: IS.ALUCLM );
+    store STORE(
+        storeAddress <: AGU.storeAddress,
+        storeValue <: storeValue,
+        accesssize <: accesssize,
+        memorybusy <: memorybusy
+    );
 
     // EXECUTE MULTICYCLE INSTRUCTIONS, INTEGER DIVIDE, FPU, CSR AND ALU-A
     cpuexecuteSLOWPATH EXECUTESLOW(
         SMT <: SMT,
         instruction <: instruction,
-        opCode <: RV32DECODER.opCode,
-        function3 <: RV32DECODER.function3,
-        function7 <: RV32DECODER.function7,
-        rs1 <: RV32DECODER.rs1,
-        rs2 <: RV32DECODER.rs2,
-        sourceReg1 <: REGISTERS.sourceReg1,
-        sourceReg2 <: REGISTERS.sourceReg2,
-        abssourceReg1 <: ARS1.value,
-        abssourceReg2 <: ARS2.value,
-        sourceReg1F <: REGISTERS.sourceReg1F,
-        sourceReg2F <: REGISTERS.sourceReg2F,
-        sourceReg3F <: REGISTERS.sourceReg3F,
-        memoryinput <: memoryinput,
+        opCode <: RV32CONTROL.opCode,
+        function3 <: RV32CONTROL.function3,
+        function7 <: RV32CONTROL.function7,
+        rs1 <: RV32CONTROL.rs1,
+        rs2 <: RV32CONTROL.rs2,
+        sourceReg1 <: RV32CONTROL.sourceReg1,
+        sourceReg2 <: RV32CONTROL.sourceReg2,
+        abssourceReg1 <: RV32CONTROL.sourceReg1abs,
+        abssourceReg2 <: RV32CONTROL.sourceReg2abs,
+        sourceReg1F <: RV32CONTROL.sourceReg1F,
+        sourceReg2F <: RV32CONTROL.sourceReg2F,
+        sourceReg3F <: RV32CONTROL.sourceReg3F,
+        memoryinput <: LOAD.memoryinput,
         incCSRinstret <: COMMIT,
-        isALUM <: IS.ALUM,
-        isALUCLM <: IS.ALUCLM,
-        isCSR <: IS.CSR,
-        isATOMIC <: IS.ATOMIC,
-        isFPU <: IS.FPU
+        isALUM <: RV32CONTROL.IS_ALUM,
+        isALUCLM <: RV32CONTROL.IS_ALUCLM,
+        isCSR <: RV32CONTROL.IS_CSR,
+        isATOMIC <: RV32CONTROL.IS_ATOMIC,
+        isFPU <: RV32CONTROL.IS_FPU,
+        FASTPATHFPU <: RV32CONTROL.FASTPATHFPU
     );
 
     // EXECUTE SINGLE CYLE INSTRUCTIONS, MOST OF BASE PLUS INTEGER MULTIPLICATION
-    uint1   takeBranch <:: IFASTSLOW.FASTPATH & EXECUTEFAST.takeBranch;
+    uint1   takeBranch <:: RV32CONTROL.FASTPATH & EXECUTEFAST.takeBranch;
     cpuexecuteFASTPATH EXECUTEFAST(
-        opCode <: RV32DECODER.opCode,
-        function3 <: RV32DECODER.function3,
-        function7 <: RV32DECODER.function7,
-        rs1 <: RV32DECODER.rs1,
-        rs2 <: RV32DECODER.rs2,
-        sourceReg1 <: REGISTERS.sourceReg1,
-        sourceReg2 <: REGISTERS.sourceReg2,
-        negSourceReg2 <: negRS2,
-        sourceReg2F <: REGISTERS.sourceReg2F,
-        immediateValue <: RV32DECODER.immediateValue,
-        memoryinput <: memoryinput,
+        opCode <: RV32CONTROL.opCode,
+        function3 <: RV32CONTROL.function3,
+        function7 <: RV32CONTROL.function7,
+        rs1 <: RV32CONTROL.rs1,
+        rs2 <: RV32CONTROL.rs2,
+        sourceReg1 <: RV32CONTROL.sourceReg1,
+        sourceReg2 <: RV32CONTROL.sourceReg2,
+        negSourceReg2 <: RV32CONTROL.sourceReg2neg,
+        sourceReg2F <: RV32CONTROL.sourceReg2F,
+        immediateValue <: RV32CONTROL.immediateValue,
+        memoryinput <: LOAD.memoryinput,
         AUIPCLUI <: AGU.AUIPCLUI,
-        nextPC <: NEWPC.nextPC,
-        isALUMM <: IS.ALUM,
-        isLOAD <: MEMACCESS.memoryload,
-        isBRANCH <: IS.BRANCH,
-        isAUIPCLUI <: IS.AUIPCLUI,
-        isJAL <: IS.JAL
-    );
-
-    // SELECT NEXT PC
-    newpc NEWPC <@clock_CPUdecoder> (
-        opCode <: RV32DECODER.opCode,
-        PC <: PC,
-        compressed <: compressed,
-        incPC <: IFASTSLOW.incPC,
-        takeBranch <: takeBranch,
-        branchAddress <: AGU.branchAddress,
-        jumpAddress <: AGU.jumpAddress,
-        loadAddress <: AGU.loadAddress
+        nextPC <: AGU.nextPC,
+        isALUMM <: RV32CONTROL.IS_ALUM,
+        isLOAD <: RV32CONTROL.IS_LOAD,
+        isBRANCH <: RV32CONTROL.IS_BRANCH,
+        isAUIPCLUI <: RV32CONTROL.IS_AUIPCLUI,
+        isJAL <: RV32CONTROL.IS_JAL
     );
 
     // MINI DMA CONTROLLER
-    dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE );
+    dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE, DMAACTIVE :> DMAACTIVE, readdata <: readdata, memorybusy <: memorybusy );
 
     // SMALL ON CPU L0 CACHE - 1 per HART - RESET when pc == 0 @ START OF BIOS
     // L0 INSTRUCTION CACHE { tag, instruction, compressed, valid } split into units
-    $$for i=0,(L0Iblocks*2-1) do
-        simple_dualport_bram uint31 L0cache_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
-        simple_dualport_bram uint$L0Ipartaddresswidth$ L0tags_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
-        simple_dualport_bram uint1 L0valid_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+    $$for i=0,(L00Iblocks-1) do
+        simple_dualport_bram uint31 L00cache_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+        simple_dualport_bram uint$L00Ipartaddresswidth$ L00tags_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+    $$end
+    $$for i=0,(L01Iblocks-1) do
+        simple_dualport_bram uint31 L01cache_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+        simple_dualport_bram uint$L01Ipartaddresswidth$ L01tags_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
     $$end
 
-    il0cache_read ICACHE_0 <@clock_cache> (
-        $$for i=0,(L0Iblocks-1) do
-            L0cache_$i$ <:> L0cache_$i$,
-            L0tags_$i$ <:> L0tags_$i$,
-            L0valid_$i$ <:> L0valid_$i$,
+    il00cache_read ICACHE_0 <@clock_cache> (
+        $$for i=0,(L00Iblocks-1) do
+            L0cache_$i$ <:> L00cache_$i$, L0tags_$i$ <:> L00tags_$i$,
         $$end
         address <: pc
     );
-    il0cache_read ICACHE_1 <@clock_cache> (
-        $$for i=L0Iblocks,(L0Iblocks*2-1) do
-            L0cache_$i-L0Iblocks$ <:> L0cache_$i$,
-            L0tags_$i-L0Iblocks$ <:> L0tags_$i$,
-            L0valid_$i-L0Iblocks$ <:> L0valid_$i$,
+    il01cache_read ICACHE_1 <@clock_cache> (
+        $$for i=0,(L01Iblocks-1) do
+            L0cache_$i$ <:> L01cache_$i$, L0tags_$i$ <:> L01tags_$i$,
         $$end
         address <: pcSMT
     );
-    il0cache_write ICACHE_0W(
-        $$for i=0,(L0Iblocks-1) do
-            L0cache_$i$ <:> L0cache_$i$,
-            L0tags_$i$ <:> L0tags_$i$,
-            L0valid_$i$ <:> L0valid_$i$,
+    il00cache_write ICACHE_0W(
+        $$for i=0,(L00Iblocks-1) do
+            L0cache_$i$ <:> L00cache_$i$, L0tags_$i$ <:> L00tags_$i$,
         $$end
-        address <: pc,
-        newinstruction <: instruction[2,30],
-        newcompressed <: compressed
+        address <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed
     );
-    il0cache_write ICACHE_1W(
-        $$for i=L0Iblocks,(L0Iblocks*2-1) do
-            L0cache_$i-L0Iblocks$ <:> L0cache_$i$,
-            L0tags_$i-L0Iblocks$ <:> L0tags_$i$,
-            L0valid_$i-L0Iblocks$ <:> L0valid_$i$,
+    il01cache_write ICACHE_1W(
+        $$for i=0,(L01Iblocks-1) do
+            L0cache_$i$ <:> L01cache_$i$, L0tags_$i$ <:> L01tags_$i$,
         $$end
-        address <: pcSMT,
-        newinstruction <: instruction[2,30],
-        newcompressed <: compressed
+        address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed
     );
     uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );
     uint1   L0update_0 <:: ~SMT & ~ICACHE_0.tagmatch;
     uint1   L0update_1 <:: SMT & ~ICACHE_1.tagmatch;
     ICACHE_0W.update := 0; ICACHE_1W.update := 0; ICACHE_0.invalidate := ~|pc; ICACHE_1.invalidate := ~|pc; ICACHE_0W.invalidate := ~|pc; ICACHE_1W.invalidate := ~|pc;
 
-    REGISTERS.frd := IFASTSLOW.FASTPATH ? IFASTSLOW.frd : EXECUTESLOW.frd; REGISTERS.write := COMMIT & IFASTSLOW.writeRegister;
-    DMA.start := 0; DMA.update := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
+    // CONTROLS FOR MEMORY ACCESSES
+    FETCH.start := 0; LOAD.start := 0; STORE.start := 0; DMA.start := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
 
     algorithm <autorun> {
-        DMAACTIVE = 0;                                                                                                                              // ON RESET CANCEL DMA
-        while( memorybusy | EXECUTESLOW.busy ) {}                                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
-        cacheselect = 0; address = 0; readmemory = 1;                                                                                               // FETCH FIRST INSTRUCTION
+        while( memorybusy | EXECUTESLOW.busy ) {}                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
+        cacheselect = 0; FETCH.start = 1;                                                                                           // FETCH FIRST INSTRUCTION
 
         while(1) {
-            if( |DMAMODE ) {                                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
-                // PROCESS A DMA REQUEST - USES DATA CACHE AND BYTE ACCESS MODE IF NOT SPECIAL MODE
-                DMAACTIVE = &DMAMODE ? 2 : 1; DMA.start = 1;
-                while( |DMA.dmacount ) {
-                    address = DMA.dmasrc; readmemory = 1; while( memorybusy ) {}                                                                        // DMA FETCH
-                    memoryinput[0,16] = readdata; address = DMA.dmadest;                                                                                // DMA SET DESTINATION ADDRESS
-                    if( DMAACTIVE[1,1] ) {
-                        writedata = memoryinput[0,8]; writememory = 1;                                                                                  // STORE TWO PIXELS TO PIXELBLOCK IN SPECIAL MODE
-$$if gpu_50_mhz then
-                        ++:                                                                                                                             // 1 CYCLE FOR FASTER GPU, 2 FOR SLOWER
-$$else
-                        ++: ++:
-$$end
-                        writedata = memoryinput[8,8]; writememory = 1;
-                    } else {
-                        writedata = memoryinput[ { DMA.dmasrc[0,1], 3b000 }, 8 ];                                                                       // DMA STORE 8 BIT
-                        if( DMA.dmadest[26,1] ) { writememory = 1; while( memorybusy ) {} } else { writememory = 1; }                                   // CHECK IF FAST STORE IS POSSIBLE
-                    }
-                    DMA.update = 1;
-                }
-                DMAACTIVE = 0;
+            COMMIT_SMT = SMT;
+
+            if( L0match ) {                                                                                                         // FETCH INSTRUCTION
+                instruction =  { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };                                             // FROM CACHE
+                compressed = SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
             } else {
-                if( L0match ) {                                                                                                                         // CHECK ICACHE
-                    instruction =  { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
-                    compressed = SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
-                } else {
-                    while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
-                    compressed = ( ~&readdata[0,2] );
-                    if( compressed ) {
-                        switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
-                            case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
-                            case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
-                            case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
-                            default: {}
-                        }
-                    } else {
-                        instruction[0,16] = readdata; address = PC2.addressplus2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
-                    }
-                }
-                ++: // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
-                ICACHE_0W.update = L0update_0; ICACHE_1W.update = L0update_1;                                                                                     // UPDATE ICACHE
+                if( FETCH.busy ) { while( FETCH.busy ) {} } else { cacheselect = 0; }                                                   // FROM MEMORY
+                instruction = FETCH.instruction; compressed = FETCH.compressed;
+            }
+            // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
+            ICACHE_0W.update = L0update_0; ICACHE_1W.update = L0update_1;                                                               // UPDATE ICACHE
 
-                cacheselect = 1;
-                if( MEMACCESS.memoryload ) {
-                    address = AGU.loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
-                    if( accesssize[1,1] ) {
-                        memoryinput[0,16] = readdata; address = LA2.addressplus2; readmemory = 1; while( memorybusy ) {} memoryinput[16,16] = readdata;     // READ 2ND 16 BITS
-                    } else {
-                        memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
-                    }
-                } else { readmemory = 0; }
+            cacheselect = 1;                                                                                                            // SWITCH TO DATA CACHE
 
-                if( ~IFASTSLOW.FASTPATH ) {
-                    EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                                     // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
-                } else {
-                    COMMIT = 0;                                                                                                                             // INTEGER ALU, LOAD, STORE, BRANCH, JUMP, ETC
-                }
-                COMMIT = 1;                                                                                                                                 // COMMIT REGISTERS
+            if( RV32CONTROL.IS_LOAD ) {                                                                                                 // LOAD FROM MEMORY
+                LOAD.start = 1; while( LOAD.busy ) {}
+            } else { LOAD.start = 0; }
 
-                if( MEMACCESS.memorystore ) {
-                    address = AGU.storeAddress; writedata = store[0,16];                                                                                    // STORE 8 OR 16 BIT
-                    if( STORE168FAST ) {
-                        writememory = 1;                                                                                                                    // FAST STORE FOR 16 * TO LOW MEMORY
-                    } else {
-                        writememory = 1; while( memorybusy ) {}
-                        if( accesssize[1,1] ) {
-                            address = SA2.addressplus2; writedata = store[16,16]; writememory = 1;  while( memorybusy ) {}                                  // 32 BIT WRITE 2ND 16 BITS
-                        } else { writememory = 0; }
-                    }
-                } else { writememory = 0; }
-
-                pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                                                  // UPDATE PC AND SMT
+            if( ~RV32CONTROL.FASTPATH ) {
+                ++: EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                 // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
+            } else {
+                EXECUTESLOW.start = 0;                                                                                                  // INTEGER ALU, LOAD, STORE, BRANCH, JUMP, ETC
             }
 
-            if( ~|DMAMODE ) {
-                cacheselect = 0; address = PC; readmemory = ~L0match;                                                                                       // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
-            }
+            if( RV32CONTROL.IS_STORE ) {
+                if( STORE168FAST ) {
+                    address = AGU.storeAddress; writedata = storeValue[0,16]; writememory = 1;                                          // FAST STORE FOR 16 8 TO LOW MEMORY
+                } else {
+                    STORE.start = 1; while( STORE.busy ) {}                                                                             // STORE
+                }
+            } else { STORE.start = 0; }
+
+            COMMIT = 1; pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                      // UPDATE PC AND SWITCH THREADS IF SMT ENABLED
+
+            if( |DMAMODE ) {                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
+                DMA.start = 1; while( |DMAACTIVE ) { }
+            } else { DMA.start = 0; }
+
+            cacheselect = 0; FETCH.start = ~L0match;                                                                                    // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
         } // RISC-V
+    }
+
+    always_after {
+        if( |DMAACTIVE ) {
+            address = DMA.address; writedata = DMA.writedata; writememory = DMA.writememory; readmemory = DMA.readmemory;               // COPY MEMORY REQUESTS FROM DMA ENGINE
+        }
+        if( STORE.busy ) {
+            address = STORE.address; writedata = STORE.writedata; writememory = STORE.writememory;                                      // COPY MEMORY REQUESTS FROM THE STORE UNIT
+        }
+        if( |LOAD.busy ) {
+            address = LOAD.address; readmemory = LOAD.readmemory;                                                                       // COPY MEMORY REQUESTS FROM DMA ENGINE
+        }
+        if( FETCH.busy ) {
+            address = FETCH.address; readmemory = FETCH.readmemory;                                                                     // COPY MEMORY REQUESTS FROM DMA ENGINE
+        }
     }
 }
 
-// L0 ON CPU INSTRUCTION CACHE
-unit il0cache_read(
-$$for i=0,(L0Iblocks-1) do
+// HART ID 0 L0 CACHE
+unit il00cache_read(
+$$for i=0,(L00Iblocks-1) do
     simple_dualport_bram_port0 L0cache_$i$,
     simple_dualport_bram_port0 L0tags_$i$,
-    simple_dualport_bram_port0 L0valid_$i$,
 $$end
     input   uint$addr_width$  address,
     input   uint1   invalidate,
@@ -313,29 +285,28 @@ $$end
     output  uint1   compressed,
     output  uint1   tagmatch
 ) <reginputs> {
+    uint$L00Ipartaddresswidth$ tag = uninitialised;
+
     always_before {
-        $$for i=0,(L0Iblocks-1) do
-            L0cache_$i$.addr0 = address[$1+L0Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 = address[$1+L0Icount$,$L0Icacheaddrwidth$];
-            L0valid_$i$.addr0 = address[$1+L0Icount$,$L0Icacheaddrwidth$];
+        $$for i=0,(L00Iblocks-1) do
+            L0cache_$i$.addr0 = address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 = address[$1+L00Icount$,$L0Icacheaddrwidth$];
         $$end
 
-        switch( address[1,$L0Icount$] ) {
-            $$for i=0,(L0Iblocks-1) do
-                case $i$: {
-                    tagmatch = ~invalidate & L0valid_$i$.rdata0 & ( L0tags_$i$.rdata0 == address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$] );
-                    instruction = L0cacheI ( L0cache_$i$.rdata0 ).instruction;
-                    compressed =  L0cacheI( L0cache_$i$.rdata0 ).compressed;
-                }
+        switch( address[1,$L00Icount$] ) {
+            $$for i=0,(L00Iblocks-1) do
+                case $i$: { tag = L0tags_$i$.rdata0; instruction = L00cacheI ( L0cache_$i$.rdata0 ).instruction; compressed =  L00cacheI( L0cache_$i$.rdata0 ).compressed; }
             $$end
         }
     }
+    always_after {
+        tagmatch = ~invalidate & |instruction & ( tag == address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$] );
+    }
 }
 
-unit il0cache_write(
-$$for i=0,(L0Iblocks-1) do
+unit il00cache_write(
+$$for i=0,(L00Iblocks-1) do
     simple_dualport_bram_port1 L0cache_$i$,
     simple_dualport_bram_port1 L0tags_$i$,
-    simple_dualport_bram_port1 L0valid_$i$,
 $$end
     input   uint$addr_width$  address,
     input   uint30  newinstruction,
@@ -343,10 +314,10 @@ $$end
     input   uint1   update,
     input   uint1   invalidate
 ) <reginputs> {
-    uint$L0Icacheaddrwidth+1$ count = uninitialized; uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1; uint1 CLS <:: ( count < $L0Isize$ );
+    uint$L0Icacheaddrwidth+1$ count = $L0Isize$; uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1; uint1 CLS <:: ( count != $L0Isize$ );
 
-    $$for i=0,(L0Iblocks-1) do
-        L0cache_$i$.wenable1 := 0; L0tags_$i$.wenable1 := 0; L0valid_$i$.wenable1 := 0;
+    $$for i=0,(L00Iblocks-1) do
+        L0cache_$i$.wenable1 := 0; L0tags_$i$.wenable1 := 0;
     $$end
 
     algorithm <autorun> {
@@ -354,22 +325,101 @@ $$end
             if( invalidate ) {
                 count = 0;
                 while( CLS ) {
-                    $$for i=0,(L0Iblocks-1) do
-                        L0valid_$i$.addr1 = count; L0valid_$i$.wdata1 = 0; L0valid_$i$.wenable1 = 1;
+                    $$for i=0,(L00Iblocks-1) do
+                        L0cache_$i$.addr1 = count; L0cache_$i$.wdata1 = 0; L0cache_$i$.wenable1 = 1;
                     $$end
                     count = countP1;
                 }
-            } else {
-                switch( address[1,$L0Icount$] ) {
-                    $$for i=0,(L0Iblocks-1) do
-                        case $i$: {
-                            L0cache_$i$.addr1 = address[$1+L0Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr1 = address[$1+L0Icount$,$L0Icacheaddrwidth$];
-                            L0valid_$i$.addr1 = address[$1+L0Icount$,$L0Icacheaddrwidth$];
-                            L0cache_$i$.wdata1 = { newinstruction, newcompressed }; L0tags_$i$.wdata1 = address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$]; L0valid_$i$.wdata1 = 1;
-                            L0cache_$i$.wenable1 =  update; L0tags_$i$.wenable1 = update; L0valid_$i$.wenable1 = update;
-                        }
+            }
+        }
+    }
+
+    always_after {
+        if( ~CLS ) {
+            switch( address[1,$L00Icount$] ) {
+                $$for i=0,(L00Iblocks-1) do
+                    case $i$: {
+                        L0cache_$i$.addr1 = address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr1 = address[$1+L00Icount$,$L0Icacheaddrwidth$];
+                        L0cache_$i$.wdata1 = { newinstruction, newcompressed }; L0tags_$i$.wdata1 = address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$];
+                        L0cache_$i$.wenable1 =  update; L0tags_$i$.wenable1 = update;
+                    }
+                $$end
+            }
+        }
+    }
+}
+
+// HART ID 1 L0 CACHE
+unit il01cache_read(
+$$for i=0,(L01Iblocks-1) do
+    simple_dualport_bram_port0 L0cache_$i$,
+    simple_dualport_bram_port0 L0tags_$i$,
+$$end
+    input   uint$addr_width$  address,
+    input   uint1   invalidate,
+    output  uint30  instruction,
+    output  uint1   compressed,
+    output  uint1   tagmatch
+) <reginputs> {
+    uint$L01Ipartaddresswidth$ tag = uninitialised;
+
+    always_before {
+        $$for i=0,(L01Iblocks-1) do
+            L0cache_$i$.addr0 = address[$1+L01Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 = address[$1+L01Icount$,$L0Icacheaddrwidth$];
+        $$end
+
+        switch( address[1,$L01Icount$] ) {
+            $$for i=0,(L01Iblocks-1) do
+                case $i$: { tag = L0tags_$i$.rdata0; instruction = L01cacheI ( L0cache_$i$.rdata0 ).instruction; compressed =  L01cacheI( L0cache_$i$.rdata0 ).compressed; }
+            $$end
+        }
+    }
+    always_after {
+        tagmatch = ~invalidate & |instruction & ( tag == address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$] );
+    }
+}
+
+unit il01cache_write(
+$$for i=0,(L01Iblocks-1) do
+    simple_dualport_bram_port1 L0cache_$i$,
+    simple_dualport_bram_port1 L0tags_$i$,
+$$end
+    input   uint$addr_width$  address,
+    input   uint30  newinstruction,
+    input   uint1   newcompressed,
+    input   uint1   update,
+    input   uint1   invalidate
+) <reginputs> {
+    uint$L0Icacheaddrwidth+1$ count = $L0Isize$; uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1; uint1 CLS <:: ( count != $L0Isize$ );
+
+    $$for i=0,(L01Iblocks-1) do
+        L0cache_$i$.wenable1 := 0; L0tags_$i$.wenable1 := 0;
+    $$end
+
+    algorithm <autorun> {
+        while(1) {
+            if( invalidate ) {
+                count = 0;
+                while( CLS ) {
+                    $$for i=0,(L01Iblocks-1) do
+                        L0cache_$i$.addr1 = count; L0cache_$i$.wdata1 = 0; L0cache_$i$.wenable1 = 1;
                     $$end
+                    count = countP1;
                 }
+            }
+        }
+    }
+
+    always_after {
+        if( ~CLS ) {
+            switch( address[1,$L01Icount$] ) {
+                $$for i=0,(L01Iblocks-1) do
+                    case $i$: {
+                        L0cache_$i$.addr1 = address[$1+L01Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr1 = address[$1+L01Icount$,$L0Icacheaddrwidth$];
+                        L0cache_$i$.wdata1 = { newinstruction, newcompressed }; L0tags_$i$.wdata1 = address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$];
+                        L0cache_$i$.wenable1 =  update; L0tags_$i$.wenable1 = update;
+                    }
+                $$end
             }
         }
     }
@@ -401,7 +451,8 @@ unit cpuexecuteSLOWPATH(
     input   uint1   isATOMIC,
     input   uint1   isFPU,
     input   uint1   isALUM,
-    input   uint1   isALUCLM
+    input   uint1   isALUCLM,
+    input   uint1   FASTPATHFPU
 ) <reginputs> {
     // M EXTENSION - DIVISION
     aluMD ALUMD( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, abssourceReg1 <: abssourceReg1, abssourceReg2 <: abssourceReg2 );
@@ -411,9 +462,6 @@ unit cpuexecuteSLOWPATH(
 
     // B EXTENSION - CLMUL
     aluCLMUL ALUBCLMUL( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
-
-    // FLOATING POINT INSTRUCTION CLASSIFICATION
-    Fclass FCLASS( opCode <: opCode, function7 <: function7 );
 
     // FLOATING POINT REGISTERS CLASSIFICATION
     classifyF class1F( a <: sourceReg1F ); classifyF class2F( a <: sourceReg2F ); classifyF class3F( a <: sourceReg3F );
@@ -438,11 +486,11 @@ unit cpuexecuteSLOWPATH(
         FPUflags <: CSR.FPUflags,
         function3 <: function3[0,2], function7 <: function7[2,5],
         sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
-         classA <: class1F.class, classB <: class2F.class
+        classA <: class1F.class, classB <: class2F.class
     );
 
     // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
-    uint5   FPUnewflags <:: FCLASS.FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? FPUCONVERT.FPUnewflags : FPUCALC.FPUnewflags;
+    uint5   FPUnewflags <:: FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? FPUCONVERT.FPUnewflags : FPUCALC.FPUnewflags;
     CSRblock CSR(
         SMT <: SMT,
         instruction <: instruction,
@@ -455,7 +503,7 @@ unit cpuexecuteSLOWPATH(
 
     // Classify the instruction
     uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( function7[4,3] == 3b110 );
-    uint1   fpufast <:: ( isFPU & FCLASS.FASTPATHFPU ) | fpuconvert;
+    uint1   fpufast <:: ( isFPU & FASTPATHFPU ) | fpuconvert;
     uint1   fpucalc <:: isFPU & ~fpufast;
     uint4   operation <:: { ~|{fpufast,isATOMIC,isCSR}, fpufast, isATOMIC, isCSR };
 
@@ -475,7 +523,7 @@ unit cpuexecuteSLOWPATH(
             if( start ) {
                 busy = 1;
                 onehot( operation ) {
-                    case 0: { ++:  }                                                                                    // CSR
+                    case 0: { ++: }                                                                                     // CSR
                     case 1: {}                                                                                          // ATOMIC OPERATIONS
                     case 2: { ++: }                                                                                     // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                     case 3: { while( unitbusy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
@@ -557,67 +605,179 @@ unit cpuexecuteFASTPATH(
     }
 }
 
-// MINI DMA CONTROLLER ADDRESS GENERATOR
-unit dma(
-    input   uint27  DMASOURCE,
-    input   uint27  DMADEST,
-    input   uint27  DMACOUNT,
-    input   uint3   DMAMODE,
-
-    output  uint27  dmasrc,
-    output  uint27  dmadest,
-    output  uint27  dmacount,
-
+// FETCH UNIT, INCLUDING COMPRESSED INSTRUCTION EXPANSION
+unit fetch(
+    input   uint1   clock_CPUdecoder,
     input   uint1   start,
-    input   uint1   update
-) <reginputs> {
-    uint3   dmamode = uninitialized;
-    uint27  dmasrc1 <:: dmasrc + 1;
-    uint27  dmasrc2 <:: dmasrc + 2;
-    uint27  dmadest1 <:: dmadest + 1;
-    uint27  dmadest2 <:: dmadest + 2;
-    uint1   dmablue <:: ( dmadest[0,4] == 4h6 );
+    output!  uint1   busy(0),
+    input!  uint27  PC,
+    output  uint32  instruction,
+    output  uint1   compressed,
 
-    always_after {
-        if( start ) { dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; } else {
-            if( update ) {
-                switch( dmamode ) {
-                    default: {}                                                                                                     // INACTIVE / UNDEFINED
-                    case 1: { dmasrc = dmasrc1; }                                                                                   // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
-                    case 2: { dmasrc = dmasrc1; if( dmablue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }                 // DMA SPECIAL PIXEL BLOCK RGB
-                    case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                               // DMA multi-src to multi-dest MEMCPY
-                    case 4: { dmadest = dmadest1; }                                                                                 // DMA single-src to multi-dest MEMSET + SDCARD WRITE
-                    case 5: {}                                                                                                      // DMA single-src to single-dest SET TILE/CBLITTER to single value
-                    case 7: { dmasrc = dmasrc2; }                                                                                   // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
+    output! uint27  address,
+    input!  uint16  readdata,
+    output! uint1   readmemory,
+    input!  uint1   memorybusy
+) <reginputs> {
+    uint27  PC2 <:: PC + 2;
+
+    // COMPRESSED INSTRUCTION EXPANDER
+    compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata ); compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata ); compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata );
+
+    readmemory := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                busy = 1;
+                address = PC; readmemory = 1; while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
+                compressed = ( ~&readdata[0,2] );
+                if( compressed ) {
+                    switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
+                        case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
+                        case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
+                        case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
+                        default: {}
+                    }
+                } else {
+                    instruction[0,16] = readdata; address = PC2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
                 }
-                dmacount = dmacount - 1;
+                busy = 0;
+            } else { busy = 0; }
+        }
+    }
+}
+
+// LOAD UNIT - INCLUDING SIGN EXTENSION FOR 8/16 BIT SIGNED LOADS
+unit load(
+    input   uint1   clock_CPUdecoder,
+    input   uint1   start,
+    output! uint1   busy(0),
+    input   uint27  loadAddress,
+    input   uint2   accesssize,
+    input   uint1   dounsigned,
+    output  int32   memoryinput,
+
+    output! uint27  address,
+    input!  uint16  readdata,
+    output! uint1   readmemory,
+    input!  uint1   memorybusy
+) <reginputs> {
+    uint27  LA2 <:: loadAddress + 2;
+
+    // SIGN EXTENDER FOR 8 AND 16 BIT LOADS
+    signextend SIGNEXTEND <@clock_CPUdecoder> (
+        readdata <: readdata,
+        is16or8 <: accesssize[0,1],
+        byteaccess <: loadAddress[0,1],
+        dounsigned <: dounsigned
+    );
+
+    readmemory := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                busy = 1;
+                address = loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
+                if( accesssize[1,1] ) {
+                    memoryinput[0,16] = readdata; address = LA2; readmemory = 1; while( memorybusy ) {} memoryinput[16,16] = readdata;     // READ 2ND 16 BITS
+                } else {
+                    memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
+                }
+                busy = 0;
             }
         }
     }
 }
 
-// RISC-V CPU REGISTERS
-unit riscvregisters(
-    input   uint1   SMT,
-    input   uint5   rs1,
-    input   uint5   rs2,
-    input   uint5   rs3,
-    input   uint5   rd,
-    input   uint1   frd,
-    input   uint1   write,
-    input   int32   result,
-    output  int32   sourceReg1,
-    output  int32   sourceReg2,
-    output  int32   sourceReg1F,
-    output  int32   sourceReg2F,
-    output  int32   sourceReg3F
-) <reginputs> {
-    // RISC-V REGISTERS
-    uint1   Iwrite <:: write & ~frd & |rd;          uint1   Fwrite <:: write & frd;
+// STORE UNIT FOR NON-FAST STORES ( to BRAM/SDRAM or 32 bit )
+unit store(
+    input   uint1   start,
+    output! uint1   busy(0),
+    input   uint27  storeAddress,
+    input   int32   storeValue,
+    input   uint2   accesssize,
 
-    registers RS1( SMT <: SMT, rs <: rs1, rd <: rd, write <: Iwrite, result <: result, contents :> sourceReg1 );
-    registers RS2( SMT <: SMT, rs <: rs2, rd <: rd, write <: Iwrite, result <: result, contents :> sourceReg2 );
-    registers RS1F( SMT <: SMT, rs <: rs1, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg1F );
-    registers RS2F( SMT <: SMT, rs <: rs2, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg2F );
-    registers RS3F( SMT <: SMT, rs <: rs3, rd <: rd, write <: Fwrite, result <: result, contents :> sourceReg3F );
+    output! uint27  address,
+    output! uint16  writedata,
+    output! uint1   writememory,
+    input!  uint1   memorybusy
+) <reginputs> {
+    uint27  SA2 <:: storeAddress + 2;
+    writememory := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                busy = 1;
+                address = storeAddress; writedata = storeValue[0,16];                                                       // STORE 8 OR 16 BIT
+                writememory = 1; while( memorybusy ) {}
+                if( accesssize[1,1] ) {
+                    address = SA2; writedata = storeValue[16,16]; writememory = 1;  while( memorybusy ) {}                  // 32 BIT WRITE 2ND 16 BITS
+                } else { writememory = 0; }
+                busy = 0;
+            }
+        }
+    }
+}
+
+// MINI DMA CONTROLLER
+unit dma(
+    input   uint27  DMASOURCE,
+    input   uint27  DMADEST,
+    input   uint27  DMACOUNT,
+    input   uint3   DMAMODE,
+    output! uint2   DMAACTIVE,
+
+    input   uint1   start,
+    output! uint27  address,
+    output! uint16  writedata,
+    output! uint1   writememory,
+    output! uint1   readmemory,
+    input!  uint16  readdata,
+    input!  uint1   memorybusy
+) <reginputs> {
+    uint3   dmamode = uninitialized;
+    uint27  dmasrc = uninitialised;                 uint27  dmasrc1 <:: dmasrc + 1;                     uint27  dmasrc2 <:: dmasrc + 2;
+    uint27  dmadest = uninitialised;                uint27  dmadest1 <:: dmadest + 1;                   uint27  dmadest2 <:: dmadest + 2;
+    uint1   dmablue <:: ( dmadest[0,4] == 4h6 );    uint27  dmacount = uninitialised;                   uint27  dmacount1 <:: dmacount - 1;
+    uint16  memoryinput = uninitialised;
+
+    writememory := 0; readmemory := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; DMAACTIVE = &DMAMODE ? 2 : 1;
+                while( |dmacount ) {
+                    address = dmasrc; readmemory = 1; while( memorybusy ) {}
+                    memoryinput = readdata; address = dmadest;
+                    if( DMAACTIVE[1,1] ) {
+                        writedata = memoryinput[0,8]; writememory = 1;                                                                  // STORE TWO PIXELS TO PIXELBLOCK IN SPECIAL MODE
+                        $$if gpu_50_mhz then
+                        ++:                                                                                                             // 1 CYCLE FOR FASTER GPU, 2 FOR SLOWER
+                        $$else
+                        ++: ++:
+                        $$end
+                        writedata = memoryinput[8,8]; writememory = 1;
+                    } else {
+                        writedata = memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];                                                           // DMA STORE 8 BIT
+                        if( dmadest[26,1] ) { writememory = 1; while( memorybusy ) {} } else { writememory = 1; }                       // CHECK IF FAST STORE IS POSSIBLE
+                    }
+                    switch( dmamode ) {
+                        default: {}                                                                                                     // INACTIVE / UNDEFINED
+                        case 1: { dmasrc = dmasrc1; }                                                                                   // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
+                        case 2: { dmasrc = dmasrc1; if( dmablue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }                 // DMA SPECIAL PIXEL BLOCK RGB
+                        case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                               // DMA multi-src to multi-dest MEMCPY
+                        case 4: { dmadest = dmadest1; }                                                                                 // DMA single-src to multi-dest MEMSET + SDCARD WRITE
+                        case 5: {}                                                                                                      // DMA single-src to single-dest SET TILE/CBLITTER to single value
+                        case 7: { dmasrc = dmasrc2; }                                                                                   // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
+                    }
+                    dmacount = dmacount1;
+                }
+                DMAACTIVE = 0;
+            } else { DMAACTIVE = 0; }
+        }
+    }
 }

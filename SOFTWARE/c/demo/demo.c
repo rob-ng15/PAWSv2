@@ -827,6 +827,7 @@ void displayreset( void ) {
     screen_mode( 0, 0, 0 );
     gpu_cs();
     tpu_cs();
+    terminal_showhide( FALSE ); terminal_cs();
     tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
     tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
     set_background( BLACK, BLACK, BKG_SOLID );
@@ -854,6 +855,22 @@ void colourtable( void ) {
         screen_mode( 0, i, 0 );
         sleep1khz( 2000, 0 );
     }
+}
+
+// BLUE TERMINAL WINDOW TEST
+void terminaldemo( void ) {
+    displayreset();
+    terminal_showhide( TRUE );
+
+    terminal_outputstring( "The Blue Terminal Window\n\n" );
+    sleep1khz( 1000, 0 );
+
+    for( short i = 0; i < 7; i++ ) {
+        terminal_outputstring( "Hello World!\n" );
+        sleep1khz( 200, 0 );
+    }
+
+    sleep1khz( 1000, 0 );
 }
 
 // DISPLAY THE BACKGROUNDS
@@ -1341,6 +1358,8 @@ void floatdemo() {
 int main( void ) {
 	for( int loop = 0; loop < 4; loop++ ) {
         colourtable();
+
+        terminaldemo();
 
         backgrounddemo();
 
