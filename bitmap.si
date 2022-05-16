@@ -1,4 +1,8 @@
 unit bitmap(
+    input   uint1   cpu_access_cycles,
+    input   uint18  memoryAddressDirect,
+    output  uint8   readDataDirect,
+
     simple_dualport_bram_port0 bitmap_0A,
     simple_dualport_bram_port0 bitmap_1A,
     simple_dualport_bram_port0 bitmap_0R,
@@ -16,7 +20,7 @@ unit bitmap(
     output! uint1   bitmap_display,
 ) <reginputs> {
     // Pixel x and y fetching 1 in advance due to bram latency
-    uint17  address <: ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? ( pix_x[1,9] + pix_x[0,1] ) : 0 );
+    uint17  address <: cpu_access_cycles ? memoryAddressDirect : ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? ( pix_x[1,9] + pix_x[0,1] ) : 0 );
 
     // SELECT THE COLOUR FROM THE FRAMEBUFFERS
     uint7   colour0 <:: { bitmap_0A.rdata0, bitmap_0R.rdata0, bitmap_0G.rdata0, bitmap_0B.rdata0 }; uint1   c0display <:: ( colour0 != 64 );
@@ -32,11 +36,17 @@ unit bitmap(
     always_after {
         bitmap_display = pix_active & ( framebuffer ? c1display: c0display );
         pixel = framebuffer ? colour1 : colour0;
+
+        readDataDirect = memoryAddressDirect[17,1] ? colour1 : colour0;
     }
 }
 
-
 unit bitmapwriter(
+    // Memory access direct to bitmap
+    input   uint18  memoryAddressDirect,
+    input   uint1   memoryWriteDirect,
+    input   uint8   writeDataDirect,
+
     // GPU Parameters
     input   int11   gpu_x,
     input   int11   gpu_y,
@@ -74,6 +84,7 @@ unit bitmapwriter(
     input   uint3   vector_block_action,
     input   uint1   draw_vector,
 
+    output  uint1   gpu_active,
     output  uint1   gpu_queue_full,
     output  uint1   gpu_queue_complete,
     output  uint1   vector_block_active,
@@ -145,34 +156,35 @@ unit bitmapwriter(
         vector_drawer_gpu_write <: vector_drawer.gpu_write,
         vector_block_active <: vector_block_active,
         queue_full :> gpu_queue_full,
-        queue_complete :> gpu_queue_complete
+        queue_complete :> gpu_queue_complete,
+        gpu_active :> gpu_active
     );
 
     // DITHER PATTERN GENERATOR
     dither DODITHER( bitmap_x_write <: QUEUE.bitmap_x_write, bitmap_y_write <: QUEUE.bitmap_y_write, dithermode <: QUEUE.gpu_active_dithermode, static1bit <: static6bit[0,1] );
-    uint7   pixeltowrite <:: ( QUEUE.gpu_active_dithermode == 14 ) ? static6bit : DODITHER.condition ? QUEUE.bitmap_colour_write : QUEUE.bitmap_colour_write_alt;
+    uint7   pixeltowrite <:: memoryWriteDirect ? writeDataDirect : ( QUEUE.gpu_active_dithermode == 14 ) ? static6bit : DODITHER.condition ? QUEUE.bitmap_colour_write : QUEUE.bitmap_colour_write_alt;
 
     // Write in range?
     uint1   write_pixel <:: ( QUEUE.bitmap_x_write >= QUEUE.bitmap_crop_left ) & (QUEUE. bitmap_x_write <= QUEUE.bitmap_crop_right ) &
                             ( QUEUE.bitmap_y_write >= QUEUE.bitmap_crop_top ) & ( QUEUE.bitmap_y_write <= QUEUE.bitmap_crop_bottom ) & QUEUE.bitmap_write;
     uint1   write_buffer0 <:: write_pixel & ~framebuffer;
     uint1   write_buffer1 <:: write_pixel & framebuffer;
+    uint1   write_buffer0_direct <:: memoryWriteDirect & ~memoryAddressDirect[17,1];
+    uint1   write_buffer1_direct <:: memoryWriteDirect & memoryAddressDirect[17,1];
 
-    uint17  address <:: QUEUE.bitmap_y_write[0,8] * 320 + QUEUE.bitmap_x_write[0,9];
+    uint17  address <:: memoryWriteDirect ? memoryAddressDirect : QUEUE.bitmap_y_write[0,8] * 320 + QUEUE.bitmap_x_write[0,9];
 
     // LOCK BITMAP ADDRESSES, PIXEL VALUE, AND WRITE FLAGS
-    bitmap_0A.wenable1 := 1; bitmap_0R.wenable1 := 1; bitmap_0G.wenable1 := 1; bitmap_0B.wenable1 := 1;
-    bitmap_1A.wenable1 := 1; bitmap_1R.wenable1 := 1; bitmap_1G.wenable1 := 1; bitmap_1B.wenable1 := 1;
+    bitmap_0A.wenable1 := write_buffer0 | write_buffer0_direct; bitmap_0R.wenable1 := write_buffer0 | write_buffer0_direct;
+    bitmap_0G.wenable1 := write_buffer0 | write_buffer0_direct; bitmap_0B.wenable1 := write_buffer0 | write_buffer0_direct;
+    bitmap_1A.wenable1 := write_buffer1 | write_buffer1_direct; bitmap_1R.wenable1 := write_buffer1 | write_buffer1_direct;
+    bitmap_1G.wenable1 := write_buffer1 | write_buffer1_direct; bitmap_1B.wenable1 := write_buffer1 | write_buffer1_direct;
 
     always_after {
-        if( write_buffer0 ) {
-            bitmap_0A.addr1 = address; bitmap_0A.wdata1 = pixeltowrite[6,1];                                  bitmap_0R.addr1 = address; bitmap_0R.wdata1 = pixeltowrite[4,2];
-            bitmap_0G.addr1 = address; bitmap_0G.wdata1 = pixeltowrite[2,2];                                  bitmap_0B.addr1 = address; bitmap_0B.wdata1 = pixeltowrite[0,2];
-        }
-        if( write_buffer1 ) {
-            bitmap_1A.addr1 = address; bitmap_1A.wdata1 = pixeltowrite[6,1];                                  bitmap_1R.addr1 = address; bitmap_1R.wdata1 = pixeltowrite[4,2];
-            bitmap_1G.addr1 = address; bitmap_1G.wdata1 = pixeltowrite[2,2];                                  bitmap_1B.addr1 = address; bitmap_1B.wdata1 = pixeltowrite[0,2];
-        }
+        bitmap_0A.addr1 = address; bitmap_0A.wdata1 = pixeltowrite[6,1];                                  bitmap_0R.addr1 = address; bitmap_0R.wdata1 = pixeltowrite[4,2];
+        bitmap_0G.addr1 = address; bitmap_0G.wdata1 = pixeltowrite[2,2];                                  bitmap_0B.addr1 = address; bitmap_0B.wdata1 = pixeltowrite[0,2];
+        bitmap_1A.addr1 = address; bitmap_1A.wdata1 = pixeltowrite[6,1];                                  bitmap_1R.addr1 = address; bitmap_1R.wdata1 = pixeltowrite[4,2];
+        bitmap_1G.addr1 = address; bitmap_1G.wdata1 = pixeltowrite[2,2];                                  bitmap_1B.addr1 = address; bitmap_1B.wdata1 = pixeltowrite[0,2];
     }
 }
 
