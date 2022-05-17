@@ -1,4 +1,6 @@
 $$ uart_in_clock_freq_mhz = 25
+
+// CLOCK SELECTION FLAGS
 //$$ sdram_150_mhz = 1
 //$$ gpu_50_mhz = 1
 

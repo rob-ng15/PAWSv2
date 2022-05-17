@@ -12,8 +12,7 @@ algorithm vga(
   output uint1  active,
   output uint1  vblank,
   output uint10 vga_x,
-  output uint10 vga_y,
-  output uint1  cpu_access
+  output uint10 vga_y
 ) <autorun> {
 
 // we use the pre-processor to compute some bounds
@@ -51,7 +50,6 @@ $$V_END    = V_FRT_PORCH + V_SYNCH + V_BCK_PORCH + V_RES
   uint1  active_v  <:: (ycount >= $VA_START$ && ycount < $VA_START + VGA_VA_END$);
 
   active           :=  active_h && active_v;
-  cpu_access       :=  ~active;
 
   vga_hs           :=  ~((xcount >= $HS_START$ && xcount < $HS_END$));
   vga_vs           :=  ~((ycount >= $VS_START$ && ycount < $VS_END$));

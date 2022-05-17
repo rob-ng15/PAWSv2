@@ -127,7 +127,6 @@ algorithm hdmi_ddr_shifter(
 algorithm hdmi(
   output  uint10 x,
   output  uint10 y,
-  output  uint1  cpu_access,
   output  uint1  active,
   output  uint1  vblank,
   output! uint4  gpdi_dp,
@@ -220,9 +219,6 @@ algorithm hdmi(
     // update coordinates
     cnty        = (cntx == 799) ? (cnty == 524 ? 0 : (cnty + 1)) : cnty;
     cntx        = (cntx == 799) ? 0 : (cntx + 1);
-
-    // Determine if CPU can access the read memory
-    cpu_access  = ( ( cnty > 479 ) & ( cnty < 522 ) ) ? 1 : ( ( cntx > 639 ) & ( cntx < 794 ) );
 
     // latch r,b,g received at this cycle, for previous coord
     // will be fed into HDMI encoders next cycle
