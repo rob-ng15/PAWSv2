@@ -42,12 +42,11 @@ static uint8_t paws_palette[256] = {
 static inline uint8_t color_to_argbpaws ( unsigned char r, unsigned char g, unsigned char b ) {
     uint8_t colour = 0;
 
-    if( g & 128 ) colour = 64;
-    colour += ( ( r & 0xc0 ) >> 2 );
-    colour += ( ( g & 0x60 ) >> 3 );
+    colour += ( r & 0xe0 );
+    colour += ( ( g & 0xe0 ) >> 3 );
     colour += ( ( b & 0xc0 ) >> 6 );
 
-    return( ( colour == 64 ) ? 68 : colour );
+    return( ( colour == 64 ) ? 32 : colour );
 }
 
 void I_InitGraphics (void) {
@@ -57,7 +56,7 @@ void I_InitGraphics (void) {
      return;
    initialized = 1;
 
-   screens[0] = (byte*)malloc (SCREENWIDTH * SCREENHEIGHT);
+   screens[0] = (byte*)0x2020000;
 #ifndef PAWSv2PALETTE
    screen_mode( 0, MODE_RGB, 0 );
 #endif
@@ -66,7 +65,6 @@ void I_InitGraphics (void) {
 }
 
 void I_ShutdownGraphics (void) {
-    free (screens[0]);
 }
 
 void I_WaitVBL (int count) {

@@ -321,7 +321,7 @@ unit background_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint7   pixel,
+    output! uint8   pixel,
 
     // Memory access
     input   uint6   memoryAddress,
@@ -331,13 +331,13 @@ unit background_memmap(
     input   uint2   static2bit
 ) <reginputs> {
     // BACKGROUND CO-PROCESSOR PROGRAM STORAGE
-    // { 3 bit command, 3 bit mask, { 1 bit for cpuinput flag, 10 bit coordinate }, 4 bit mode, 7 bit colour 2, 7 bit colour 1 }
-    simple_dualport_bram uint3  copper_commands <@video_clock,@clock> [ 128 ] = uninitialised;
-    simple_dualport_bram uint3  copper_conditions <@video_clock,@clock> [ 128 ] = uninitialised;
-    simple_dualport_bram uint11 copper_coordinates <@video_clock,@clock> [ 128 ] = uninitialised;
-    simple_dualport_bram uint4  copper_modes <@video_clock,@clock> [ 128 ] = uninitialised;
-    simple_dualport_bram uint7  copper_alts <@video_clock,@clock> [ 128 ] = uninitialised;
-    simple_dualport_bram uint7  copper_colours <@video_clock,@clock> [ 128 ] = uninitialised;
+    // { 3 bit command, 3 bit mask, { 1 bit for cpuinput flag, 10 bit coordinate }, 4 bit mode, 8 bit colour 2, 8 bit colour 1 }
+    simple_dualport_bram uint3  copper_commands <@video_clock,@clock> [ 256 ] = uninitialised;
+    simple_dualport_bram uint3  copper_conditions <@video_clock,@clock> [ 256 ] = uninitialised;
+    simple_dualport_bram uint11 copper_coordinates <@video_clock,@clock> [ 256 ] = uninitialised;
+    simple_dualport_bram uint4  copper_modes <@video_clock,@clock> [ 256 ] = uninitialised;
+    simple_dualport_bram uint8  copper_alts <@video_clock,@clock> [ 256 ] = uninitialised;
+    simple_dualport_bram uint8  copper_colours <@video_clock,@clock> [ 256 ] = uninitialised;
 
     // BACKGROUND GENERATOR
     background_display BACKGROUND <@video_clock,!video_reset> (

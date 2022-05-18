@@ -60,112 +60,19 @@
 // COLOURS
 #define TRANSPARENT 0x40
 #define BLACK 0x00
-#define VDKBLUE 0x01
-#define DKBLUE 0x02
-#define BLUE 0x03
-#define UKBLUE 0x06
-#define LTBLUE 0x07
-#define VDKGREEN 0x04
-#define DKGREEN 0x08
-#define GREEN 0x0c
-#define LTGREEN 0x1d
-#define DKCYAN 0x0b
-#define CYAN 0x0f
-#define LTCYAN 0x1f
-#define DKRED 0x20
-#define RED 0x30
-#define LTRED 0x35
-#define DKMAGENTA 0x22
-#define MAGENTA 0x33
-#define LTMAGENTA 0x37
-#define DKPURPLE 0x11
-#define PURPLE 0x13
-#define LTPURPLE 0x17
-#define DKYELLOW 0x28
-#define YELLOW 0x3c
-#define LTYELLOW 0x3d
-#define DKORANGE 0x34
-#define ORANGE 0x38
-#define LTORANGE 0x39
-#define DKBROWN 0x10
-#define PEACH 0x3a
-#define DKGREY 0x15
-#define LTGREY 0x2a
-#define WHITE 0x3f
+#define WHITE 0xff
 
-// GRADIENTS
-#define GREY10 0x40
-#define GREY20 0x41
-#define GREY30 0x42
-#define GREY40 0x43
-#define GREY50 0x44
-#define GREY60 0x45
-#define GREY70 0x46
-#define GREY80 0x47
+#define BLUE1 0x02
+#define BLUE2 0x04
+#define BLUE3 0x06
+#define BLUE4 0x0f
 
-#define RED10 0x48
-#define RED20 0x49
-#define RED30 0x4a
-#define RED40 0x4b
-#define RED50 0x4c
-#define RED60 0x4d
-#define RED70 0x4e
-#define RED80 0x4f
-
-#define GREEN10 0x50
-#define GREEN20 0x51
-#define GREEN30 0x52
-#define GREEN40 0x53
-#define GREEN50 0x54
-#define GREEN60 0x55
-#define GREEN70 0x56
-#define GREEN80 0x57
-
-#define BLUE10 0x58
-#define BLUE20 0x59
-#define BLUE30 0x5a
-#define BLUE40 0x5b
-#define BLUE50 0x5c
-#define BLUE60 0x5d
-#define BLUE70 0x5e
-#define BLUE80 0x5f
-
-#define YELLOW10 0x60
-#define YELLOW20 0x61
-#define YELLOW30 0x62
-#define YELLOW40 0x63
-#define YELLOW50 0x64
-#define YELLOW60 0x65
-#define YELLOW70 0x66
-#define YELLOW80 0x67
-
-#define MAGENTA10 0x68
-#define MAGENTA20 0x69
-#define MAGENTA30 0x6a
-#define MAGENTA40 0x6b
-#define MAGENTA50 0x6c
-#define MAGENTA60 0x6d
-#define MAGENTA70 0x6e
-#define MAGENTA80 0x6f
-
-#define CYAN10 0x78
-#define CYAN20 0x79
-#define CYAN30 0x7a
-#define CYAN40 0x7b
-#define CYAN50 0x7c
-#define CYAN60 0x7d
-#define CYAN70 0x7e
-#define CYAN80 0x7f
-
-// SPECIAL COLOUR PALETTE
-#define BROWN 0x78
-#define GOLD 0x79
-#define FORESTGREEN 0x7a
-#define STEELBLUE 0x7b
-#define VIOLET 0x7c
-#define PINK 0x7d
-#define SKYBLUE 0x7e
-#define AQUAMARINE 0x7f
+#define GREY1 0x09
+#define GREY2 0x52
+#define GREY3 0x5b
+#define GREY4 0xa4
+#define GREY5 0xad
+#define GREY6 0xf6
 
 #define DITHEROFF 0, BLACK
 #define DITHERSOLID BLACK, 0

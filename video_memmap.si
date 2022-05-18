@@ -17,7 +17,7 @@ unit video_memmap(
     output  uint16  readData,
 
     // Memory access direct to bitmap
-    input   uint19  memoryAddressDirect,
+    input   uint18  memoryAddressDirect,
     input   uint1   memoryWriteDirect,
     input   uint1   memoryReadDirect,
     output  uint16  readDataDirect,
@@ -92,13 +92,7 @@ $$end
         static2bit <: static6bit[0,2]
     );
 
-    // Bitmap Window with GPU
-    // 320 x 240 x 7 bit { Arrggbb } colour bitmap
-    // 256 colour remapper
-    simple_dualport_bram uint7 colourmap <@video_clock,@clock> [ 256 ] = uninitialized;
-
     bitmap_memmap BITMAP(
-        colourmap <:> colourmap,
         video_clock <: video_clock,
         video_reset <: video_reset,
         gpu_clock <: video_clock,
@@ -302,13 +296,13 @@ $$end
     always_after {
         // WRITE BITMAP MEMORY DIRECTLY
         writeDirectDo = writeDirectDo >> 1;
-        if( requestWriteDirect & ~BITMAP.gpu_active ) {                         // USE TOP BIT TO DETERMINE IF TO REMAP WHEN WRITING
-            writeDirectDo = 2b11; requestWriteDirect = 0;
-            __display("  DO %x to %x",writeData,memoryAddressDirect);
-        }
         if( memoryWriteDirect ) {
             requestWriteDirect = 1; BITMAP.writeDataDirect = byteaccess ? { {2{writeData[0,8]}} } : writeData;
             __display("WRITE %x TO %x",writeData,memoryAddressDirect);
+        }
+        if( requestWriteDirect & ~BITMAP.gpu_active ) {
+            writeDirectDo = 2b11; requestWriteDirect = 0;
+            __display("  DO %x to %x",writeData,memoryAddressDirect);
         }
 
         // WRITE IO Memory
@@ -362,7 +356,7 @@ unit background_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint7   pixel,
+    output! uint8   pixel,
 
     // Memory access
     input   uint6   memoryAddress,
@@ -377,8 +371,8 @@ unit background_memmap(
     simple_dualport_bram uint3  copper_conditions <@video_clock,@clock> [ 128 ] = uninitialised;
     simple_dualport_bram uint11 copper_coordinates <@video_clock,@clock> [ 128 ] = uninitialised;
     simple_dualport_bram uint4  copper_modes <@video_clock,@clock> [ 128 ] = uninitialised;
-    simple_dualport_bram uint7  copper_alts <@video_clock,@clock> [ 128 ] = uninitialised;
-    simple_dualport_bram uint7  copper_colours <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint8  copper_alts <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint8  copper_colours <@video_clock,@clock> [ 128 ] = uninitialised;
 
     // BACKGROUND GENERATOR
     background_display BACKGROUND <@video_clock,!video_reset> (
@@ -450,7 +444,7 @@ unit bitmap_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint7   pixel,
+    output! uint8   pixel,
     output! uint1   pixel_display,
 
     // Memory access via I/O registers
@@ -465,14 +459,12 @@ unit bitmap_memmap(
     input   uint1   memoryWriteDirect,
     input   uint16  writeDataDirect,
     output  uint16  readDataDirect,
-    simple_dualport_bram_port1 colourmap,
     input   uint6   static6bit,
 
     output  uint1   gpu_active,
     output  uint1   gpu_queue_full,
     output  uint1   gpu_queue_complete,
-    output  uint1   vector_block_active,
-    output  uint7   bitmap_colour_read
+    output  uint1   vector_block_active
 ) <reginputs> {
     simple_dualport_bram uint8 bitmap_0h <@video_clock,@video_clock> [ 38400 ] = uninitialized; simple_dualport_bram uint8 bitmap_0l <@video_clock,@video_clock> [ 38400 ] = uninitialized;
     simple_dualport_bram uint8 bitmap_1h <@video_clock,@video_clock> [ 38400 ] = uninitialized; simple_dualport_bram uint8 bitmap_1l <@video_clock,@video_clock> [ 38400 ] = uninitialized;
@@ -504,10 +496,10 @@ unit bitmap_memmap(
     };
 
     // 64 x 16 x 16 7 bit tilemap for colour
-    simple_dualport_bram uint7 colourblittilemap <@video_clock,@clock> [ 16384 ] = uninitialized;
+    simple_dualport_bram uint8 colourblittilemap <@video_clock,@clock> [ 16384 ] = uninitialized;
 
     // 256 colour remapper
-    simple_dualport_bram uint7 pb_colourmap <@video_clock,@clock> [ 256 ] = uninitialized;
+    simple_dualport_bram uint8 pb_colourmap <@video_clock,@clock> [ 256 ] = uninitialized;
 
     // BITMAP WRITER AND GPU
     bitmapwriter pixel_writer <@video_clock,!video_reset> (
@@ -541,7 +533,7 @@ unit bitmap_memmap(
     blit1tilemap.wdata1 := writeData; blit1tilemap.wenable1 := 0;
     characterGenerator8x8.wdata1 := writeData; characterGenerator8x8.wenable1 := 0;
     colourblittilemap.wdata1 := writeData; colourblittilemap.wenable1 := 0;
-    vertex.wenable1 := 1; pb_colourmap.wenable1 := 1; colourmap.wenable1 := 1;
+    vertex.wenable1 := 1; pb_colourmap.wenable1 := 1;
 
     always_before {
         // RESET THE CROPPING RECTANGLE
@@ -620,8 +612,8 @@ unit bitmap_memmap(
                             case 3h3: { pixel_writer.pb_colour8b = writeData; pixel_writer.pb_newpixel = 2; }
                             case 3h4: { pixel_writer.pb_newpixel = 3; }
                             case 3h5: { pixel_writer.pb_mode = writeData; }
-                            case 3h6: { pb_colourmap.addr1 = writeData; colourmap.addr1 = writeData; }
-                            case 3h7: { pb_colourmap.wdata1 = writeData; colourmap.wdata1 = writeData; }
+                            case 3h6: { pb_colourmap.addr1 = writeData; }
+                            case 3h7: { pb_colourmap.wdata1 = writeData; }
                             default: {}
                         }
                     }
@@ -661,7 +653,7 @@ unit charactermap_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint7   pixel,
+    output! uint8   pixel,
     output! uint1   pixel_display,
     input   uint1   blink,
 
@@ -672,13 +664,13 @@ unit charactermap_memmap(
 
     output  uint5   tpu_active,
     output  uint9   curses_character,
-    output  uint7   curses_background,
+    output  uint8   curses_background,
     output  uint6   curses_foreground
 ) <reginputs> {
     // 80 x 30 character buffer
     // Setting background to 40 (ALPHA) allows the bitmap/background to show through, charactermap { BOLD, character }
     simple_dualport_bram uint9 charactermap <@video_clock,@clock> [4800] = uninitialized;
-    simple_dualport_bram uint14 colourmap <@video_clock,@clock> [4800] = uninitialized;
+    simple_dualport_bram uint16 colourmap <@video_clock,@clock> [4800] = uninitialized;
 
     // CHARACTER MAP DISPLAY
     uint1   tpu_showcursor = uninitialized;
@@ -738,7 +730,7 @@ unit sprite_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint7   pixel,
+    output! uint8   pixel,
     output! uint1   pixel_display,
 
     // Memory access
@@ -765,7 +757,7 @@ unit sprite_memmap(
 ) <reginputs> {
     $$for i=0,15 do
         // Sprite Tiles - 16 x 16 x 8 in ARRGGBB colour
-        simple_dualport_bram uint7 tiles_$i$ <@video_clock,@clock> [2048] = uninitialised;
+        simple_dualport_bram uint8 tiles_$i$ <@video_clock,@clock> [2048] = uninitialised;
     $$end
 
     sprite_layer sprites <@video_clock,!video_reset> (
@@ -903,7 +895,7 @@ unit tilemap_memmap(
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint7   pixel,
+    output! uint8   pixel,
     output! uint1   pixel_display,
 
     // Memory access
@@ -914,7 +906,7 @@ unit tilemap_memmap(
     output  uint3   tm_active
 ) <reginputs> {
     // Tiles 64 x 16 x 16 ARRGGBB ( first tile defaults to transparent )
-    simple_dualport_bram uint7 tiles16x16 <@video_clock,@clock> [ 16384 ] = {
+    simple_dualport_bram uint8 tiles16x16 <@video_clock,@clock> [ 16384 ] = {
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,

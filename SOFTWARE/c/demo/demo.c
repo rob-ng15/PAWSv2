@@ -844,8 +844,8 @@ void colourtable( void ) {
 
     unsigned char colour = 0;
     for( unsigned short y = 0; y < 16; y++ ) {
-        for( unsigned short x = 0; x < 8; x++ ) {
-            gpu_rectangle( colour, x * 40, y * 15, 39 + x * 40, 14 + y * 15 );
+        for( unsigned short x = 0; x < 16; x++ ) {
+            gpu_rectangle( colour, x * 20, y * 15, 19 + x * 30, 14 + y * 15 );
             colour++;
         }
     }

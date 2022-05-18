@@ -15,26 +15,6 @@ typedef unsigned int size_t;
 #define BKG_CHKBRD_3 9
 #define BKG_CHKBRD_4 10
 
-// COLOURS
-#define TRANSPARENT 0x40
-#define BLACK 0x00
-#define BLUE 0x03
-#define DKBLUE 0x02
-#define BLUEUK 0x06
-#define GREEN 0x0c
-#define DKGREEN 0x08
-#define CYAN 0x0f
-#define RED 0x30
-#define DKRED 0x20
-#define MAGENTA 0x33
-#define PURPLE 0x13
-#define YELLOW 0x3c
-#define WHITE 0x3f
-#define GREY1 0x15
-#define GREY2 0x2a
-#define ORANGE 0x38
-#define GOLD 0x79
-
 // PAWS LOGO BLITTER TILE
 unsigned short PAWSLOGO[] = {
     0b0000000001000000,
@@ -258,15 +238,15 @@ void SMTSTART( unsigned int code ) {
 
 void draw_paws_logo( void ) {
     set_blitter_bitmap( 3, &PAWSLOGO[0] );
-    gpu_blit( GOLD, 2, 2, 3, 2 );
+    gpu_blit( UK_GOLD, 2, 2, 3, 2 );
 }
 
 void draw_sdcard( void  ) {
     set_blitter_bitmap( 0, &sdcardtiles[0] );
     set_blitter_bitmap( 1, &sdcardtiles[16] );
     set_blitter_bitmap( 2, &sdcardtiles[32] );
-    gpu_blit( GOLD, 256, 2, 1, 2 );
-    gpu_blit( BLUEUK, 256, 2, 0, 2 );
+    gpu_blit( UK_GOLD, 256, 2, 1, 2 );
+    gpu_blit( UK_BLUE, 256, 2, 0, 2 );
 }
 
 void reset_display( void ) {
@@ -324,7 +304,7 @@ void smtthread( void ) {
 // DISPLAY FILENAME, ADD AN ARROW IN FRONT OF DIRECTORIES
 void displayfilename( unsigned char *filename, unsigned char type ) {
     char displayname[10], i, j;
-    gpu_outputstringcentre( BLUEUK, 144, 1, "Current PAW File:", 0 );
+    gpu_outputstringcentre( UK_BLUE, 144, 1, "Current PAW File:", 0 );
     memset( displayname, 0, 10 );
 
     j = type - 1;
@@ -336,7 +316,7 @@ void displayfilename( unsigned char *filename, unsigned char type ) {
             displayname[j++] = filename[i];
         }
     }
-    gpu_outputstringcentre( type == 1 ? BLUEUK : GREY2, 176, 1, displayname, 2 );
+    gpu_outputstringcentre( type == 1 ? UK_BLUE : GREY2, 176, 1, displayname, 2 );
 }
 
 // FAT32 FILE BROWSER FOR DIRECTORIES AND .PAW FILES
@@ -557,7 +537,7 @@ int main( void ) {
 
     // RESET THE DISPLAY
 //    reset_display(); set_background( DKBLUE - 1, BLACK, BKG_SOLID );
-    reset_display(); set_background( BLUEUK, GOLD, 1 );
+    reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
 
     // KEYBOARD INTO JOYSTICK MODE
     *PS2_MODE = 0;
@@ -567,8 +547,8 @@ int main( void ) {
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
-        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
-        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 63 - i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
+        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
+        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
         set_tilemap_tile( 0, i, 21, i+1, 0 );
         set_tilemap_tile( 1, i, 27, i+1, 0 );
     }
@@ -576,7 +556,7 @@ int main( void ) {
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV32IMAFCB CPU", 0 );
-    gpu_outputstringcentre( BLUEUK, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
+    gpu_outputstringcentre( UK_BLUE, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS
     while( *UART_STATUS & 1 ) { char temp = *UART_DATA; }

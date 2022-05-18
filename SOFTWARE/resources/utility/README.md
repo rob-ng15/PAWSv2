@@ -4,4 +4,7 @@ Small utility for converting .gif (GIF89) with the PAWSv2 palette to the pixels 
 
 Usage: dumpsprite [gif] >[include]
 
-Compile for your system with gcc -c dumpsprite.c -o dumpsprite
+Compile for your system with:
+
+    gcc -c dumpsprite.c -o dumpsprite.o && gcc -o dumpsprite dumpsprite.o -lm
+
