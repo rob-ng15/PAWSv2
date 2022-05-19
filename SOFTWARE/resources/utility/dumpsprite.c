@@ -33,7 +33,7 @@ uint8_t matchcolour( uint8_t *colour ) {
             return((uint8_t)i);
         }
     }
-    printf("FAIL: %0x6x ",colour32);
+    printf("FAIL: 0x%06x ",colour32);
     return( 0x40 );
 }
 

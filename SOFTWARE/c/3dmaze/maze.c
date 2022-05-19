@@ -100,15 +100,15 @@ void smt_thread( void ) {
 void drawwelcome( void ) {
     // DISPLAY ULX3 BITMAP
     gpu_pixelblock( 0, 10, 320, 219, TRANSPARENT, ulx3sbitmap );
-    gpu_printf_centre( YELLOW, 160, 8, BOLD, 1, 0, "3D MONSTER MAZE" );
+    gpu_printf_centre( P2_YELLOW, 160, 8, BOLD, 1, 0, "3D MONSTER MAZE" );
 
     // DRAW JOYSTICK AND LABEL
-    gpu_printf_centre( YELLOW, 229, 102, BOLD, 0, 0,  "STEP" );
-    gpu_printf_centre( YELLOW, 242, 123, BOLD, 0, 0, "BACK" );
-    gpu_printf_centre( YELLOW, 211, 135, BOLD, 0, 0, "LEFT" );
-    gpu_printf_centre( YELLOW, 272, 109, BOLD, 0, 0, "RIGHT" );
-    gpu_printf_centre( YELLOW, 98, 128, BOLD, 0, 0, "PEEK" );
-    gpu_printf_centre( YELLOW, 66, 142, BOLD, 0, 0, "POWER" );
+    gpu_printf_centre( P2_YELLOW, 229, 102, BOLD, 0, 0,  "STEP" );
+    gpu_printf_centre( P2_YELLOW, 242, 123, BOLD, 0, 0, "BACK" );
+    gpu_printf_centre( P2_YELLOW, 211, 135, BOLD, 0, 0, "LEFT" );
+    gpu_printf_centre( P2_YELLOW, 272, 109, BOLD, 0, 0, "RIGHT" );
+    gpu_printf_centre( P2_YELLOW, 98, 128, BOLD, 0, 0, "PEEK" );
+    gpu_printf_centre( P2_YELLOW, 66, 142, BOLD, 0, 0, "POWER" );
 }
 
 // RETURN CONTENTS OF == 0 MAZE == 1 MAP at ( X, Y )
@@ -181,11 +181,11 @@ unsigned char whatisright( unsigned short currentx, unsigned short currenty, uns
 
 // PACMAN GHOSTS AS DRAWLISTS
 struct DrawList2D GHOSTBODY[] = {
-    { DLRECT, CYAN, DITHERSOLID, { -60, -60 }, { 60, 60 }, },
-    { DLCIRC, CYAN, DITHERSOLID, { 0, -60 }, { 60, 0b11000011 }, },
-    { DLCIRC, CYAN, DITHERSOLID, { -40, 60 }, { 20, 0b00111100 }, },
-    { DLCIRC, CYAN, DITHERSOLID, { 0, 60 }, { 20, 0b00111100 }, },
-    { DLCIRC, CYAN, DITHERSOLID, { 40, 60 }, { 20, 0b00111100 }, },
+    { DLRECT, P2_CYAN, DITHERSOLID, { -60, -60 }, { 60, 60 }, },
+    { DLCIRC, P2_CYAN, DITHERSOLID, { 0, -60 }, { 60, 0b11000011 }, },
+    { DLCIRC, P2_CYAN, DITHERSOLID, { -40, 60 }, { 20, 0b00111100 }, },
+    { DLCIRC, P2_CYAN, DITHERSOLID, { 0, 60 }, { 20, 0b00111100 }, },
+    { DLCIRC, P2_CYAN, DITHERSOLID, { 40, 60 }, { 20, 0b00111100 }, },
 };
 
 struct DrawList2D GHOSTLEYE[] = {
@@ -199,28 +199,28 @@ struct DrawList2D GHOSTREYE[] = {
 };
 
 struct DrawList2D POWERGHOSTLEYE[] = {
-    { DLLINE, PINK, DITHERSOLID, { -28, -28 }, { -12, -12 }, { 2, 0 }, },
-    { DLLINE, PINK, DITHERSOLID, { -12, -28 }, { -28, -12 }, { 2, 0 }, }
+    { DLLINE, P2_PINK, DITHERSOLID, { -28, -28 }, { -12, -12 }, { 2, 0 }, },
+    { DLLINE, P2_PINK, DITHERSOLID, { -12, -28 }, { -28, -12 }, { 2, 0 }, }
 };
 
 struct DrawList2D POWERGHOSTREYE[] = {
-    { DLLINE, PINK, DITHERSOLID, { 12, -28 }, { 28, -12 }, { 2, 0 }, },
-    { DLLINE, PINK, DITHERSOLID, { 28, -28 }, { 12, -12 }, { 2, 0 }, }
+    { DLLINE, P2_PINK, DITHERSOLID, { 12, -28 }, { 28, -12 }, { 2, 0 }, },
+    { DLLINE, P2_PINK, DITHERSOLID, { 28, -28 }, { 12, -12 }, { 2, 0 }, }
 };
 
 struct DrawList2D POWERGHOSTMOUTH[] = {
-    { DLARC, PINK, DITHERSOLID, { -40, 20 }, { 10, 0b11000011 }, },
-    { DLARC, PINK, DITHERSOLID, { -20, 20 }, { 10, 0b00111100 }, },
-    { DLARC, PINK, DITHERSOLID, { 0, 20 }, { 10, 0b11000011 }, },
-    { DLARC, PINK, DITHERSOLID, { 20, 20 }, { 10, 0b00111100 }, },
-    { DLARC, PINK, DITHERSOLID, { 40, 20 }, { 10, 0b11000011 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { -40, 20 }, { 10, 0b11000011 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { -20, 20 }, { 10, 0b00111100 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { 0, 20 }, { 10, 0b11000011 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { 20, 20 }, { 10, 0b00111100 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { 40, 20 }, { 10, 0b11000011 }, },
 };
 
 // SET GHOST BODY COLOUR
 void setghostcolour( unsigned short ghost ) {
-    unsigned char colour[] = { CYAN, MAGENTA, ORANGE, RED };
+    unsigned char colour[] = { P2_CYAN, P2_MAGENTA, ORANGE, P2_RED };
     for( int i = 0; i < 5; i++ ) {
-        GHOSTBODY[i].colour = powerstatus ? ( powerstatus > 40 ) ? VIOLET : WHITE : colour[ ghost ];
+        GHOSTBODY[i].colour = powerstatus ? ( powerstatus > 40 ) ? P2_VIOLET : WHITE : colour[ ghost ];
     }
 }
 
@@ -323,7 +323,7 @@ void draw_pill( unsigned short steps ) {
     unsigned short pillsize = ( 160 - perspectivex[ steps ] ) / 8;
 
     gpu_circle( WHITE, 160, 240 - perspectivey[ steps ], pillsize, 0xff, 1 );
-    gpu_circle( GREY80, 160, 240 - perspectivey[ steps ], pillsize, 0xff, 0 );
+    gpu_circle( P2_GREY80, 160, 240 - perspectivey[ steps ], pillsize, 0xff, 0 );
 }
 
 // ADAPTED FROM https://weblog.jamisbuck.org/2011/2/3/maze-generation-sidewinder-algorithm.html#
@@ -433,13 +433,13 @@ void generate_maze( unsigned short width, unsigned short height ) {
 unsigned char ghostcolour( unsigned short ghost ) {
     switch( ghost ) {
         case 0:
-            return( CYAN );
+            return( P2_CYAN );
         case 1:
-            return( MAGENTA );
+            return( P2_MAGENTA );
         case 2:
             return( ORANGE );
         case 3:
-            return( RED );
+            return( P2_RED );
         default:
             return( BLACK );
     }
@@ -454,7 +454,7 @@ void draw_map( unsigned short width, unsigned short height, unsigned short curre
 
     // DRAW MAP BACKGROUND - PARCHMENT
     gpu_rectangle( ORANGE, 225, 0, 319, 63 );
-    gpu_rectangle( BLUE, 237, 2, 317, 61 );
+    gpu_rectangle( P2_BLUE, 237, 2, 317, 61 );
 
     switch( mapmaze ) {
         case 0:
@@ -466,16 +466,16 @@ void draw_map( unsigned short width, unsigned short height, unsigned short curre
                             colour = WHITE;
                             break;
                         case 'E':
-                            colour = MAGENTA;
+                            colour = P2_MAGENTA;
                             break;
                         case 'X':
-                            colour = YELLOW;
+                            colour = P2_YELLOW;
                             break;
                         default:
-                            colour = BLUE;
+                            colour = P2_BLUE;
                             break;
                     }
-                    if( colour != BLUE )
+                    if( colour != P2_BLUE )
                         switch( boxwidth ) {
                             case 1:
                                 gpu_pixel( colour, 237 + x, 2 + y );
@@ -486,10 +486,10 @@ void draw_map( unsigned short width, unsigned short height, unsigned short curre
                 }
             }
             // DRAW CURRENT LOCATION AND GHOSTS
-            gpu_rectangle( GREEN, 237 + currentx * boxwidth, 2 + currenty * boxheight, 236 + currentx * boxwidth + boxwidth, 1 + currenty * boxheight + boxheight );
+            gpu_rectangle( P2_GREEN, 237 + currentx * boxwidth, 2 + currenty * boxheight, 236 + currentx * boxwidth + boxwidth, 1 + currenty * boxheight + boxheight );
             for( unsigned short ghost = 0; ghost < 4; ghost++ ) {
                 if( ghost <= level ) {
-                    gpu_rectangle( ( powerstatus ? DKPURPLE : ghostcolour( ghost ) ), 237 + ghostx[ ghost ] * boxwidth, 2 + ghosty[ ghost ] * boxheight, 236 + ghostx[ ghost ] * boxwidth + boxwidth, 1 + ghosty[ ghost ] * boxheight + boxheight );
+                    gpu_rectangle( ( powerstatus ? P2_DKPURPLE : ghostcolour( ghost ) ), 237 + ghostx[ ghost ] * boxwidth, 2 + ghosty[ ghost ] * boxheight, 236 + ghostx[ ghost ] * boxwidth + boxwidth, 1 + ghosty[ ghost ] * boxheight + boxheight );
                 }
             }
             break;
@@ -515,24 +515,24 @@ void draw_map( unsigned short width, unsigned short height, unsigned short curre
                                 colour = WHITE;
                                 break;
                             case 'E':
-                                colour = MAGENTA;
+                                colour = P2_MAGENTA;
                                 break;
                             case 'X':
-                                colour = YELLOW;
+                                colour = P2_YELLOW;
                                 break;
                             default:
-                                colour = BLUE;
+                                colour = P2_BLUE;
                                 break;
                         }
                         gpu_rectangle( colour, 237 + x * 5, 2 + y * 5, 241 + x * 5, 6 + y * 5 );
 
                         // DRAW CURRENT LOCATION AND GHOSTS
                         if( ( dox == currentx ) && ( doy == currenty ) )
-                            gpu_rectangle( GREEN, 237 + x * 5, 2 + y * 5, 241 + x * 5, 6 + y * 5 );
+                            gpu_rectangle( P2_GREEN, 237 + x * 5, 2 + y * 5, 241 + x * 5, 6 + y * 5 );
 
                         for( unsigned short ghost = 0; ghost < 4; ghost++ ) {
                             if( ( ghost <= level ) && ( ghostx[ ghost ] == dox ) && ( ghosty[ ghost ] == doy ) ) {
-                                gpu_rectangle( ( powerstatus ? DKPURPLE : ghostcolour( ghost ) ), 237 + x * 5, 2 + y * 5, 241 + x * 5, 6 + y * 5 );
+                                gpu_rectangle( ( powerstatus ? P2_DKPURPLE : ghostcolour( ghost ) ), 237 + x * 5, 2 + y * 5, 241 + x * 5, 6 + y * 5 );
                             }
                         }
                     }
@@ -545,26 +545,26 @@ void draw_map( unsigned short width, unsigned short height, unsigned short curre
     // DRAW COMPASS
     switch( direction ) {
         case 0:
-            gpu_character_blit( GREEN, 226, 1, 30, 0, 0 );
+            gpu_character_blit( P2_GREEN, 226, 1, 30, 0, 0 );
             break;
         case 1:
-            gpu_character_blit( GREEN, 226, 1, 16, 0, 0 );
+            gpu_character_blit( P2_GREEN, 226, 1, 16, 0, 0 );
             break;
         case 2:
-            gpu_character_blit( GREEN, 226, 1, 31, 0, 0 );
+            gpu_character_blit( P2_GREEN, 226, 1, 31, 0, 0 );
             break;
         case 3:
-            gpu_character_blit( GREEN, 226, 1, 17, 0, 0 );
+            gpu_character_blit( P2_GREEN, 226, 1, 17, 0, 0 );
             break;
     }
 
     // DRAW MAPPEEKS
     for( unsigned peek = 0; peek < mappeeks; peek++ )
-        gpu_character_blit( GREEN, 226, 53 - ( peek * 6 ), 1, 0, 0 );
+        gpu_character_blit( P2_GREEN, 226, 53 - ( peek * 6 ), 1, 0, 0 );
 
     // DRAW POWER PILLS
     for( unsigned power = 0; power < powerpills; power++ )
-        gpu_character_blit( DKPURPLE, 226, 29 - ( power * 6 ), 4, 0, 0 );
+        gpu_character_blit( P2_DKPURPLE, 226, 29 - ( power * 6 ), 4, 0, 0 );
 }
 
 // CALCULATE NUMBER OF STEPS TO HIT A WALL
@@ -592,10 +592,10 @@ unsigned short counttowall( unsigned short currentx, unsigned short currenty, un
 void left_wall( unsigned char colour, unsigned char colour_alt, short steps )
 {
     switch( colour ) {
-        case YELLOW:
+        case P2_YELLOW:
             gpu_dither( DITHERLSLOPE, colour_alt);
             break;
-        case MAGENTA:
+        case P2_MAGENTA:
             gpu_dither( DITHERLSLOPE, colour_alt);
             break;
         default:
@@ -611,10 +611,10 @@ void left_wall( unsigned char colour, unsigned char colour_alt, short steps )
 void right_wall( unsigned char colour, unsigned char colour_alt, unsigned short steps )
 {
     switch( colour ) {
-        case YELLOW:
+        case P2_YELLOW:
             gpu_dither( DITHERRSLOPE, colour_alt);
             break;
-        case MAGENTA:
+        case P2_MAGENTA:
             gpu_dither( DITHERRSLOPE, colour_alt);
             break;
         default:
@@ -635,18 +635,18 @@ void drawleft( unsigned short steps, unsigned char totheleft ) {
     // DRAW SIDE WALLS
     switch( totheleft ) {
         case 'X':
-            left_wall( YELLOW, DKYELLOW, steps );
+            left_wall( P2_YELLOW, P2_DKYELLOW, steps );
             break;
         case ' ':
             // GAP
-            gpu_rectangle( GREY60, perspectivex[ steps ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240 - perspectivey[ steps + 1 ] );
-            gpu_line( GREY20, perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240- perspectivey[ steps + 1 ] );
+            gpu_rectangle( P2_GREY60, perspectivex[ steps ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240 - perspectivey[ steps + 1 ] );
+            gpu_line( P2_GREY20, perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], perspectivex[ steps + 1 ], 240- perspectivey[ steps + 1 ] );
             break;
         case 'E':
-            left_wall( MAGENTA, DKMAGENTA, steps );
+            left_wall( P2_MAGENTA, P2_DKMAGENTA, steps );
             break;
         case '#':
-            left_wall( GREY30, GREY40, steps );
+            left_wall( P2_GREY30, P2_GREY40, steps );
             break;
         default:
             break;
@@ -657,18 +657,18 @@ void drawright( unsigned short steps, unsigned char totheright ) {
     // DRAW SIDE WALLS
     switch( totheright ) {
         case 'X':
-            right_wall( YELLOW, DKYELLOW, steps );
+            right_wall( P2_YELLOW, P2_DKYELLOW, steps );
             break;
         case ' ':
             // GAP
-            gpu_rectangle( GREY60, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps ], 240 - perspectivey[ steps + 1 ] );
-            gpu_line( GREY20, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps + 1 ],  240 - perspectivey[ steps + 1 ] );
+            gpu_rectangle( P2_GREY60, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps ], 240 - perspectivey[ steps + 1 ] );
+            gpu_line( P2_GREY20, 320 - perspectivex[ steps + 1 ], perspectivey[ steps + 1 ], 320 - perspectivex[ steps + 1 ],  240 - perspectivey[ steps + 1 ] );
             break;
         case 'E':
-            right_wall( MAGENTA, DKMAGENTA, steps );
+            right_wall( P2_MAGENTA, P2_DKMAGENTA, steps );
             break;
         case '#':
-            right_wall( GREY40, GREY50, steps );
+            right_wall( P2_GREY40, P2_GREY50, steps );
             break;
         default:
             break;
@@ -702,16 +702,16 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
             // WALL IS NOT AT HORIZON
             switch( whatisfront( currentx, currenty, direction, visiblesteps ) ) {
                 case 'X':
-                    gpu_rectangle( YELLOW, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
+                    gpu_rectangle( P2_YELLOW, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
                     if( visiblesteps <= 4 ) {
-                        gpu_printf_centre( DKGREEN, 160, perspectivey[ visiblesteps ] + ( 2 << ( 4 - visiblesteps ) ), BOLD, 4 - visiblesteps, 0, "EXIT" );
+                        gpu_printf_centre( P2_DKGREEN, 160, perspectivey[ visiblesteps ] + ( 2 << ( 4 - visiblesteps ) ), BOLD, 4 - visiblesteps, 0, "EXIT" );
                     }
                     break;
                 case 'E':
-                    gpu_rectangle( MAGENTA, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
+                    gpu_rectangle( P2_MAGENTA, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
                     break;
                 case '#':
-                    gpu_rectangle( GREY60, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
+                    gpu_rectangle( P2_GREY60, perspectivex[ visiblesteps ], perspectivey[ visiblesteps ], 320 - perspectivex[ visiblesteps ], 240 - perspectivey[ visiblesteps ] );
                     break;
                 default:
                     break;
@@ -830,12 +830,14 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
 int main( void ) {
     unsigned short firstrun = 1;
 
+    // SWITCH SCREEN TO OLD PAWSv2 MODE
+    screen_mode( 0, MODE_PAWSv2, 0 );
     set_background( 0, 0, BKG_RAINBOW );
 
     unsigned short levelselected;
 
 	while(1) {
-        // SETUP THE SCREEN BLUE/GREEN BACKGROUND
+        // SETUP THE SCREEN P2_BLUE/P2_GREEN BACKGROUND
         gpu_cs();
         tpu_cs();
         set_background( 0, 0, BKG_RAINBOW );
@@ -853,8 +855,8 @@ int main( void ) {
 
         levelselected = 0;
         do {
-            tpu_print_centre( 57, TRANSPARENT, YELLOW, 1, "Select Level" );
-            tpu_print_centre( 58, TRANSPARENT, YELLOW, 0, "Increase/Decrease by LEFT/RIGHT - Select by FIRE" );
+            tpu_print_centre( 57, TRANSPARENT, P2_YELLOW, 1, "Select Level" );
+            tpu_print_centre( 58, TRANSPARENT, P2_YELLOW, 0, "Increase/Decrease by LEFT/RIGHT - Select by FIRE" );
             tpu_set( 0, 59, TRANSPARENT, BLACK ); tpu_printf( 1, "Level: %3d", level );
             tpu_set( 60, 59, TRANSPARENT, BLACK ); tpu_printf( 1, "Size: %5d x %5d", levelwidths[level], levelheights[level] );
 
@@ -881,13 +883,13 @@ int main( void ) {
         powerpills = ( level < 4 ) ? level + 1 : 4;
 
         // ENTER THE MAZE IN 3D - Play tune if level 1
-        set_background( DKBLUE, DKGREEN, BKG_5050_V ); if( !level ) SMTSTART( (unsigned int )smt_thread );
+        set_background( P2_DKBLUE, P2_DKGREEN, BKG_5050_V ); if( !level ) SMTSTART( (unsigned int )smt_thread );
         if( walk_maze( levelwidths[level], levelheights[level] ) ) {
             // PACMAN WILT GRAPHICS
             for( unsigned char i = 0; i < 5; i++ ) {
                 bitmap_draw( 1 - framebuffer );
                 gpu_cs();
-                gpu_circle( YELLOW, 160, 120, 80, drawsector[i], 1 );
+                gpu_circle( P2_YELLOW, 160, 120, 80, drawsector[i], 1 );
                 framebuffer = 1 - framebuffer;
                 bitmap_display( framebuffer );
                 sleep1khz( 250, 0 );
@@ -908,7 +910,7 @@ int main( void ) {
             level = ( level < MAXLEVEL ) ? level + 1 : MAXLEVEL;
         }
 
-        tpu_print_centre( 58, TRANSPARENT, GREEN, 1, "Press FIRE to restart!" ); while( ( get_buttons() & 2 ) == 0 );
-        tpu_print_centre( 58, TRANSPARENT, PURPLE, 0, "Release FIRE!" ); while( get_buttons() & 2  );
+        tpu_print_centre( 58, TRANSPARENT, P2_GREEN, 1, "Press FIRE to restart!" ); while( ( get_buttons() & 2 ) == 0 );
+        tpu_print_centre( 58, TRANSPARENT, P2_PURPLE, 0, "Release FIRE!" ); while( get_buttons() & 2  );
     }
 }

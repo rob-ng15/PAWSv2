@@ -266,7 +266,7 @@ typedef struct {
     unsigned long starting_cluster;
 } __attribute((packed)) DirectoryEntry;
 
-// COLOURS
+// COLOURS - RGBM MODE
 #define TRANSPARENT 0x40
 #define BLACK 0x00
 #define WHITE 0xff
