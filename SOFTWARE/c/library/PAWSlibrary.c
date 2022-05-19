@@ -716,10 +716,10 @@ void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsi
     *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    if( ( (int)buffer & 1 ) || ( ( w*h ) & 1) ) {
-        DMASTART( buffer, (void *)PB_COLOUR, w*h, 1 );      // UNALIGNED OR ODD NUMBER OF PIXELS, USE 8 BIT MODE
+    if( ( (int)buffer & 1 ) || ( ( w*h ) & 1 ) ) {
+        DMASTART( buffer, (void *)PB_COLOUR, w*h, 1 );      // UNALIGNED, ODD NUMBER OF PIXELS USE 8 BIT MODE
     } else {
-        DMASTART( buffer, (void *)PB_COLOUR, w*h/2, 7 );    // ALIGNED AND EVEN NUMBER OF PIXELS, USE 16 BIT MODE
+        DMASTART( buffer, (void *)PB_COLOUR, w*h/2, 7 );    // ALIGNED, EVEN PIXELS USE 16 BIT MODE
     }
     *PB_STOP = 3;
 }
@@ -1210,7 +1210,7 @@ void displayfilename( unsigned char *filename, unsigned char type ) {
             displayname[j++] = filename[i];
         }
     }
-    gpu_outputstringcentre( type == 1 ? WHITE : GREY50, 176, 0, displayname, 2 );
+    gpu_outputstringcentre( type == 1 ? WHITE : GREY5, 176, 0, displayname, 2 );
 }
 
 unsigned int __basecluster = 0xffffff8;

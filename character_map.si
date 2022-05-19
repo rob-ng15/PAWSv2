@@ -1,3 +1,8 @@
+bitfield charactermap_colours {
+    uint8   background,
+    uint8   foreground
+}
+
 unit character_map(
     simple_dualport_bram_port0 charactermap,
     simple_dualport_bram_port0 colourmap,
@@ -6,14 +11,14 @@ unit character_map(
     input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint7   pixel,
+    output! uint8   pixel,
     output! uint1   character_map_display,
 
     input   uint1   blink,
     input   uint7   cursor_x,
     input   uint6   cursor_y,
-    input   uint7   tpu_foreground,
-    input   uint7   tpu_background,
+    input   uint8   tpu_foreground,
+    input   uint8   tpu_background,
     input   uint1   tpu_showcursor
 ) <reginputs> {
     // Character ROM 8x8
@@ -37,9 +42,9 @@ unit character_map(
 
     // RENDER - Default to transparent
     always_after {
-        character_map_display = pix_active & ( characterpixel | ( colour14(colourmap.rdata0).background != 64 ) | is_cursor );
+        character_map_display = pix_active & ( characterpixel | ( charactermap_colours(colourmap.rdata0).background != 64 ) | is_cursor );
         pixel = is_cursor ? characterpixel ? tpu_background : tpu_foreground :
-                            characterpixel ? colour14(colourmap.rdata0).foreground : colour14(colourmap.rdata0).background;
+                            characterpixel ? charactermap_colours(colourmap.rdata0).foreground : charactermap_colours(colourmap.rdata0).background;
     }
 }
 
@@ -76,6 +81,12 @@ unit cmaddresses(
     }
 }
 
+bitfield curses_copy {
+    uint8   background,
+    uint8   foreground,
+    uint8   character
+}
+
 unit character_map_writer(
     simple_dualport_bram_port1 charactermap,
     simple_dualport_bram_port1 colourmap,
@@ -84,27 +95,27 @@ unit character_map_writer(
     input   uint7   tpu_x,
     input   uint6   tpu_y,
     input   uint9   tpu_character,
-    input   uint7   tpu_foreground,
-    input   uint7   tpu_background,
+    input   uint8   tpu_foreground,
+    input   uint8   tpu_background,
     input   uint4   tpu_write,
     output  uint5   tpu_active,
 
     output  uint9   curses_character,
-    output  uint7   curses_background,
-    output  uint7   curses_foreground,
-    input   uint7   curses_wipe_background,
-    input   uint7   curses_wipe_foreground,
+    output  uint8   curses_background,
+    output  uint8   curses_foreground,
+    input   uint8   curses_wipe_background,
+    input   uint8   curses_wipe_foreground,
 
     output  uint7   cursor_x,
     output  uint6   cursor_y
 ) <reginputs> {
     // COPY OF CHARCTER MAP FOR THE CURSES BUFFER
-    simple_dualport_bram uint23 charactermap_copy[4800] = uninitialized;
+    simple_dualport_bram uint25 charactermap_copy[4800] = uninitialized;
 
     // Counter for clearscreen/copyscreen/scroll
     uint13  tpu_start_cs_addr = uninitialized;      uint13  tpu_cs_addr = uninitialized;                uint13  tpu_cs_addr_next <:: tpu_cs_addr + 1;
     uint13  tpu_max_count = uninitialized;          uint13  tpu_cs_addr_prevline <:: tpu_cs_addr - 80;  uint1   tpu_cs_addr_lastline <:: ( tpu_cs_addr > 4719 );
-    uint23  curses_wipe <:: { curses_wipe_background, curses_wipe_foreground, 9h0 };
+    uint25  curses_wipe <:: { curses_wipe_background, curses_wipe_foreground, 9h0 };
 
     // TPU character position
     uint7   tpu_active_x = 0;                       cmcursorx TPUX( tpu_active_x <: tpu_active_x );
@@ -115,7 +126,8 @@ unit character_map_writer(
     charactermap.wenable1 := 1; colourmap.wenable1 := 1; charactermap_copy.wenable1 := 1;
 
     // OUTPUT FROM CURSES BUFFER AND CURSOR POSITION
-    curses_character := charactermap_copy.rdata0[0,9]; curses_foreground := charactermap_copy.rdata0[9,7]; curses_background := charactermap_copy.rdata0[16,7];
+    curses_character :=curses_copy(charactermap_copy.rdata0).character;
+    curses_foreground := curses_copy(charactermap_copy.rdata0).foreground; curses_background := curses_copy(charactermap_copy.rdata0).background;
     cursor_x := tpu_active_x; cursor_y := tpu_active_y;
 
     // CURSES COPY ADDRESS
@@ -130,12 +142,12 @@ unit character_map_writer(
                     onehot( tpu_active ) {
                         case 0: {                                                                                                                           // TPU WIPE - WHOLE OR PARTIAL SCREEN (LINE)
                             charactermap.addr1 = tpu_cs_addr; colourmap.addr1 = tpu_cs_addr;
-                            charactermap.wdata1 = 0; colourmap.wdata1 = 14b10000001000000;
+                            charactermap.wdata1 = 0; colourmap.wdata1 = 16b0100000001000000;
                         }
                         case 1: { charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe; }                                          // CURSES WIPE
                         case 2: {                                                                                                                           // CURSES COPY
                             charactermap.addr1 = tpu_cs_addr; charactermap.wdata1 = charactermap_copy.rdata0[0,9];
-                            colourmap.addr1 = tpu_cs_addr; colourmap.wdata1 = { charactermap_copy.rdata0[16,7], charactermap_copy.rdata0[9,7] };
+                            colourmap.addr1 = tpu_cs_addr; colourmap.wdata1 = { curses_copy(charactermap_copy.rdata0).background, curses_copy(charactermap_copy.rdata0).foreground };
                         }
                         case 3: {                                                                                                                           // CURSES SCROLL UP / DELETELN
                             charactermap_copy.addr1 = tpu_cs_addr_prevline; charactermap_copy.wdata1 = charactermap_copy.rdata0;                            // MOVE CHARACTERS UP

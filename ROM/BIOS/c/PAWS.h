@@ -266,26 +266,20 @@ typedef struct {
     unsigned long starting_cluster;
 } __attribute((packed)) DirectoryEntry;
 
-// COLOURS
+// COLOURS - RGBM MODE
 #define TRANSPARENT 0x40
 #define BLACK 0x00
-#define BLUE 0x03
-#define DKBLUE 0x02
-#define GREEN 0x0c
-#define DKGREEN 0x08
-#define CYAN 0x0f
-#define DKCYAN 0x0b
-#define RED 0x30
-#define DKRED 0x20
-#define MAGENTA 0x33
-#define DKMAGENTA 0x22
-#define PURPLE 0x13
-#define YELLOW 0x3c
-#define DKYELLOW 0x28
-#define WHITE 0x3f
-#define GREY1 0x15
-#define GREY2 0x2a
-#define ORANGE 0x38
+#define WHITE 0xff
+#define BLUE 0x06
+#define GREEN 0x30
+#define RED 0xc0
+#define MAGENTA 0xc7
+#define YELLOW 0xf9
+#define GREY1 0x52
+#define GREY2 0xa4
+
+#define UK_GOLD 241
+#define UK_BLUE 30
 
 // STANDARD CONSTANTS
 #define NULL 0

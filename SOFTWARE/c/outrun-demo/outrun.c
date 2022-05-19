@@ -216,160 +216,160 @@ void move_sprites() {
 #define SMALLBEAM 10
 
 struct DrawList2D LEFTCHEVRON[] = {
-    { DLRECT, GREY50, DITHERSOLID, { -4, 0 }, { 4, -32 }, },
+    { DLRECT, P2_GREY50, DITHERSOLID, { -4, 0 }, { 4, -32 }, },
     { DLRECT, BLACK, DITHERSOLID, { -32, -32 }, { 32, -64 }, },
     { DLQUAD, WHITE, DITHERSOLID, { -16, -48 }, { 0, -48 }, { 8, -32 }, { -8, -32 } },
     { DLQUAD, WHITE, DITHERSOLID, { -8, -64 }, { 8, -64 }, { 0, -48 }, { -16, -48 } },
 };
 struct DrawList2D RIGHTCHEVRON[] = {
-    { DLRECT, GREY50, DITHERSOLID, { -4, 0 }, { 4, -32 }, },
+    { DLRECT, P2_GREY50, DITHERSOLID, { -4, 0 }, { 4, -32 }, },
     { DLRECT, BLACK, DITHERSOLID, { -32, -32 }, { 32, -64 }, },
     { DLQUAD, WHITE, DITHERSOLID, { 0, -48 }, { 16, -48 }, { 8, -32 }, { -8, -32 } },
     { DLQUAD, WHITE, DITHERSOLID, { -8, -64 }, { 8, -64 }, { 16, -48 }, { 0, -48 } },
 };
 
 struct DrawList2D PINETREE[] = {
-    { DLRECT, BROWN, DKBROWN, DITHERCHECK1, { -8, 0 }, { 8, -32 }, },
-    { DLTRI, FORESTGREEN, DITHERSOLID, { 0, -96 }, { 32, -32 }, { -32, -32 } },
+    { DLRECT, P2_BROWN, P2_DKBROWN, DITHERCHECK1, { -8, 0 }, { 8, -32 }, },
+    { DLTRI, P2_FORESTGREEN, DITHERSOLID, { 0, -96 }, { 32, -32 }, { -32, -32 } },
 };
 
 struct DrawList2D LEFTBEAM[] = {
-    { DLRECT, STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -128 } },
-    { DLRECT, STEELBLUE, DITHERSOLID, { -36, 0 }, { -28, -128 } },
-    { DLRECT, STEELBLUE, DITHERSOLID, { -36, -124 }, { 160, -132 } },
-    { DLLINE, DKRED, DITHERSOLID, { 0, -128 }, { -32, -96 }, { 5, 0 } },
-    { DLLINE, DKRED, DITHERSOLID, { -32, -128 }, { 0, -96 }, { 5, 0 } },
-    { DLLINE, DKRED, DITHERSOLID, { 0, -64 }, { -32, -32 }, { 5, 0 } },
-    { DLLINE, DKRED, DITHERSOLID, { -32, -64 }, { 0, -32 }, { 5, 0 } },
+    { DLRECT, P2_STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -128 } },
+    { DLRECT, P2_STEELBLUE, DITHERSOLID, { -36, 0 }, { -28, -128 } },
+    { DLRECT, P2_STEELBLUE, DITHERSOLID, { -36, -124 }, { 160, -132 } },
+    { DLLINE, P2_DKRED, DITHERSOLID, { 0, -128 }, { -32, -96 }, { 5, 0 } },
+    { DLLINE, P2_DKRED, DITHERSOLID, { -32, -128 }, { 0, -96 }, { 5, 0 } },
+    { DLLINE, P2_DKRED, DITHERSOLID, { 0, -64 }, { -32, -32 }, { 5, 0 } },
+    { DLLINE, P2_DKRED, DITHERSOLID, { -32, -64 }, { 0, -32 }, { 5, 0 } },
     { DLRECT, BLACK, DITHERSOLID, { 112, -136}, { 96, -120 }, },
-    { DLTRI, GREEN, DITHERSOLID, { 95, -128 }, { 111, -128 }, { 103, -121 } },
-    { DLRECT, GREEN, DITHERSOLID, { 101, -128 }, { 105, -135 } }
+    { DLTRI, P2_GREEN, DITHERSOLID, { 95, -128 }, { 111, -128 }, { 103, -121 } },
+    { DLRECT, P2_GREEN, DITHERSOLID, { 101, -128 }, { 105, -135 } }
 };
 
 struct DrawList2D LEFTBEAMSMALL[] = {
-    { DLRECT, STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -32 } },
+    { DLRECT, P2_STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -32 } },
 };
 
 struct DrawList2D RIGHTBEAM[] = {
     { DLRECT, BLACK, DITHERSOLID, { -112, -136 }, { -96, -120 }, },
-    { DLRECT, STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -128 } },
-    { DLRECT, STEELBLUE, DITHERSOLID, { 28, 0 }, { 36, -128 } },
-    { DLRECT, STEELBLUE, DITHERSOLID, { -160, -124 }, { 36, -132 } },
-    { DLLINE, DKRED, DITHERSOLID, { 0, -128 }, { 32, -96 }, { 5, 0 } },
-    { DLLINE, DKRED, DITHERSOLID, { 32, -128 }, { 0, -96 }, { 5, 0 } },
-    { DLLINE, DKRED, DITHERSOLID, { 0, -64 }, { 32, -32 }, { 5, 0 } },
-    { DLLINE, DKRED, DITHERSOLID, { 32, -64 }, { 0, -32 }, { 5, 0 } },
+    { DLRECT, P2_STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -128 } },
+    { DLRECT, P2_STEELBLUE, DITHERSOLID, { 28, 0 }, { 36, -128 } },
+    { DLRECT, P2_STEELBLUE, DITHERSOLID, { -160, -124 }, { 36, -132 } },
+    { DLLINE, P2_DKRED, DITHERSOLID, { 0, -128 }, { 32, -96 }, { 5, 0 } },
+    { DLLINE, P2_DKRED, DITHERSOLID, { 32, -128 }, { 0, -96 }, { 5, 0 } },
+    { DLLINE, P2_DKRED, DITHERSOLID, { 0, -64 }, { 32, -32 }, { 5, 0 } },
+    { DLLINE, P2_DKRED, DITHERSOLID, { 32, -64 }, { 0, -32 }, { 5, 0 } },
 };
 
 struct DrawList2D RIGHTBEAMSMALL[] = {
-    { DLRECT, STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -32 } },
+    { DLRECT, P2_STEELBLUE, DITHERSOLID, { -4, 0 }, { 4, -32 } },
 };
 
 // BILLBOARD - 4 DESIGNS, TO BE DISPLAYED IN ORDER
 struct DrawList2D LEFTBILLBOARD1[] = {
-    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
-    { DLCIRC, YELLOW, DITHERSOLID, { -92, -48 }, { 32, 0b11111001 }, },
+    { DLRECT, P2_GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLCIRC, P2_YELLOW, DITHERSOLID, { -92, -48 }, { 32, 0b11111001 }, },
     { DLCIRC, WHITE, DITHERSOLID, { -60, -48 }, { 8, 0xff }, }
 };
 struct DrawList2D LEFTBILLBOARD2[] = {
-    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
-    { DLRECT, RED, DITHERSOLID, { -40, -30 }, { -88, -66 }, },
-    { DLCIRC, RED, DITHERSOLID, { -64, -66 }, { 24, 0b11000011 }, },
-    { DLCIRC, RED, DITHERSOLID, { -80, -30 }, { 8, 0b00111100 }, },
-    { DLCIRC, RED, DITHERSOLID, { -64, -30 }, { 8, 0b00111100 }, },
-    { DLCIRC, RED, DITHERSOLID, { -48, -30 }, { 8, 0b00111100 }, },
+    { DLRECT, P2_GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, P2_RED, DITHERSOLID, { -40, -30 }, { -88, -66 }, },
+    { DLCIRC, P2_RED, DITHERSOLID, { -64, -66 }, { 24, 0b11000011 }, },
+    { DLCIRC, P2_RED, DITHERSOLID, { -80, -30 }, { 8, 0b00111100 }, },
+    { DLCIRC, P2_RED, DITHERSOLID, { -64, -30 }, { 8, 0b00111100 }, },
+    { DLCIRC, P2_RED, DITHERSOLID, { -48, -30 }, { 8, 0b00111100 }, },
     { DLCIRC, WHITE, DITHERSOLID, { -80, -56 }, { 8, 0xff }, },
-    { DLCIRC, BLUE, DITHERSOLID, { -80, -56 }, { 4, 0xff }, },
+    { DLCIRC, P2_BLUE, DITHERSOLID, { -80, -56 }, { 4, 0xff }, },
     { DLCIRC, WHITE, DITHERSOLID, { -48, -56 }, { 8, 0xff }, },
-    { DLCIRC, BLUE, DITHERSOLID, { -48, -56 }, { 4, 0xff }, },
+    { DLCIRC, P2_BLUE, DITHERSOLID, { -48, -56 }, { 4, 0xff }, },
 };
 struct DrawList2D LEFTBILLBOARD3[] = {
-    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
-    { DLCIRC, YELLOW, DITHERSOLID, { -60, -48 }, { 32, 0xff }, },
+    { DLRECT, P2_GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLCIRC, P2_YELLOW, DITHERSOLID, { -60, -48 }, { 32, 0xff }, },
 };
 struct DrawList2D LEFTBILLBOARD4[] = {
-    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
-    { DLRECT, DKBLUE, DITHERSOLID, { -40, -30 }, { -88, -66 }, },
-    { DLCIRC, DKBLUE, DITHERSOLID, { -64, -66 }, { 24, 0b11000011 }, },
-    { DLCIRC, DKBLUE, DITHERSOLID, { -80, -30 }, { 8, 0b00111100 }, },
-    { DLCIRC, DKBLUE, DITHERSOLID, { -64, -30 }, { 8, 0b00111100 }, },
-    { DLCIRC, DKBLUE, DITHERSOLID, { -48, -30 }, { 8, 0b00111100 }, },
-    { DLARC, PINK, DITHERSOLID, { -80, -39 }, { 4, 0b11000011 }, },
-    { DLARC, PINK, DITHERSOLID, { -72, -39 }, { 4, 0b00111100 }, },
-    { DLARC, PINK, DITHERSOLID, { -64, -39 }, { 4, 0b11000011 }, },
-    { DLARC, PINK, DITHERSOLID, { -56, -39 }, { 4, 0b00111100 }, },
-    { DLARC, PINK, DITHERSOLID, { -48, -39 }, { 4, 0b11000011 }, },
-    { DLRECT, PINK, DITHERSOLID, { -84, -52 }, { -76, -60 }, },
-    { DLRECT, PINK, DITHERSOLID, { -52, -52 }, { -44, -60 }, },
+    { DLRECT, P2_GREY80, DITHERSOLID, { 0, 0 }, { -128, -96 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, -96 }, { -128, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { -128, -96 }, { -128, 0 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { -128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, P2_DKBLUE, DITHERSOLID, { -40, -30 }, { -88, -66 }, },
+    { DLCIRC, P2_DKBLUE, DITHERSOLID, { -64, -66 }, { 24, 0b11000011 }, },
+    { DLCIRC, P2_DKBLUE, DITHERSOLID, { -80, -30 }, { 8, 0b00111100 }, },
+    { DLCIRC, P2_DKBLUE, DITHERSOLID, { -64, -30 }, { 8, 0b00111100 }, },
+    { DLCIRC, P2_DKBLUE, DITHERSOLID, { -48, -30 }, { 8, 0b00111100 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { -80, -39 }, { 4, 0b11000011 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { -72, -39 }, { 4, 0b00111100 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { -64, -39 }, { 4, 0b11000011 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { -56, -39 }, { 4, 0b00111100 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { -48, -39 }, { 4, 0b11000011 }, },
+    { DLRECT, P2_PINK, DITHERSOLID, { -84, -52 }, { -76, -60 }, },
+    { DLRECT, P2_PINK, DITHERSOLID, { -52, -52 }, { -44, -60 }, },
 };
 
 struct DrawList2D RIGHTBILLBOARD1[] = {
-    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
-    { DLCIRC, YELLOW, DITHERSOLID, { 92, -48 }, { 32, 0b10011111 }, },
+    { DLRECT, P2_GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLCIRC, P2_YELLOW, DITHERSOLID, { 92, -48 }, { 32, 0b10011111 }, },
     { DLCIRC, WHITE, DITHERSOLID, { 60, -48 }, { 8, 0xff }, }
 };
 struct DrawList2D RIGHTBILLBOARD2[] = {
-    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
-    { DLRECT, PEACH, DITHERSOLID, { 40, -30 }, { 88, -66 }, },
-    { DLCIRC, PEACH, DITHERSOLID, { 64, -66 }, { 24, 0b11000011 }, },
-    { DLCIRC, PEACH, DITHERSOLID, { 80, -30 }, { 8, 0b00111100 }, },
-    { DLCIRC, PEACH, DITHERSOLID, { 64, -30 }, { 8, 0b00111100 }, },
-    { DLCIRC, PEACH, DITHERSOLID, { 48, -30 }, { 8, 0b00111100 }, },
+    { DLRECT, P2_GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, P2_PEACH, DITHERSOLID, { 40, -30 }, { 88, -66 }, },
+    { DLCIRC, P2_PEACH, DITHERSOLID, { 64, -66 }, { 24, 0b11000011 }, },
+    { DLCIRC, P2_PEACH, DITHERSOLID, { 80, -30 }, { 8, 0b00111100 }, },
+    { DLCIRC, P2_PEACH, DITHERSOLID, { 64, -30 }, { 8, 0b00111100 }, },
+    { DLCIRC, P2_PEACH, DITHERSOLID, { 48, -30 }, { 8, 0b00111100 }, },
     { DLCIRC, WHITE, DITHERSOLID, { 80, -56 }, { 8, 0xff }, },
-    { DLCIRC, BLUE, DITHERSOLID, { 80, -56 }, { 4, 0xff }, },
+    { DLCIRC, P2_BLUE, DITHERSOLID, { 80, -56 }, { 4, 0xff }, },
     { DLCIRC, WHITE, DITHERSOLID, { 48, -56 }, { 8, 0xff }, },
-    { DLCIRC, BLUE, DITHERSOLID, { 48, -56 }, { 4, 0xff }, },
+    { DLCIRC, P2_BLUE, DITHERSOLID, { 48, -56 }, { 4, 0xff }, },
 };
 struct DrawList2D RIGHTBILLBOARD3[] = {
-    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
-    { DLCIRC, YELLOW, DITHERSOLID, { 60, -48 }, { 32, 0xff }, }
+    { DLRECT, P2_GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLCIRC, P2_YELLOW, DITHERSOLID, { 60, -48 }, { 32, 0xff }, }
 };
 struct DrawList2D RIGHTBILLBOARD4[] = {
-    { DLRECT, GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
-    { DLLINE, BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
-    { DLRECT, DKBLUE, DITHERSOLID, { 40, -30 }, { 88, -66 }, },
-    { DLCIRC, DKBLUE, DITHERSOLID, { 64, -66 }, { 24, 0b11000011 }, },
-    { DLCIRC, DKBLUE, DITHERSOLID, { 80, -30 }, { 8, 0b00111100 }, },
-    { DLCIRC, DKBLUE, DITHERSOLID, { 64, -30 }, { 8, 0b00111100 }, },
-    { DLCIRC, DKBLUE, DITHERSOLID, { 48, -30 }, { 8, 0b00111100 }, },
-    { DLARC, PINK, DITHERSOLID, { 80, -39 }, { 4, 0b11000011 }, },
-    { DLARC, PINK, DITHERSOLID, { 72, -39 }, { 4, 0b00111100 }, },
-    { DLARC, PINK, DITHERSOLID, { 64, -39 }, { 4, 0b11000011 }, },
-    { DLARC, PINK, DITHERSOLID, { 56, -39 }, { 4, 0b00111100 }, },
-    { DLARC, PINK, DITHERSOLID, { 48, -39 }, { 4, 0b11000011 }, },
-    { DLRECT, PINK, DITHERSOLID, { 84, -52 }, { 76, -60 }, },
-    { DLRECT, PINK, DITHERSOLID, { 52, -52 }, { 44, -60 }, },
+    { DLRECT, P2_GREY80, DITHERSOLID, { 0, 0 }, { 128, -96 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, 0 }, { 0, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 0, -96 }, { 128, -96 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 128, -96 }, { 128, 0 }, { 3, 0 }, },
+    { DLLINE, P2_BLUE50, DITHERSOLID, { 128, 0 }, { 0, 0 }, { 3, 0 }, },
+    { DLRECT, P2_DKBLUE, DITHERSOLID, { 40, -30 }, { 88, -66 }, },
+    { DLCIRC, P2_DKBLUE, DITHERSOLID, { 64, -66 }, { 24, 0b11000011 }, },
+    { DLCIRC, P2_DKBLUE, DITHERSOLID, { 80, -30 }, { 8, 0b00111100 }, },
+    { DLCIRC, P2_DKBLUE, DITHERSOLID, { 64, -30 }, { 8, 0b00111100 }, },
+    { DLCIRC, P2_DKBLUE, DITHERSOLID, { 48, -30 }, { 8, 0b00111100 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { 80, -39 }, { 4, 0b11000011 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { 72, -39 }, { 4, 0b00111100 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { 64, -39 }, { 4, 0b11000011 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { 56, -39 }, { 4, 0b00111100 }, },
+    { DLARC, P2_PINK, DITHERSOLID, { 48, -39 }, { 4, 0b11000011 }, },
+    { DLRECT, P2_PINK, DITHERSOLID, { 84, -52 }, { 76, -60 }, },
+    { DLRECT, P2_PINK, DITHERSOLID, { 52, -52 }, { 44, -60 }, },
 };
 
 // ROAD SEGMENTS, DEFINING NUMBER OF SECTIONS BEFORE NEXT TURN, TURN ANGLE, AND SIDE OBJECTS
@@ -487,30 +487,30 @@ void drawtunnelface( float px, float py, float scale ) {
     short x1, y1, x2, y2;
     gettunnelrectangle( px, py, scale, &x1, &y1, &x2, &y2 );
     short wh = 4.5 * scale, wy = py - wh;
-    gpu_dither( DITHERBRICK, GREY30 );
-    if( y1 > 0 ) gpu_rectangle( GREY40, 0, wy, 319, y1 - 1 );
-    if( x1 > 0 ) gpu_rectangle( GREY40, 0, y1, x1 -1, y2 - 1 );
-    if( x2 < 319 ) gpu_rectangle( GREY40, x2, y1, 319, y2 - 1 );
+    gpu_dither( DITHERBRICK, P2_GREY30 );
+    if( y1 > 0 ) gpu_rectangle( P2_GREY40, 0, wy, 319, y1 - 1 );
+    if( x1 > 0 ) gpu_rectangle( P2_GREY40, 0, y1, x1 -1, y2 - 1 );
+    if( x2 < 319 ) gpu_rectangle( P2_GREY40, x2, y1, 319, y2 - 1 );
     gpu_dither( DITHEROFF );
 }
 
 void drawroad( float x1, float y1, float scale1, float x2, float y2, float scale2, int sumct, int tnl ) {
     // DRAW GRASS
-    if( !tnl ) gpu_rectangle( (sumct%2) ? GREEN80 : GREEN60, 0, y1, 319, y2 );
+    if( !tnl ) gpu_rectangle( (sumct%2) ? P2_GREEN80 : P2_GREEN60, 0, y1, 319, y2 );
 
     short w1 = 3 * scale1, w2 = 3 * scale2;
-    drawtrapezium( tnl ? GREY30 : GREY40, x1, y1, w1, x2, y2, w2 );
+    drawtrapezium( tnl ? P2_GREY30 : P2_GREY40, x1, y1, w1, x2, y2, w2 );
 
     // CENTRE LINE MARKINGS
     if( !(sumct % 4 ) ) {
         short mw1 = .1 * scale1, mw2 = .1 * scale2;
-        drawtrapezium( tnl ? GREY70 : WHITE, x1, y1, mw1, x2, y2, mw2 );
+        drawtrapezium( tnl ? P2_GREY70 : WHITE, x1, y1, mw1, x2, y2, mw2 );
     }
 
     // SHOULDER MARKINGS
     short sw1 = .2 * scale1, sw2 = .2 * scale2;
-    drawtrapezium( (sumct%2) ? tnl ? GREY70 : WHITE : tnl ? RED70 : RED, x1-w1, y1, sw1 ,x2-w2, y2, sw2 );
-    drawtrapezium( (sumct%2) ? tnl ? GREY70 : WHITE : tnl ? RED70 : RED, x1+w1, y1, sw1, x2+w2, y2, sw2 );
+    drawtrapezium( (sumct%2) ? tnl ? P2_GREY70 : WHITE : tnl ? P2_RED70 : P2_RED, x1-w1, y1, sw1 ,x2-w2, y2, sw2 );
+    drawtrapezium( (sumct%2) ? tnl ? P2_GREY70 : WHITE : tnl ? P2_RED70 : P2_RED, x1+w1, y1, sw1, x2+w2, y2, sw2 );
 }
 
 void draw() {
@@ -565,7 +565,7 @@ void draw() {
 
         sumct = corner[cnr] + seg - 1;
         if( tnl ) {
-            unsigned char wallcol = ( sumct % 4 < 2 ) ? BLUE20 : BLUE30;
+            unsigned char wallcol = ( sumct % 4 < 2 ) ? P2_BLUE20 : P2_BLUE30;
             gettunnelrectangle( p.x, p.y, p.z, &x1, &y1, &x2, &y2 );
             gettunnelrectangle( pp.x, pp.y, pp.z, &px2, &py1, &px2, &py2 );
             if( y1 > py1 ) gpu_rectangle( wallcol, px1, py1, px2-1, y1-1 );
@@ -691,13 +691,14 @@ void draw() {
 }
 
 void set_background_generator( void ) {
-    set_background( DKBLUE, BLUE, BKG_HATCH );
+    set_background( P2_DKBLUE, P2_BLUE, BKG_HATCH );
 }
 
 int main() {
     unsigned char dimmerlevel = 8, counter = 3;
 
     // SETUP SCREEN
+    screen_mode( 0, MODE_PAWSv2, 0 );
     screen_dimmer( dimmerlevel );
     bitmap_draw( 0 ); gpu_cs();
     bitmap_draw( 1 ); gpu_cs();

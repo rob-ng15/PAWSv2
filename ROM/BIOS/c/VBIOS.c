@@ -5,24 +5,6 @@ typedef unsigned int size_t;
 // BACKGROUND PATTERN GENERATOR
 #define BKG_SOLID 0
 
-// COLOURS
-#define TRANSPARENT 0x40
-#define BLACK 0x00
-#define BLUE 0x03
-#define DKBLUE 0x02
-#define GREEN 0x0c
-#define DKGREEN 0x08
-// #define CYAN 0x0f
-#define RED 0x30
-#define DKRED 0x20
-#define MAGENTA 0x33
-#define PURPLE 0x13
-#define YELLOW 0x3c
-#define WHITE 0x3f
-#define GREY1 0x15
-#define GREY2 0x2a
-#define ORANGE 0x38
-
 // PAWS LOGO BLITTER TILE
 unsigned short PAWSLOGO[] = {
     0b0000000001000000,
@@ -459,7 +441,7 @@ void reset_display( void ) {
     *FRAMEBUFFER_DRAW = 1; gpu_cs(); while( !*GPU_FINISHED );
     *FRAMEBUFFER_DRAW = 0; gpu_cs(); while( !*GPU_FINISHED );
     *FRAMEBUFFER_DISPLAY = 0;
-    *SCREENMODE = 0;
+    *SCREENMODE = 0; *COLOUR = 2;
     tpu_cs();
     *LOWER_TM_SCROLLWRAPCLEAR = 9;
     *UPPER_TM_SCROLLWRAPCLEAR = 9;
@@ -526,7 +508,6 @@ void main( void ) {
     memset( &_bss_start, 0, &_bss_end - &_bss_end );
 
     // RESET THE DISPLAY
-//    reset_display(); set_background( DKBLUE - 1, BLACK, BKG_SOLID );
     reset_display(); set_background( 6, 60, 1 );
 
     // SETUP INITIAL WELCOME MESSAGE

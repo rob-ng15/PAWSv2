@@ -29,9 +29,9 @@ int main( void ) {
                 } while( ( r < m ) && ( k < kt ) );
 
                 if( offset ) {
-                    gpu_rectangle( k, x, y, x + offset, y + offset );
+                    gpu_rectangle( k * 3, x, y, x + offset, y + offset );
                 } else {
-                    gpu_pixelblock_pixel( k );
+                    gpu_pixelblock_pixel( k * 3 );
                 }
             }
         }

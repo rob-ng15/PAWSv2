@@ -824,7 +824,7 @@ char *dithernames[] = {
 
 void displayreset( void ) {
     // RESET THE DISPLAY
-    screen_mode( 0, 0, 0 );
+    screen_mode( 0, MODE_PAWSv2, 0 );
     gpu_cs();
     tpu_cs();
     terminal_showhide( FALSE ); terminal_cs();
@@ -844,8 +844,8 @@ void colourtable( void ) {
 
     unsigned char colour = 0;
     for( unsigned short y = 0; y < 16; y++ ) {
-        for( unsigned short x = 0; x < 8; x++ ) {
-            gpu_rectangle( colour, x * 40, y * 15, 39 + x * 40, 14 + y * 15 );
+        for( unsigned short x = 0; x < 16; x++ ) {
+            gpu_rectangle( colour, x * 20, y * 15, 19 + x * 30, 14 + y * 15 );
             colour++;
         }
     }
@@ -879,7 +879,7 @@ void backgrounddemo( void ) {
     tpu_print_centre( 58, TRANSPARENT, WHITE, 1, "Background Generator Test" );
 
     for( unsigned char bkg = 0; bkg < 16; bkg++ ) {
-        set_background( PURPLE, ORANGE, bkg );
+        set_background( P2_PURPLE, P2_ORANGE, bkg );
         tpu_print_centre( 59, TRANSPARENT, WHITE, 0, backgroundnames[bkg] );
         sleep1khz( 1000, 0 );
     }
@@ -891,19 +891,19 @@ void backgrounddemo( void ) {
     copper_program( 0, COPPER_WAIT_VBLANK, 7, 0, BKG_SNOW, BLACK, WHITE );
     copper_program( 1, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, WHITE );
     copper_program( 2, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 64, 0, 0, 1 );
-    copper_program( 3, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, RED );
+    copper_program( 3, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_RED );
     copper_program( 4, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 128, 0, 0, 3 );
-    copper_program( 5, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, ORANGE );
+    copper_program( 5, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_ORANGE );
     copper_program( 6, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 160, 0, 0, 5 );
-    copper_program( 7, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, YELLOW );
+    copper_program( 7, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_YELLOW );
     copper_program( 8, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 192, 0, 0, 7 );
-    copper_program( 9, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, GREEN );
+    copper_program( 9, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_GREEN );
     copper_program( 10, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 224, 0, 0, 9 );
-    copper_program( 11, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, LTBLUE );
+    copper_program( 11, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_LTBLUE );
     copper_program( 12, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 256, 0, 0, 11 );
-    copper_program( 13, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, PURPLE );
+    copper_program( 13, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_PURPLE );
     copper_program( 14, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 288, 0, 0, 13 );
-    copper_program( 15, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, MAGENTA );
+    copper_program( 15, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_MAGENTA );
     copper_program( 16, COPPER_JUMP, COPPER_JUMP_ON_VBLANK_EQUAL, 0, 0, 0, 15 );
     copper_program( 17, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 1 );
     copper_startstop( 1 );
@@ -925,13 +925,13 @@ void backgrounddemo( void ) {
 // PUT SOME OBJECTS ON THE TILEMAP AND WRAP LOWER LAYER UP AND LEFT , UPPER LAYER DOWN AND RIGHT
 void tilemapdemo( void ) {
     displayreset();
-    set_background( WHITE, DKBLUE, BKG_SNOW );
+    set_background( WHITE, P2_DKBLUE, BKG_SNOW );
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Tilemap Scroll With Wrap Test" );
 
     unsigned char x, y, count, colour, actionflag;
     (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
     (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
-    screen_mode( 0, 0, TM_UPPER_DOUBLE );
+    screen_mode( 0, MODE_PAWSv2, TM_UPPER_DOUBLE );
 
     for( unsigned char tile_number = 0; tile_number < 10; tile_number++ ) {
         set_tilemap_bitmap( LOWER_LAYER, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
@@ -969,13 +969,13 @@ void gpudemo( void ) {
     short x1, y1, x2, y2, x3, y3;
     unsigned char colour;
 
-    displayreset();
+    displayreset(); screen_mode( 0, MODE_RGBM, 0 );
 
     // POINTS
     gpu_cs();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "GPU Plot Pixels Test" );
     for( i = 0; i < 2048; i++ ) {
-        gpu_pixel( rng( 64 ), rng( 320 ), rng( 240 ) );
+        gpu_pixel( rng( 256 ), rng( 320 ), rng( 240 ) );
     }
     sleep1khz( 1000, 0 );
 
@@ -983,7 +983,7 @@ void gpudemo( void ) {
     gpu_cs();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "GPU Line Drawing Test" );
     for( i = 0; i < 1024; i++ ) {
-        gpu_line( rng( 64 ), rng( 320 ), rng( 240 ), rng( 320 ), rng( 240 ) );
+        gpu_line( rng( 256 ), rng( 320 ), rng( 240 ), rng( 320 ), rng( 240 ) );
     }
     sleep1khz( 1000, 0 );
 
@@ -991,7 +991,7 @@ void gpudemo( void ) {
     gpu_cs();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "GPU Wide Line Drawing Test" );
     for( i = 0; i < 1024; i++ ) {
-        gpu_wideline( rng( 64 ), rng( 320 ), rng( 240 ), rng( 320 ), rng( 240 ), rng(8) + 1 );
+        gpu_wideline( rng( 256 ), rng( 320 ), rng( 240 ), rng( 320 ), rng( 240 ), rng(8) + 1 );
     }
     sleep1khz( 1000, 0 );
 
@@ -999,8 +999,8 @@ void gpudemo( void ) {
     gpu_cs();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "GPU Rectangle Drawing Test - Solid & Dither" );
     for( i = 0; i < 1024; i++ ) {
-        gpu_dither( rng(16), rng( 64 ) );
-        gpu_rectangle( rng( 64 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 352 ) - 16, rng( 256 ) - 8 );
+        gpu_dither( rng(16), rng( 256 ) );
+        gpu_rectangle( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 352 ) - 16, rng( 256 ) - 8 );
     }
     gpu_dither( DITHEROFF );
     sleep1khz( 1000, 0 );
@@ -1009,8 +1009,8 @@ void gpudemo( void ) {
     gpu_cs();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "GPU Circle Drawing Test - Solid & Dither" );
     for( i = 0; i < 1024; i++ ) {
-        gpu_dither( rng(16), rng( 64 ) );
-        gpu_circle( rng( 64 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 32 ), 255, rng( 1 ) );
+        gpu_dither( rng(16), rng( 256 ) );
+        gpu_circle( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 32 ), 255, rng( 1 ) );
     }
     gpu_dither( DITHEROFF );
     sleep1khz( 1000, 0 );
@@ -1022,8 +1022,8 @@ void gpudemo( void ) {
         x1 = rng( 352 ) - 16; y1 = rng( 256 ) - 8;
         x2 = x1 + rng( 100 ); y2 = y1 + rng( 100 );
         x3 = x2 - rng( 100 ); y3 = y1 + rng( 100 );
-        gpu_dither( rng(16), rng( 64 ) );
-        gpu_triangle( rng( 64 ), x1, y1, x2, y2, x3, y3 );
+        gpu_dither( rng(16), rng( 256 ) );
+        gpu_triangle( rng( 256 ), x1, y1, x2, y2, x3, y3 );
     }
     gpu_dither( DITHEROFF );
     sleep1khz( 1000, 0 );
@@ -1036,7 +1036,7 @@ void gpudemo( void ) {
     gpu_cs();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "GPU Blitter Test - REFLECT & ROTATE" );
     for( i = 0; i < 128; i++ ) {
-        gpu_blit( rng( 64 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 6 ), rng( 4 ), rng(8) );
+        gpu_blit( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 6 ), rng( 4 ), rng(8) );
     }
     sleep1khz( 1000, 0 );
 
@@ -1044,12 +1044,13 @@ void gpudemo( void ) {
     gpu_cs();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "GPU Character Blitter Test - REFLECT & ROTATE" );
     for( i = 0; i < 128; i++ ) {
-        gpu_character_blit( rng( 64 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 256 ), rng( 4 ), rng(8) );
+        gpu_character_blit( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 256 ), rng( 4 ), rng(8) );
     }
     sleep1khz( 1000, 0 );
 
     // COLOUR BLITTER
     // SET COLOUR BLITTER OBJECTS - ALIENS FROM GALAXIAN
+    screen_mode( 0, MODE_PAWSv2, 0 );
     for( short i = 0; i < 3; i++ ) {
         for( short j = 0; j < 3; j++ ) {
             for( short y = 0; y < 16; y++ ) {
@@ -1059,18 +1060,18 @@ void gpudemo( void ) {
                             colour = TRANSPARENT;
                             break;
                         case 'B':
-                            colour = DKBLUE;
+                            colour = P2_DKBLUE;
                             break;
                         case 'C':
                             switch( i ) {
                                 case 0:
-                                    colour = RED;
+                                    colour = P2_RED;
                                     break;
                                 case 1:
-                                    colour = DKMAGENTA;
+                                    colour = P2_DKMAGENTA;
                                     break;
                                 case 2:
-                                    colour = DKCYAN - 1;
+                                    colour = P2_DKCYAN - 1;
                                     break;
                             }
                             break;
@@ -1101,7 +1102,7 @@ void gpudemo( void ) {
     set_vector_vertex( 0, 4, 1, 0, 0 );
     set_vector_vertex( 0, 5, 0, 0, 0 );
     for( i = 0; i < 128; i++ ) {
-        draw_vector_block( 0, rng( 64 ), rng( 352 ) - 16, rng( 256 ) - 8, rng(8), rng(8) );
+        draw_vector_block( 0, rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng(8), rng(8) );
     }
     sleep1khz( 1000, 0 );
 
@@ -1116,8 +1117,8 @@ void ditherdemo( void ) {
 
     for( y = 0; y < 4; y++ ) {
         for( x = 0; x < 4; x++ ) {
-            gpu_dither( dithermode, PURPLE );
-            gpu_rectangle( ORANGE, x * 80, y * 60, x * 80 + 79, y * 60 + 59 );
+            gpu_dither( dithermode, P2_PURPLE );
+            gpu_rectangle( P2_ORANGE, x * 80, y * 60, x * 80 + 79, y * 60 + 59 );
             gpu_printf_centre( BLACK, x * 80 + 40, y * 60 + 4, NORMAL, 0, 0, dithernames[dithermode++] );
         }
     }
@@ -1201,16 +1202,16 @@ void spritedemo( void ) {
                     case 'C':
                         switch( i ) {
                             case 0:
-                                colour = RED;
+                                colour = P2_RED;
                                 break;
                             case 1:
-                                colour = PINK;
+                                colour = P2_PINK;
                                 break;
                             case 2:
-                                colour = CYAN;
+                                colour = P2_CYAN;
                                 break;
                             case 3:
-                                colour = LTORANGE;
+                                colour = P2_LTORANGE;
                                 break;
                         }
                         break;
@@ -1233,10 +1234,10 @@ void spritedemo( void ) {
                         colour = TRANSPARENT;
                         break;
                     case 'b':
-                        colour = DKBLUE;
+                        colour = P2_DKBLUE;
                         break;
                     case 'P':
-                        colour = PEACH;
+                        colour = P2_PEACH;
                         break;
                     case 'W':
                         colour = WHITE;

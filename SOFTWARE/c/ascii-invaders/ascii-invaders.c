@@ -161,7 +161,7 @@ void moveAliensDown();
 int main( void ) {
     // CLEAR and SET THE BACKGROUND
     gpu_cs();
-    set_background( LTGREY, BLUE30, BKG_SNOW );
+    set_background( GREY6, BLUE2, BKG_SNOW );
 
     // set up curses library
     initscr();
