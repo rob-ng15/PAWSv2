@@ -47,7 +47,9 @@ unit PAWSCPU(
 
     // MINI DMA CONTROLLER
     input   uint27  DMASOURCE,
+    input   uint27  DMASOURCEADD,
     input   uint27  DMADEST,
+    input   uint27  DMADESTADD,
     input   uint27  DMACOUNT,
     input   uint3   DMAMODE,
     output! uint2   DMAACTIVE(0)
@@ -165,7 +167,17 @@ unit PAWSCPU(
     );
 
     // MINI DMA CONTROLLER
-    dma DMA( DMASOURCE <: DMASOURCE, DMADEST <: DMADEST, DMACOUNT <: DMACOUNT, DMAMODE <: DMAMODE, DMAACTIVE :> DMAACTIVE, readdata <: readdata, memorybusy <: memorybusy );
+    dma DMA(
+        DMASOURCE <: DMASOURCE,
+        DMASOURCEADD <: DMASOURCEADD,
+        DMADEST <: DMADEST,
+        DMADESTADD <: DMADESTADD,
+        DMACOUNT <: DMACOUNT,
+        DMAMODE <: DMAMODE,
+        DMAACTIVE :> DMAACTIVE,
+        readdata <: readdata,
+        memorybusy <: memorybusy
+    );
 
     // SMALL ON CPU L0 CACHE - 1 per HART - RESET when pc == 0 @ START OF BIOS
     // L0 INSTRUCTION CACHE { tag, instruction, compressed, valid } split into units
@@ -679,11 +691,13 @@ unit load(
         while(1) {
             if( start ) {
                 busy = 1;
-                address = loadAddress; readmemory = 1; while( memorybusy ) {}                                                                       // READ 1ST 8 or 16 BITS
+                address = loadAddress; readmemory = 1;                                                                                      // READ 1ST 8 or 16 BITS
+                while( memorybusy ) {}
                 if( accesssize[1,1] ) {
-                    memoryinput[0,16] = readdata; address = LA2; readmemory = 1; while( memorybusy ) {} memoryinput[16,16] = readdata;     // READ 2ND 16 BITS
+                    memoryinput[0,16] = readdata; address = LA2; readmemory = 1;                                                            // READ 2ND 16 BITS
+                    while( memorybusy ) {} memoryinput[16,16] = readdata;
                 } else {
-                    memoryinput = SIGNEXTEND.memory168;                                                                                                 // 8 or 16 BIT SIGN EXTENDED
+                    memoryinput = SIGNEXTEND.memory168;                                                                                     // 8 or 16 BIT SIGN EXTENDED
                 }
                 busy = 0;
             }
@@ -704,6 +718,7 @@ unit store(
     output! uint1   writememory,
     input!  uint1   memorybusy
 ) <reginputs> {
+    uint1   FASTSTORE <:: ~storeAddress[26,1] & ~storeAddress[25,1];
     uint27  SA2 <:: storeAddress + 2;
     writememory := 0;
 
@@ -711,10 +726,11 @@ unit store(
         while(1) {
             if( start ) {
                 busy = 1;
-                address = storeAddress; writedata = storeValue[0,16];                                                       // STORE 8 OR 16 BIT
-                writememory = 1; while( memorybusy ) {}
+                address = storeAddress; writedata = storeValue[0,16]; writememory = 1;                                      // STORE 8 OR 16 BIT
+                if( FASTSTORE ) { ++: } else { while( memorybusy ) {} }
                 if( accesssize[1,1] ) {
-                    address = SA2; writedata = storeValue[16,16]; writememory = 1;  while( memorybusy ) {}                  // 32 BIT WRITE 2ND 16 BITS
+                    address = SA2; writedata = storeValue[16,16]; writememory = 1;                                          // 32 BIT WRITE 2ND 16 BITS
+                    if( FASTSTORE ) { ++: } else { while( memorybusy ) {} }
                 } else { writememory = 0; }
                 busy = 0;
             }
@@ -725,7 +741,9 @@ unit store(
 // MINI DMA CONTROLLER
 unit dma(
     input   uint27  DMASOURCE,
+    input   uint27  DMASOURCEADD,
     input   uint27  DMADEST,
+    input   uint27  DMADESTADD,
     input   uint27  DMACOUNT,
     input   uint3   DMAMODE,
     output! uint2   DMAACTIVE,
@@ -740,9 +758,12 @@ unit dma(
 ) <reginputs> {
     uint3   dmamode = uninitialized;
     uint27  dmasrc = uninitialised;                 uint27  dmasrc1 <:: dmasrc + 1;                     uint27  dmasrc2 <:: dmasrc + 2;
+    uint27  dmasrcADD <:: dmasrc + DMASOURCEADD;
     uint27  dmadest = uninitialised;                uint27  dmadest1 <:: dmadest + 1;                   uint27  dmadest2 <:: dmadest + 2;
+    uint27  dmadestADD <:: dmadest + DMADESTADD;
     uint1   dmablue <:: ( dmadest[0,4] == 4h6 );    uint27  dmacount = uninitialised;                   uint27  dmacount1 <:: dmacount - 1;
     uint16  memoryinput = uninitialised;
+    uint1   FASTSTORE <:: ~dmadest[26,1] & ~dmadest[25,1];
 
     writememory := 0; readmemory := 0;
 
@@ -763,7 +784,7 @@ unit dma(
                         writedata = memoryinput[8,8]; writememory = 1;
                     } else {
                         writedata = memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];                                                           // DMA STORE 8 BIT
-                        if( dmadest[26,1] | dmadest[25,1] ) { writememory = 1; while( memorybusy ) {} } else { writememory = 1; }       // CHECK IF FAST STORE IS POSSIBLE
+                        if( FASTSTORE ) { writememory = 1; } else { writememory = 1; while( memorybusy ) {} }                           // CHECK IF FAST STORE IS POSSIBLE
                     }
                     switch( dmamode ) {
                         default: {}                                                                                                     // INACTIVE / UNDEFINED
@@ -772,6 +793,7 @@ unit dma(
                         case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                               // DMA multi-src to multi-dest MEMCPY
                         case 4: { dmadest = dmadest1; }                                                                                 // DMA single-src to multi-dest MEMSET + SDCARD WRITE
                         case 5: {}                                                                                                      // DMA single-src to single-dest SET TILE/CBLITTER to single value
+                        case 6: { dmasrc = dmasrcADD; dmadest = dmadestADD; }                                                           // DMA increase src and dest by additions
                         case 7: { dmasrc = dmasrc2; }                                                                                   // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
                     }
                     dmacount = dmacount1;

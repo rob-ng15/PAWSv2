@@ -163,7 +163,7 @@ $$end
   $$end
     );
 
-    // SDRAM ( via CACHE ) and BRAM (for BIOS AND FAST BRAM )
+    // SDRAM ( via CACHE )
     // byteaccess controls byte read/writes
     uint1   byteaccess <:: ( ~|CPU.accesssize[0,2] );
     cachecontroller DRAM <@clock_system,!reset> (
@@ -174,7 +174,22 @@ $$end
         address <: CPU.address[0,26],
         writedata <: CPU.writedata
     );
-    bramcontroller RAM <@clock_system,!reset> (
+
+    //  BRAM (for BIOS AND FAST BRAM ) SELECT BIOS FOR FPGA OR SIMULATION
+    $$config['simple_dualport_bram_wmask_byte_wenable1_width'] = 'data'
+    $$if not SIMULATION then
+        // RISC-V FAST BRAM and BIOS
+        simple_dualport_bram uint16 ram <"simple_dualport_bram_wmask_byte",@clock_system,@clock_system> [16384] = {file("ROM/BIOS.bin"), pad(uninitialized)};
+    $$else
+        // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
+        simple_dualport_bram uint16 ram<"simple_dualport_bram_wmask_byte",@clock_system,@clock_system> [16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
+    $$end
+    bramcontroller_read RAM_R <@clock_system,!reset> (
+        ram <:> ram,
+        address <: CPU.address[0,15]
+    );
+    bramcontroller_write RAM_W <@clock_system,!reset> (
+        ram <:> ram,
         byteaccess <: byteaccess,
         address <: CPU.address[0,15],
         writedata <: CPU.writedata
@@ -249,7 +264,9 @@ $$end
         SMTRUNNING <: IO_Map.SMTRUNNING,
         SMTSTARTPC <: IO_Map.SMTSTARTPC[0,27],
         DMASOURCE <: IO_Map.DMASOURCE,
+        DMASOURCEADD <: IO_Map.DMASOURCEADD,
         DMADEST <: IO_Map.DMADEST,
+        DMADESTADD <: IO_Map.DMADESTADD,
         DMACOUNT <: IO_Map.DMACOUNT,
         DMAMODE <: IO_Map.DMAMODE,
         readdata <: readdata
@@ -266,7 +283,7 @@ $$end
     // READ FROM SDRAM / BRAM / IO REGISTERS
     uint16  readdata <:: SDRAM ? DRAM.readdata :
                 VIDEODIRECT ? VIDEO_Map.readDataDirect :
-                BRAM ? RAM.readdata :
+                BRAM ? RAM_R.readdata :
                 TIMERS ? TIMERS_Map.readData :
                 VIDEO ? VIDEO_Map.readData :
                 AUDIO ? AUDIO_Map.readData :
@@ -274,7 +291,6 @@ $$end
 
     always_after {
         DRAM.readflag = SDRAM & CPU.readmemory;
-        RAM.readflag = BRAM & CPU.readmemory;
         AUDIO_Map.memoryRead = AUDIO & CPU.readmemory;
         IO_Map.memoryRead = IO & CPU.readmemory;
         TIMERS_Map.memoryRead = TIMERS & CPU.readmemory;
@@ -282,7 +298,7 @@ $$end
         VIDEO_Map.memoryReadDirect = VIDEODIRECT & CPU.readmemory;
 
         DRAM.writeflag = SDRAM & CPU.writememory;
-        RAM.writeflag = BRAM & CPU.writememory;
+        RAM_W.writeflag = BRAM & CPU.writememory;
         AUDIO_Map.memoryWrite = AUDIO & CPU.writememory;
         IO_Map.memoryWrite = IO & CPU.writememory;
         TIMERS_Map.memoryWrite = TIMERS & CPU.writememory;
@@ -290,6 +306,7 @@ $$end
         VIDEO_Map.memoryWriteDirect = VIDEODIRECT & CPU.writememory;
 
         // SDRAM -> CPU BUSY STATE
+//        CPU.memorybusy = DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT ) | VIDEO_Map.busyDirect;
         CPU.memorybusy = DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT ) | VIDEO_Map.busyDirect;
     }
 }
@@ -297,27 +314,28 @@ $$end
 // RAM - BRAM controller
 // MEMORY IS 16 BIT, 8 bit WRITES ARE READ MODIFY WRITE
 $$config['simple_dualport_bram_wmask_byte_wenable1_width'] = 'data'
-unit bramcontroller(
+unit bramcontroller_read(
+    simple_dualport_bram_port0 ram,
     input   uint15  address,
     input   uint1   byteaccess,
 
     input   uint1   writeflag,
     input   uint16  writedata,
 
-    input   uint1   readflag,
     output  uint16  readdata
 ) <reginputs> {
-// SELECT BIOS FOR FPGA OR SIMULATION
-$$if not SIMULATION then
-    // RISC-V FAST BRAM and BIOS
-    simple_dualport_bram uint16 ram <"simple_dualport_bram_wmask_byte"> [16384] = {file("ROM/BIOS.bin"), pad(uninitialized)};
-$$else
-    // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
-    simple_dualport_bram uint16 ram<"simple_dualport_bram_wmask_byte"> [16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
-$$end
-
     // FLAGS FOR BRAM ACCESS
     ram.addr0 := address[1,14]; readdata := ram.rdata0;
+}
+unit bramcontroller_write(
+    simple_dualport_bram_port1 ram,
+    input   uint15  address,
+    input   uint1   byteaccess,
+
+    input   uint1   writeflag,
+    input   uint16  writedata
+) <reginputs> {
+    // FLAGS FOR BRAM ACCESS
     ram.wenable1 := 0; ram.addr1 := address[1,14];
 
     always_after {

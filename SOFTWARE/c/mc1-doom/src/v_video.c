@@ -350,44 +350,12 @@ static void V_DrawPatchInternal (int x,
             const byte* src = (byte*)column + 3;
             byte* dst = desttop + column->topdelta * SCREENWIDTH;
             int count = column->length;
-#if defined(__MRISC32_VECTOR_OPS__)
-            // This vectorized routine takes <3 clock-cycles per pixel.
-            const unsigned stride = SCREENWIDTH;
-            unsigned count_left, dst_incr;
-            byte* src_ptr, dst_ptr;
-            __asm__ volatile(
-                "    ble     %[count], 2f\n"
-                "    getsr   vl, #0x10\n"
-                "    mov     %[count_left], %[count]\n"
-                "    mov     %[src_ptr], %[src]\n"
-                "    mov     %[dst_ptr], %[dst]\n"
-                "    mul     %[dst_incr], vl, %[stride]\n"
-                "1:\n"
-                "    min     vl, vl, %[count_left]\n"
-                "    sub     %[count_left], %[count_left], vl\n"
-                "    ldub    v1, [%[src_ptr], #1]\n"
-                "    stb     v1, [%[dst_ptr], %[stride]]\n"
-                "    ldea    %[src_ptr], [%[src_ptr], vl]\n"
-                "    ldea    %[dst_ptr], [%[dst_ptr], %[dst_incr]]\n"
-                "    bnz     %[count_left], 1b\n"
-                "2:"
-                : [count_left] "=&r"(count_left),
-                  [dst_incr] "=&r"(dst_incr),
-                  [src_ptr] "=&r"(src_ptr),
-                  [dst_ptr] "=&r"(dst_ptr)
-                : [dst] "r"(dst),
-                  [src] "r"(src),
-                  [count] "r"(count),
-                  [stride] "r"(stride)
-                : "vl", "v1"
-                );
-#else
-            for (int v = 0; v < count; ++v)
-            {
-                *dst = *src++;
-                dst += SCREENWIDTH;
-            }
-#endif
+            memcpy_step( dst, src, SCREENWIDTH, 1, count );
+//            for (int v = 0; v < count; ++v)
+//            {
+//                *dst = *src++;
+//                dst += SCREENWIDTH;
+//            }
             column = (column_t*)((byte*)column + column->length + 4);
         }
     }

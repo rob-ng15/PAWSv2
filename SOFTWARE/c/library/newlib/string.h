@@ -183,8 +183,10 @@ _END_STD_C
 // PAWS NEWLIB PATCHED string.h
 // RE-DIRECTS OPERATIONS TO PAWS MINI DMA ENGINE
 extern void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count );
+extern void *paws_memcpy_step( void *restrict destination, const void *restrict source, int destadd, int sourceadd, size_t count );
 extern void *paws_memset( void *restrict destination, int value, size_t count );
-#define memcpy(a,b,c)   paws_memcpy(a,b,c)
-#define memset(a,b,c)   paws_memset(a,b,c)
+#define memcpy(a,b,c)           paws_memcpy(a,b,c)
+#define memcpy_step(a,b,c,d,e)  paws_memcpy_step(a,b,c,d,e)
+#define memset(a,b,c)           paws_memset(a,b,c)
 
 #endif /* _STRING_H_ */

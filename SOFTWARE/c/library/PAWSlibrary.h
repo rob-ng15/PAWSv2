@@ -94,8 +94,8 @@ extern void set_blitter_chbitmap( unsigned char, unsigned char *);
 extern void set_colourblitter_bitmap( unsigned char, unsigned char *);
 extern void gpu_pixelblock( short , short , unsigned short, unsigned short, unsigned char, unsigned char *);
 extern void gpu_pixelblock24( short , short , unsigned short, unsigned short, unsigned char *);
-extern void gpu_pixelblock_start( short , short , unsigned short );
-extern void gpu_pixelblock_mode( unsigned char mode );
+//extern void gpu_pixelblock_start( short , short , unsigned short );
+//extern void gpu_pixelblock_mode( unsigned char mode );
 //extern void gpu_pixelblock_pixel( unsigned char );
 //extern void gpu_pixelblock_pixel24( unsigned char, unsigned char, unsigned char );
 //extern void gpu_pixelblock_stop( void );
@@ -209,6 +209,13 @@ extern unsigned char *sdcard_selectfile( char *, char *, unsigned int *, char *)
 
 // DISPLAY
 extern unsigned char volatile *VBLANK;
+extern unsigned char volatile *GPU_FINISHED;
+extern short volatile *GPU_X;
+extern short volatile *GPU_Y;
+extern short volatile *GPU_PARAM0;
+extern short volatile *GPU_PARAM1;
+extern unsigned char volatile *GPU_WRITE;
+extern unsigned char volatile *PB_MODE;
 extern unsigned char volatile *PB_COLOUR;
 extern unsigned char volatile *PB_COLOUR8R;
 extern unsigned char volatile *PB_COLOUR8G;
@@ -232,6 +239,17 @@ static inline void gpu_pixelblock_pixel24( unsigned char red, unsigned char gree
     *PB_COLOUR8R = red;
     *PB_COLOUR8G= green;
     *PB_COLOUR8B = blue;
+}
+static inline void gpu_pixelblock_mode( unsigned char mode ) {
+    *PB_MODE = mode;
+}
+static inline void gpu_pixelblock_start( short x,  short y, unsigned short w ) {
+    while( !*GPU_FINISHED );
+    *GPU_X = x;
+    *GPU_Y = y;
+    *GPU_PARAM0 = w;
+    *GPU_PARAM1 = TRANSPARENT;
+    *GPU_WRITE = 10;
 }
 static inline void gpu_pixelblock_stop( void ) {
     *PB_STOP = 3;
@@ -293,7 +311,9 @@ static inline unsigned short get_buttons( void ) {
 extern unsigned char volatile *SMTSTATUS;
 extern unsigned int volatile *SMTPC;
 extern unsigned int volatile *DMASOURCE;
+extern int volatile *DMASOURCEADD;
 extern unsigned int volatile *DMADEST;
+extern int volatile *DMADESTADD;
 extern unsigned int volatile *DMACOUNT;
 extern unsigned char volatile *DMAMODE;
 extern unsigned char volatile *DMASET;

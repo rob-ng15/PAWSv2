@@ -171,6 +171,8 @@ unsigned int volatile *SMTPC = (unsigned int volatile *) 0xfff0;
 // HANDLE MINI DMA CONTROLLER
 unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xffe0;
 unsigned int volatile *DMADEST = (unsigned int volatile *) 0xffe4;
+int volatile *DMASOURCEADD = (int volatile *) 0xffd0;
+int volatile *DMADESTADD = (int volatile *) 0xffd4;
 unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xffe8;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xffec;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xffee;

@@ -69,6 +69,14 @@ void *paws_memcpy( void *restrict destination, const void *restrict source, size
     return( destination );
 }
 
+void *paws_memcpy_step( const void *restrict destination, const void *restrict source, int destadd, int sourceadd, size_t count ) {
+    *DMASOURCE = (unsigned int)source; *DMASOURCEADD = sourceadd,
+    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
+    *DMACOUNT = count;
+    *DMAMODE = 6;
+    return( destination );
+}
+
 // PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
 void *paws_memset( void *restrict destination, int value, size_t count ) {
     *DMASET = (unsigned char)value;
