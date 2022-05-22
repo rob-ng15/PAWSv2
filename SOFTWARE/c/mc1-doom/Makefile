@@ -143,6 +143,7 @@ $(BUILD_DIR)/doom.elf: $(DOOM_OBJECTS) $(LIBPAWS)
 
 %.o: src/%.c
 	$(CC) $(INCLUDE) $(CFLAGS) -c -o $(BUILD_DIR)/$@ $<
+	$(CC) $(INCLUDE) $(CFLAGS) -S -c -o $(BUILD_DIR)/$@.s $<
 
 clean:
 	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.elf $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW

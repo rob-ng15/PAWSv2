@@ -183,10 +183,39 @@ _END_STD_C
 // PAWS NEWLIB PATCHED string.h
 // RE-DIRECTS OPERATIONS TO PAWS MINI DMA ENGINE
 extern void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count );
-extern void *paws_memcpy_step( void *restrict destination, const void *restrict source, int destadd, int sourceadd, size_t count );
 extern void *paws_memset( void *restrict destination, int value, size_t count );
 #define memcpy(a,b,c)           paws_memcpy(a,b,c)
-#define memcpy_step(a,b,c,d,e)  paws_memcpy_step(a,b,c,d,e)
 #define memset(a,b,c)           paws_memset(a,b,c)
+
+// INLINE DMA CONTROLLER FOR SPEED
+extern unsigned int volatile *DMASOURCE;
+extern int volatile *DMASOURCEADD;
+extern unsigned int volatile *DMADEST;
+extern int volatile *DMADESTADD;
+extern unsigned int volatile *DMACOUNT;
+extern unsigned char volatile *DMACYCLES;
+extern unsigned char volatile *DMAMODE;
+extern unsigned char volatile *DMASET;
+
+static inline void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd ) {
+    *DMASOURCE = (unsigned int)source; *DMASOURCEADD = sourceadd,
+    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
+    *DMACOUNT = count;
+    *DMAMODE = 6;
+}
+
+static inline void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles ) {
+    *DMASOURCE = (unsigned int)source; *DMASOURCEADD = sourceadd,
+    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
+    *DMACOUNT = count; *DMACYCLES = cycles;
+    *DMAMODE = 8;
+}
+
+static inline void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
+    *DMASOURCE = (unsigned int)DMASET; *DMASET = (unsigned char)value;
+    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
+    *DMACOUNT = count; *DMACYCLES = cycles;
+    *DMAMODE = 9;
+}
 
 #endif /* _STRING_H_ */

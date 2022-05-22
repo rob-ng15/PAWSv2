@@ -16,7 +16,7 @@ $$ L0Isize = 64
 $$ L0Icacheaddrwidth = clog2(L0Isize)
 
 // HART 0 - MAIN
-$$ L00Iblocks = 8
+$$ L00Iblocks = 2
 $$ L00Icount = clog2(L00Iblocks)
 $$ L00Ipartaddresswidth = addr_width - 1 - L00Icount - L0Icacheaddrwidth
 $$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
@@ -51,7 +51,8 @@ unit PAWSCPU(
     input   uint27  DMADEST,
     input   uint27  DMADESTADD,
     input   uint27  DMACOUNT,
-    input   uint3   DMAMODE,
+    input   uint8   DMACYCLES,
+    input   uint4   DMAMODE,
     output! uint2   DMAACTIVE(0)
 ) <reginputs> {
     // CPU REGISTERS AND THREAD SELECTION
@@ -173,6 +174,7 @@ unit PAWSCPU(
         DMADEST <: DMADEST,
         DMADESTADD <: DMADESTADD,
         DMACOUNT <: DMACOUNT,
+        DMACYCLES <: DMACYCLES,
         DMAMODE <: DMAMODE,
         DMAACTIVE :> DMAACTIVE,
         readdata <: readdata,
@@ -745,7 +747,8 @@ unit dma(
     input   uint27  DMADEST,
     input   uint27  DMADESTADD,
     input   uint27  DMACOUNT,
-    input   uint3   DMAMODE,
+    input   uint8   DMACYCLES,
+    input   uint4   DMAMODE,
     output! uint2   DMAACTIVE,
 
     input   uint1   start,
@@ -756,7 +759,7 @@ unit dma(
     input!  uint16  readdata,
     input!  uint1   memorybusy
 ) <reginputs> {
-    uint3   dmamode = uninitialized;
+    uint4   dmamode = uninitialized;                uint8   dmacycles = uninitialised;                  uint8   dmacycles1 <:: dmacycles - 1;
     uint27  dmasrc = uninitialised;                 uint27  dmasrc1 <:: dmasrc + 1;                     uint27  dmasrc2 <:: dmasrc + 2;
     uint27  dmasrcADD <:: dmasrc + DMASOURCEADD;
     uint27  dmadest = uninitialised;                uint27  dmadest1 <:: dmadest + 1;                   uint27  dmadest2 <:: dmadest + 2;
@@ -770,33 +773,48 @@ unit dma(
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; DMAACTIVE = &DMAMODE ? 2 : 1;
+                dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES; DMAACTIVE = &DMAMODE[0,3] ? 2 : 1;
                 while( |dmacount ) {
                     address = dmasrc; readmemory = 1; while( memorybusy ) {}
                     memoryinput = readdata; address = dmadest;
                     if( DMAACTIVE[1,1] ) {
                         writedata = memoryinput[0,8]; writememory = 1;                                                                  // STORE TWO PIXELS TO PIXELBLOCK IN SPECIAL MODE
-                        $$if gpu_50_mhz then
-                        ++:                                                                                                             // 1 CYCLE FOR FASTER GPU, 2 FOR SLOWER
-                        $$else
                         ++: ++:
-                        $$end
                         writedata = memoryinput[8,8]; writememory = 1;
                     } else {
                         writedata = memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];                                                           // DMA STORE 8 BIT
                         if( FASTSTORE ) { writememory = 1; } else { writememory = 1; while( memorybusy ) {} }                           // CHECK IF FAST STORE IS POSSIBLE
                     }
-                    switch( dmamode ) {
-                        default: {}                                                                                                     // INACTIVE / UNDEFINED
-                        case 1: { dmasrc = dmasrc1; }                                                                                   // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
-                        case 2: { dmasrc = dmasrc1; if( dmablue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }                 // DMA SPECIAL PIXEL BLOCK RGB
-                        case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                               // DMA multi-src to multi-dest MEMCPY
-                        case 4: { dmadest = dmadest1; }                                                                                 // DMA single-src to multi-dest MEMSET + SDCARD WRITE
-                        case 5: {}                                                                                                      // DMA single-src to single-dest SET TILE/CBLITTER to single value
-                        case 6: { dmasrc = dmasrcADD; dmadest = dmadestADD; }                                                           // DMA increase src and dest by additions
-                        case 7: { dmasrc = dmasrc2; }                                                                                   // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
+                    if( dmamode[3,1] ) {
+                        switch( dmamode[0,1] ) {
+                            case 0: {                                                                                                       // DMA MEMCOPY COUNT BYTES CYCLE TIMES
+                                if( |dmacount1 ) {                                                                                          //     +1 TO SRC AND DEST EACH COUNT, +ADD AT NEXT CYCLE
+                                    dmasrc = dmasrc1; dmadest = dmadest1; dmacount = dmacount1;                                             //     EFFECTIVELY COPY A RECTANGULAR BLOCK FROM MEMORY TO MEMORY
+                                } else {
+                                    dmasrc = DMASOURCE + DMASOURCEADD; dmadest = DMADEST + DMADESTADD; dmacount = ~|dmacycles1 ? 0 : DMACOUNT; dmacycles = dmacycles1;
+                                }
+                            }
+                            case 1: {                                                                                                       // DMA MEMSET COUNT BYTES CYCLE TIMES
+                                if( |dmacount1 ) {                                                                                          //     +1 TO DEST EACH COUNT, +ADD AT NEXT CYCLE
+                                    dmadest = dmadest1; dmacount = dmacount1;                                                               //     EFFECTIVELY SET A RECTANGULAR BLOCK FROM DMASET TO MEMORY
+                                } else {
+                                    dmadest = DMADEST + DMADESTADD; dmacount = ~|dmacycles1 ? 0 : DMACOUNT; dmacycles = dmacycles1;
+                                }
+                            }
+                        }
+                    } else {
+                        switch( dmamode[0,3] ) {
+                            default: {}                                                                                                     // INACTIVE / UNDEFINED
+                            case 1: { dmasrc = dmasrc1; }                                                                                   // DMA multi-src to single-dest PIXEL BLOCK 7/8 bit + SDCARD WRITE
+                            case 2: { dmasrc = dmasrc1; if( dmablue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }                 // DMA SPECIAL PIXEL BLOCK RGB
+                            case 3: { dmasrc = dmasrc1; dmadest = dmadest1; }                                                               // DMA multi-src to multi-dest MEMCPY
+                            case 4: { dmadest = dmadest1; }                                                                                 // DMA single-src to multi-dest MEMSET + SDCARD WRITE
+                            case 5: {}                                                                                                      // DMA single-src to single-dest SET TILE/CBLITTER to single value
+                            case 6: { dmasrc = dmasrcADD; dmadest = dmadestADD; }                                                           // DMA increase src and dest by additions
+                            case 7: { dmasrc = dmasrc2; }                                                                                   // DMA 16bit to 2 pixels for PIXEL BLOCK special mode
+                        }
+                        dmacount = dmacount1;
                     }
-                    dmacount = dmacount1;
                 }
                 DMAACTIVE = 0;
             } else { DMAACTIVE = 0; }

@@ -69,12 +69,18 @@ void *paws_memcpy( void *restrict destination, const void *restrict source, size
     return( destination );
 }
 
-void *paws_memcpy_step( const void *restrict destination, const void *restrict source, int destadd, int sourceadd, size_t count ) {
+void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd ) {
     *DMASOURCE = (unsigned int)source; *DMASOURCEADD = sourceadd,
     *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
     *DMACOUNT = count;
     *DMAMODE = 6;
-    return( destination );
+}
+
+void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles ) {
+    *DMASOURCE = (unsigned int)source; *DMASOURCEADD = sourceadd,
+    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
+    *DMACOUNT = count; *DMACYCLES = cycles;
+    *DMAMODE = 8;
 }
 
 // PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
@@ -82,6 +88,13 @@ void *paws_memset( void *restrict destination, int value, size_t count ) {
     *DMASET = (unsigned char)value;
     DMASTART( (const void *restrict)DMASET, destination, count, 4 );
     return( destination );
+}
+
+void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
+    *DMASOURCE = (unsigned int)DMASET; *DMASET = (unsigned char)value;
+    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
+    *DMACOUNT = count; *DMACYCLES = cycles;
+    *DMAMODE = 9;
 }
 
 // OUTPUT TO UART

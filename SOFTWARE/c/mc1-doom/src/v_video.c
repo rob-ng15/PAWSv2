@@ -173,12 +173,8 @@ V_CopyRect
     src = screens[srcscrn]+SCREENWIDTH*srcy+srcx;
     dest = screens[destscrn]+SCREENWIDTH*desty+destx;
 
-    for ( ; height>0 ; height--)
-    {
-        memcpy (dest, src, width);
-        src += SCREENWIDTH;
-        dest += SCREENWIDTH;
-    }
+//    paws_memcpy_rectangle( dest, src, SCREENWIDTH, SCREENWIDTH, width, height );
+    for ( ; height>0 ; height--) { memcpy (dest, src, width); src += SCREENWIDTH;  dest += SCREENWIDTH; }
 }
 
 //
@@ -350,12 +346,8 @@ static void V_DrawPatchInternal (int x,
             const byte* src = (byte*)column + 3;
             byte* dst = desttop + column->topdelta * SCREENWIDTH;
             int count = column->length;
-            memcpy_step( dst, src, SCREENWIDTH, 1, count );
-//            for (int v = 0; v < count; ++v)
-//            {
-//                *dst = *src++;
-//                dst += SCREENWIDTH;
-//            }
+//            paws_memcpy_step( dst, src, count, SCREENWIDTH, 1 );
+            for (int v = 0; v < count; ++v) { *dst = *src++; dst += SCREENWIDTH; }
             column = (column_t*)((byte*)column + column->length + 4);
         }
     }

@@ -2,7 +2,6 @@ $$ uart_in_clock_freq_mhz = 25
 
 // CLOCK SELECTION FLAGS
 //$$ sdram_150_mhz = 1
-//$$ gpu_50_mhz = 1
 
 $$if not SIMULATION then
 // CLOCKS
@@ -52,11 +51,7 @@ $include('../tile_map.si')
 $include('../multiplex_display.si')
 $include('../common/audio_pwm.si')
 $include('../audio.si')
-$$if gpu_50_mhz then
-$include('../video_memmap-50MHzGPU.ice')
-$$else
 $include('../video_memmap.si')
-$$end
 $include('../io_memmap.si')
 $include('../timers_random.si')
 

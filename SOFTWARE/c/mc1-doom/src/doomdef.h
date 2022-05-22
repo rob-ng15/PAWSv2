@@ -104,7 +104,7 @@ typedef enum
 #define MAXPLAYERS              4
 
 // State updates, number of tics / second.
-#define TICRATE         1
+#define TICRATE         30
 
 // The current state of the game: whether we are
 // playing, gazing at the intermission screen,

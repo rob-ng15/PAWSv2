@@ -10,6 +10,8 @@ int main( void ) {
     float jx, jy, tx, ty, wx, wy, r;
     int k;
 
+    screen_mode( 0, MODE_PAWSv2, 0 );
+
     for( int step = 16; step > 0; step = step >> 1 ) {
         int offset = step - 1;
         if( !offset ) gpu_pixelblock_start( 0, 0, graphwidth );
@@ -29,9 +31,9 @@ int main( void ) {
                 } while( ( r < m ) && ( k < kt ) );
 
                 if( offset ) {
-                    gpu_rectangle( k * 3, x, y, x + offset, y + offset );
+                    gpu_rectangle( k, x, y, x + offset, y + offset );
                 } else {
-                    gpu_pixelblock_pixel( k * 3 );
+                    gpu_pixelblock_pixel( k );
                 }
             }
         }
