@@ -24,15 +24,23 @@
 
 #include "m_fixed.h"
 
+#include <PAWSlibrary.h>
+
 //
 // FixedDiv
 //
 // Methods:
 //   1: long long (slow on most 32-bit machines, accurate)
-//   2: float (fast on MRISC32 with an FPU, but inaccurate - demos go wrong)
-//   3: double (slow on MRISC32, accurate)
+//   2: float (fast on PAWS with an FPU, but inaccurate - demos go wrong)
+//   3: PAWS fixed point division accelerator
 //
-#define DIV_METHOD 2
+#define DIV_METHOD 3
+
+// FIXED POINT DIVISION ACCELERATOR
+int volatile *__FIXED_A = (int volatile *)0xf800;
+int volatile *__FIXED_B = (int volatile *)0xf804;
+int volatile *__FIXED_RESULT = (int volatile*)0xf800;
+unsigned char volatile *__FIXED_STATUS = (unsigned char volatile *)0xf808;
 
 fixed_t FixedDiv (fixed_t a, fixed_t b)
 {
@@ -42,13 +50,12 @@ fixed_t FixedDiv (fixed_t a, fixed_t b)
 
 #if DIV_METHOD == 1
     return (fixed_t) ((((long long)a) << 16) / ((long long)b));
-#elif DIV_METHOD == 2
-#ifdef __MRISC32_HARD_FLOAT__
-    return (fixed_t) _mr32_ftoir ((float)a / (float)b, FRACBITS);
-#else
+#endif
+#if DIV_METHOD == 2
     return (fixed_t) ((((float)a * (float)FRACUNIT)) / (float)b);
 #endif
-#elif DIV_METHOD == 3
-    return (fixed_t) ((((double)a * (float)FRACUNIT) / (double)b));
-#endif  // DIV_METHOD == 3
+#if DIV_METHOD == 3
+    *__FIXED_A = a; *__FIXED_B = b; *__FIXED_STATUS = 1; while( *__FIXED_STATUS );
+    return( *__FIXED_RESULT );
+#endif
 }

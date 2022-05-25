@@ -506,11 +506,8 @@ void R_FillBackScreen (void)
 
     for (y=0 ; y<SCREENHEIGHT-SBARHEIGHT ; y++)
     {
-        for (x=0 ; x<SCREENWIDTH/64 ; x++)
-        {
-            memcpy (dest, src+((y&63)<<6), 64);
-            dest += 64;
-        }
+        paws_memcpy_rectangle( dest, src+((y&63)<<6), 64, 64, 0, SCREENWIDTH/64 ); dest += SCREENWIDTH;
+//        for (x=0 ; x<SCREENWIDTH/64 ; x++) { memcpy (dest, src+((y&63)<<6), 64); dest += 64; }
 
         if (SCREENWIDTH&63)
         {

@@ -331,5 +331,8 @@ static inline unsigned short systemclock( void ) {
     return( *SYSTEMSECONDS );
 }
 
+// FIXED POINT DIVISION 16.16 ACCELERATOR
+extern int fixed_divide( int a, int b );
+
 #define __PAWSLIBRARY__
 #endif

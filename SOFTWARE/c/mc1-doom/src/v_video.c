@@ -173,8 +173,8 @@ V_CopyRect
     src = screens[srcscrn]+SCREENWIDTH*srcy+srcx;
     dest = screens[destscrn]+SCREENWIDTH*desty+destx;
 
-//    paws_memcpy_rectangle( dest, src, SCREENWIDTH, SCREENWIDTH, width, height );
-    for ( ; height>0 ; height--) { memcpy (dest, src, width); src += SCREENWIDTH;  dest += SCREENWIDTH; }
+    paws_memcpy_rectangle( dest, src, width, SCREENWIDTH, SCREENWIDTH, height );
+//    for ( ; height>0 ; height--) { memcpy (dest, src, width); src += SCREENWIDTH;  dest += SCREENWIDTH; }
 }
 
 //
@@ -202,11 +202,8 @@ V_FillRect
     V_MarkRect (x, y, width, height);
 
     byte* dest = screens[scrn]+SCREENWIDTH*y+x;
-    for (int i = 0; i < height; ++i)
-    {
-        memset (dest, color, width);
-        dest += SCREENWIDTH;
-    }
+    paws_memset_rectangle( dest, color, width, SCREENWIDTH, height );
+//    for (int i = 0; i < height; ++i) { memset (dest, color, width); dest += SCREENWIDTH; }
 }
 
 static inline void V_DrawPatchScaledInternal (int x,
@@ -258,41 +255,7 @@ static inline void V_DrawPatchScaledInternal (int x,
             const byte* src = (byte*)post + 3;
             byte* dst = desttop + TOSCREENY ((int)post->topdelta) * SCREENWIDTH;
             int count = TOSCREENY ((int)post->length);
-#if defined(__MRISC32_VECTOR_OPS__)
-            // This vectorized routine takes <5 clock-cycles per pixel.
-            const unsigned stride = SCREENWIDTH;
-            unsigned count_left, step_y_N, dst_incr;
-            byte* dst_ptr;
-            __asm__ volatile(
-                "    ble     %[count], 2f\n"
-                "    getsr   vl, #0x10\n"
-                "    mov     %[count_left], %[count]\n"
-                "    mov     %[dst_ptr], %[dst]\n"
-                "    mul     %[step_y_N], vl, %[step_y]\n"
-                "    mul     %[dst_incr], vl, %[stride]\n"
-                "    ldea    v1, [z, %[step_y]]\n"
-                "1:\n"
-                "    min     vl, vl, %[count_left]\n"
-                "    sub     %[count_left], %[count_left], vl\n"
-                "    asr     v2, v1, #16\n"
-                "    ldub    v2, [%[src], v2]\n"
-                "    stb     v2, [%[dst_ptr], %[stride]]\n"
-                "    ldea    %[dst_ptr], [%[dst_ptr], %[dst_incr]]\n"
-                "    add     v1, v1, %[step_y_N]\n"
-                "    bnz     %[count_left], 1b\n"
-                "2:"
-                : [count_left] "=&r"(count_left),
-                  [step_y_N] "=&r"(step_y_N),
-                  [dst_incr] "=&r"(dst_incr),
-                  [dst_ptr] "=&r"(dst_ptr)
-                : [dst] "r"(dst),
-                  [src] "r"(src),
-                  [count] "r"(count),
-                  [step_y] "r"(step_y),
-                  [stride] "r"(stride)
-                : "vl", "v1", "v2"
-                );
-#else
+
             fixed_t row_fixed = 0;
             for (int v = 0; v < count; ++v)
             {
@@ -300,7 +263,6 @@ static inline void V_DrawPatchScaledInternal (int x,
                 dst += SCREENWIDTH;
                 row_fixed += step_y;
             }
-#endif
             post = (post_t*)((byte*)post + post->length + 4);
         }
     }
@@ -346,8 +308,8 @@ static void V_DrawPatchInternal (int x,
             const byte* src = (byte*)column + 3;
             byte* dst = desttop + column->topdelta * SCREENWIDTH;
             int count = column->length;
-//            paws_memcpy_step( dst, src, count, SCREENWIDTH, 1 );
-            for (int v = 0; v < count; ++v) { *dst = *src++; dst += SCREENWIDTH; }
+            paws_memcpy_step( dst, src, count, SCREENWIDTH, 1 );
+//            for (int v = 0; v < count; ++v) { *dst = *src++; dst += SCREENWIDTH; }
             column = (column_t*)((byte*)column + column->length + 4);
         }
     }
@@ -420,12 +382,8 @@ V_DrawBlock
 
     dest = screens[scrn] + y*SCREENWIDTH+x;
 
-    while (height--)
-    {
-        memcpy (dest, src, width);
-        src += width;
-        dest += SCREENWIDTH;
-    }
+    paws_memcpy_rectangle( dest, src, width, SCREENWIDTH, width, height );
+//    while (height--) { memcpy (dest, src, width); src += width; dest += SCREENWIDTH;  }
 }
 
 //
@@ -456,12 +414,8 @@ V_GetBlock
 
     src = screens[scrn] + y*SCREENWIDTH+x;
 
-    while (height--)
-    {
-        memcpy (dest, src, width);
-        src += SCREENWIDTH;
-        dest += width;
-    }
+    paws_memcpy_rectangle( dest, src, width, width, SCREENWIDTH, height );
+//    while (height--) { memcpy (dest, src, width); src += SCREENWIDTH; dest += width; }
 }
 
 //

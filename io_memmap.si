@@ -47,6 +47,7 @@ $$end
     output  uint32  DMACOUNT(0),
     output  uint8   DMACYCLES(0),
     output  uint4   DMAMODE(0),
+    output  uint8   DMASET,
     input   uint2   DMAACTIVE
 ) <reginputs> {
 $$if not SIMULATION then
@@ -73,13 +74,15 @@ $$if not SIMULATION then
         buffer_out <:> buffer_out
     );
 $$end
-    // A READABLE ADDRESS AT ffee
-    uint8   DMASET = uninitialized;
+
+    // ACCELERATOR FOR DOOM FIXED POINT 16.16 DIVISION
+    fixed_t_divide FIXED_DIVIDE();
 
 $$if not SIMULATION then
     // I/O FLAGS
     SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0;
 $$end
+    FIXED_DIVIDE.start := 0;
 
     always_before {
         // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE
@@ -102,7 +105,7 @@ $$end
 
             // READ IO Memory
             if( memoryRead ) {
-                switch( memoryAddress[4,4] ) {
+                switch( memoryAddress[8,4] ) {
                     $$if not SIMULATION then
                     case 4h0: {
                         if( memoryAddress[1,1] ) {
@@ -127,6 +130,12 @@ $$end
                     case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = INPLUS1; }
                     $$end
                     case 4h3: { readData = leds; }
+                    case 4h8: {
+                        switch( memoryAddress[3,1] ) {
+                            case 0: { readData = FIXED_DIVIDE.result[ { memoryAddress[1,1], 4b0000 } ,16]; }
+                            case 1: { readData = FIXED_DIVIDE.busy; }
+                        }
+                    }
                     case 4he: { readData = DMASET; }
                     case 4hf: { readData = SMTRUNNING; }
                     default: { readData = 0;}
@@ -137,7 +146,7 @@ $$end
     always_after {
         // WRITE IO Memory
         if( memoryWrite ) {
-            switch( memoryAddress[4,4] ) {
+            switch( memoryAddress[8,4] ) {
                 $$if not SIMULATION then
                 case 4h0: { UARToutwrite = 2b11; }
                 case 4h1: { PS2.outputkeycodes = writeData; }
@@ -156,6 +165,13 @@ $$end
                 }
                 $$end
                 case 4h3: { leds = writeData; }
+                case 4h8: {
+                    switch( memoryAddress[2,2] ) {
+                        case 2b00: { FIXED_DIVIDE.fixed_t_a[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        case 2b01: { FIXED_DIVIDE.fixed_t_b[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }
+                        default: { FIXED_DIVIDE.start = 1; }
+                    }
+                }
                 case 4hd: {
                     switch( memoryAddress[2,2] ) {
                         case 2b00: { DMASOURCEADD[ { memoryAddress[1,1], 4b0000 }, 16 ] = writeData; }

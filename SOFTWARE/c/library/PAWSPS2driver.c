@@ -1,8 +1,8 @@
 // PAWS PS/2 KEYBOARD DRIVER CODE
 // PS/2 KEYBOARD
-unsigned char volatile *PS2_AVAILABLE = (unsigned char volatile *) 0xf110;
-unsigned char volatile *PS2_MODE = (unsigned char volatile *) 0xf110;
-unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf112;
+unsigned char volatile *PS2_AVAILABLE = (unsigned char volatile *) 0xf100;
+unsigned char volatile *PS2_MODE = (unsigned char volatile *) 0xf100;
+unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf102;
 
 // MODIFIER KEYS
 unsigned char lshift, rshift, lalt, ralt, lctrl, rctrl, lwin, rwin, application, capslock, numlock;

@@ -1,21 +1,21 @@
 // I/O MEMORY MAPPED REGISTER DEFINITIONS
-unsigned char volatile *UART_DATA = (unsigned char volatile *) 0xf100;
-unsigned char volatile *UART_STATUS = (unsigned char volatile *) 0xf102;
-unsigned short volatile *BUTTONS = (unsigned short volatile *) 0xf120;
-unsigned char volatile *LEDS = (unsigned char volatile *) 0xf130;
+unsigned char volatile *UART_DATA = (unsigned char volatile *) 0xf000;
+unsigned char volatile *UART_STATUS = (unsigned char volatile *) 0xf002;
+unsigned short volatile *BUTTONS = (unsigned short volatile *) 0xf200;
+unsigned char volatile *LEDS = (unsigned char volatile *) 0xf300;
 
 // PS/2 KEYBOARD
-unsigned char volatile *PS2_AVAILABLE = (unsigned char volatile *) 0xf110;
-unsigned char volatile *PS2_MODE = (unsigned char volatile *) 0xf110;
-unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf112;
+unsigned char volatile *PS2_AVAILABLE = (unsigned char volatile *) 0xf100;
+unsigned char volatile *PS2_MODE = (unsigned char volatile *) 0xf100;
+unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf102;
 
 // SDCARD
-unsigned char volatile *SDCARD_READY = (unsigned char volatile *) 0xf140;
-unsigned char volatile *SDCARD_READSTART = (unsigned char volatile *) 0xf140;
-unsigned char volatile *SDCARD_WRITESTART = (unsigned char volatile *) 0xf142;
-unsigned int volatile *SDCARD_SECTOR = (unsigned int *) 0xf144;
-unsigned char volatile *SDCARD_RESET_BUFFERADDRESS = (unsigned char volatile *) 0xf150;
-unsigned char volatile *SDCARD_DATA = (unsigned char volatile *) 0xf152;
+unsigned char volatile *SDCARD_READY = (unsigned char volatile *) 0xf400;
+unsigned char volatile *SDCARD_READSTART = (unsigned char volatile *) 0xf400;
+unsigned char volatile *SDCARD_WRITESTART = (unsigned char volatile *) 0xf402;
+unsigned int volatile *SDCARD_SECTOR = (unsigned int *) 0xf404;
+unsigned char volatile *SDCARD_RESET_BUFFERADDRESS = (unsigned char volatile *) 0xf500;
+unsigned char volatile *SDCARD_DATA = (unsigned char volatile *) 0xf502;
 
 // DISPLAY UNITS
 unsigned char volatile *VBLANK = (unsigned char volatile *) 0xdf00;
@@ -103,9 +103,6 @@ unsigned char volatile *PB_MODE = (unsigned char volatile *) 0xd67a;
 unsigned char volatile *PB_CMNUMBER = (unsigned char volatile *) 0xd67c;
 unsigned char volatile *PB_CMENTRY = (unsigned char volatile *) 0xd67e;
 
-unsigned char volatile *BITMAP_X_READ = (unsigned char volatile *) 0xd6d0;
-unsigned short volatile *BITMAP_Y_READ = (unsigned short volatile *) 0xd6d2;
-unsigned short volatile *BITMAP_PIXEL_READ = (unsigned short volatile *) 0xd6d4;
 unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e2;
 unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e4;
 unsigned short volatile *CROP_TOP = (unsigned short volatile *) 0xd6e6;
@@ -173,15 +170,24 @@ unsigned short volatile *SLEEPTIMER0 = (unsigned short volatile *) 0xc018;
 unsigned short volatile *SLEEPTIMER1 = (unsigned short volatile *) 0xc01a;
 
 // HANDLE SMT - RUNNING STATUS AND POINTER TO CODE TO RUN
-unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xfffe;
-unsigned int volatile *SMTPC = (unsigned int volatile *) 0xfff0;
+unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;
+unsigned int volatile *SMTPC = (unsigned int volatile *) 0xff00;
 
 // HANDLE MINI DMA CONTROLLER
-unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xffe0;
-unsigned int volatile *DMADEST = (unsigned int volatile *) 0xffe4;
-unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xffe8;
-unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xffec;
-unsigned char volatile *DMASET = (unsigned char volatile *) 0xffee;
+unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xfe00;
+int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
+unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
+int volatile *DMADESTADD = (int volatile *) 0xfd04;
+unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
+unsigned char volatile *DMACYCLES = (unsigned char volatile *) 0xfd08;
+unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
+unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
+
+// FIXED POINT DIVISION ACCELERATOR
+int volatile *FIXED_A = (int volatile *)0xf800;
+int volatile *FIXED_B = (int volatile *)0xf804;
+int volatile *FIXED_RESULT = (int volatile*)0xf800;
+unsigned char volatile *FIXED_STATUS = (unsigned char volatile *)0xf808;
 
 // TYPES AND STRUCTURES
 typedef unsigned int size_t;

@@ -2326,3 +2326,9 @@ unsigned int paws_sleep( unsigned int seconds ) {
     sleep1khz( 1000 * seconds, ( !*SLEEPTIMER0 ) ? 0 : 1 );
     return(0);
 }
+
+// PAWS FIXED POINT DIVISION 16.16 ACCELERATOR
+int fixed_divide( int a, int b ) {
+    *FIXED_A = a; *FIXED_B = b; *FIXED_STATUS = 1; while( *FIXED_STATUS );
+    return( *FIXED_RESULT );
+}
