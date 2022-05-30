@@ -56,6 +56,7 @@ extern void screen_mode( unsigned char, unsigned char, unsigned char );
 extern void screen_dimmer( unsigned char dimmerlevel );
 extern void bitmap_display( unsigned char );
 extern void bitmap_draw( unsigned char );
+extern void bitmap_256( unsigned char );
 
 // BACKGROUND GENERATOR
 extern void set_background( unsigned char, unsigned char, unsigned char );
@@ -258,7 +259,6 @@ static inline void gpu_pixelblock_remap( unsigned char from, unsigned char to ) 
     *PB_CMNUMBER = from;
     *PB_CMENTRY = to;
 }
-
 static inline void set_copper_cpuinput( unsigned short value ) {
     *BACKGROUND_COPPER_CPUINPUT = value;
 }

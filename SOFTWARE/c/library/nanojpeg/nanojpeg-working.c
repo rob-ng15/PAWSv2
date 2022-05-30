@@ -270,8 +270,8 @@ int main(int argc, char* argv[]) {
     #include <string.h>
     #define njAllocMem malloc
     #define njFreeMem  free
-    #define njFillMem  paws_memset
-    #define njCopyMem  paws_memcpy
+    #define njFillMem  memset
+    #define njCopyMem  memcpy
     #include <PAWSlibrary.h>
 #elif NJ_USE_WIN32
     #include <windows.h>
@@ -295,9 +295,6 @@ int main(int argc, char* argv[]) {
     extern void njFillMem(void* block, unsigned char byte, int size);
     extern void njCopyMem(void* dest, const void* src, int size);
 #endif
-
-// ALLOW Risc-V INLINE ASM FOR B EXTENSIONS
-#include <PAWSintrinsics.h>
 
 typedef struct _nj_code {
     unsigned char bits, code;
@@ -509,7 +506,7 @@ static void njSkip(int count) {
 }
 
 NJ_INLINE unsigned short njDecode16(const unsigned char *pos) {
-    return( _rv32_packh( pos[1], pos[0] ) );                                                            // return (pos[0] << 8) | pos[1];
+    return (pos[0] << 8) | pos[1];
 }
 
 static void njDecodeLength(void) {
@@ -552,7 +549,7 @@ NJ_INLINE void njDecodeSOF(void) {
         if (c->ssy & (c->ssy - 1)) njThrow(NJ_UNSUPPORTED);  // non-power of two
         if ((c->qtsel = nj.pos[2]) & 0xFC) njThrow(NJ_SYNTAX_ERROR);
         njSkip(3);
-        _rv32_bset( nj.qtused, c->qtsel );                                                              // nj.qtused |= 1 << c->qtsel;
+        nj.qtused |= 1 << c->qtsel;
         if (c->ssx > ssxmax) ssxmax = c->ssx;
         if (c->ssy > ssymax) ssymax = c->ssy;
     }
@@ -627,7 +624,7 @@ NJ_INLINE void njDecodeDQT(void) {
     while (nj.length >= 65) {
         i = nj.pos[0];
         if (i & 0xFC) njThrow(NJ_SYNTAX_ERROR);
-        _rv32_bset( nj.qtavail, i );                                                                    // nj.qtavail |= 1 << i;
+        nj.qtavail |= 1 << i;
         t = &nj.qtab[i][0];
         for (i = 0;  i < 64;  ++i)
             t[i] = nj.pos[i + 1];

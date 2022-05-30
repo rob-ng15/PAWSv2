@@ -9,12 +9,25 @@
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 $$ addr_width = 27
 
-// L0 CACHE SIZE
-$$ L0Isize = 32
+// L0 CACHE SIZES FOR HART ID 0 AND 1
+// MAX size is 64 due to bram limits
+// size and blocks must be a power of 2
+$$ L0Isize = 64
 $$ L0Icacheaddrwidth = clog2(L0Isize)
-$$ L0Ipartaddresswidth = addr_width - 1 - L0Icacheaddrwidth
-$$ L0Ipartaddressstart = 1 + L0Icacheaddrwidth
-bitfield L0cacheI{ uint30 instruction, uint1 compressed }
+
+// HART 0 - MAIN
+$$ L00Iblocks = 8
+$$ L00Icount = clog2(L00Iblocks)
+$$ L00Ipartaddresswidth = addr_width - 1 - L00Icount - L0Icacheaddrwidth
+$$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
+bitfield L00cacheI{ uint30 instruction, uint1 compressed }
+
+// HART 1 - SMT
+$$ L01Iblocks = 4
+$$ L01Icount = clog2(L01Iblocks)
+$$ L01Ipartaddresswidth = addr_width - 1 - L01Icount - L0Icacheaddrwidth
+$$ L01Ipartaddressstart = 1 + L01Icount + L0Icacheaddrwidth
+bitfield L01cacheI{ uint30 instruction, uint1 compressed }
 
 unit PAWSCPU(
     input   uint1   clock_CPUdecoder,
@@ -79,6 +92,24 @@ unit PAWSCPU(
         takeBranch <: takeBranch
     );
 
+    // MEMORY CONTROL UNITS
+    uint4 memorycontrols <: { FETCH.busy, LOAD.busy, STORE.busy, |DMAACTIVE };
+
+    // MINI DMA CONTROLLER
+    dma DMA(
+        DMASOURCE <: DMASOURCE,
+        DMASOURCEADD <: DMASOURCEADD,
+        DMADEST <: DMADEST,
+        DMADESTADD <: DMADESTADD,
+        DMACOUNT <: DMACOUNT,
+        DMACYCLES <: DMACYCLES,
+        DMAMODE <: DMAMODE,
+        DMASET <: DMASET,
+        DMAACTIVE :> DMAACTIVE,
+        readdata <: readdata,
+        memorybusy <: memorybusy
+    );
+
     // FETCH UNIT
     fetch FETCH(
         clock_CPUdecoder <: clock_CPUdecoder,
@@ -97,9 +128,9 @@ unit PAWSCPU(
         memorybusy <: memorybusy
     );
 
-    // STORE SELECTION + BYPASS FLAG IF 16/8 BIT WRITE TO BRAM OR I/O MEMORY
-    uint32  storeValue <:: RV32CONTROL.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
+    // STORE VALUE SELECTION
     uint1   STORE168FAST <:: ( ~AGU.storeAddress[26,1] & ~AGU.storeAddress[25,1] & ~accesssize[1,1] );
+    uint32  storeValue <:: RV32CONTROL.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
     store STORE(
         storeAddress <: AGU.storeAddress,
         storeValue <: storeValue,
@@ -156,42 +187,41 @@ unit PAWSCPU(
         isJAL <: RV32CONTROL.IS_JAL
     );
 
-    // MINI DMA CONTROLLER
-    dma DMA(
-        DMASOURCE <: DMASOURCE,
-        DMASOURCEADD <: DMASOURCEADD,
-        DMADEST <: DMADEST,
-        DMADESTADD <: DMADESTADD,
-        DMACOUNT <: DMACOUNT,
-        DMACYCLES <: DMACYCLES,
-        DMAMODE <: DMAMODE,
-        DMASET <: DMASET,
-        DMAACTIVE :> DMAACTIVE,
-        readdata <: readdata,
-        memorybusy <: memorybusy
-    );
-
     // SMALL ON CPU L0 CACHE - 1 per HART - RESET when pc == 0 @ START OF BIOS
     // L0 INSTRUCTION CACHE { tag, instruction, compressed, valid } split into units
-    simple_dualport_bram uint31 L00cache_0 <@clock_cache,@clock> [$L0Isize$] = uninitialized;
-    simple_dualport_bram uint$L0Ipartaddresswidth$ L00tags_0 <@clock_cache,@clock> [$L0Isize$] = uninitialized;
-    simple_dualport_bram uint31 L01cache_1 <@clock_cache,@clock> [$L0Isize$] = uninitialized;
-    simple_dualport_bram uint$L0Ipartaddresswidth$ L01tags_1 <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+    $$for i=0,(L00Iblocks-1) do
+        simple_dualport_bram uint31 L00cache_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+        simple_dualport_bram uint$L00Ipartaddresswidth$ L00tags_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+    $$end
+    $$for i=0,(L01Iblocks-1) do
+        simple_dualport_bram uint31 L01cache_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+        simple_dualport_bram uint$L01Ipartaddresswidth$ L01tags_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
+    $$end
 
-    il0cache_read ICACHE_0 <@clock_cache> (
-            L0cache <:> L00cache_0, L0tags <:> L00tags_0,
+    il00cache_read ICACHE_0 <@clock_cache> (
+        $$for i=0,(L00Iblocks-1) do
+            L0cache_$i$ <:> L00cache_$i$, L0tags_$i$ <:> L00tags_$i$,
+        $$end
+        CLS <: ICACHE_0W.CLS,
         address <: pc
     );
-    il0cache_read ICACHE_1 <@clock_cache> (
-        L0cache <:> L01cache_1, L0tags <:> L01tags_1,
+    il01cache_read ICACHE_1 <@clock_cache> (
+        $$for i=0,(L01Iblocks-1) do
+            L0cache_$i$ <:> L01cache_$i$, L0tags_$i$ <:> L01tags_$i$,
+        $$end
+        CLS <: ICACHE_1W.CLS,
         address <: pcSMT
     );
-    il0cache_write ICACHE_0W(
-        L0cache <:> L00cache_0, L0tags <:> L00tags_0,
+    il00cache_write ICACHE_0W(
+        $$for i=0,(L00Iblocks-1) do
+            L0cache_$i$ <:> L00cache_$i$, L0tags_$i$ <:> L00tags_$i$,
+        $$end
         address <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed
     );
-    il0cache_write ICACHE_1W(
-        L0cache <:> L01cache_1, L0tags <:> L01tags_1,
+    il01cache_write ICACHE_1W(
+        $$for i=0,(L01Iblocks-1) do
+            L0cache_$i$ <:> L01cache_$i$, L0tags_$i$ <:> L01tags_$i$,
+        $$end
         address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed
     );
     uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );
@@ -201,7 +231,6 @@ unit PAWSCPU(
 
     // CONTROLS FOR MEMORY ACCESSES
     FETCH.start := 0; LOAD.start := 0; STORE.start := 0; DMA.start := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
-
     algorithm <autorun> {
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
         cacheselect = 0; FETCH.start = 1;                                                                                           // FETCH FIRST INSTRUCTION
@@ -219,28 +248,19 @@ unit PAWSCPU(
             // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
             ICACHE_0W.update = L0update_0; ICACHE_1W.update = L0update_1;                                                               // UPDATE ICACHE
 
-            cacheselect = 1;                                                                                                            // SWITCH TO DATA CACHE
+            cacheselect = 1; ++:                                                                                                        // SWITCH TO DATA CACHE
 
-            LOAD.start = RV32CONTROL.IS_LOAD;
-            if( RV32CONTROL.IS_LOAD ) {                                                                                                 // LOAD FROM MEMORY
-                while( LOAD.busy ) {}
-            } else { LOAD.start = 0; }
-
-            if( ~RV32CONTROL.FASTPATH ) {
-                ++: EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}                                                                 // FPU, ALU-A, INTEGER DIVISION, CLMUL, CSR
-            } else {
-                EXECUTESLOW.start = 0;                                                                                                  // INTEGER ALU, LOAD, STORE, BRANCH, JUMP, ETC
-            }
-
-            STORE.start = RV32CONTROL.IS_STORE & ~STORE168FAST;
-            if( RV32CONTROL.IS_STORE ) {                                                                                                // STORE
-                if( STORE168FAST ) {
-                    address = AGU.storeAddress; writedata = storeValue[0,16]; writememory = 1;                                          // FAST STORE FOR 16 8 TO LOW MEMORY
-                } else {
-                    while( STORE.busy ) {}
+            switch( { RV32CONTROL.IS_LOAD, RV32CONTROL.FASTPATH, RV32CONTROL.IS_STORE } ) {
+                case 3b000: { ++: EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                                 // DIVISION, CLMUL, FLOATING POINT, CSR
+                case 3b010: { ++: }                                                                                                     // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
+                case 3b011: { STORE.start = 1; while( STORE.busy ) {} }                                                                 // INTEGER + FLOAT STORE
+                default: {                                                                                                              // ATOMIC LOAD - MODIFY - STORE
+                    LOAD.start = RV32CONTROL.IS_LOAD; while( LOAD.busy ) {}                                                             // + EMULATION OR LR.W AND SC.W
+                    ++: EXECUTESLOW.start = ~RV32CONTROL.FASTPATH; while( EXECUTESLOW.busy ) {}
+                    STORE.start = RV32CONTROL.IS_STORE; while( STORE.busy ) {}
                 }
-            } else { STORE.start = 0; }
-
+                case 3b110: { LOAD.start = 1; while( LOAD.busy ) {} }                                                                   // INTEGER + FLOAT LOAD
+            }
             COMMIT = 1; pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                      // UPDATE PC AND SWITCH THREADS IF SMT ENABLED
 
             DMA.start = |DMAMODE;
@@ -253,62 +273,160 @@ unit PAWSCPU(
     }
 
     always_after {
-        if( |DMAACTIVE ) {
-            address = DMA.address; writedata = DMA.writedata; writememory = DMA.writememory; readmemory = DMA.readmemory;               // COPY MEMORY REQUESTS FROM DMA ENGINE
-        }
-        if( STORE.busy ) {
-            address = STORE.address; writedata = STORE.writedata; writememory = STORE.writememory;                                      // COPY MEMORY REQUESTS FROM THE STORE UNIT
-        }
-        if( |LOAD.busy ) {
-            address = LOAD.address; readmemory = LOAD.readmemory;                                                                       // COPY MEMORY REQUESTS FROM DMA ENGINE
-        }
-        if( FETCH.busy ) {
-            address = FETCH.address; readmemory = FETCH.readmemory;                                                                     // COPY MEMORY REQUESTS FROM DMA ENGINE
+        if( |memorycontrols ) {
+            onehot( memorycontrols ) {
+                case 0: { address = DMA.address; writedata = DMA.writedata; writememory = DMA.writememory; readmemory = DMA.readmemory; }               // COPY MEMORY REQUESTS FROM DMA ENGINE
+                case 1: { address = STORE.address; writedata = STORE.writedata; writememory = STORE.writememory; }                                      // COPY MEMORY REQUESTS FROM THE STORE UNIT
+                case 2: { address = LOAD.address; readmemory = LOAD.readmemory; }                                                                       // COPY MEMORY REQUESTS FROM DMA ENGINE
+                case 3: { address = FETCH.address; readmemory = FETCH.readmemory; }                                                                     // COPY MEMORY REQUESTS FROM DMA ENGINE
+            }
         }
     }
 }
 
-// L0 CACHE
-unit il0cache_read(
-    simple_dualport_bram_port0 L0cache,
-    simple_dualport_bram_port0 L0tags,
+// HART ID 0 L0 CACHE
+unit il00cache_read(
+$$for i=0,(L00Iblocks-1) do
+    simple_dualport_bram_port0 L0cache_$i$,
+    simple_dualport_bram_port0 L0tags_$i$,
+$$end
     input   uint$addr_width$  address,
     input   uint1   invalidate,
+    input   uint1   CLS,
     output  uint30  instruction,
     output  uint1   compressed,
     output  uint1   tagmatch
 ) <reginputs> {
+    uint$L00Ipartaddresswidth$ tag = uninitialised;
+
     always_after {
-        L0cache.addr0 = address[1,$L0Icacheaddrwidth$]; L0tags.addr0 = address[1,$L0Icacheaddrwidth$];
-        instruction = L0cacheI ( L0cache.rdata0 ).instruction; compressed =  L0cacheI( L0cache.rdata0 ).compressed;
-        tagmatch = ~invalidate & |L0cacheI ( L0cache.rdata0 ).instruction & ( L0tags.rdata0 == address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$] );
+        $$for i=0,(L00Iblocks-1) do
+            L0cache_$i$.addr0 = address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 = address[$1+L00Icount$,$L0Icacheaddrwidth$];
+        $$end
+
+        switch( address[1,$L00Icount$] ) {
+            $$for i=0,(L00Iblocks-1) do
+                case $i$: { tag = L0tags_$i$.rdata0; instruction = L00cacheI ( L0cache_$i$.rdata0 ).instruction; compressed =  L00cacheI( L0cache_$i$.rdata0 ).compressed; }
+            $$end
+        }
+        tagmatch = ~( invalidate | CLS ) & |instruction & ( tag == address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$] );
     }
 }
 
-unit il0cache_write(
-    simple_dualport_bram_port1 L0cache,
-    simple_dualport_bram_port1 L0tags,
+unit il00cache_write(
+$$for i=0,(L00Iblocks-1) do
+    simple_dualport_bram_port1 L0cache_$i$,
+    simple_dualport_bram_port1 L0tags_$i$,
+$$end
     input   uint$addr_width$  address,
     input   uint30  newinstruction,
     input   uint1   newcompressed,
     input   uint1   update,
-    input   uint1   invalidate
+    input   uint1   invalidate,
+    output  uint1   CLS
 ) <reginputs> {
-    uint$L0Icacheaddrwidth+1$ count = $L0Isize$; uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1; uint1 CLS <:: ( count != $L0Isize$ );
-    L0cache.wenable1 := 0; L0tags.wenable1 := 0;
+    uint$L0Icacheaddrwidth+1$ count = $L0Isize$; uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1;
 
-    algorithm <autorun> {
-        while(1) {
-            if( invalidate ) { count = 0;  while( CLS ) { L0cache.addr1 = count; L0cache.wdata1 = 0; L0cache.wenable1 = 1; count = countP1; } }
-        }
-    }
+    $$for i=0,(L00Iblocks-1) do
+        L0cache_$i$.wenable1 := 1; L0tags_$i$.wenable1 := 1;
+    $$end
 
     always_after {
-        if( ~CLS ) {
-            L0cache.addr1 = address[1,$L0Icacheaddrwidth$]; L0tags.addr1 = address[1,$L0Icacheaddrwidth$];
-            L0cache.wdata1 = { newinstruction, newcompressed }; L0tags.wdata1 = address[$L0Ipartaddressstart$,$L0Ipartaddresswidth$];
-            L0cache.wenable1 =  update; L0tags.wenable1 = update;
+        switch( { CLS, invalidate } ) {
+            case 2b00: {
+                if( update ) {
+                    switch( address[1,$L00Icount$] ) {
+                        $$for i=0,(L00Iblocks-1) do
+                            case $i$: {
+                                L0cache_$i$.addr1 = address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0cache_$i$.wdata1 = { newinstruction, newcompressed };
+                                L0tags_$i$.addr1 = address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.wdata1 = address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$];
+                            }
+                        $$end
+                    }
+                }
+            }
+            case 2b10: {
+                $$for i=0,(L00Iblocks-1) do
+                    L0cache_$i$.addr1 = count; L0cache_$i$.wdata1 = 0;
+                $$end
+                count = countP1;
+            }
+            default: { count = 0; }
         }
+        CLS = ( count != $L0Isize$ );
+    }
+}
+
+// HART ID 1 L0 CACHE
+unit il01cache_read(
+$$for i=0,(L01Iblocks-1) do
+    simple_dualport_bram_port0 L0cache_$i$,
+    simple_dualport_bram_port0 L0tags_$i$,
+$$end
+    input   uint$addr_width$  address,
+    input   uint1   invalidate,
+    input   uint1   CLS,
+    output  uint30  instruction,
+    output  uint1   compressed,
+    output  uint1   tagmatch
+) <reginputs> {
+    uint$L01Ipartaddresswidth$ tag = uninitialised;
+
+    always_after {
+        $$for i=0,(L01Iblocks-1) do
+            L0cache_$i$.addr0 = address[$1+L01Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 = address[$1+L01Icount$,$L0Icacheaddrwidth$];
+        $$end
+
+        switch( address[1,$L01Icount$] ) {
+            $$for i=0,(L01Iblocks-1) do
+                case $i$: { tag = L0tags_$i$.rdata0; instruction = L01cacheI ( L0cache_$i$.rdata0 ).instruction; compressed =  L01cacheI( L0cache_$i$.rdata0 ).compressed; }
+            $$end
+        }
+        tagmatch = ~( invalidate | CLS ) & |instruction & ( tag == address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$] );
+    }
+}
+
+unit il01cache_write(
+$$for i=0,(L01Iblocks-1) do
+    simple_dualport_bram_port1 L0cache_$i$,
+    simple_dualport_bram_port1 L0tags_$i$,
+$$end
+    input   uint$addr_width$  address,
+    input   uint30  newinstruction,
+    input   uint1   newcompressed,
+    input   uint1   update,
+    input   uint1   invalidate,
+    output  uint1   CLS
+) <reginputs> {
+    uint$L0Icacheaddrwidth+1$ count = $L0Isize$; uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1;
+
+    $$for i=0,(L01Iblocks-1) do
+        L0cache_$i$.wenable1 := 1; L0tags_$i$.wenable1 := 1;
+    $$end
+
+    always_after {
+        switch( { CLS, invalidate } ) {
+            case 2b00: {
+                if( update ) {
+                    switch( address[1,$L01Icount$] ) {
+                        $$for i=0,(L01Iblocks-1) do
+                            case $i$: {
+                                L0cache_$i$.addr1 = address[$1+L01Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr1 = address[$1+L01Icount$,$L0Icacheaddrwidth$];
+                                L0cache_$i$.wdata1 = { newinstruction, newcompressed }; L0tags_$i$.wdata1 = address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$];
+                            }
+                        $$end
+                    }
+                }
+            }
+            case 2b10: {
+                $$for i=0,(L01Iblocks-1) do
+                    L0cache_$i$.addr1 = count; L0cache_$i$.wdata1 = 0;
+                $$end
+                count = countP1;
+            }
+            default: { count = 0; }
+        }
+        CLS = ( count != $L0Isize$ );
     }
 }
 
@@ -517,19 +635,20 @@ unit fetch(
         while(1) {
             if( start ) {
                 busy = 1;
-                address = PC; readmemory = 1; while( memorybusy ) {}                                                                                                                      // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
+                address = PC; readmemory = 1; while( memorybusy ) {}                                                                            // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
                 compressed = ( ~&readdata[0,2] );
                 if( compressed ) {
-                    switch( readdata[0,2] ) {                                                                                                               // EXPAND COMPRESSED INSTRUCTION
+                    switch( readdata[0,2] ) {                                                                                                   // EXPAND COMPRESSED INSTRUCTION
                         case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
                         case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
                         case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
                         default: {}
                     }
+                    busy = 0;
                 } else {
                     instruction[0,16] = readdata; address = PC2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
+                    busy = 0;
                 }
-                busy = 0;
             } else { busy = 0; }
         }
     }
@@ -566,15 +685,16 @@ unit load(
         while(1) {
             if( start ) {
                 busy = 1;
-                address = loadAddress; readmemory = 1;                                                                                      // READ 1ST 8 or 16 BITS
-                while( memorybusy ) {}
-                if( accesssize[1,1] ) {
-                    memoryinput[0,16] = readdata; address = LA2; readmemory = 1;                                                            // READ 2ND 16 BITS
-                    while( memorybusy ) {} memoryinput[16,16] = readdata;
-                } else {
-                    memoryinput = SIGNEXTEND.memory168;                                                                                     // 8 or 16 BIT SIGN EXTENDED
+                address = loadAddress; readmemory = 1;                                                          // START READ OF 1ST 8 or 16 BITS
+                switch( accesssize[1,1] ) {
+                    case 0: {
+                        while( memorybusy ) {} memoryinput = SIGNEXTEND.memory168; busy = 0;                    // RETURN 8 OR 16 BIT READ WITH OPTIONAL SIGN EXTENSION
+                    }
+                    case 1: {
+                        while( memorybusy ) {} memoryinput[0,16] = readdata; address = LA2; readmemory = 1;     // START READ OF 2ND 16 BITS
+                        while( memorybusy ) {} memoryinput[16,16] = readdata; busy = 0;                         // RETURN 32 BIT READ
+                    }
                 }
-                busy = 0;
             }
         }
     }
@@ -600,14 +720,15 @@ unit store(
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1;
-                address = storeAddress; writedata = storeValue[0,16]; writememory = 1;                                      // STORE 8 OR 16 BIT
-                if( FASTSTORE ) { ++: } else { while( memorybusy ) {} }
-                if( accesssize[1,1] ) {
-                    address = SA2; writedata = storeValue[16,16]; writememory = 1;                                          // 32 BIT WRITE 2ND 16 BITS
-                    if( FASTSTORE ) { ++: } else { while( memorybusy ) {} }
-                } else { writememory = 0; }
-                busy = 0;
+                busy = 1; address = storeAddress; writedata = storeValue[0,16]; writememory = 1;                                            // STORE 8, 16 BITS OR 1ST 16 BITS OF 32
+                switch( accesssize[1,1] ) {
+                    case 0: { if( FASTSTORE ) { ++: } else { while( memorybusy ) {} } busy = 0; }
+                    case 1: {
+                        if( FASTSTORE ) { ++: } else { while( memorybusy ) {} }
+                        address = SA2; writedata = storeValue[16,16]; writememory = 1;                                                      // STORE 2ND 16 BITS OF 32
+                        if( FASTSTORE ) { ++: } else { while( memorybusy ) {} } busy = 0;
+                    }
+                }
             }
         }
     }
@@ -642,13 +763,13 @@ unit dma(
     uint1   destIO <:: ~DMADEST[26,1] & ~DMADEST[25,1] & DMADEST[15,1];                                 // DESTINATION IS I/O REGISTER
     uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                 // DESTINATION IS 16 BIT CAPABLE
 
-    uint4   dmamode = uninitialized;
+    uint4   dmamode = uninitialized;                uint27  dmacount = uninitialised;                   uint27  dmacountNEXT <:: dmacount - ( DMA16BIT ? 2 : 1 );
     uint8   dmacycles = uninitialised;              uint8   dmacyclesNEXT <:: dmacycles - 1;
     uint27  dmasrc = uninitialised;                 uint27  dmasrc2 <:: dmasrc + 2;                     uint27  dmasrcNEXT <:: DMA16BIT ? dmasrc2 : dmasrc + 1;
     uint27  dmasrcADD <:: dmasrc + DMASOURCEADD;    uint27  dmasrcNEXTLINE <:: dmasrcADD - DMACOUNT;
     uint27  dmadest = uninitialised;                uint27  dmadest2 <:: dmadest + 2;                   uint27  dmadestNEXT <:: DMA16BIT ? dmadest2 : dmadest + 1;
     uint27  dmadestADD <:: dmadest + DMADESTADD;    uint27  dnadestNEXTLINE <:: dmadestADD - DMACOUNT;
-    uint1   dmablue <:: ( dmadest[0,4] == 4h6 );    uint27  dmacount = uninitialised;                   uint27  dmacountNEXT <:: dmacount - ( DMA16BIT ? 2 : 1 );
+    uint1   dmablue <:: ( dmadest[0,4] == 4h6 );
     uint16  memoryinput = uninitialised;
     uint1   FASTSTORE <:: ~dmadest[26,1] & ~dmadest[25,1];
 

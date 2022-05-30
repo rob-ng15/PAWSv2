@@ -1,4 +1,4 @@
-include ../makefile-fast.inc
+include ../makefile.inc
 
 PROJECT=DOOM
 PROJECTTYPE=DEMO

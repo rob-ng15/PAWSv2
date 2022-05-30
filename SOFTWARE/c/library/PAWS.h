@@ -104,6 +104,7 @@ unsigned short volatile *CROP_TOP = (unsigned short volatile *) 0xd6e6;
 unsigned short volatile *CROP_BOTTOM = (unsigned short volatile *) 0xd6e8;
 unsigned char volatile *FRAMEBUFFER_DISPLAY = (unsigned char volatile *) 0xd6f0;
 unsigned char volatile *FRAMEBUFFER_DRAW = (unsigned char volatile *) 0xd6f2;
+unsigned char volatile *BITMAP_DISPLAY256 = (unsigned char volatile *) 0xd6f4;
 
 unsigned short volatile *LOWER_SPRITE_ACTIVE = (unsigned short volatile *) 0xd300;
 unsigned short volatile *LOWER_SPRITE_ACTIONS = (unsigned short volatile *) 0xd320;

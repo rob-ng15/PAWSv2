@@ -342,6 +342,10 @@ void bitmap_draw( unsigned char framebuffer ) {
     *FRAMEBUFFER_DRAW = framebuffer;
 }
 
+void bitmap_256( unsigned char mode ) {
+    *BITMAP_DISPLAY256 = mode;
+}
+
 // BACKGROUND GENERATOR
 // backgroundmode ==
 //  0 SOLID in colour

@@ -40,6 +40,9 @@
 
 #include "am_map.h"
 
+// ACCESS TO PAWS HARDWARE ACCELERATION
+extern void gpu_line( unsigned char, short, short, short, short );
+
 // For use if I do walls with outsides/insides
 #define REDS            (256-5*16)
 #define REDRANGE        16
@@ -920,83 +923,6 @@ AM_clipMline
 #undef DOOUTCODE
 
 //
-// Classic Bresenham w/ whatever optimizations needed for speed
-//
-void
-AM_drawFline
-( fline_t*      fl,
-  int           color )
-{
-    register int x;
-    register int y;
-    register int dx;
-    register int dy;
-    register int sx;
-    register int sy;
-    register int ax;
-    register int ay;
-    register int d;
-
-    static int fuck = 0;
-
-    // For debugging only
-    if (      fl->a.x < 0 || fl->a.x >= f_w
-           || fl->a.y < 0 || fl->a.y >= f_h
-           || fl->b.x < 0 || fl->b.x >= f_w
-           || fl->b.y < 0 || fl->b.y >= f_h)
-    {
-        printf("fuck %d \r", fuck++);
-        return;
-    }
-
-#define PUTDOT(xx,yy,cc) fb[(yy)*f_w+(xx)]=(cc)
-
-    dx = fl->b.x - fl->a.x;
-    ax = 2 * (dx<0 ? -dx : dx);
-    sx = dx<0 ? -1 : 1;
-
-    dy = fl->b.y - fl->a.y;
-    ay = 2 * (dy<0 ? -dy : dy);
-    sy = dy<0 ? -1 : 1;
-
-    x = fl->a.x;
-    y = fl->a.y;
-
-    if (ax > ay)
-    {
-        d = ay - ax/2;
-        while (1)
-        {
-            PUTDOT(x,y,color);
-            if (x == fl->b.x) return;
-            if (d>=0)
-            {
-                y += sy;
-                d -= ax;
-            }
-            x += sx;
-            d += ay;
-        }
-    }
-    else
-    {
-        d = ax - ay/2;
-        while (1)
-        {
-            PUTDOT(x, y, color);
-            if (y == fl->b.y) return;
-            if (d >= 0)
-            {
-                x += sx;
-                d -= ay;
-            }
-            y += sy;
-            d += ax;
-        }
-    }
-}
-
-//
 // Clip lines, draw visible part sof lines.
 //
 void
@@ -1007,7 +933,7 @@ AM_drawMline
     static fline_t fl;
 
     if (AM_clipMline(ml, &fl))
-        AM_drawFline(&fl, color); // draws it on frame buffer using fb coords
+        gpu_line( color, fl.a.x, fl.a.y, fl.b.x, fl.b.y ); // draws it on frame buffer using fb coords
 }
 
 //

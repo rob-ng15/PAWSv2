@@ -19,14 +19,15 @@
 #define FB_WIDTH 320
 #define FB_HEIGHT 200
 
-static inline uint8_t color_to_argbpaws ( unsigned char r, unsigned char g, unsigned char b ) {
-    uint8_t colour = 0;
+static inline uint8_t color_to_paws( unsigned char r, unsigned char g, unsigned char b ) {
+    uint8_t paws;
 
-    colour += ( r & 0xe0 );
-    colour += ( ( g & 0xe0 ) >> 3 );
-    colour += ( ( b & 0xc0 ) >> 6 );
+    paws = ( r & 0xc0 );
+    paws += ( ( g & 0xe0 ) >> 2 );
+    paws += ( ( b & 0xc0 ) >> 5 );
+    paws += ( ( r & 0x20 ) && ( b & 0x20 ) ) ? 1 : 0;
 
-    return( ( colour == 64 ) ? 32 : colour );
+    return( paws );
 }
 
 void I_InitGraphics (void) {
@@ -37,9 +38,8 @@ void I_InitGraphics (void) {
    initialized = 1;
 
    screens[0] = (byte*)0x2020000;
-   screen_mode( 0, MODE_RGB, 0 );
-   gpu_pixelblock_mode( TRUE );
-   gpu_cs();
+   screen_mode( 0, MODE_RGBM, 0 ); gpu_pixelblock_mode( PB_REMAP | PB_WRITEALL );  bitmap_256( TRUE );
+   gpu_rectangle( BLACK, 0, 0, 319, 239 );
 }
 
 void I_ShutdownGraphics (void) {
@@ -55,7 +55,7 @@ void I_StartFrame (void) {
 
 unsigned char PAWSKEYlookup[] = {
     0x00, KEY_F9, 0x00, 0x003, KEY_F3, KEY_F1, KEY_F2, KEY_F12, 0x00, KEY_F10, KEY_F8, KEY_F6, KEY_F4, KEY_TAB, 0x00, 0x00,     // 0x00 - 0x0f
-    0x00, KEY_RALT, 0x00, 0x00, 'q', 0x00, '1', 0x00, 0x00, 0x00, 'z', 's', 'a', 'w', '2', 0x00,                                // 0x10 - 0x1f
+    0x00, 0x00, 0x00, 0x00, 'q', 0x00, '1', 0x00, 0x00, 0x00, 'z', 's', 'a', 'w', '2', 0x00,                                // 0x10 - 0x1f
     0x00, 'c', 'x', 'd', 'e', '4', '3', 0x00, 0x00, ' ', 'v', 'f', 't', 'r', '5', 0x00,                                         // 0x20 - 0x2f
     0x00, 'n', 'b', 'h', 'g', 'y', '6', 0x00, 0x00, 0x00, 'm', 'j', 'u', '7', '8', 0x00,                                        // 0x30 - 0x3f
     0x00, 0x00, 'k', 'i', 0x00, '0', '9', 0x00, 0x00, 0x00, 0x00, 'l', 0x00, 'p', KEY_MINUS, 0x00,                              // 0x40 - 0x4f
@@ -118,6 +118,5 @@ void I_ReadScreen (byte* scr) {
 // SET THE PIXELBLOCK COLOUR REMAPPER
 void I_SetPalette (byte* palette) {
     for (int i = 0; i < 256; i++) {
-        gpu_pixelblock_remap( i, color_to_argbpaws ( gammatable[usegamma][*palette++], gammatable[usegamma][*palette++], gammatable[usegamma][*palette++] ) );
-    }
+        gpu_pixelblock_remap( i, color_to_paws ( gammatable[usegamma][*palette++], gammatable[usegamma][*palette++], gammatable[usegamma][*palette++] ) );    }
 }

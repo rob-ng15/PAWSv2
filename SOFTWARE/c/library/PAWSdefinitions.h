@@ -271,6 +271,10 @@
 #define MODE_PAWSv2 2
 #define MODE_GREY 3
 
+// PIXEL BLOCK MODES
+#define PB_REMAP 1
+#define PB_WRITEALL 2
+
 // SOUNDS
 #define CHANNEL_LEFT 1
 #define CHANNEL_RIGHT 2
