@@ -23,7 +23,7 @@ $$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
 bitfield L00cacheI{ uint30 instruction, uint1 compressed }
 
 // HART 1 - SMT
-$$ L01Iblocks = 4
+$$ L01Iblocks = 2
 $$ L01Icount = clog2(L01Iblocks)
 $$ L01Ipartaddresswidth = addr_width - 1 - L01Icount - L0Icacheaddrwidth
 $$ L01Ipartaddressstart = 1 + L01Icount + L0Icacheaddrwidth
@@ -229,8 +229,10 @@ unit PAWSCPU(
     uint1   L0update_1 <:: SMT & ~ICACHE_1.tagmatch;
     ICACHE_0W.update := 0; ICACHE_1W.update := 0; ICACHE_0.invalidate := ~|pc; ICACHE_1.invalidate := ~|pc; ICACHE_0W.invalidate := ~|pc; ICACHE_1W.invalidate := ~|pc;
 
-    // CONTROLS FOR MEMORY ACCESSES
-    FETCH.start := 0; LOAD.start := 0; STORE.start := 0; DMA.start := 0; readmemory := 0; writememory := 0; EXECUTESLOW.start := 0; COMMIT := 0;
+    // CONTROLS FOR MEMORY ACCESSES AND UNIT START FLAGS
+    FETCH.start := 0; LOAD.start := 0; STORE.start := 0; DMA.start := 0; EXECUTESLOW.start := 0; COMMIT := 0;
+    readmemory := DMA.readmemory | LOAD.readmemory | FETCH.readmemory; writememory := DMA.writememory | STORE.writememory;
+
     algorithm <autorun> {
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
         cacheselect = 0; FETCH.start = 1;                                                                                           // FETCH FIRST INSTRUCTION
@@ -256,7 +258,7 @@ unit PAWSCPU(
                 case 3b011: { STORE.start = 1; while( STORE.busy ) {} }                                                                 // INTEGER + FLOAT STORE
                 default: {                                                                                                              // ATOMIC LOAD - MODIFY - STORE
                     LOAD.start = RV32CONTROL.IS_LOAD; while( LOAD.busy ) {}                                                             // + EMULATION OR LR.W AND SC.W
-                    ++: EXECUTESLOW.start = ~RV32CONTROL.FASTPATH; while( EXECUTESLOW.busy ) {}
+                    EXECUTESLOW.start = ~RV32CONTROL.FASTPATH; while( EXECUTESLOW.busy ) {}
                     STORE.start = RV32CONTROL.IS_STORE; while( STORE.busy ) {}
                 }
                 case 3b110: { LOAD.start = 1; while( LOAD.busy ) {} }                                                                   // INTEGER + FLOAT LOAD
@@ -275,10 +277,10 @@ unit PAWSCPU(
     always_after {
         if( |memorycontrols ) {
             onehot( memorycontrols ) {
-                case 0: { address = DMA.address; writedata = DMA.writedata; writememory = DMA.writememory; readmemory = DMA.readmemory; }               // COPY MEMORY REQUESTS FROM DMA ENGINE
-                case 1: { address = STORE.address; writedata = STORE.writedata; writememory = STORE.writememory; }                                      // COPY MEMORY REQUESTS FROM THE STORE UNIT
-                case 2: { address = LOAD.address; readmemory = LOAD.readmemory; }                                                                       // COPY MEMORY REQUESTS FROM DMA ENGINE
-                case 3: { address = FETCH.address; readmemory = FETCH.readmemory; }                                                                     // COPY MEMORY REQUESTS FROM DMA ENGINE
+                case 0: { address = DMA.address; writedata = DMA.writedata; }                                                           // COPY MEMORY REQUESTS FROM DMA ENGINE
+                case 1: { address = STORE.address; writedata = STORE.writedata; }                                                       // COPY MEMORY REQUESTS FROM THE STORE UNIT
+                case 2: { address = LOAD.address; }                                                                                     // COPY MEMORY REQUESTS FROM DMA ENGINE
+                case 3: { address = FETCH.address; }                                                                                    // COPY MEMORY REQUESTS FROM DMA ENGINE
             }
         }
     }

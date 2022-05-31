@@ -2336,3 +2336,10 @@ int fixed_divide( int a, int b ) {
     *FIXED_A = a; *FIXED_B = b; *FIXED_STATUS = 1; while( *FIXED_STATUS );
     return( *FIXED_RESULT );
 }
+
+// PAWS RISC-V B EXTENSION OPTIMISED strcmp strlen
+int paws_strcmp ( const char *string1, const char *string2 ) {
+}
+
+size_t paws_strlen ( const char *string ) {
+}

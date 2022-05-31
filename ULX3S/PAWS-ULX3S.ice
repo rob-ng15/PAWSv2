@@ -32,7 +32,7 @@ $include('../common/sdram_interfaces.ice')
 $include('../common/sdram_controller_autoprecharge_r16_w16.ice')
 $include('../common/sdram_utils.ice')
 
-// CLEAN RESET - WIDTH 1
+// CLEAN RESET - WIDTH 1v
 $$ clean_reset_width = 1
 $include('../common/clean_reset.si')
 

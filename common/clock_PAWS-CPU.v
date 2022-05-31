@@ -7,7 +7,7 @@ module ulx3s_clk_PAWS_CPU
     input clkin,                // 25 MHz, 0 deg
     output  clkCPU,             // 50 MHz, 0 deg        // SYSTEM CLOCK cpu
     output  clkDECODE,          // 100 MHz, 0 deg       // CPU decoder and compressed instruction expander
-    output  clkBRAM,            // 100 MHz, 0 deg       // BRAM clock
+    output  clkIO25,            // 25 MHz, 0 deg        // I/O 25 MHz clock for timers/audio
     output  clkCACHE,           // 100 MHz, 0 deg       // CPU instruction cache
     output  locked
 );
@@ -36,7 +36,7 @@ EHXPLLL #(
         .CLKOS_CPHASE(5),
         .CLKOS_FPHASE(0),
         .CLKOS2_ENABLE("ENABLED"),
-        .CLKOS2_DIV(6),
+        .CLKOS2_DIV(24),
         .CLKOS2_CPHASE(5),
         .CLKOS2_FPHASE(0),
         .CLKOS3_ENABLE("ENABLED"),
@@ -51,7 +51,7 @@ EHXPLLL #(
         .CLKI(clkin),
         .CLKOP(clkCPU),
         .CLKOS(clkDECODE),
-        .CLKOS2(clkBRAM),
+        .CLKOS2(clkIO25),
         .CLKOS3(clkCACHE),
         .CLKFB(clkCPU),
         .CLKINTFB(),

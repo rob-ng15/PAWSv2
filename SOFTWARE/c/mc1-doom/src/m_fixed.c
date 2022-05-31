@@ -29,12 +29,6 @@
 //
 // FixedDiv
 //
-// Methods:
-//   1: long long (slow on most 32-bit machines, accurate)
-//   2: float (fast on PAWS with an FPU, but inaccurate - demos go wrong)
-//   3: PAWS fixed point division accelerator
-//
-#define DIV_METHOD 3
 
 // FIXED POINT DIVISION ACCELERATOR
 int volatile *__FIXED_A = (int volatile *)0xf800;
@@ -48,14 +42,6 @@ fixed_t FixedDiv (fixed_t a, fixed_t b)
     if ((abs (a) >> 14) >= abs (b))
         return (a ^ b) < 0 ? MININT : MAXINT;
 
-#if DIV_METHOD == 1
-    return (fixed_t) ((((long long)a) << 16) / ((long long)b));
-#endif
-#if DIV_METHOD == 2
-    return (fixed_t) ((((float)a * (float)FRACUNIT)) / (float)b);
-#endif
-#if DIV_METHOD == 3
     *__FIXED_A = a; *__FIXED_B = b; *__FIXED_STATUS = 1; while( *__FIXED_STATUS );
     return( *__FIXED_RESULT );
-#endif
 }
