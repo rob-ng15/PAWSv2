@@ -56,6 +56,9 @@ unit PAWSCPU(
     input   uint8   DMASET,
     output! uint2   DMAACTIVE
 ) <reginputs> {
+    // RESET COUNTER
+    uint16  resetCounter = 16hffff;
+
     // CPU REGISTERS AND THREAD SELECTION
     uint1   COMMIT = uninitialized;                 uint1   SMT = 0;                                    uint1   COMMIT_SMT = uninitialised;
     uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
@@ -64,7 +67,7 @@ unit PAWSCPU(
     uint27  PC <:: SMT ? pcSMT : pc;                                                                                                // SELECT PC FOR THIS CYCLE
 
     // RISC-V 32 BIT CONTROLLER
-    uint32  result <: RV32CONTROL.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
+    uint32  result <:: RV32CONTROL.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
     uint1   frd <:: RV32CONTROL.FASTPATH ? RV32CONTROL.writeRegisterF : EXECUTESLOW.frd;
     uint1   write <:: COMMIT & RV32CONTROL.writeRegister;
     control RV32CONTROL <@clock_CPUdecoder> (
@@ -235,6 +238,8 @@ unit PAWSCPU(
 
     algorithm <autorun> {
         while( memorybusy | EXECUTESLOW.busy ) {}                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
+        while( resetCounter ) { resetCounter = resetCounter >> 1; }                                                                 // HOLD FOR RESET
+
         cacheselect = 0; FETCH.start = 1;                                                                                           // FETCH FIRST INSTRUCTION
 
         while(1) {
@@ -267,7 +272,8 @@ unit PAWSCPU(
 
             DMA.start = |DMAMODE;
             if( |DMAMODE ) {                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
-                while( |DMAACTIVE ) { }
+                while( |DMAACTIVE ) {}
+
             } else { DMA.start = 0; }
 
             cacheselect = 0; FETCH.start = ~L0match;                                                                                    // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE

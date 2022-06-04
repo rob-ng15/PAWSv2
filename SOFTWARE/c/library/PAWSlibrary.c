@@ -57,10 +57,8 @@ unsigned char SMTSTATE( void ) {
 
 // DMA CONTROLLER
 void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
-    *DMASOURCE = (unsigned int)source;
-    *DMADEST = (unsigned int)destination;
-    *DMACOUNT = count;
-    *DMAMODE = mode;
+    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
+    DMA_REGS[0] = (int)source; DMA_REGS[1] = (int)destination; DMA_REGS[2] = count; DMA_REGS_B[0x0c] = mode;
 }
 
 // PAWS MEMCPY USING THE DMA ENGINE - MODE 3 IS READ INCREMENT TO WRITE INCREMENT
@@ -70,31 +68,28 @@ void *paws_memcpy( void *restrict destination, const void *restrict source, size
 }
 
 void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd ) {
-    *DMASOURCE = (unsigned int)source; *DMASOURCEADD = sourceadd,
-    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
-    *DMACOUNT = count;
-    *DMAMODE = 6;
+    DMA_REGS_ALT[0] = sourceadd; DMA_REGS_ALT[1] = destadd;
+    DMASTART( source, (void *restrict)destination, count, 6 );
 }
 
 void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles ) {
-    *DMASOURCE = (unsigned int)source; *DMASOURCEADD = sourceadd,
-    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
-    *DMACOUNT = count; *DMACYCLES = cycles;
-    *DMAMODE = 8;
+    unsigned char volatile *DMA_REGS_ALT_B = (unsigned char volatile *)DMA_REGS_ALT;
+    DMA_REGS_ALT[0] = sourceadd; DMA_REGS_ALT[1] = destadd; DMA_REGS_ALT_B[0x08] = cycles;
+    DMASTART( source, (void *restrict)destination, count, 8 );
 }
 
 // PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
 void *paws_memset( void *restrict destination, int value, size_t count ) {
-    *DMASET = (unsigned char)value;
-    DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
+    DMA_REGS_B[0x0e] = (unsigned char)value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
     return( destination );
 }
 
 void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
-    *DMASOURCE = (unsigned int)DMASET; *DMASET = (unsigned char)value;
-    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
-    *DMACOUNT = count; *DMACYCLES = cycles;
-    *DMAMODE = 9;
+    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
+    unsigned char volatile *DMA_REGS_ALT_B = (unsigned char volatile *)DMA_REGS_ALT;
+    DMA_REGS_B[0x0e] = (unsigned char)value; DMA_REGS_ALT[1] = destadd; DMA_REGS_ALT_B[0x08] = cycles;
+    DMASTART( (const void *restrict)DMASET, destination, count, 9 );
 }
 
 // OUTPUT TO UART
@@ -2332,9 +2327,9 @@ unsigned int paws_sleep( unsigned int seconds ) {
 }
 
 // PAWS FIXED POINT DIVISION 16.16 ACCELERATOR
-int fixed_divide( int a, int b ) {
-    *FIXED_A = a; *FIXED_B = b; *FIXED_STATUS = 1; while( *FIXED_STATUS );
-    return( *FIXED_RESULT );
+int fixed_divide( int numerator, int denominator ) {
+    FIXED[0] = numerator; FIXED[1] = denominator; *FIXED_B = 1; while( *FIXED_B );
+    return( FIXED[0] );
 }
 
 // PAWS RISC-V B EXTENSION OPTIMISED strcmp strlen

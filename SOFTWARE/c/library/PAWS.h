@@ -58,18 +58,19 @@ unsigned char volatile *UPPER_TM_SCROLLWRAPAMOUNT = (unsigned char volatile *) 0
 
 short volatile *GPU_X = (short volatile *) 0xd600;
 short volatile *GPU_Y = (short volatile *) 0xd602;
-unsigned char volatile *GPU_COLOUR = (unsigned char volatile *) 0xd604;
-unsigned char volatile *GPU_COLOUR_ALT = (unsigned char volatile *) 0xd606;
-unsigned char volatile *GPU_DITHERMODE = (unsigned char volatile *) 0xd608;
-short volatile *GPU_PARAM0 = (short volatile *) 0xd60a;
-short volatile *GPU_PARAM1 = (short volatile *) 0xd60c;
-short volatile *GPU_PARAM2 = (short volatile *) 0xd60e;
-short volatile *GPU_PARAM3 = (short volatile *) 0xd610;
-short volatile *GPU_PARAM4 = (short volatile *) 0xd612;
-short volatile *GPU_PARAM5 = (short volatile *) 0xd614;
+short volatile *GPU_PARAM0 = (short volatile *) 0xd604;
+short volatile *GPU_PARAM1 = (short volatile *) 0xd606;
+short volatile *GPU_PARAM2 = (short volatile *) 0xd608;
+short volatile *GPU_PARAM3 = (short volatile *) 0xd60a;
+short volatile *GPU_PARAM4 = (short volatile *) 0xd60c;
+short volatile *GPU_PARAM5 = (short volatile *) 0xd60e;
+unsigned char volatile *GPU_COLOUR = (unsigned char volatile *) 0xd610;
+unsigned char volatile *GPU_COLOUR_ALT = (unsigned char volatile *) 0xd612;
+unsigned char volatile *GPU_DITHERMODE = (unsigned char volatile *) 0xd614;
 unsigned char volatile *GPU_WRITE = (unsigned char volatile *) 0xd616;
 unsigned char volatile *GPU_STATUS = (unsigned char volatile *) 0xd616;
 unsigned char volatile *GPU_FINISHED = (unsigned char volatile *) 0xd618;
+
 unsigned char volatile *VECTOR_DRAW_BLOCK = (unsigned char volatile *) 0xd620;
 unsigned char volatile *VECTOR_DRAW_COLOUR = (unsigned char volatile *) 0xd622;
 short volatile *VECTOR_DRAW_XC = (short volatile *) 0xd624;
@@ -83,12 +84,14 @@ unsigned char volatile *VECTOR_WRITER_VERTEX = (unsigned char volatile *) 0xd632
 char volatile *VECTOR_WRITER_DELTAX = (char volatile *) 0xd634;
 char volatile *VECTOR_WRITER_DELTAY = (char volatile *) 0xd636;
 unsigned char volatile *VECTOR_WRITER_ACTIVE = (unsigned char volatile *) 0xd638;
+
 unsigned char volatile *BLIT_WRITER_TILE = (unsigned char volatile *) 0xd640;
 unsigned short volatile *BLIT_WRITER_BITMAP = (unsigned short volatile *) 0xd642;
 unsigned char volatile *BLIT_CHWRITER_TILE = (unsigned char volatile *) 0xd650;
 unsigned char volatile *BLIT_CHWRITER_BITMAP = (unsigned char volatile *) 0xd652;
 unsigned char volatile *COLOURBLIT_WRITER_TILE = (unsigned char volatile *) 0xd660;
 unsigned char volatile *COLOURBLIT_WRITER_COLOUR = (unsigned char volatile *) 0xd662;
+
 unsigned char volatile *PB_COLOUR = (unsigned char volatile *) 0xd670;
 unsigned char volatile *PB_COLOUR8R = (unsigned char volatile *) 0xd672;
 unsigned char volatile *PB_COLOUR8G = (unsigned char volatile *) 0xd674;
@@ -98,10 +101,11 @@ unsigned char volatile *PB_MODE = (unsigned char volatile *) 0xd67a;
 unsigned char volatile *PB_CMNUMBER = (unsigned char volatile *) 0xd67c;
 unsigned char volatile *PB_CMENTRY = (unsigned char volatile *) 0xd67e;
 
-unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e2;
-unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e4;
-unsigned short volatile *CROP_TOP = (unsigned short volatile *) 0xd6e6;
-unsigned short volatile *CROP_BOTTOM = (unsigned short volatile *) 0xd6e8;
+unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e0;
+unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e2;
+unsigned short volatile *CROP_TOP = (unsigned short volatile *) 0xd6e4;
+unsigned short volatile *CROP_BOTTOM = (unsigned short volatile *) 0xd6e6;
+
 unsigned char volatile *FRAMEBUFFER_DISPLAY = (unsigned char volatile *) 0xd6f0;
 unsigned char volatile *FRAMEBUFFER_DRAW = (unsigned char volatile *) 0xd6f2;
 unsigned char volatile *BITMAP_DISPLAY256 = (unsigned char volatile *) 0xd6f4;
@@ -170,17 +174,20 @@ unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;
 unsigned int volatile *SMTPC = (unsigned int volatile *) 0xff00;
 
 // HANDLE MINI DMA CONTROLLER
-unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xfe00;
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
-unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
 int volatile *DMADESTADD = (int volatile *) 0xfd04;
-unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMACYCLES = (unsigned char volatile *) 0xfd08;
+unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xfe00;
+unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
+unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
 
 // FIXED POINT DIVISION ACCELERATOR
-int volatile *FIXED_A = (int volatile *)0xf800;
-int volatile *FIXED_B = (int volatile *)0xf804;
-int volatile *FIXED_RESULT = (int volatile*)0xf800;
-unsigned char volatile *FIXED_STATUS = (unsigned char volatile *)0xf808;
+int volatile *FIXED = (int volatile *)0xf800;                                       // TOP & RESULT [0], BOTTOM [1]
+unsigned char volatile *FIXED_B = (unsigned char volatile *)0xf808;                 // BYTE ACCESS TO START / STATUS REGISTER
+
+
+// HARDWARE REGISTER BASES
+int volatile *DMA_REGS = (int volatile *) 0xfe00; int volatile *DMA_REGS_ALT = (int volatile *) 0xfd00;
+int volatile *GPU_REGS = (int volatile *) 0xd600;

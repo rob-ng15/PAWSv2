@@ -63,18 +63,19 @@ unsigned char volatile *UPPER_TM_SCROLLWRAPAMOUNT = (unsigned char volatile *) 0
 
 short volatile *GPU_X = (short volatile *) 0xd600;
 short volatile *GPU_Y = (short volatile *) 0xd602;
-unsigned char volatile *GPU_COLOUR = (unsigned char volatile *) 0xd604;
-unsigned char volatile *GPU_COLOUR_ALT = (unsigned char volatile *) 0xd606;
-unsigned char volatile *GPU_DITHERMODE = (unsigned char volatile *) 0xd608;
-short volatile *GPU_PARAM0 = (short volatile *) 0xd60a;
-short volatile *GPU_PARAM1 = (short volatile *) 0xd60c;
-short volatile *GPU_PARAM2 = (short volatile *) 0xd60e;
-short volatile *GPU_PARAM3 = (short volatile *) 0xd610;
-short volatile *GPU_PARAM4 = (short volatile *) 0xd612;
-short volatile *GPU_PARAM5 = (short volatile *) 0xd614;
+short volatile *GPU_PARAM0 = (short volatile *) 0xd604;
+short volatile *GPU_PARAM1 = (short volatile *) 0xd606;
+short volatile *GPU_PARAM2 = (short volatile *) 0xd608;
+short volatile *GPU_PARAM3 = (short volatile *) 0xd60a;
+short volatile *GPU_PARAM4 = (short volatile *) 0xd60c;
+short volatile *GPU_PARAM5 = (short volatile *) 0xd60e;
+unsigned char volatile *GPU_COLOUR = (unsigned char volatile *) 0xd610;
+unsigned char volatile *GPU_COLOUR_ALT = (unsigned char volatile *) 0xd612;
+unsigned char volatile *GPU_DITHERMODE = (unsigned char volatile *) 0xd614;
 unsigned char volatile *GPU_WRITE = (unsigned char volatile *) 0xd616;
 unsigned char volatile *GPU_STATUS = (unsigned char volatile *) 0xd616;
 unsigned char volatile *GPU_FINISHED = (unsigned char volatile *) 0xd618;
+
 unsigned char volatile *VECTOR_DRAW_BLOCK = (unsigned char volatile *) 0xd620;
 unsigned char volatile *VECTOR_DRAW_COLOUR = (unsigned char volatile *) 0xd622;
 short volatile *VECTOR_DRAW_XC = (short volatile *) 0xd624;
@@ -88,12 +89,14 @@ unsigned char volatile *VECTOR_WRITER_VERTEX = (unsigned char volatile *) 0xd632
 char volatile *VECTOR_WRITER_DELTAX = (char volatile *) 0xd634;
 char volatile *VECTOR_WRITER_DELTAY = (char volatile *) 0xd636;
 unsigned char volatile *VECTOR_WRITER_ACTIVE = (unsigned char volatile *) 0xd638;
+
 unsigned char volatile *BLIT_WRITER_TILE = (unsigned char volatile *) 0xd640;
 unsigned short volatile *BLIT_WRITER_BITMAP = (unsigned short volatile *) 0xd642;
 unsigned char volatile *BLIT_CHWRITER_TILE = (unsigned char volatile *) 0xd650;
 unsigned char volatile *BLIT_CHWRITER_BITMAP = (unsigned char volatile *) 0xd652;
 unsigned char volatile *COLOURBLIT_WRITER_TILE = (unsigned char volatile *) 0xd660;
 unsigned char volatile *COLOURBLIT_WRITER_COLOUR = (unsigned char volatile *) 0xd662;
+
 unsigned char volatile *PB_COLOUR = (unsigned char volatile *) 0xd670;
 unsigned char volatile *PB_COLOUR8R = (unsigned char volatile *) 0xd672;
 unsigned char volatile *PB_COLOUR8G = (unsigned char volatile *) 0xd674;
@@ -103,10 +106,11 @@ unsigned char volatile *PB_MODE = (unsigned char volatile *) 0xd67a;
 unsigned char volatile *PB_CMNUMBER = (unsigned char volatile *) 0xd67c;
 unsigned char volatile *PB_CMENTRY = (unsigned char volatile *) 0xd67e;
 
-unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e2;
-unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e4;
-unsigned short volatile *CROP_TOP = (unsigned short volatile *) 0xd6e6;
-unsigned short volatile *CROP_BOTTOM = (unsigned short volatile *) 0xd6e8;
+unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e0;
+unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e2;
+unsigned short volatile *CROP_TOP = (unsigned short volatile *) 0xd6e4;
+unsigned short volatile *CROP_BOTTOM = (unsigned short volatile *) 0xd6e6;
+
 unsigned char volatile *FRAMEBUFFER_DISPLAY = (unsigned char volatile *) 0xd6f0;
 unsigned char volatile *FRAMEBUFFER_DRAW = (unsigned char volatile *) 0xd6f2;
 unsigned char volatile *BITMAP_DISPLAY256 = (unsigned char volatile *) 0xd6f4;
@@ -175,12 +179,12 @@ unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;
 unsigned int volatile *SMTPC = (unsigned int volatile *) 0xff00;
 
 // HANDLE MINI DMA CONTROLLER
-unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xfe00;
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
-unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
 int volatile *DMADESTADD = (int volatile *) 0xfd04;
-unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMACYCLES = (unsigned char volatile *) 0xfd08;
+unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xfe00;
+unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
+unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
 
@@ -298,3 +302,53 @@ typedef struct {
 // LOWER AND UPPER SPRITES/TILEMAPS
 #define LOWER 0
 #define UPPER 1
+
+ // MISCELLANEOUS USEFUL INTRINSICS
+static inline int _rv32_mulh(int rs1, int rs2) { int rd; __asm__ ("mulh   %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_mulhsu(int rs1, int rs2) { int rd; __asm__ ("mulhsu  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_mulhu(int rs1, int rs2) { int rd; __asm__ ("mulhu  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
+// BIT MANIPULATION INSTRUCTIONS INTRINSICS (Zba Zbb Zbc Zbs)
+static inline int _rv32_andn(int rs1, int rs2) { int rd; __asm__ ("andn %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_orn(int rs1, int rs2) { int rd; __asm__ ("orn %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_xnor(int rs1, int rs2) { int rd; __asm__ ("xnor %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
+static inline int _rv32_clz(int rs1) { int rd; __asm__ ("clz     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+static inline int _rv32_ctz(int rs1) { int rd; __asm__ ("ctz     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+static inline int _rv32_cpop(int rs1) { int rd; __asm__ ("cpop    %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+
+static inline int _rv32_sext_b(int rs1) { int rd; __asm__ ("sext.b  %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+static inline int _rv32_sext_h(int rs1) { int rd; __asm__ ("sext.h  %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+static inline int _rv32_zext_h(int rs1) { int rd; __asm__ ("zext.h  %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+
+static inline int _rv32_min(int rs1, int rs2) { int rd; __asm__ ("min  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_minu(int rs1, int rs2) { int rd; __asm__ ("minu %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_max(int rs1, int rs2) { int rd; __asm__ ("max  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_maxu(int rs1, int rs2) { int rd; __asm__ ("maxu %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
+static inline int _rv32_bset(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("bseti %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 & rs2)); else __asm__ ("bset %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_bclr(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("bclri %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 & rs2)); else __asm__ ("bclr %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_binv(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("binvi %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 & rs2)); else __asm__ ("binv %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_bext(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("bexti %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 & rs2)); else __asm__ ("bext %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
+static inline int _rv32_rol(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_ror(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 &  rs2)); else __asm__ ("ror     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
+static inline int _rv32_rev8(int rs1)  { int rd; __asm__ ("rev8     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+static inline int _rv32_orc_b(int rs1)  { int rd; __asm__ ("orc.b     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+
+static inline int _rv32_clmul(int rs1, int rs2) { int rd; __asm__ ("clmul   %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_clmulh(int rs1, int rs2) { int rd; __asm__ ("clmulh  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_clmulr(int rs1, int rs2) { int rd; __asm__ ("clmulr  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
+static inline int _rv32_sh1add(int rs1, int rs2) { int rd; __asm__ ("sh1add %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_sh2add(int rs1, int rs2) { int rd; __asm__ ("sh2add %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_sh3add(int rs1, int rs2) { int rd; __asm__ ("sh3add %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
+// SCALAR CRYPTO BIT MANIPULATION INTRINSICS (Zbkb)
+static inline int _rv32_brev8(int rs1) { int rd; __asm__ ("brev8     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+static inline int _rv32_pack(int rs1, int rs2) { int rd; __asm__ ("pack  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_packh(int rs1, int rs2) { int rd; __asm__ ("packh  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_unzip(int rs1) { int rd; __asm__ ("unzip     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+static inline int _rv32_zip(int rs1) { int rd; __asm__ ("zip     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+

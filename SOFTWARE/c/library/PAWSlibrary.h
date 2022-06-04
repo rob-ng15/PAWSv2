@@ -5,10 +5,10 @@
 extern unsigned char *MEMORYTOP;
 
 // RISC-V CSR FUNCTIONS
-//extern unsigned int CSRisa( void );
-//extern unsigned long CSRcycles( void );
-//extern unsigned long CSRinstructions( void );
-//extern unsigned long CSRtime( void );
+extern unsigned int CSRisa( void );
+extern unsigned long CSRcycles( void );
+extern unsigned long CSRinstructions( void );
+extern unsigned long CSRtime( void );
 
 // SMT START AND STOP
 //extern void SMTSTOP( void );
@@ -19,7 +19,7 @@ extern unsigned char *MEMORYTOP;
 extern void uart_outputcharacter(char);
 extern void uart_outputstring( char *);
 extern char uart_inputcharacter( void );
-//extern unsigned char uart_character_available( void );
+extern unsigned char uart_character_available( void );
 
 // PS/2
 extern char ps2_event_available( void );
@@ -33,7 +33,7 @@ extern void ps2_keyboardmode( unsigned char mode );
 //extern unsigned char get_buttons( void );
 
 // TIMERS AND PSEUDO RANDOM NUMBER GENERATOR
-//extern float frng( void );
+extern float frng( void );
 extern unsigned short rng( unsigned short );
 extern void sleep1khz( unsigned short, unsigned char );
 extern void set_timer1khz( unsigned short, unsigned char );
@@ -238,7 +238,7 @@ static inline void gpu_pixelblock_pixel( unsigned char pixel ) {
 }
 static inline void gpu_pixelblock_pixel24( unsigned char red, unsigned char green, unsigned char blue ) {
     *PB_COLOUR8R = red;
-    *PB_COLOUR8G= green;
+    *PB_COLOUR8G = green;
     *PB_COLOUR8B = blue;
 }
 static inline void gpu_pixelblock_mode( unsigned char mode ) {
@@ -263,43 +263,9 @@ static inline void set_copper_cpuinput( unsigned short value ) {
     *BACKGROUND_COPPER_CPUINPUT = value;
 }
 
-// RISC-V CSR FUNCTIONS
-static inline unsigned int CSRisa() {
-   unsigned int isa;
-   asm volatile ("csrr %0, 0x301" : "=r"(isa));
-   return isa;
-}
-
-static inline unsigned long CSRcycles() {
-   unsigned long cycles;
-   asm volatile ("rdcycle %0" : "=r"(cycles));
-   return cycles;
-}
-
-static inline unsigned long CSRinstructions() {
-   unsigned long insns;
-   asm volatile ("rdinstret %0" : "=r"(insns));
-   return insns;
-}
-
-static inline unsigned long CSRtime() {
-  unsigned long time;
-  asm volatile ("rdtime %0" : "=r"(time));
-  return time;
-}
-
-extern float volatile *FRNG;
-static inline float frng( void ) {
-    return( *FRNG );
-}
-
 // I/O
-extern unsigned char volatile *UART_STATUS;
 extern unsigned short volatile *BUTTONS;
 extern unsigned char volatile *LEDS;
-static inline unsigned char uart_character_available( void ) {
-    return( *UART_STATUS & 1 );
-}
 static inline void set_leds( unsigned char value ) {
     *LEDS = value;
 }
@@ -333,6 +299,12 @@ static inline unsigned short systemclock( void ) {
 
 // FIXED POINT DIVISION 16.16 ACCELERATOR
 extern int fixed_divide( int a, int b );
+
+// HARDWARE REGISTER BASES
+extern int volatile *DMA_REGS;
+extern int volatile *DMA_REGS_ALT;
+
+extern int volatile *GPU_REGS;
 
 #define __PAWSLIBRARY__
 #endif
