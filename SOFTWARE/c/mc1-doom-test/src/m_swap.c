@@ -19,6 +19,7 @@
 //-----------------------------------------------------------------------------
 
 #include "m_swap.h"
+#include <PAWSintrinsics.h>
 
 // Not needed with big endian.
 #ifndef __BIG_ENDIAN__
@@ -27,17 +28,13 @@
 unsigned short SwapSHORT(unsigned short x)
 {
     // No masking with 0xFF should be necessary.
-    return (x>>8) | (x<<8);
+    return _rv32_brev8( x ) >> 16;
 }
 
 // Swapping 32bit.
 unsigned long SwapLONG( unsigned long x)
 {
-    return
-        (x>>24)
-        | ((x>>8) & 0xff00)
-        | ((x<<8) & 0xff0000)
-        | (x<<24);
+    return _rv32_brev8( x );
 }
 
 #endif

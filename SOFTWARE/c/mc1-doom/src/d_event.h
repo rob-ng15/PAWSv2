@@ -29,8 +29,8 @@
 // Input event types.
 typedef enum
 {
-    ev_keydown,
     ev_keyup,
+    ev_keydown,
     ev_mouse,
     ev_joystick
 } evtype_t;

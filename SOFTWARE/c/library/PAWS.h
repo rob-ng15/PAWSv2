@@ -148,7 +148,7 @@ unsigned char volatile *TERMINAL_SHOW = (unsigned char volatile *) 0xd702;
 unsigned char volatile *TERMINAL_RESET = (unsigned char volatile *) 0xd704;
 
 unsigned char volatile *AUDIO_WAVEFORM = (unsigned char volatile *) 0xe000;
-unsigned short volatile *AUDIO_FREQUENCY = (unsigned short volatile *) 0xe002;
+unsigned char volatile *AUDIO_FREQUENCY = (unsigned char volatile *) 0xe002;
 unsigned short volatile *AUDIO_DURATION = (unsigned short volatile *) 0xe004;
 unsigned char volatile *AUDIO_START = (unsigned char volatile *) 0xe006;
 unsigned char volatile *AUDIO_NEW_SAMPLE = (unsigned char volatile *) 0xe008;
@@ -184,10 +184,12 @@ unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
 
 // FIXED POINT DIVISION ACCELERATOR
-int volatile *FIXED = (int volatile *)0xf800;                                       // TOP & RESULT [0], BOTTOM [1]
-unsigned char volatile *FIXED_B = (unsigned char volatile *)0xf808;                 // BYTE ACCESS TO START / STATUS REGISTER
-
+int volatile *FIXED_REGS = (int volatile *)0xf800;                                       // TOP & RESULT [0], BOTTOM [1]
 
 // HARDWARE REGISTER BASES
-int volatile *DMA_REGS = (int volatile *) 0xfe00; int volatile *DMA_REGS_ALT = (int volatile *) 0xfd00;
+int volatile *TIMER_REGS = (int volatile *) 0xc000;
 int volatile *GPU_REGS = (int volatile *) 0xd600;
+int volatile *AUDIO_REGS = (int volatile *) 0xe000;
+int volatile *IO_REGS = (int volatile *) 0xf000;
+int volatile *DMA_REGS = (int volatile *) 0xfe00; int volatile *DMA_REGS_ALT = (int volatile *) 0xfd00;
+

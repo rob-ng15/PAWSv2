@@ -119,11 +119,15 @@ int I_GetSfxLumpNum (sfxinfo_t* sfx)
 unsigned char __lastchannel = 1;
 int I_StartSound (int id, int vol, int sep, int pitch, int priority)
 {
-    __lastchannel = 3 - __lastchannel;      // MOVE TO NEXT CHANNEL
-    beep( __lastchannel, 0, 0, 0 );         // STOP CHANNEL
+    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS; short volatile *AUDIO_REGS_H = (short volatile *)AUDIO_REGS;
+    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
 
-    sample_upload( __lastchannel,  s_sfx_lengths[id] - 4, S_sfx[id].data + 4 );
-    beep( __lastchannel, WAVE_SAMPLE, 1, 8 );
+    __lastchannel = 3 - __lastchannel;                                                                                              // MOVE TO NEXT CHANNEL
+    AUDIO_REGS[ 0x00 ] = 0; AUDIO_REGS_H[ 0x02 ] = 0; AUDIO_REGS_B[ 0x06 ] = __lastchannel;                                         // STOP CHANNEL
+    AUDIO_REGS_B[ 0x08 ] = __lastchannel; DMA_REGS[1] = ( __lastchannel == 1 ) ? 0xe009 : 0xe00a;                                   // SELECT THE CHANNEL
+    DMA_REGS[0] = S_sfx[id].data + 4;  DMA_REGS[2] = s_sfx_lengths[id] - 4; DMA_REGS_B[0x0c] = 1;                                   // TRANSFER THE SAMPLE VIA DMA
+    AUDIO_REGS[ 0x00 ] = 0x10000 | WAVE_SAMPLE; AUDIO_REGS_H[ 0x02 ] = 32; AUDIO_REGS_B[ 0x06 ] = __lastchannel;                    // START THE SAMPLE ( 32 counts per sample )
+
     return id;
 }
 
@@ -134,7 +138,7 @@ void I_StopSound (int handle)
 
 void I_StopAllSounds ()
 {
-    beep( CHANNEL_BOTH, WAVE_SQUARE, 0, 0 );
+    AUDIO_REGS[ 0x00 ] = 0; AUDIO_REGS[ 0x01 ] = 0x30000;                                                                           // STOP ALL AUDIO
 }
 
 int I_SoundIsPlaying (int handle)

@@ -145,7 +145,8 @@ static void R_DrawTranslatedColumnKernel (byte* dst,
         // Translation tables are used to map certain colorramps to other ones,
         // used with PLAY sprites. Thus the "green" ramp of the player 0 sprite
         // is mapped to gray, red, black/indigo.
-        *dst = colormap[translation[src[idx]]];
+        // USE PIXELBLOCK TO WRITE THE PIXEL
+        unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS; GPU_REGS_B[0x70] = colormap[translation[src[idx]]];
         dst += SCREENWIDTH;
 
         // Next fractional step.
@@ -157,8 +158,7 @@ static void R_DrawTranslatedColumnKernel (byte* dst,
 // R_DrawSpanKernel - Implementation of the core span drawing loop.
 //
 
-static void R_DrawSpanKernel (byte* dst,
-                              const byte* const src,
+static void R_DrawSpanKernel (const byte* const src,
                               const lighttable_t* const colormap,
                               fixed_t xfrac,
                               const fixed_t xfracstep,
@@ -173,7 +173,8 @@ static void R_DrawSpanKernel (byte* dst,
         int idx = ((yfrac >> (16 - 6)) & (63 * 64)) + ((xfrac >> 16) & 63);
 
         // Lookup pixel from flat texture tile, re-index using light/colormap.
-        *dst++ = colormap[src[idx]];
+        // USE PIXELBLOCK TO WRITE THE PIXEL
+        unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS; GPU_REGS_B[0x70] = colormap[src[idx]];
 
         // Next step in u,v.
         xfrac += xfracstep;
@@ -322,8 +323,11 @@ void R_DrawTranslatedColumn (void)
     fracstep = dc_iscale;
     frac = dc_texturemid + (dc_yl-centery)*fracstep;
 
-    R_DrawTranslatedColumnKernel (
-        dest, dc_source, dc_translation, dc_colormap, frac, fracstep, count);
+    // SET PIXELBLOCK TO 1 WIDE AT X,Y - DRAW COLUMN - STOP PIXELBLOCK
+    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS; short volatile *GPU_REGS_H = (short volatile *)GPU_REGS;
+    GPU_REGS[0] = _rv32_pack( dc_x, dc_yl ); GPU_REGS[1] = 0x400001; GPU_REGS_B[0x16] = 10;
+    R_DrawTranslatedColumnKernel (dest, dc_source, dc_translation, dc_colormap, frac, fracstep, count);
+    GPU_REGS_B[0x78] = 0;
 }
 
 //
@@ -420,8 +424,11 @@ void R_DrawSpan (void)
 
     dest = ylookup[ds_y] + columnofs[ds_x1];
 
-    R_DrawSpanKernel (
-        dest, ds_source, ds_colormap, xfrac, ds_xstep, yfrac, ds_ystep, count);
+    // SET PIXELBLOCK TO 320 WIDE AT X,Y - DRAW SPAN - STOP PIXELBLOCK
+    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS; short volatile *GPU_REGS_H = (short volatile *)GPU_REGS;
+    GPU_REGS[0] = _rv32_pack( ds_x1, ds_y ); GPU_REGS[1] = 0x400140; GPU_REGS_B[0x16] = 10;
+    R_DrawSpanKernel (ds_source, ds_colormap, xfrac, ds_xstep, yfrac, ds_ystep, count);
+    GPU_REGS_B[0x78] = 0;
 }
 
 //
@@ -494,7 +501,6 @@ void R_FillBackScreen (void)
     for (y=0 ; y<SCREENHEIGHT-SBARHEIGHT ; y++)
     {
         paws_memcpy_rectangle( dest, src+((y&63)<<6), 64, 64, 0, SCREENWIDTH/64 ); dest += SCREENWIDTH;
-//        for (x=0 ; x<SCREENWIDTH/64 ; x++) { memcpy (dest, src+((y&63)<<6), 64); dest += 64; }
 
         if (SCREENWIDTH&63)
         {

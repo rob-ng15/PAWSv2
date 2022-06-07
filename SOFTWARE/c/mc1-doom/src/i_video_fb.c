@@ -15,6 +15,7 @@
 #include "v_video.h"
 
 #include <PAWSlibrary.h>
+#include <PAWSintrinsics.h>
 
 #define FB_WIDTH 320
 #define FB_HEIGHT 200
@@ -97,7 +98,7 @@ void I_StartTic (void) {
         doomkeycode = PAWSKEYtoDOOM( keycode & 0x1ff );
         if( doomkeycode ) {
             event.data1 = doomkeycode;
-            event.type = keycode & 0x200 ? ev_keydown : ev_keyup; D_PostEvent( &event );
+            event.type = _rv32_bext( keycode, 9 ); D_PostEvent( &event );
         }
     }
 }

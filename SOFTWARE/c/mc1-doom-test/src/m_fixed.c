@@ -31,17 +31,14 @@
 //
 
 // FIXED POINT DIVISION ACCELERATOR
-int volatile *__FIXED_A = (int volatile *)0xf800;
-int volatile *__FIXED_B = (int volatile *)0xf804;
-int volatile *__FIXED_RESULT = (int volatile*)0xf800;
-unsigned char volatile *__FIXED_STATUS = (unsigned char volatile *)0xf808;
-
 fixed_t FixedDiv (fixed_t a, fixed_t b)
 {
+    unsigned char volatile *FIXED_REGS_B = (unsigned char volatile *)FIXED_REGS;                 // BYTE ACCESS TO START / STATUS REGISTER
+
     // Check for overflow/underflow.
     if ((abs (a) >> 14) >= abs (b))
         return (a ^ b) < 0 ? MININT : MAXINT;
 
-    *__FIXED_A = a; *__FIXED_B = b; *__FIXED_STATUS = 1; while( *__FIXED_STATUS );
-    return( *__FIXED_RESULT );
+    FIXED_REGS[0] = a; FIXED_REGS[1] = b; FIXED_REGS_B[0x08] = 1; while( FIXED_REGS_B[0x08] );
+    return( FIXED_REGS[0] );
 }

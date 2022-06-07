@@ -19,44 +19,9 @@
 #define FB_WIDTH 320
 #define FB_HEIGHT 200
 
-static inline uint8_t color_to_paws( unsigned char r, unsigned char g, unsigned char b ) {
-    uint8_t paws;
-
-    paws = ( r & 0xc0 );
-    paws += ( ( g & 0xe0 ) >> 2 );
-    paws += ( ( b & 0xc0 ) >> 5 );
-    paws += ( ( r & 0x20 ) && ( b & 0x20 ) ) ? 1 : 0;
-
-    return( paws );
-}
-
-void I_InitGraphics (void) {
-   // Only initialize once.
-   static int initialized = 0;
-   if (initialized)
-     return;
-   initialized = 1;
-
-   unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-   screens[0] = (byte*)0x2020000;
-   screen_mode( 0, MODE_RGBM, 0 ); gpu_pixelblock_mode( PB_REMAP | PB_WRITEALL );  bitmap_256( TRUE );
-   gpu_rectangle( BLACK, 0, 0, 319, 239 );
-}
-
-void I_ShutdownGraphics (void) {
-}
-
-void I_WaitVBL (int count) {
-
-}
-
-void I_StartFrame (void) {
-   // er?
-}
-
-unsigned char PAWSKEYlookup[] = {
-    0x00, KEY_F9, 0x00, 0x003, KEY_F3, KEY_F1, KEY_F2, KEY_F12, 0x00, KEY_F10, KEY_F8, KEY_F6, KEY_F4, KEY_TAB, 0x00, 0x00,     // 0x00 - 0x0f
+unsigned char *PAWSKEYlookup = (unsigned char *) 0x2800;
+unsigned char _PAWSKEYlookup[] = {
+    0x00, KEY_F9, 0x00, KEY_F5, KEY_F3, KEY_F1, KEY_F2, KEY_F12, 0x00, KEY_F10, KEY_F8, KEY_F6, KEY_F4, KEY_TAB, 0x00, 0x00,     // 0x00 - 0x0f
     0x00, KEY_RALT, 0x00, 0x00, 'q', 0x00, '1', 0x00, 0x00, 0x00, 'z', 's', 'a', 'w', '2', 0x00,                                // 0x10 - 0x1f
     0x00, 'c', 'x', 'd', 'e', '4', '3', 0x00, 0x00, ' ', 'v', 'f', 't', 'r', '5', 0x00,                                         // 0x20 - 0x2f
     0x00, 'n', 'b', 'h', 'g', 'y', '6', 0x00, 0x00, 0x00, 'm', 'j', 'u', '7', '8', 0x00,                                        // 0x30 - 0x3f
@@ -74,28 +39,62 @@ unsigned char PAWSKEYlookup[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00                              // 0xf0 - 0xff
 };
 
+static inline uint8_t color_to_paws( unsigned char r, unsigned char g, unsigned char b ) {
+    uint8_t paws;
+
+    paws = ( r & 0xc0 );
+    paws += ( ( g & 0xe0 ) >> 2 );
+    paws += ( ( b & 0xc0 ) >> 5 );
+    paws += ( _rv32_bext( r, 5 ) & _rv32_bext( b, 5 ) );
+
+    return( paws );
+}
+
+void I_InitGraphics (void) {
+   // Only initialize once.
+   static int initialized = 0;
+   if (initialized)
+     return;
+   initialized = 1;
+
+   memcpy( PAWSKEYlookup, &_PAWSKEYlookup[0], 256 );                                                                            // Copy keyboard table to BRAM
+
+   unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
+
+   screens[0] = (byte*)0x2020000;
+   screen_mode( 0, MODE_RGBM, 0 ); gpu_pixelblock_mode( PB_REMAP | PB_WRITEALL );  bitmap_256( TRUE );                          // Setup video hardware, RGBM, 256 colours
+   gpu_rectangle( BLACK, 0, 0, 319, 239 );
+}
+
+void I_ShutdownGraphics (void) {
+}
+
+void I_WaitVBL (int count) {
+
+}
+
+void I_StartFrame (void) {
+   // er?
+}
+
 unsigned char PAWSKEYtoDOOM( unsigned short keycode ) {
-    if( keycode & 0x100 ) {
-        switch( keycode ) {
-            case 0x175: return KEY_UPARROW;
-            case 0x172: return KEY_DOWNARROW;
-            case 0x174: return KEY_RIGHTARROW;
-            case 0x16b: return KEY_LEFTARROW;
-            case 0x114: return KEY_RCTRL;
-            case 0x111: return KEY_RALT;
-            default:    return 0;
-        }
-    } else {
-        return PAWSKEYlookup[ keycode ];
+    switch( keycode ) {
+        case 0x175: return KEY_UPARROW;
+        case 0x172: return KEY_DOWNARROW;
+        case 0x174: return KEY_RIGHTARROW;
+        case 0x16b: return KEY_LEFTARROW;
+        case 0x114: return KEY_RCTRL;
+        case 0x111: return KEY_RALT;
+        default:    return keycode & 0x100 ? 0 : PAWSKEYlookup[ keycode ];
     }
 }
 
 void I_StartTic (void) {
-    event_t event;
-    unsigned short keycode, doomkeycode;
+    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS; short volatile *IO_REGS_H = (short volatile *)IO_REGS;
+    event_t event; unsigned short keycode, doomkeycode;
 
-    if( ps2_event_available() ) {
-        keycode = ps2_event_get();
+    if( IO_REGS_B[ 0x100 ] ) {
+        keycode = IO_REGS_H[ 0x81 ];
         doomkeycode = PAWSKEYtoDOOM( keycode & 0x1ff );
         if( doomkeycode ) {
             event.data1 = doomkeycode;
