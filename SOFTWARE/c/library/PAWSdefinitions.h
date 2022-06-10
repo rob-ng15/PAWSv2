@@ -86,9 +86,12 @@
 
 #define DKBLUE 0x04
 #define DKGREEN 0x18
+#define DKRED 0x80
 #define DKPURPLE 0x84
 #define DKMAGENTA 0xc6
 #define DKYELLOW 0xf0
+
+#define LTBLUE 0x1f
 
 // COLOURS - PAWSv2 MODE
 #define P2_VDKBLUE 0x01

@@ -9,7 +9,10 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <errno.h>
+#undef errno
+extern int errno;
 #include <fcntl.h>
+#include <reent.h>
 #include "PAWS.h"
 #include "PAWSdefinitions.h"
 #include "PAWSintrinsics.h"
@@ -975,6 +978,17 @@ void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number
     DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, 1 );
 }
 
+void set_sprite_bitamps_from_spritesheet( unsigned char sprite_layer, unsigned char *sprite_bitmaps ) {
+    for( unsigned char i = 0; i < 16; i++ ) {
+        *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = i;
+        for( unsigned char y = 0; y < 128; y++ ) {
+            for( unsigned x = 0; x < 16; x++ ) {
+                *(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR) = sprite_bitmaps[ i*16 + x + y*256 ];
+            }
+        }
+   }
+}
+
 // SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
 void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
     switch( sprite_layer ) {
@@ -1937,7 +1951,7 @@ void *malloc_bram( int size ) {
 
 // Standard i/o directs to the curses terminal, input is from the ps_keyboard
 extern unsigned char ps2_character_available( void );
-extern unsigned char ps2_inputcharacter( void );
+extern unsigned short ps2_inputcharacter( void );
 extern void ps2_keyboardmode( unsigned char mode );
 
 unsigned char *_heap = NULL;

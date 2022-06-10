@@ -1,4 +1,4 @@
-include ../makefile.inc
+include ../makefile-lto.inc
 
 PROJECT=MY_BASIC
 PROJECTTYPE=COMPUTER
@@ -12,7 +12,7 @@ $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW : $(BUILD_DIR)/my_basic.elf
 	$(ARCH)-elf-objcopy -O binary $< $@
 
 $(BUILD_DIR)/my_basic.elf : $(LIBPAWS) $(BUILD_DIR)/main.o $(BUILD_DIR)/my_basic.o
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/my_basic.o $(LIBPAWS) $(LIBRARY)
+	$(CC)  $(CFLAGS) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/my_basic.o $(LIBPAWS) $(LIBRARY)
 
 $(BUILD_DIR)/main.o : shell/main.c core/my_basic.h $(BUILD_DIR)/my_basic.o
 	$(CC) $(CFLAGS) $(INCLUDE) -c shell/main.c -o $@

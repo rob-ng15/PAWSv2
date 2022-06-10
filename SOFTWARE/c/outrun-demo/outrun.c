@@ -694,7 +694,7 @@ void set_background_generator( void ) {
     set_background( P2_DKBLUE, P2_BLUE, BKG_HATCH );
 }
 
-int main() {
+int main( int argc, char **argv ) {
     unsigned char dimmerlevel = 8, counter = 3;
 
     // SETUP SCREEN

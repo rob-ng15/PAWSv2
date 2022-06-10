@@ -138,7 +138,7 @@ $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW :$(BUILD_DIR)/doom.elf
 	@echo "When copying DOOM.PAW"
 
 $(BUILD_DIR)/doom.elf: $(DOOM_OBJECTS) $(LIBPAWS)
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(DOOM_BUILD_OBJECTS) $(LIBPAWS) $(LIBRARY)
+	$(CC) $(CFLAGS) $(INCLUDE) $(LFLAGS) $(LCONFIG) -o $@ $(DOOM_BUILD_OBJECTS) $(LIBPAWS) $(LIBRARY)
 	chmod -x $@
 
 %.o: src/%.c

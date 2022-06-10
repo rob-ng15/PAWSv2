@@ -1356,7 +1356,7 @@ void floatdemo() {
     sleep1khz( 2000, 0 );
 }
 
-int main( void ) {
+int main( int argc, char **argv ) {
 	for( int loop = 0; loop < 4; loop++ ) {
         colourtable();
 

@@ -1,4 +1,4 @@
-include ../makefile.inc
+include ../makefile-lto.inc
 
 PROJECT=PFORTH
 PROJECTTYPE=COMPUTER/PFORTH
@@ -35,7 +35,7 @@ $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW : $(BUILD_DIR)/pforth.elf
 	@echo ""
 
 $(BUILD_DIR)/pforth.elf : $(LIBPAWS) $(PFORTH_OBJECTS)
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(PFORTH_BUILD_OBJECTS) $(LIBPAWS) $(LIBRARY)
+	$(CC) $(CFLAGS) $(LFLAGS) $(LCONFIG) -o $@ $(PFORTH_BUILD_OBJECTS) $(LIBPAWS) $(LIBRARY)
 
 %.o: csrc/%.c
 	$(CC) $(INCLUDE) $(CFLAGS) -c -o $(BUILD_DIR)/$@ $<

@@ -291,7 +291,7 @@ default_t defaults[] =
 
     {"screenblocks", &screenblocks, 10, NULL, NULL, 0, 0},
 
-    {"snd_channels", &numChannels, 8, NULL, NULL, 0, 0},
+    {"snd_channels", &numChannels, 2, NULL, NULL, 0, 0},
 
     {"usegamma", &usegamma, 0, NULL, NULL, 0, 0},
 

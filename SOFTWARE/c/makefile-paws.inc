@@ -4,7 +4,7 @@ $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW : $(BUILD_DIR)/code.elf
 	$(ARCH)-elf-objcopy -O binary $< $@
 
 $(BUILD_DIR)/code.elf : $(LIBPAWS) $(BUILD_DIR)/code.o
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(LIBPAWS) $(LIBRARY) $(BUILD_DIR)/code.o
+	$(CC) $(CFLAGS) $(INCLUDE) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/code.o $(LIBPAWS) $(LIBRARY)
 
 $(BUILD_DIR)/code.o : $(SOURCE)
 	$(CC) $(CFLAGS) $(INCLUDE) -c $(SOURCE) -o $@

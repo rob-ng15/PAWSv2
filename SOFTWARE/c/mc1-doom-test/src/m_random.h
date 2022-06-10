@@ -23,13 +23,21 @@
 #include "doomtype.h"
 
 // Returns a number from 0 to 255,
-// from a lookup table.
-int M_Random (void);
+// uses hardware registers
+extern int volatile *TIMER_REGS;
+
+static inline int M_Random (void) {
+    unsigned char volatile *TIMER_REGS_B = (unsigned char volatile *)TIMER_REGS;
+    return TIMER_REGS_B[ 0x00 ];
+}
 
 // As M_Random, but used only by the play simulation.
-int P_Random (void);
+static inline int P_Random (void){
+    unsigned char volatile *TIMER_REGS_B = (unsigned char volatile *)TIMER_REGS;
+    return TIMER_REGS_B[ 0x02 ];
+}
 
 // Fix randoms for demos.
-void M_ClearRandom (void);
+static inline void M_ClearRandom (void) {}
 
 #endif  // __M_RANDOM__

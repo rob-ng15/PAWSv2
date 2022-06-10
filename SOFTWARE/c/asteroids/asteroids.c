@@ -64,7 +64,7 @@
         0x1802, 0x181e, 0x1803, 0x181d
     };
 
-#include "graphics/asteroids-graphics.h"
+#include "graphics/asteroids-sprites.h"
 
 // PROGRAM THE BACKGROUND COPPER FOR THE FALLING STARS
 void program_background( void ) {
@@ -72,28 +72,27 @@ void program_background( void ) {
     copper_program( 0, COPPER_WAIT_VBLANK, 7, 0, BKG_SNOW, BLACK, WHITE );
     copper_program( 1, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, WHITE );
     copper_program( 2, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 64, 0, 0, 1 );
-    copper_program( 3, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_RED );
+    copper_program( 3, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, RED );
     copper_program( 4, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 128, 0, 0, 3 );
-    copper_program( 5, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_ORANGE );
+    copper_program( 5, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, ORANGE );
     copper_program( 6, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 160, 0, 0, 5 );
-    copper_program( 7, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_YELLOW );
+    copper_program( 7, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, YELLOW );
     copper_program( 8, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 192, 0, 0, 7 );
-    copper_program( 9, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_GREEN );
+    copper_program( 9, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, GREEN );
     copper_program( 10, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 224, 0, 0, 9 );
-    copper_program( 11, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_LTBLUE );
+    copper_program( 11, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, LTBLUE );
     copper_program( 12, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 256, 0, 0, 11 );
-    copper_program( 13, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_PURPLE );
+    copper_program( 13, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, PURPLE );
     copper_program( 14, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 288, 0, 0, 13 );
-    copper_program( 15, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_MAGENTA );
+    copper_program( 15, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, MAGENTA );
     copper_program( 16, COPPER_JUMP, COPPER_JUMP_ON_VBLANK_EQUAL, 0, 0, 0, 15 );
     copper_program( 17, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 1 );
     copper_startstop( 1 );
 }
 
-void set_asteroid_sprites( void ) {
-    for( unsigned char asteroid_number = 0; asteroid_number < MAXASTEROIDS; asteroid_number++ ) {
-        set_sprite_bitmaps( ASN(asteroid_number), ( asteroid_number & 1 ) ? &asteroid_sprites_0[0] : &asteroid_sprites_1[0] );
-    }
+void set_sprites( void ) {
+    set_sprite_bitamps_from_spritesheet( LOWER_LAYER, &lower_sprite_sheet[0] );
+    set_sprite_bitamps_from_spritesheet( UPPER_LAYER, &upper_sprite_sheet[0] );
 }
 
 void set_ship_vector( void ) {
@@ -105,18 +104,6 @@ void set_ship_vector( void ) {
     set_vector_vertex( 0, 5, 0, 0, 0 );
 }
 
-void set_bullet_sprites( void ) {
-    set_sprite_bitmaps( 0, BULLET1SPRITE, &bullet_sprite[0] );
-    set_sprite_bitmaps( 1, BULLET1SPRITE, &bullet_sprite[0] );
-    set_sprite_bitmaps( 0, BULLET2SPRITE, &bullet_sprite[0] );
-    set_sprite_bitmaps( 1, BULLET2SPRITE, &bullet_sprite[0] );
-}
-
-void set_ufo_bullet_sprites( void ) {
-    set_sprite_bitmaps( 0, UFOBULLETSPRITE, &ufo_bullet_sprite[0] );
-    set_sprite_bitmaps( 1, UFOBULLETSPRITE, &ufo_bullet_sprite[0] );
-}
-
 void set_tilemap( void ) {
     unsigned char i, x, y, colour;
 
@@ -124,9 +111,9 @@ void set_tilemap( void ) {
     (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
 
     // SET JUPITER SATURN COMET
-    set_tilemap_bitmap32x32( LOWER_LAYER, 1, &tilemap_bitmap_back[ 0 ] );
-    set_tilemap_bitmap32x32( LOWER_LAYER, 5, &tilemap_bitmap_back[ 1024 ] );
-    set_tilemap_bitmap32x32( LOWER_LAYER, 9, &tilemap_bitmap_back[ 2048 ] );
+    set_tilemap_bitmap32x32( LOWER_LAYER, 1, &lower_tilemap_sheet[ 0 ] );
+    set_tilemap_bitmap32x32( LOWER_LAYER, 5, &lower_tilemap_sheet[ 1024 ] );
+    set_tilemap_bitmap32x32( LOWER_LAYER, 9, &lower_tilemap_sheet[ 2048 ] );
 
     // PLACE JUPITER, SATURN, COMET
     set_tilemap_tile32x32( LOWER_LAYER, 8, 8, 1 );
@@ -134,9 +121,7 @@ void set_tilemap( void ) {
     set_tilemap_tile32x32( LOWER_LAYER, 21,15, 9 );
 
     // SET AND PLACE ROCKET SHIPS
-    for( unsigned char tile_number = 0; tile_number < 4; tile_number++ ) {
-        set_tilemap_bitmap( UPPER_LAYER, tile_number + 1, &tilemap_bitmap_front[ tile_number * 256 ] );
-    }
+    set_tilemap_bitmap32x32( UPPER_LAYER, 1, &upper_tilemap_sheet[ 0 ] );
     for( i = 0; i < 4; i++ ) {
         x = rng( 18 ) + ( x&1 ? 21 : 1 );
         y = rng( 7 ) + i*7 + 1;
@@ -163,7 +148,7 @@ unsigned char next_colour( unsigned char colour_cycle, unsigned char position ) 
 }
 
 // DRAW GAME OVER IN LARGE MULTICOLOURED LETTERS
-unsigned char last_colour = 0;
+unsigned char last_colour = 65;
 void game_over( void ) {
     gpu_character_blit( swizzle(last_colour), 16, 116, 'G' + 256, 2, 0 );
     gpu_character_blit( swizzle(next_colour(last_colour,1)), 48, 124, 'A' + 256, 2, 0 );
@@ -173,7 +158,7 @@ void game_over( void ) {
     gpu_character_blit( swizzle(next_colour(last_colour,5)), 208, 124, 'V' + 256, 2, 0 );
     gpu_character_blit( swizzle(next_colour(last_colour,6)), 240, 116, 'E' + 256, 2, 0 );
     gpu_character_blit( swizzle(next_colour(last_colour,7)), 272, 124, 'R' + 256, 2, 0 );
-    last_colour = ( last_colour == 63 ) ? 1 : last_colour + 1;
+    last_colour = ( last_colour == 255 ) ? 65 : last_colour + 1;
 }
 
 // DRAW A RISC-V LOGO AT THE TOP LEFT OF THE SCREEN
@@ -181,17 +166,17 @@ void risc_ice_v_logo( void ) {
     // DISPLAY GALAXY BITMAP
     gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, galaxybitmap );
 
-    gpu_rectangle( P2_ORANGE, 0, 0, 100, 100 );
+    gpu_rectangle( ORANGE, 0, 0, 100, 100 );
     gpu_triangle( WHITE, 100, 33, 100, 100, 50, 100 );
-    gpu_triangle( P2_DKBLUE, 100, 50, 100, 100, 66, 100 );
-    gpu_rectangle( P2_DKBLUE, 0, 0, 33, 50 );
+    gpu_triangle( DKBLUE, 100, 50, 100, 100, 66, 100 );
+    gpu_rectangle( DKBLUE, 0, 0, 33, 50 );
     gpu_circle( WHITE, 25, 25, 26, 0xff, 1 );
     gpu_rectangle( WHITE, 0, 0, 25, 12 );
-    gpu_circle( P2_DKBLUE, 25, 25, 12, 0xff, 1 );
+    gpu_circle( DKBLUE, 25, 25, 12, 0xff, 1 );
     gpu_triangle( WHITE, 0, 33, 67, 100, 0, 100 );
-    gpu_triangle( P2_DKBLUE, 0, 50, 50, 100, 0, 100 );
-    gpu_rectangle( P2_DKBLUE, 0, 12, 25, 37 );
-    gpu_rectangle( P2_DKBLUE, 0, 37, 8, 100 );
+    gpu_triangle( DKBLUE, 0, 50, 50, 100, 0, 100 );
+    gpu_rectangle( DKBLUE, 0, 12, 25, 37 );
+    gpu_rectangle( DKBLUE, 0, 37, 8, 100 );
 
 }
 
@@ -199,18 +184,18 @@ void risc_ice_v_logo( void ) {
 void drawfuel( unsigned char fullbar ) {
 
     if( fullbar ) {
-        gpu_rectangle( P2_RED, 62, 216, 319, 223 );
-        gpu_printf( P2_RED, 22, 216, NORMAL, 0, 0, "FUEL:" );
+        gpu_rectangle( RED, 62, 216, 319, 223 );
+        gpu_printf( RED, 22, 216, NORMAL, 0, 0, "FUEL:" );
     }
-    gpu_character_blit( P2_RED, 63 + ( fuel >> 2 ), 216, 219, 0, 0 );
+    gpu_character_blit( RED, 63 + ( fuel >> 2 ), 216, 219, 0, 0 );
     gpu_character_blit( WHITE, 62 + ( fuel >> 2 ), 216, 30, 0, 0 );
 }
 void drawshield( unsigned char fullbar ) {
     if( fullbar ) {
-        gpu_rectangle( P2_BLUE, 62, 224, 319, 231 );
-        gpu_printf( P2_BLUE, 6, 224, NORMAL, 0, 0, "SHIELD:" );
+        gpu_rectangle( BLUE, 62, 224, 319, 231 );
+        gpu_printf( BLUE, 6, 224, NORMAL, 0, 0, "SHIELD:" );
     }
-    gpu_character_blit( P2_BLUE, 63 + shield, 224, 219, 0, 0 );
+    gpu_character_blit( BLUE, 63 + shield, 224, 219, 0, 0 );
     gpu_character_blit( WHITE, 62 + shield, 224, 30, 0, 2 );
 }
 
@@ -225,21 +210,14 @@ void setup_game() {
     }
 
     // DROP THE BITMAP TO JUST ABOVE THE BACKGROUND AND PAWSv2 COLOUR PALETTE
-    screen_mode( 2, MODE_PAWSv2, 0 );
+    screen_mode( 2, MODE_RGBM, 0 );
 
     // CLEAR and SET THE BACKGROUND
-    gpu_cs();
+    gpu_cs(); tpu_cs();
     risc_ice_v_logo();
     set_tilemap();
-
-    tpu_cs();
-    set_asteroid_sprites();
+    set_sprites();
     set_ship_vector();
-    set_bullet_sprites();
-    set_ufo_bullet_sprites();
-
-    set_sprite_bitmaps( 0, SHIPSPRITE, &ship_sprite_lower[ 0 ] );
-    set_sprite_bitmaps( 1, SHIPSPRITE, &ship_sprite_upper[ 0 ] );
 
     lives = 0; score = 0;
     fuel = 1000; shield = 250;
@@ -379,7 +357,7 @@ void move_ship() {
 }
 
 void draw_score( void ) {
-    tpu_printf_centre( 1, TRANSPARENT, ( lives > 0 ) ? WHITE : P2_GREY50, BOLD, "Score %5d", score );
+    tpu_printf_centre( 1, TRANSPARENT, ( lives > 0 ) ? WHITE : GREY3, BOLD, "Score %5d", score );
 }
 
 void draw_lives( void ) {
@@ -483,8 +461,8 @@ void beepboop( void ) {
         switch( last_timer & 3 ) {
             case 0:
                 if( lives == 0 ) {
-                    tpu_print_centre( 6, TRANSPARENT, P2_DKBLUE, 0, "Controls: Fire 1 - FIRE" );
-                    tpu_print_centre( 52, TRANSPARENT, P2_BLUE, 1, "Welcome to Risc-ICE-V Asteroids" );
+                    tpu_print_centre( 6, TRANSPARENT, DKBLUE, 0, "Controls: Fire 1 - FIRE" );
+                    tpu_print_centre( 52, TRANSPARENT, BLUE, 1, "Welcome to Risc-ICE-V Asteroids" );
                 } else {
                     if( ufo_sprite_number != 0xff ) {
                         beep( 1, 3, 63, 32 );
@@ -496,8 +474,8 @@ void beepboop( void ) {
 
             case 1:
                 if( lives == 0 ) {
-                    tpu_print_centre( 6, TRANSPARENT, P2_PURPLE, 0, "Controls: Fire 2 - SHIELD" );
-                    tpu_print_centre( 52, TRANSPARENT, P2_CYAN, 0, "By @robng15 (Twitter) from Whitebridge, Scotland" );
+                    tpu_print_centre( 6, TRANSPARENT, PURPLE, 0, "Controls: Fire 2 - SHIELD" );
+                    tpu_print_centre( 52, TRANSPARENT, CYAN, 0, "By @robng15 (Twitter) from Whitebridge, Scotland" );
                 } else {
                     if( ufo_sprite_number != 0xff ) {
                         beep( 1, 3, 63, 32 );
@@ -507,8 +485,8 @@ void beepboop( void ) {
 
             case 2:
                 if( lives == 0 ) {
-                    tpu_print_centre( 6, TRANSPARENT, P2_ORANGE, 0, "Controls: Left / Right - TURN" );
-                    tpu_print_centre( 52, TRANSPARENT, P2_YELLOW, 0, "Press UP to start" );
+                    tpu_print_centre( 6, TRANSPARENT, ORANGE, 0, "Controls: Left / Right - TURN" );
+                    tpu_print_centre( 52, TRANSPARENT, YELLOW, 0, "Press UP to start" );
                 } else {
                     if( ufo_sprite_number != 0xff ) {
                         beep( 1, 3, 63, 32 );
@@ -520,8 +498,8 @@ void beepboop( void ) {
 
             case 3:
                 if( lives == 0 ) {
-                    tpu_print_centre( 6, TRANSPARENT, P2_DKRED, 0, "Controls: UP - MOVE" );
-                    tpu_print_centre( 52, TRANSPARENT, P2_RED, 0, "Written in Silice by @sylefeb" );
+                    tpu_print_centre( 6, TRANSPARENT, DKRED, 0, "Controls: UP - MOVE" );
+                    tpu_print_centre( 52, TRANSPARENT, RED, 0, "Written in Silice by @sylefeb" );
                 } else {
                     if( ufo_sprite_number != 0xff ) {
                         beep( 1, 3, 63, 32 );
@@ -845,10 +823,7 @@ int main( void ) {
                 placeAsteroids = 4;
                 ufo_sprite_number = 0xff; ufo_leftright = 0;
                 draw_lives();
-                set_asteroid_sprites();
                 shipexplode = 0;
-                set_bullet_sprites();
-                set_ufo_bullet_sprites();
             }
 
             if( ( ( resetship >= 1 ) && ( resetship <= 16 ) ) || ( lives == 0 ) ) {

@@ -25,12 +25,12 @@ extern unsigned char uart_character_available( void );
 extern char ps2_event_available( void );
 extern short ps2_event_get( void );
 extern unsigned char ps2_character_available( void );
-extern unsigned char ps2_inputcharacter( void );
+extern unsigned short ps2_inputcharacter( void );
 extern void ps2_keyboardmode( unsigned char mode );
 
 // BASIC I/O
 extern void set_leds( unsigned char );
-extern unsigned char get_buttons( void );
+extern unsigned short get_buttons( void );
 
 // TIMERS AND PSEUDO RANDOM NUMBER GENERATOR
 extern float frng( void );
@@ -80,7 +80,7 @@ extern void gpu_rectangle( unsigned char, short, short, short, short );
 extern void gpu_box( unsigned char, short, short, short, short, unsigned short );
 extern void gpu_cs( void );
 extern void gpu_line( unsigned char, short, short, short, short );
-extern void gpu_wideline( unsigned char, short, short, short, short, unsigned short );
+extern void gpu_wideline( unsigned char, short, short, short, short, unsigned char );
 extern void gpu_circle( unsigned char, short, short, short, unsigned char, unsigned char );
 extern void gpu_blit( unsigned char, short, short, short, unsigned char, unsigned char );
 extern void gpu_character_blit( unsigned char, short, short, unsigned short, unsigned char, unsigned char );
@@ -127,6 +127,7 @@ extern void update_sprite( unsigned char, unsigned char, unsigned short );
 extern unsigned short get_sprite_collision( unsigned char, unsigned char );
 extern unsigned short get_sprite_layer_collision( unsigned char, unsigned char );
 extern void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps );
+extern void set_sprite_bitamps_from_spritesheet( unsigned char sprite_layer, unsigned char *sprite_bitmaps );
 
 // CHARACTER MAP
 extern void tpu_cs( void );
@@ -220,6 +221,7 @@ extern int volatile *DMA_REGS_ALT;
 extern int volatile *GPU_REGS;
 extern int volatile *AUDIO_REGS;
 extern int volatile *FIXED_REGS;
+extern int volatile *TIMER_REGS;
 
 #define __PAWSLIBRARY__
 #endif

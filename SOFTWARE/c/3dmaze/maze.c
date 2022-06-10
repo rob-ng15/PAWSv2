@@ -828,7 +828,7 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
     return dead;
 }
 
-int main( void ) {
+int main( int argc, char **argv ) {
     unsigned short firstrun = 1;
 
     // SWITCH SCREEN TO OLD PAWSv2 MODE

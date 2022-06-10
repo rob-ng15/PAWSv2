@@ -158,7 +158,7 @@ int removeBomb(struct Bomb *b);
 void freeBombs();
 void moveAliensDown();
 
-int main( void ) {
+int main( int argc, char **argv ) {
     // CLEAR and SET THE BACKGROUND
     gpu_cs();
     set_background( GREY6, BLUE2, BKG_SNOW );
