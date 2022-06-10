@@ -2,7 +2,6 @@ $$ uart_in_clock_freq_mhz = 25
 
 // CLOCK SELECTION FLAGS
 //$$ sdram_150_mhz = 1
-//$$ gpu_50_mhz = 1
 
 $$if not SIMULATION then
 // CLOCKS
@@ -33,7 +32,7 @@ $include('../common/sdram_interfaces.ice')
 $include('../common/sdram_controller_autoprecharge_r16_w16.ice')
 $include('../common/sdram_utils.ice')
 
-// CLEAN RESET - WIDTH 1
+// CLEAN RESET - WIDTH 1v
 $$ clean_reset_width = 1
 $include('../common/clean_reset.si')
 
@@ -52,11 +51,7 @@ $include('../tile_map.si')
 $include('../multiplex_display.si')
 $include('../common/audio_pwm.si')
 $include('../audio.si')
-$$if gpu_50_mhz then
-$include('../video_memmap-50MHzGPU.ice')
-$$else
 $include('../video_memmap.si')
-$$end
 $include('../io_memmap.si')
 $include('../timers_random.si')
 

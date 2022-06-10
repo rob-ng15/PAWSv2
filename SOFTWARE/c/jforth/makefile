@@ -16,7 +16,7 @@ $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW : $(BUILD_DIR)/main.elf
 	@echo ""
 
 $(BUILD_DIR)/main.elf : $(LIBPAWS) $(BUILD_DIR)/main.o
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/libforth.o $(BUILD_DIR)/unit.o $(LIBPAWS) $(LIBRARY)
+	$(CC) $(CFLAGS) $(LFLAGS) $(LCONFIG) -o $@ $(BUILD_DIR)/main.o $(BUILD_DIR)/libforth.o $(BUILD_DIR)/unit.o $(LIBPAWS) $(LIBRARY)
 
 $(BUILD_DIR)/main.o : $(SOURCE) $(BUILD_DIR)/libforth.o $(BUILD_DIR)/unit.o
 	$(CC) $(CFLAGS) $(INCLUDE) -c $(SOURCE) -o $@

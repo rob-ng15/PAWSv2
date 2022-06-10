@@ -52,7 +52,7 @@ algorithm sdram_half_speed_access(
 }
 
 // wrapper for sdram from design running third-speed clock
-// the wrapper runs full speed, the provided interface at half-speed
+// the wrapper runs full speed, the provided interface at one third-speed
 algorithm sdram_third_speed_access(
   sdram_provider sdh,
   sdram_user     sd,
@@ -68,7 +68,7 @@ algorithm sdram_third_speed_access(
 
   always {
     // buffer requests
-    if (~|third_clock) { // read only on slow clock
+    if (third_clock[1,1]) { // read only on slow clock
       if (sdh.in_valid == 1) {
         // relay request
         sd.addr       = sdh.addr;

@@ -227,7 +227,7 @@ void init_scene(Sphere* spheres, Light* lights) {
     lights[2] = make_Light(make_vec3( 30, 20,  30), 1.7);
 }
 
-int main() {
+int main( int argc, char **argv ) {
     Sphere spheres[NB_SPHERES];
     Light lights[NB_LIGHTS];
 

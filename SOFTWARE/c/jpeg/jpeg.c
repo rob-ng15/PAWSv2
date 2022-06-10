@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <PAWSlibrary.h>
 
-int main( void ) {
+int main( int argc, char **argv ) {
     int width, height; unsigned int filesize;
     unsigned char *imagebuffer, colour, *filebuffer;
 

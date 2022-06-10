@@ -32,7 +32,7 @@ unit gpu_queue(
     simple_dualport_bram_port0 characterGenerator8x8,
     simple_dualport_bram_port0 colourblittilemap,
 
-    input   uint1   pb_mode,
+    input   uint2   pb_mode,
     input   uint8   pb_colour,
     input   uint8   pb_colour8r,
     input   uint8   pb_colour8g,
@@ -170,7 +170,7 @@ unit gpu(
     input   uint4   gpu_write,
     input   uint4   gpu_dithermode,
 
-    input   uint1   pb_mode,
+    input   uint2   pb_mode,
     input   uint8   pb_colour,
     input   uint8   pb_colour8r,
     input   uint8   pb_colour8g,
@@ -936,7 +936,8 @@ unit blit(
     blitscale PYS( scale <: scale );                    int11   pyNEXT <:: PYS.base + 1;                uint1   pyworking <:: PYS.offset != max_pixels;
 
     // MAX PIXELS IN TILE AND NUMBER OF TIMES TO USE EACH PIXEL
-    uint5   max_pixels <:: tilecharacter ? 16 : 8;       uint4   max_count <:: ( 1 << scale );
+    uint5   max_pixels <:: { tilecharacter, ~tilecharacter, 3b000 };
+    uint4   max_count <:: ( 1 << scale );
 
     // FIND X AND Y WITHIN THE TILE/CHARACTER BITMAP
     blittilexy BTXY( px <: PXS.base, py <: PYS.base, action <: action );
@@ -980,7 +981,7 @@ unit blit(
 }
 
 // PIXELBLOCK - OUTPUT PIXELS TO RECTANGLE START AT X, Y WITH WIDTH PARAM0, PIXELS PROVIDED SEQUENTIALLY BY CPU, MOVE ALONG RECTANGLE UNTIL STOP RECEIVED
-// CAN HANDLE 7bit ( ARRGGBB ) colours, with one defined as transparent or 24bit RGB colours, scaling to the PAWS colour map
+// CAN HANDLE 256 colours, with one defined as transparent or 24bit RGB colours, scaling to the PAWS colour map
 unit pixelblock(
     input   uint1   start,
     output  uint1   busy(0),
@@ -991,7 +992,7 @@ unit pixelblock(
     input   int11   width,
     input   uint8   ignorecolour,
 
-    input   uint1   mode,
+    input   uint2   mode,
     input   uint8   colour,
     input   uint8   colour8r,
     input   uint8   colour8g,
@@ -1003,8 +1004,9 @@ unit pixelblock(
     output  uint8   bitmap_colour_write,
     output  uint1   bitmap_write
 ) <reginputs> {
-    uint8   rrrgggbb <:: { colour8r[5,3], colour8g[5,3], colour8b[6,2] };                  uint8   grey <:: ( ( colour8r + colour8g + colour8b ) * 341 ) >> 10;
-    uint1   update = uninitialised;                 uint2   toprocess = uninitialised;
+    uint8   rrrgggbb <:: { colour8r[5,3], colour8g[5,3], colour8b[6,2] };                  uint8   grey <:: ( ( colour8r * 3 + colour8g * 6 + colour8b ) * 205 ) >> 11;
+    uint1   update = uninitialised;
+    uint2   toprocess = uninitialised;
 
     int11   xNEXT <:: bitmap_x_write + 1;
     int11   yNEXT <:: bitmap_y_write + 1;
@@ -1013,7 +1015,9 @@ unit pixelblock(
     // LOOKUP THE COLOUR FROM THE REMAPPER
     colourmap.addr0 := colour;
 
-    bitmap_colour_write := ( toprocess == 1 ) ? mode ? colourmap.rdata0 : colour : mode ? ( grey == 64 ) ? 65 : grey : ( rrrgggbb == 64 ) ? 32 : rrrgggbb; bitmap_write := 0;
+    bitmap_colour_write := ( toprocess == 1 ) ? ( mode[0,1] ? colourmap.rdata0 : colour ) :                                                 // USE THE REMAPPER
+                           mode[0,1] ? ( grey == 64 ) & ~mode[1,1] ? 65 : grey : ( rrrgggbb == 64 ) & ~mode[1,1] ? 65 : rrrgggbb;           // RGB / GREYSCALE CONVERTER
+    bitmap_write := 0;
 
     always_before {
         if( reset ) { busy = 0; }
@@ -1036,7 +1040,7 @@ unit pixelblock(
                     if( &toprocess ) {
                         busy = 0;
                     } else {
-                        bitmap_write = ( ( toprocess == 1 ) & ( colour != ignorecolour ) ) | ( toprocess == 2 );
+                        bitmap_write = ( ( toprocess[0,1] ) & ( mode[1,1] | ( colour != ignorecolour ) ) ) | ( toprocess[1,1] );        // WRITE IF 8 BIT AND !ignore OR WRITEALL OR RGB
                         update = 1;
                     }
                 }

@@ -982,7 +982,7 @@ void attract( void ) {
     tpu_cs();
 }
 
-int main( void ) {
+int main( int argc, char **argv ) {
     initialise_graphics();
 
     while(1) {

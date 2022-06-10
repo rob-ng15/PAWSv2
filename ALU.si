@@ -76,15 +76,15 @@ unit alushxadd(
 }
 // CALCULATES CLZ CTZ CPOP
 unit alucount(
-    input   uint2   shiftcount,
+    input   uint2   counttype,
     input   uint32  sourceReg1,
     output  uint6   result
 ) <reginputs> {
     always_after {
         if( ~|sourceReg1 ) {
-            result = { ~shiftcount[1,1], 5b00000 };
+            result = { ~counttype[1,1], 5b00000 };
         } else {
-            switch( shiftcount ) {
+            switch( counttype ) {
                 case 2b00: { ( result ) = clz_silice_32( sourceReg1 ); }
                 case 2b01: { ( result ) = ctz_silice_32( sourceReg1 ); }
                 default: { ( result ) = cpop_silice_32( sourceReg1 ); }
@@ -105,29 +105,81 @@ unit aluminmax(
         result = function3[1,1] ^ ( function3[0,1] ? unsignedcompare : signedcompare ) ? sourceReg1 : sourceReg2;
     }
 }
-// CALCULATES SEXT.B SEXT.H ZEXT.H
-unit aluextend(
-    input   uint3   shiftcount,
-    input   uint32  sourceReg1,
-    output  uint32  result
-)  <reginputs> {
-    always_after {
-        result = shiftcount[2,1] ? shiftcount[0,1] ? { {16{sourceReg1[15,1]}}, sourceReg1[0,16] } : { {24{sourceReg1[7,1]}}, sourceReg1[0,8] } : sourceReg1[0,16];
-    }
-}
-// CALCULATES ORC.B REV8
+// CALCULATES ORC.B REV8 BREV8
 unit aluorcrev(
     input   uint32  sourceReg1,
+    input   uint1   revtype,
     output  uint32  ORC,
     output  uint32  REV8
 ) <reginputs> {
     always_after {
         ORC = { {8{ |sourceReg1[24,8] }}, {8{ |sourceReg1[16,8] }}, {8{ |sourceReg1[8,8] }}, {8{ |sourceReg1[0,8] }} };
-        REV8 = { sourceReg1[0,8], sourceReg1[8,8], sourceReg1[16,8], sourceReg1[24,8] };
+        REV8 = revtype ? {
+            $$for i=0,7 do
+                sourceReg1[$24+i$,1],
+            $$end
+            $$for i=0,7 do
+                sourceReg1[$16+i$,1],
+            $$end
+            $$for i=0,7 do
+                sourceReg1[$8+i$,1],
+            $$end
+            $$for i=0,6 do
+                sourceReg1[$i$,1],
+            $$end
+            sourceReg1[7,1]
+        } : { sourceReg1[0,8], sourceReg1[8,8], sourceReg1[16,8], sourceReg1[24,8] };
+    }
+}
+// CALCULATES PACK PACKH ( ZEXT.H when rs2 == 0 )
+unit alupack(
+    input   uint32  sourceReg1,
+    input   uint32  sourceReg2,
+    output  uint32  pack,
+    output  uint32  packh
+) <reginputs> {
+    always_after {
+        pack = { sourceReg2[0,16], sourceReg1[0,16] };
+        packh = { 16b0, sourceReg2[0,8], sourceReg1[0,8] };
+    }
+}
+// CALCULATES SEXT.B SEXT.H
+unit aluextend(
+    input   uint1   halfbyte,
+    input   uint32  sourceReg1,
+    output  uint32  result
+)  <reginputs> {
+    always_after {
+        result = halfbyte ? { {16{sourceReg1[15,1]}}, sourceReg1[0,16] } : { {24{sourceReg1[7,1]}}, sourceReg1[0,8] };
+    }
+}
+// CALCULATES ZIP UNZIP
+unit aluzip(
+    input   uint32  sourceReg1,
+    output  uint32  zip,
+    output  uint32  unzip
+)  <reginputs> {
+    always_after {
+        zip = {
+            $$for i=0,14 do
+                sourceReg1[$16+(15-i)$,1],
+                sourceReg1[$(15-i)$,1],
+            $$end
+            sourceReg1[16,1],
+            sourceReg1[0,1]
+        };
+        unzip = {
+            $$for i=0,15 do
+                sourceReg1[$(15-i)*2+1$,1],
+            $$end
+            $$for i=0,14 do
+                sourceReg1[$(15-i)*2$,1],
+            $$end
+            sourceReg1[0,1]
+        };
     }
 }
 
-// DECODE ALU INSTRUCTIONS
 // DECODE ALU INSTRUCTIONS
 unit aludecode(
     input   uint1   regimm,
@@ -145,18 +197,20 @@ unit aludecode(
     output  uint1   docount,
     output  uint1   dominmax,
     output  uint1   dosignx,
-    output  uint1   dozerox,
+    output  uint1   dopack,
     output  uint1   doorc,
-    output  uint1   dorev
+    output  uint1   dorev,
+    output  uint1   dozip
 ) <reginputs> {
-    uint1   f7010000 <:: ( function7 == 7b0100000 );
+    uint1   f70100000 <:: ( function7 == 7b0100000 );
     uint1   f70110000 <:: ( function7 == 7b0110000 );
     uint1   f70110100 <:: ( function7 == 7b0110100 );
     uint1   f70010100 <:: ( function7 == 7b0010100 );
+    uint1   f70000100 <:: ( function7 == 7b0000100 );
 
     always_after {
-        doalt = regimm & f7010000;                                          // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
-        dosra = f7010000;                                                   // SRL SRA
+        doalt = regimm & f70100000;                                         // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
+        dosra = f70100000;                                                  // SRA SRAI
         dorotate = f70110000;                                               // ROL ROR RORI
         dobclrext = ( function7 == 7b0100100 );                             // BCLR BCLRI BEXT BEXTI
         dobinv = f70110100;                                                 // BINV BINVI
@@ -165,7 +219,8 @@ unit aludecode(
         docount = ~regimm & f70110000 & ~rs2[2,1];                          // CLZ CPOP CTZ ( immediate only )
         dominmax = regimm & function3[2,1] & ( function7 == 7b0000101 );    // MAX MAXU MIN MINU ( register - register only )
         dosignx = ~regimm & f70110000 & rs2[2,1];                           // SEXT.B SEXT.H
-        dozerox = regimm & ( function7 == 7b0000100 );                      // ZEXT.H
+        dopack = regimm & f70000100;                                        // ZEXT.H PACK PACKH ( ZEXT.H when rs2 == 0 )
+        dozip = ~regimm & f70000100;                                        // UNZIP ZIP
         doorc = ~regimm & f70010100;                                        // ORC.B
         dorev = ~regimm & f70110100;                                        // REV8
     }
@@ -186,7 +241,7 @@ unit alu(
 
     output  int32   result
 ) <reginputs> {
-    aludecode AD( regimm <: opCode[3,1], function7 <: function7, function3 <: function3, rs2 <: rs2, );
+    aludecode AD( regimm <: opCode[3,1], function7 <: function7, function3 <: function3, rs2 <: rs2 );
 
     uint5   shiftcount <:: opCode[3,1] ? sourceReg2[0,5] : rs2;
     uint32  operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
@@ -196,21 +251,23 @@ unit alu(
     alubits BITS( sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
     alulogic LOGIC( sourceReg1 <: sourceReg1, operand2 <: operand2, doinv <: AD.doalt );
     alushxadd SHXADD( function3 <: function3[1,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
-    alucount COUNT( shiftcount <: rs2[0,2], sourceReg1 <: sourceReg1 );
+    alucount COUNT( counttype <: rs2[0,2], sourceReg1 <: sourceReg1 );
     aluminmax MINMAX( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, signedcompare <: LT, unsignedcompare <: LTU );
-    aluextend EXTEND( shiftcount <: rs2[0,3], sourceReg1 <: sourceReg1 );
-    aluorcrev ORCREV( sourceReg1 <: sourceReg1 );
+    aluextend EXTEND( halfbyte <: rs2[0,1], sourceReg1 <: sourceReg1 );
+    aluorcrev ORCREV( sourceReg1 <: sourceReg1, revtype <: rs2[2,1] );
+    alupack PACK( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
+    aluzip ZIP( sourceReg1 <: sourceReg1 );
 
     always_after {
         switch( function3 ) {
             case 3b000: { result = ADDSUB.AS; }
-            case 3b001: { result = AD.dosignx ? EXTEND.result : AD.docount ? COUNT.result : AD.dobclrext ? BITS.CLR : AD.dobinv ? BITS.INV : AD.dobset ? BITS.SET : AD.dorotate ? SHIFTS.ROTATE : SHIFTS.SLL; }
+            case 3b001: { result = AD.dosignx ? EXTEND.result : AD.docount ? COUNT.result : AD.dobclrext ? BITS.CLR : AD.dobinv ? BITS.INV : AD.dobset ? BITS.SET : AD.dozip ? ZIP.zip : AD.dorotate ? SHIFTS.ROTATE : SHIFTS.SLL; }
             case 3b010: { result = AD.doshxadd ? SHXADD.result : LT; }
             case 3b011: { result = opCode[3,1] ? ( ~|rs1 ) ? ( |operand2 ) : LTU : ( operand2 == 1 ) ? ( ~|sourceReg1 ) : LTU; }
-            case 3b100: { result = AD.dozerox ? EXTEND.result : AD.dominmax ? MINMAX.result : AD.doshxadd ? SHXADD.result : LOGIC.XOR; }
-            case 3b101: { result = AD.doorc ? ORCREV.ORC : AD.dorev ? ORCREV.REV8 : AD.dominmax ? MINMAX.result : AD.dobclrext ? BITS.EXT : AD.dorotate ? SHIFTS.ROTATE : AD.dosra ? SHIFTS.SRA : SHIFTS.SRL; }
+            case 3b100: { result = AD.dominmax ? MINMAX.result : AD.doshxadd ? SHXADD.result : AD.dopack ? PACK.pack : LOGIC.XOR; }
+            case 3b101: { result = AD.doorc ? ORCREV.ORC : AD.dorev ? ORCREV.REV8 : AD.dominmax ? MINMAX.result : AD.dobclrext ? BITS.EXT : AD.dozip ? ZIP.zip : AD.dorotate ? SHIFTS.ROTATE : AD.dosra ? SHIFTS.SRA : SHIFTS.SRL; }
             case 3b110: { result = AD.dominmax ? MINMAX.result : AD.doshxadd ? SHXADD.result : LOGIC.OR; }
-            case 3b111: { result = AD.dominmax ? MINMAX.result : LOGIC.AND; }
+            case 3b111: { result = AD.dominmax ? MINMAX.result : AD.dopack ? PACK.packh : LOGIC.AND; }
         }
     }
 }

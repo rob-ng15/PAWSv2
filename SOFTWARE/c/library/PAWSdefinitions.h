@@ -60,13 +60,12 @@
 // COLOURS - RGBM MODE
 #define TRANSPARENT 0x40
 #define BLACK 0x00
-#define BLUE 0x0f
+#define BLUE 0x06
 #define GREEN 0x38
 #define CYAN 0x3f
 #define RED 0xc1
 #define MAGENTA 0xc7
 #define YELLOW 0xf9
-#define ORANGE 0xe1
 #define WHITE 0xff
 
 #define BLUE1 0x02
@@ -74,12 +73,42 @@
 #define BLUE3 0x06
 #define BLUE4 0x0f
 
+#define GREEN1 0x08
+#define GREEN2 0x16
+#define GREEN3 0x18
+#define GREEN4 0x20
+#define GREEN5 0x28
+#define GREEN6 0x30
+#define GREEN7 0x38
+
+#define RED2 0x80
+#define RED3 0xc0
+
 #define GREY1 0x09
 #define GREY2 0x52
 #define GREY3 0x5b
 #define GREY4 0xa4
 #define GREY5 0xad
 #define GREY6 0xf6
+
+#define PURPLE 0x86
+#define PINK 0xef
+#define ORANGE 0xe9
+
+#define DKBLUE 0x04
+#define DKGREEN 0x18
+#define DKRED 0x80
+#define DKPURPLE 0x84
+#define DKMAGENTA 0xc6
+#define DKYELLOW 0xf0
+
+#define LTBLUE 0x1f
+
+#define DKBROWN 0x49
+#define FORESTGREEN 0x58
+#define STEELBLUE 0x6f
+#define BROWN 0x89
+#define PEACH 0xe3
 
 // COLOURS - PAWSv2 MODE
 #define P2_VDKBLUE 0x01
@@ -261,6 +290,10 @@
 #define MODE_RGB 1
 #define MODE_PAWSv2 2
 #define MODE_GREY 3
+
+// PIXEL BLOCK MODES
+#define PB_REMAP 1
+#define PB_WRITEALL 2
 
 // SOUNDS
 #define CHANNEL_LEFT 1

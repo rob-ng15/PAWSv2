@@ -55,7 +55,7 @@ void game( void ) {
 	}
 }
 
-int main( void ) {
+int main( int argc, char **argv ) {
     gpu_cs();
     tpu_cs();
     set_background( BLACK, BLACK, BKG_RAINBOW );

@@ -1,5 +1,5 @@
 # Makefile for dungeon
-include ../makefile.inc
+include ../makefile-lto.inc
 PROJECT=ZORK
 PROJECTTYPE=GAMES
 
@@ -63,7 +63,7 @@ dungeon: dungeon.o dtextc.dat
 	cp dtextc.dat $(OUTPUT_DIR)$(PROJECTTYPE)/
 
 dungeon.o: $(OBJS) dtextc.dat $(LIBPAWSOBJ)
-	$(LD) $(LFLAGS) $(LCONFIG) -o $@ $(OBJS) $(LIBPAWS) $(LIBRARY)
+	$(CC) $(CFLAGS) $(LFLAGS) $(LCONFIG) -o $@ $(OBJS) $(LIBPAWS) $(LIBRARY)
 
 %.o : %.c
 	$(CC) $(CFLAGS) $(INCLUDE) $(GDTFLAG) -DTEXTFILE=\"/GAMES/dtextc.dat\" -c $< -o $@
