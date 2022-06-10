@@ -155,28 +155,6 @@ P_GiveWeapon
     boolean     gaveammo;
     boolean     gaveweapon;
 
-    if (netgame
-        && (deathmatch!=2)
-         && !dropped )
-    {
-        // leave placed weapons forever on net games
-        if (player->weaponowned[weapon])
-            return false;
-
-        player->bonuscount += BONUSADD;
-        player->weaponowned[weapon] = true;
-
-        if (deathmatch)
-            P_GiveAmmo (player, weaponinfo[weapon].ammo, 5);
-        else
-            P_GiveAmmo (player, weaponinfo[weapon].ammo, 2);
-        player->pendingweapon = weapon;
-
-        if (player == &players[consoleplayer])
-            S_StartSound (NULL, sfx_wpnup);
-        return false;
-    }
-
     if (weaponinfo[weapon].ammo != am_noammo)
     {
         // give one clip with a dropped weapon,
@@ -394,7 +372,6 @@ P_TouchSpecialThing
         if (!player->cards[it_bluecard])
             player->message = GOTBLUECARD;
         P_GiveCard (player, it_bluecard);
-        if (!netgame)
             break;
         return;
 
@@ -402,7 +379,6 @@ P_TouchSpecialThing
         if (!player->cards[it_yellowcard])
             player->message = GOTYELWCARD;
         P_GiveCard (player, it_yellowcard);
-        if (!netgame)
             break;
         return;
 
@@ -410,7 +386,6 @@ P_TouchSpecialThing
         if (!player->cards[it_redcard])
             player->message = GOTREDCARD;
         P_GiveCard (player, it_redcard);
-        if (!netgame)
             break;
         return;
 
@@ -418,7 +393,6 @@ P_TouchSpecialThing
         if (!player->cards[it_blueskull])
             player->message = GOTBLUESKUL;
         P_GiveCard (player, it_blueskull);
-        if (!netgame)
             break;
         return;
 
@@ -426,7 +400,6 @@ P_TouchSpecialThing
         if (!player->cards[it_yellowskull])
             player->message = GOTYELWSKUL;
         P_GiveCard (player, it_yellowskull);
-        if (!netgame)
             break;
         return;
 
@@ -434,7 +407,6 @@ P_TouchSpecialThing
         if (!player->cards[it_redskull])
             player->message = GOTREDSKULL;
         P_GiveCard (player, it_redskull);
-        if (!netgame)
             break;
         return;
 
@@ -659,7 +631,7 @@ P_KillMobj
         if (target->player)
             source->player->frags[target->player-players]++;
     }
-    else if (!netgame && (target->flags & MF_COUNTKILL) )
+    else if ((target->flags & MF_COUNTKILL) )
     {
         // count all monster deaths,
         // even those caused by other monsters

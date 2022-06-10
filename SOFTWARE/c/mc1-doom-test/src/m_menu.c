@@ -588,12 +588,6 @@ void M_LoadGame (int choice)
     // UNUSED.
     (void)choice;
 
-    if (netgame)
-    {
-        M_StartMessage(LOADNET,NULL,false);
-        return;
-    }
-
     M_SetupNextMenu(&LoadDef);
     M_ReadSaveStrings();
 }
@@ -719,12 +713,6 @@ void M_QuickLoadResponse(int ch)
 
 void M_QuickLoad(void)
 {
-    if (netgame)
-    {
-        M_StartMessage(QLOADNET,NULL,false);
-        return;
-    }
-
     if (quickSaveSlot < 0)
     {
         M_StartMessage(QSAVESPOT,NULL,false);
@@ -858,12 +846,6 @@ void M_NewGame(int choice)
     // UNUSED.
     (void)choice;
 
-    if (netgame && !demoplayback)
-    {
-        M_StartMessage(NEWGAME,NULL,false);
-        return;
-    }
-
     if ( gamemode == commercial )
         M_SetupNextMenu(&NewDef);
     else
@@ -992,12 +974,6 @@ void M_EndGame(int choice)
         return;
     }
 
-    if (netgame)
-    {
-        M_StartMessage(NETEND,NULL,false);
-        return;
-    }
-
     M_StartMessage(ENDGAME,M_EndGameResponse,true);
 }
 
@@ -1059,14 +1035,11 @@ void M_QuitResponse(int ch)
 {
     if (ch != 'y')
         return;
-    if (!netgame)
-    {
-        if (gamemode == commercial)
-            S_StartSound(NULL,quitsounds2[(gametic>>2)&7]);
-        else
-            S_StartSound(NULL,quitsounds[(gametic>>2)&7]);
-        I_WaitVBL(105);
-    }
+    if (gamemode == commercial)
+        S_StartSound(NULL,quitsounds2[(gametic>>2)&7]);
+    else
+        S_StartSound(NULL,quitsounds[(gametic>>2)&7]);
+    I_WaitVBL(105);
     I_Quit ();
 }
 
@@ -1649,8 +1622,6 @@ void M_Drawer (void)
 void M_ClearMenus (void)
 {
     menuactive = 0;
-    // if (!netgame && usergame && paused)
-    //       sendpause = true;
 }
 
 //

@@ -37,7 +37,6 @@ void I_InitNetwork (void)
     doomcom-> extratics = 0;
 
     // We don't support networking, so single player game it is...
-    netgame = false;
     doomcom->id = DOOMCOM_ID;
     doomcom->numplayers = doomcom->numnodes = 1;
     doomcom->deathmatch = false;
@@ -53,10 +52,6 @@ void NetUpdate (void)
 }
 
 void D_QuitNetGame (void)
-{
-}
-
-void D_CheckNetGame (void)
 {
 }
 

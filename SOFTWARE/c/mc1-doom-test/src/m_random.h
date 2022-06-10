@@ -25,6 +25,7 @@
 // Returns a number from 0 to 255,
 // uses hardware registers
 extern int volatile *TIMER_REGS;
+extern int rndindex;
 
 static inline int M_Random (void) {
     unsigned char volatile *TIMER_REGS_B = (unsigned char volatile *)TIMER_REGS;
@@ -34,6 +35,7 @@ static inline int M_Random (void) {
 // As M_Random, but used only by the play simulation.
 static inline int P_Random (void){
     unsigned char volatile *TIMER_REGS_B = (unsigned char volatile *)TIMER_REGS;
+    rndindex = (rndindex+1)&0xff;
     return TIMER_REGS_B[ 0x02 ];
 }
 

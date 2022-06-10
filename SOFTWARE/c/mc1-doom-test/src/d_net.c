@@ -529,47 +529,6 @@ void D_ArbitrateNetStart (void)
 //
 extern  int                     viewangleoffset;
 
-void D_CheckNetGame (void)
-{
-    int             i;
-
-    for (i=0 ; i<MAXNETNODES ; i++)
-    {
-        nodeingame[i] = false;
-        nettics[i] = 0;
-        remoteresend[i] = false;        // set when local needs tics
-        resendto[i] = 0;                // which tic to start sending
-    }
-
-    // I_InitNetwork sets doomcom and netgame
-    I_InitNetwork ();
-    if (doomcom->id != DOOMCOM_ID)
-        I_Error ("Doomcom buffer invalid!");
-
-    netbuffer = &doomcom->data;
-    consoleplayer = displayplayer = doomcom->consoleplayer;
-    if (netgame)
-        D_ArbitrateNetStart ();
-
-    printf ("startskill %i  deathmatch: %i  startmap: %i  startepisode: %i\n",
-            startskill, deathmatch, startmap, startepisode);
-
-    // read values out of doomcom
-    ticdup = doomcom->ticdup;
-    maxsend = BACKUPTICS/(2*ticdup)-1;
-    if (maxsend<1)
-        maxsend = 1;
-
-    for (i=0 ; i<doomcom->numplayers ; i++)
-        playeringame[i] = true;
-    for (i=0 ; i<doomcom->numnodes ; i++)
-        nodeingame[i] = true;
-
-    printf ("player %i of %i (%i nodes)\n",
-            consoleplayer+1, doomcom->numplayers, doomcom->numnodes);
-
-}
-
 //
 // D_QuitNetGame
 // Called before quitting to leave a net game

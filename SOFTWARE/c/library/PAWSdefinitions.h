@@ -73,6 +73,17 @@
 #define BLUE3 0x06
 #define BLUE4 0x0f
 
+#define GREEN1 0x08
+#define GREEN2 0x16
+#define GREEN3 0x18
+#define GREEN4 0x20
+#define GREEN5 0x28
+#define GREEN6 0x30
+#define GREEN7 0x38
+
+#define RED2 0x80
+#define RED3 0xc0
+
 #define GREY1 0x09
 #define GREY2 0x52
 #define GREY3 0x5b
@@ -92,6 +103,12 @@
 #define DKYELLOW 0xf0
 
 #define LTBLUE 0x1f
+
+#define DKBROWN 0x49
+#define FORESTGREEN 0x58
+#define STEELBLUE 0x6f
+#define BROWN 0x89
+#define PEACH 0xe3
 
 // COLOURS - PAWSv2 MODE
 #define P2_VDKBLUE 0x01

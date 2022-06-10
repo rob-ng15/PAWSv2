@@ -12,11 +12,11 @@ $$ addr_width = 27
 // L0 CACHE SIZES FOR HART ID 0 AND 1
 // MAX size is 64 due to bram limits
 // size and blocks must be a power of 2
-$$ L0Isize = 64
+$$ L0Isize = 32
 $$ L0Icacheaddrwidth = clog2(L0Isize)
 
 // HART 0 - MAIN
-$$ L00Iblocks = 8
+$$ L00Iblocks = 16
 $$ L00Icount = clog2(L00Iblocks)
 $$ L00Ipartaddresswidth = addr_width - 1 - L00Icount - L0Icacheaddrwidth
 $$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
@@ -57,7 +57,7 @@ unit PAWSCPU(
     output! uint2   DMAACTIVE
 ) <reginputs> {
     // RESET COUNTER
-    uint16  resetCounter = 16hffff;
+    uint8  resetCounter = 8hff;                     uint8   resetNEXT <:: resetCounter - 1;
 
     // CPU REGISTERS AND THREAD SELECTION
     uint1   COMMIT = uninitialized;                 uint1   SMT = 0;                                    uint1   COMMIT_SMT = uninitialised;
@@ -237,8 +237,7 @@ unit PAWSCPU(
     readmemory := DMA.readmemory | LOAD.readmemory | FETCH.readmemory; writememory := DMA.writememory | STORE.writememory;
 
     algorithm <autorun> {
-        while( memorybusy | EXECUTESLOW.busy ) {}                                                                                   // WAIT FDR MEMORY AND CPU TO FINISH
-        while( resetCounter ) { resetCounter = resetCounter >> 1; }                                                                 // HOLD FOR RESET
+        while( |resetCounter | memorybusy | EXECUTESLOW.busy ) { resetCounter = resetNEXT; }                                         // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
 
         cacheselect = 0; FETCH.start = 1;                                                                                           // FETCH FIRST INSTRUCTION
 
@@ -262,7 +261,7 @@ unit PAWSCPU(
                 case 3b010: { ++: }                                                                                                     // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
                 case 3b011: { STORE.start = 1; while( STORE.busy ) {} }                                                                 // INTEGER + FLOAT STORE
                 default: {                                                                                                              // ATOMIC LOAD - MODIFY - STORE
-                    LOAD.start = RV32CONTROL.IS_LOAD; while( LOAD.busy ) {}                                                             // + EMULATION OR LR.W AND SC.W
+                    LOAD.start = RV32CONTROL.IS_LOAD; while( LOAD.busy ) {}                                                             // + EMULATION OF LR.W AND SC.W
                     EXECUTESLOW.start = ~RV32CONTROL.FASTPATH; while( EXECUTESLOW.busy ) {}
                     STORE.start = RV32CONTROL.IS_STORE; while( STORE.busy ) {}
                 }
@@ -307,11 +306,11 @@ $$end
 ) <reginputs> {
     uint$L00Ipartaddresswidth$ tag = uninitialised;
 
-    always_after {
-        $$for i=0,(L00Iblocks-1) do
-            L0cache_$i$.addr0 = address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 = address[$1+L00Icount$,$L0Icacheaddrwidth$];
-        $$end
+    $$for i=0,(L00Iblocks-1) do
+        L0cache_$i$.addr0 := address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 := address[$1+L00Icount$,$L0Icacheaddrwidth$];
+    $$end
 
+    always_after {
         switch( address[1,$L00Icount$] ) {
             $$for i=0,(L00Iblocks-1) do
                 case $i$: { tag = L0tags_$i$.rdata0; instruction = L00cacheI ( L0cache_$i$.rdata0 ).instruction; compressed =  L00cacheI( L0cache_$i$.rdata0 ).compressed; }
@@ -380,11 +379,11 @@ $$end
 ) <reginputs> {
     uint$L01Ipartaddresswidth$ tag = uninitialised;
 
-    always_after {
-        $$for i=0,(L01Iblocks-1) do
-            L0cache_$i$.addr0 = address[$1+L01Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 = address[$1+L01Icount$,$L0Icacheaddrwidth$];
-        $$end
+    $$for i=0,(L01Iblocks-1) do
+        L0cache_$i$.addr0 := address[$1+L01Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 := address[$1+L01Icount$,$L0Icacheaddrwidth$];
+    $$end
 
+    always_after {
         switch( address[1,$L01Icount$] ) {
             $$for i=0,(L01Iblocks-1) do
                 case $i$: { tag = L0tags_$i$.rdata0; instruction = L01cacheI ( L0cache_$i$.rdata0 ).instruction; compressed =  L01cacheI( L0cache_$i$.rdata0 ).compressed; }

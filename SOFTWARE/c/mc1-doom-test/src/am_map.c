@@ -1177,40 +1177,15 @@ void AM_drawPlayers(void)
     int         their_color = -1;
     int         color;
 
-    if (!netgame)
-    {
-        if (cheating)
-            AM_drawLineCharacter
-                (cheat_player_arrow, NUMCHEATPLYRLINES, 0,
-                 plr->mo->angle, WHITE, plr->mo->x, plr->mo->y);
-        else
-            AM_drawLineCharacter
-                (player_arrow, NUMPLYRLINES, 0, plr->mo->angle,
-                 WHITE, plr->mo->x, plr->mo->y);
-        return;
-    }
-
-    for (i=0;i<MAXPLAYERS;i++)
-    {
-        their_color++;
-        p = &players[i];
-
-        if ( (deathmatch && !singledemo) && p != plr)
-            continue;
-
-        if (!playeringame[i])
-            continue;
-
-        if (p->powers[pw_invisibility])
-            color = 246; // *close* to black
-        else
-            color = their_colors[their_color];
-
+    if (cheating)
         AM_drawLineCharacter
-            (player_arrow, NUMPLYRLINES, 0, p->mo->angle,
-             color, p->mo->x, p->mo->y);
-    }
-
+            (cheat_player_arrow, NUMCHEATPLYRLINES, 0,
+                plr->mo->angle, WHITE, plr->mo->x, plr->mo->y);
+    else
+        AM_drawLineCharacter
+            (player_arrow, NUMPLYRLINES, 0, plr->mo->angle,
+                WHITE, plr->mo->x, plr->mo->y);
+    return;
 }
 
 void

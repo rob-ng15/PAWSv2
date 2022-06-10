@@ -78,9 +78,6 @@ extern  int             gamemap;
 // Nightmare mode flag, single player.
 extern  boolean         respawnmonsters;
 
-// Netgame? Only true if >1 player.
-extern  boolean netgame;
-
 // Flag:
 //  0 = no deathmatch
 //  1 = if started as net deathmatch

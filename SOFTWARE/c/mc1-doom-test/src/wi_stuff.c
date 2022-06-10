@@ -1475,7 +1475,6 @@ void WI_Ticker(void)
     {
       case StatCount:
         if (deathmatch) WI_updateDeathmatchStats();
-        else if (netgame) WI_updateNetgameStats();
         else WI_updateStats();
         break;
 
@@ -1623,10 +1622,7 @@ void WI_loadData(void)
     if (french)
     {
         // "items"
-        if (netgame && !deathmatch)
-            items = (patch_t*)W_CacheLumpName("WIOBJ", PU_STATIC);
-        else
-            items = (patch_t*)W_CacheLumpName("WIOSTI", PU_STATIC);
+        items = (patch_t*)W_CacheLumpName("WIOSTI", PU_STATIC);
     } else
         items = (patch_t*)W_CacheLumpName("WIOSTI", PU_STATIC);
 
@@ -1744,8 +1740,6 @@ void WI_Drawer (void)
       case StatCount:
         if (deathmatch)
             WI_drawDeathmatchStats();
-        else if (netgame)
-            WI_drawNetgameStats();
         else
             WI_drawStats();
         break;
@@ -1810,8 +1804,6 @@ void WI_Start(wbstartstruct_t* wbstartstruct)
 
     if (deathmatch)
         WI_initDeathmatchStats();
-    else if (netgame)
-        WI_initNetgameStats();
     else
         WI_initStats();
 }

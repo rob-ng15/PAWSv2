@@ -87,6 +87,7 @@ boolean         fastparm;       // checkparm of -fast
 boolean         drone;
 
 boolean         singletics = true; // debug flag to cancel adaptiveness
+int             rndindex = 0;
 
 //extern int soundVolume;
 //extern  int   sfxVolume;
@@ -107,7 +108,6 @@ char            wadfile[1024];          // primary wad file
 char            mapdir[1024];           // directory of development maps
 char            basedefault[1024];      // default file
 
-void D_CheckNetGame (void);
 void D_ProcessEvents (void);
 void G_BuildTiccmd (ticcmd_t* cmd);
 void D_DoAdvanceDemo (void);
@@ -1051,9 +1051,6 @@ void D_DoomMain (void)
     printf ("I_Init: Setting up machine state.\n");
     I_Init ();
 
-    printf ("D_CheckNetGame: Checking network game status.\n");
-    D_CheckNetGame ();
-
     printf ("S_Init: Setting up sound.\n");
     S_Init (snd_SfxVolume /* *8 */, snd_MusicVolume /* *8*/ );
 
@@ -1110,7 +1107,7 @@ void D_DoomMain (void)
 
     if ( gameaction != ga_loadgame )
     {
-        if (autostart || netgame)
+        if (autostart)
             G_InitNew (startskill, startepisode, startmap);
         else
             D_StartTitle ();                // start up intro loop
