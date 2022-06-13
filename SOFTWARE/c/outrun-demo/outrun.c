@@ -113,9 +113,7 @@ void set_tilemaps( void ) {
 
 
     // SET BUILDINGS TILEMAPS
-    for( int i = 0; i < 25; i++ ) {
-        set_tilemap_bitmap( UPPER_LAYER, 1 + i, &building_graphics[ i * 256 ] );
-    }
+    set_tilemap_bitamps_from_spritesheet( UPPER_LAYER, &building_graphics[ 0 ] );
 
     // SET CLOUD TILEMAPS
     for( int i = 0; i < 4; i++ ) {

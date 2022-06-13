@@ -87,7 +87,6 @@ boolean         fastparm;       // checkparm of -fast
 boolean         drone;
 
 boolean         singletics = true; // debug flag to cancel adaptiveness
-int             rndindex = 0;
 
 //extern int soundVolume;
 //extern  int   sfxVolume;

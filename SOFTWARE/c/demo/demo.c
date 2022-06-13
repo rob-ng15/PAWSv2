@@ -1337,7 +1337,7 @@ void spritedemo( void ) {
 }
 
 void floatdemo() {
-    struct Point2D Square[4] = { { -100, -100 }, { 100, -100 }, { 100, 100 }, { -100, 100 } };
+    union Point2D Square[4] = { { -100, -100 }, { 100, -100 }, { 100, 100 }, { -100, 100 } };
     unsigned char colour = 63;
     float scale = 1;
 

@@ -317,9 +317,12 @@ struct sprite_update_flag {
 };
 
 // FOR 2D SOFTWARE VECTORS
-struct Point2D {
-    short dx;
-    short dy;
+union Point2D {
+    struct {
+        short dx;
+        short dy;
+    };
+    int packed;
 };
 
 // FOR SOFTWARE DRAWLISTS
@@ -334,10 +337,10 @@ struct DrawList2D {
     unsigned char   colour;             // PAWS colour code
     unsigned char   alt_colour;         // PAWS colour code
     unsigned char   dithermode;         // PAWS dithermode
-    struct Point2D  xy1;                // Vertex 1 or centre of circle
-    struct Point2D  xy2;                // Vertex 2 or circle radius and sector mask
-    struct Point2D  xy3;                // Vertex 3 or line width
-    struct Point2D  xy4;                // Vertex 4
+    union Point2D   xy1;                // Vertex 1 or centre of circle
+    union Point2D   xy2;                // Vertex 2 or circle radius and sector mask
+    union Point2D   xy3;                // Vertex 3 or line width
+    union Point2D   xy4;                // Vertex 4
 };
 
 // FAT32 File System for the file selector

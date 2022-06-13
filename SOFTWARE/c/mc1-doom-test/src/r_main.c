@@ -113,14 +113,10 @@ R_AddPointToBox
   int           y,
   fixed_t*      box )
 {
-    if (x< box[BOXLEFT])
-        box[BOXLEFT] = x;
-    if (x> box[BOXRIGHT])
-        box[BOXRIGHT] = x;
-    if (y< box[BOXBOTTOM])
-        box[BOXBOTTOM] = y;
-    if (y> box[BOXTOP])
-        box[BOXTOP] = y;
+    box[BOXLEFT] = _rv32_min( x, box[BOXLEFT] );
+    box[BOXRIGHT] = _rv32_max( x, box[BOXRIGHT] );
+    box[BOXBOTTOM] = _rv32_min( y, box[BOXBOTTOM] );
+    box[BOXTOP] = _rv32_max( y, box[BOXTOP] );
 }
 
 //

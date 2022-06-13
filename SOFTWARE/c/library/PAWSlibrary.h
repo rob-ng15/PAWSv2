@@ -70,6 +70,7 @@ extern void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned 
 extern void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap );
 extern void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap );
 extern void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned char start_tile );
+extern void set_tilemap_bitamps_from_spritesheet( unsigned char tm_layer, unsigned char *tile_bitmaps );
 extern unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount );
 
 // GPU AND BITMAP
@@ -113,7 +114,7 @@ extern void gpu_print_vertical( unsigned char, short, short, unsigned char, unsi
 extern void gpu_print_centre_vertical( unsigned char, short, short, unsigned char, unsigned char, unsigned char, char *);
 
 // SOFTWARE VECTOR SHAPES
-extern void DrawVectorShape2D( unsigned char, struct Point2D *, short, short, short, short, float );
+extern void DrawVectorShape2D( unsigned char, union Point2D *, short, short, short, short, float );
 
 // SOFTWARE DRAW LISTS
 extern void DoDrawList2D( struct DrawList2D *, short, short, short, short, float );
@@ -128,6 +129,7 @@ extern unsigned short get_sprite_collision( unsigned char, unsigned char );
 extern unsigned short get_sprite_layer_collision( unsigned char, unsigned char );
 extern void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps );
 extern void set_sprite_bitamps_from_spritesheet( unsigned char sprite_layer, unsigned char *sprite_bitmaps );
+extern void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_layer, unsigned char *sprite_bitmaps );
 
 // CHARACTER MAP
 extern void tpu_cs( void );
