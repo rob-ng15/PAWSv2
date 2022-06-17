@@ -233,8 +233,7 @@ int main( int argc, char **argv ) {
 
     init_scene(spheres, lights);
 
-    gpu_cs(); screen_mode( 0, MODE_RGB, 0 );
-    gpu_pixelblock_start( 0, 0, 320 );
+    gpu_cs(); gpu_pixelblock_mode( PB_WRITEALL ); bitmap_256( TRUE ); gpu_pixelblock_start( 0, 0, 320 );
 
     render(spheres, NB_SPHERES, lights, NB_LIGHTS);
 

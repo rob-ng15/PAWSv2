@@ -40,17 +40,22 @@ unit background_writer(
     simple_dualport_bram_port1 copper_alts,
     simple_dualport_bram_port1 copper_colours
 ) <reginputs> {
-    copper_commands.addr1 := copper_address; copper_commands.wdata1 := copper_command; copper_commands.wenable1 := copper_program;
-    copper_conditions.addr1 := copper_address; copper_conditions.wdata1 := copper_condition; copper_conditions.wenable1 := copper_program;
-    copper_coordinates.addr1 := copper_address; copper_coordinates.wdata1 := copper_coordinate; copper_coordinates.wenable1 := copper_program;
-    copper_modes.addr1 := copper_address; copper_modes.wdata1 := copper_mode; copper_modes.wenable1 := copper_program;
-    copper_alts.addr1 := copper_address; copper_alts.wdata1 := copper_alt; copper_alts.wenable1 := copper_program;
-    copper_colours.addr1 := copper_address; copper_colours.wdata1 := copper_colour; copper_colours.wenable1 := copper_program;
+    copper_commands.wenable1 := 1;                  copper_conditions.wenable1 := 1;                    copper_coordinates.wenable1 := 1;
+    copper_modes.wenable1 := 1;                     copper_alts.wenable1 := 1;                          copper_colours.wenable1 := 1;
 
     always_after {
         switch( background_update ) {
-            case 2b00: {}                                           // CHANGE A PROGRAM LINE IN THE COPPER MEMORY
-            case 2b01: { BACKGROUNDcolour = backgroundcolour; }     // UPDATE THE BACKGROUND FROM RISC-V
+            case 2b00: {                                                                                            // CHANGE A PROGRAM LINE IN THE COPPER MEMORY
+                if( copper_program ) {
+                    copper_commands.addr1 = copper_address; copper_commands.wdata1 = copper_command;
+                    copper_conditions.addr1 = copper_address; copper_conditions.wdata1 = copper_condition;
+                    copper_coordinates.addr1 = copper_address; copper_coordinates.wdata1 = copper_coordinate;
+                    copper_modes.addr1 = copper_address; copper_modes.wdata1 = copper_mode;
+                    copper_alts.addr1 = copper_address; copper_alts.wdata1 = copper_alt;
+                    copper_colours.addr1 = copper_address; copper_colours.wdata1 = copper_colour;
+                }
+            }
+            case 2b01: { BACKGROUNDcolour = backgroundcolour; }                                                     // UPDATE THE BACKGROUND FROM RISC-V
             case 2b10: { BACKGROUNDalt = backgroundcolour_alt; }
             case 2b11: { BACKGROUNDmode = backgroundcolour_mode; }
         }
@@ -80,17 +85,16 @@ unit background_copper(
     simple_dualport_bram_port0 copper_alts,
     simple_dualport_bram_port0 copper_colours
 ) <reginputs> {
-    uint1   copper_execute = uninitialised;         uint1   copper_branch = uninitialised;
-    uint7   PC = 0;                                 uint7   PCplus1 <:: PC + 1;
+    uint1   copper_execute = uninitialised;         uint8   PC = 0;                                 uint8   PCplus1 <:: PC + 1;
     uint10  copper_variable = 0;
 
     // COPPER PROGRAM ENTRY
     uint10  value <:: copper_coordinates.rdata0[10,1]? copper_cpu_input : copper_coordinates.rdata0[0,10];
 
     // COPPER FLAGS
-    copper_commands.addr0 := PC; copper_conditions.addr0 := PC; copper_coordinates.addr0 := PC;
-    copper_modes.addr0 := PC; copper_alts.addr0 := PC; copper_colours.addr0 := PC;
-    copper_execute := 0; copper_branch := 0;
+    copper_commands.addr0 := PC;                    copper_conditions.addr0 := PC;                      copper_coordinates.addr0 := PC;
+    copper_modes.addr0 := PC;                       copper_alts.addr0 := PC;                            copper_colours.addr0 := PC;
+    copper_execute := 0;
 
     always_after {
         // UPDATE THE BACKGROUND GENERATOR FROM THE COPPER
@@ -99,14 +103,14 @@ unit background_copper(
                 case 3b000: {
                     // JUMP ON CONDITION
                     switch( copper_conditions.rdata0 ) {
-                        default: { copper_branch = 1; }
-                        case 3b001: { copper_branch = ( pix_vblank == value[0,1] ); }
-                        case 3b010: { copper_branch = ( pix_active == value[0,1] ); }
-                        case 3b011: { copper_branch = ( pix_y < value ); }
-                        case 3b100: { copper_branch = ( pix_x < value ); }
-                        case 3b101: { copper_branch = ( copper_variable < value ); }
+                        default: { copper_execute = 1; }
+                        case 3b001: { copper_execute = ( pix_vblank == value[0,1] ); }
+                        case 3b010: { copper_execute = ( pix_active == value[0,1] ); }
+                        case 3b011: { copper_execute = ( pix_y < value ); }
+                        case 3b100: { copper_execute = ( pix_x < value ); }
+                        case 3b101: { copper_execute = ( copper_variable < value ); }
                     }
-                    PC = copper_branch ? copper_colours.rdata0 : PCplus1;
+                    PC = copper_execute ? copper_colours.rdata0 : PCplus1;
                 }
                 default: {
                     switch( copper_commands.rdata0 ) {
@@ -117,22 +121,19 @@ unit background_copper(
                         case 3b101: { copper_execute = ( copper_variable == ( value[0,1] ? pix_x : pix_y ) ); }
                         case 3b110: {
                             copper_variable = copper_conditions.rdata0[0,1] ? value : copper_variable + ( copper_conditions.rdata0[2,1] ? ( -value ) : value );
-                            copper_branch = 1;
                         }
                         default: {
                             if( copper_conditions.rdata0[0,1] ) { BACKGROUNDcolour = copper_variable; }
                             if( copper_conditions.rdata0[1,1] ) { BACKGROUNDalt = copper_variable; }
                             if( copper_conditions.rdata0[2,1] ) { BACKGROUNDmode = copper_variable;}
-                            copper_branch = 1;
                         }
                     }
                     if( copper_execute ) {
                         if( copper_conditions.rdata0[0,1] ) { BACKGROUNDcolour = copper_colours.rdata0; }
                         if( copper_conditions.rdata0[1,1] ) { BACKGROUNDalt = copper_alts.rdata0; }
                         if( copper_conditions.rdata0[2,1] ) { BACKGROUNDmode = copper_modes.rdata0; }
-                        copper_branch = 1;
                     }
-                    if( copper_branch ) { PC = PCplus1; }
+                    if( &copper_commands.rdata0[1,2] | copper_execute ) { PC = PCplus1; }
                 }
             }
         } else{
@@ -153,10 +154,10 @@ unit background_display(
     input   uint8   b_colour,
     input   uint8   b_alt,
     input   uint4   b_mode,
-    input   uint2   colourmode
+    input   uint1   colourmode
 ) <reginputs> {
     uint1   tophalf <:: ( pix_y < 240 );            uint1   lefthalf <:: ( pix_x < 320 );               uint2   checkmode <:: b_mode - 7;
-    uint2   condition = uninitialised;
+    uint2   condition = uninitialised;              uint8   greys[4] = { 8h00, 8h5b, 8had, 8hff };
 
     rainbow RAINBOW( colourmode <: colourmode, y <: pix_y[6,3] );
     starfield STARS( pix_x <: pix_x, pix_y <: pix_y );
@@ -184,16 +185,16 @@ unit background_display(
     always_after {
         // SWITCH TO THE APPROPRIATE COLOUR
         switch( condition ) {
-            case 0: { pixel = b_alt; }                                              // EVERYTHING ELSE
+            case 0: { pixel = b_alt; }                                                  // EVERYTHING ELSE
             case 1: { pixel = b_colour; }
-            case 2: { pixel = RAINBOW.colour; }                                     // RAINBOW
-            case 3: { pixel = {3{staticGenerator}}; }                               // STATIC
+            case 2: { pixel = RAINBOW.colour; }                                         // RAINBOW
+            case 3: { pixel = greys[staticGenerator]; }                                 // STATIC
         }
     }
 }
 
 unit rainbow(
-    input   uint2   colourmode,
+    input   uint1   colourmode,
     input   uint3   y,
     output  uint8   colour
 ) <reginputs> {
@@ -201,8 +202,6 @@ unit rainbow(
     // DKRED RED ORANGE YELLOW GREEN BLUE DKPURPLE VIOLET
     uint8   rainbow[] = {
         8h80, 8hc1, 8he1, 8hf9, 8h38, 8h0f, 8h45, 8ha7,                             // RGBM
-        8h80, 8he0, 8hf0, 8hfc, 8h1c, 8h03, 8h42, 8hb3,                             // RGB
-        7h20, 7h30, 7h38, 7h3c, 7h0c, 7h03, 7h11, 7h7c,                             // PAWSv2,
         8hff, 8hdf, 8hbf, 8h9f, 8h7f, 8h5f, 8h3f, 8h1f                              // GREY GRADIENTS
 
     };

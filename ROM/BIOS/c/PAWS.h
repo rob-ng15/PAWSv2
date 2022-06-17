@@ -280,14 +280,15 @@ typedef struct {
 // COLOURS - RGBM MODE
 #define TRANSPARENT 0x40
 #define BLACK 0x00
-#define WHITE 0xff
 #define BLUE 0x06
-#define GREEN 0x30
-#define RED 0xc0
+#define GREEN 0x38
+#define CYAN 0x3f
+#define RED 0xc1
 #define MAGENTA 0xc7
 #define YELLOW 0xf9
-#define GREY1 0x52
-#define GREY2 0xa4
+#define WHITE 0xff
+#define GREY1 0x5b
+#define GREY2 0xad
 
 #define UK_GOLD 241
 #define UK_BLUE 30

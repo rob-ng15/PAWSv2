@@ -1,4 +1,4 @@
-include ../makefile-lto.inc
+include ../makefile.inc
 
 PROJECT=MY_BASIC
 PROJECTTYPE=COMPUTER

@@ -122,6 +122,7 @@ extern void DoDrawList2Dscale( struct DrawList2D *, short, short, short, float )
 
 // SPRITES - MAIN ACCESS
 extern void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes );
+extern void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes );
 extern short get_sprite_attribute( unsigned char, unsigned char , unsigned char );
 extern void set_sprite_attribute( unsigned char, unsigned char, unsigned char, short );
 extern void update_sprite( unsigned char, unsigned char, unsigned short );

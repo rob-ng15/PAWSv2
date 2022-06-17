@@ -118,20 +118,7 @@ void display_map( void ) {
         gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, &BACKDROPS[0][ i * 320 ] );
     }
 
-    // DISPLAY A SMURF
-    set_sprite( UPPER_LAYER, 0, 1, 32, 32, 0, SPRITE_DOUBLE );
-    set_sprite( UPPER_LAYER, 1, 1, 32, 64, 0, SPRITE_DOUBLE );
-    set_sprite( UPPER_LAYER, 2, 1, 64, 32, 0, SPRITE_DOUBLE );
-    set_sprite( UPPER_LAYER, 3, 1, 64, 64, 0, SPRITE_DOUBLE );
-
     SMTSTART( (unsigned int )smt_thread );
-
-    for( int i = 0; i < 16; i ++ ) {
-        sleep1khz( 400, 0 );
-        for( int s = 0; s < 4; s++ ) {
-            set_sprite_attribute( UPPER_LAYER, s, SPRITE_TILE, i & 7 );
-        }
-    }
 
     for( int i = 0; i <=8; i++ ) { screen_dimmer( i ); sleep1khz( 100, 0 ); }
 }
@@ -143,6 +130,20 @@ int main( void ) {
 
     gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, BACKDROPS[2] );
     for( int i = 8; i >= 0; i-- ) { screen_dimmer( i ); sleep1khz( 100, 0 ); }
+
+    // DISPLAY A SMURF AND ANIMATE
+    set_sprite32( UPPER_LAYER, 0, 1, 64, 32, 0, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 4, 1, 128, 32, 0, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 8, 1, 192, 32, 0, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 12, 1, 256, 32, 0, SPRITE_DOUBLE );
+    for( int i = 0; i < 16; i ++ ) {
+        sleep1khz( 400, 0 );
+        set_sprite32( UPPER_LAYER, 0, 1, 64, 32, i & 7, SPRITE_DOUBLE );
+        set_sprite32( UPPER_LAYER, 4, 1, 128, 32, i & 7, SPRITE_DOUBLE );
+        set_sprite32( UPPER_LAYER, 8, 1, 192, 32, i & 7, SPRITE_DOUBLE );
+        set_sprite32( UPPER_LAYER, 12, 1, 256, 32, i & 7, SPRITE_DOUBLE );
+    }
+
     sleep1khz( 2000, 0 );
 }
 

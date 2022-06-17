@@ -1039,6 +1039,26 @@ void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsign
     }
 }
 
+// SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
+void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
+    static unsigned char positions[][4] = {
+        { 0, 1, 2, 3 }, // NO ACTION
+        { 2, 3, 0, 1 }, // REFLECT X
+        { 1, 0, 3, 2 }, // REFLECT Y
+        { 3, 2, 1, 0 }, // REFLECT X AND Y
+        { 0, 1, 2, 3 }, // ROTATE 0
+        { 2, 0, 3, 1 }, // ROTATE 90
+        { 3, 2, 1, 0 }, // ROTATE 180
+        { 1, 3, 0, 2 }, // ROTATE 270
+    };
+    int size = (  sprite_attributes & 8 ) ? 32 : 16;
+
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][0], active, x - size, y - size, tile, sprite_attributes );
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][1], active, x - size, y, tile, sprite_attributes );
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][2], active, x, y - size, tile, sprite_attributes );
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][3], active, x, y, tile, sprite_attributes );
+}
+
 // SET or GET ATTRIBUTES for sprite_number in sprite_layer
 //  attribute == 0 active status ( 0 == inactive, 1 == active )
 //  attribute == 1 tile number ( 0 to 7 )
@@ -1623,10 +1643,10 @@ void *stdscr;
 typedef union curses_cell {
     unsigned int bitfield;
     struct {
-        unsigned int pad : 9;
+        unsigned int pad : 7;
         unsigned int character : 9;
-        unsigned int background : 7;
-        unsigned int foreground : 7;
+        unsigned int background : 8;
+        unsigned int foreground : 8;
     } cell;
 } __curses_cell;
 
@@ -1875,8 +1895,8 @@ int mvprintw( int y, int x, const char *fmt,... ) {
 
 int attron( int attrs ) {
     if( attrs & COLORS ) {
-        __curses_fore = __curses_foregroundcolours[ attrs & 0x7f ];
-        __curses_back = __curses_backgroundcolours[ attrs & 0x7f ];
+        __curses_fore = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ];
+        __curses_back = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ];
         __update_tpu();
     }
     if( attrs & A_NORMAL ) {
@@ -1905,8 +1925,8 @@ int attroff( int attrs ) {
 }
 
 void bkgdset( int attrs ) {
-    __curses_fore = __curses_foregroundcolours[ attrs & 0x7f ]; *CURSES_FOREGROUND = __curses_foregroundcolours[ attrs & 0x7f ];
-    __curses_back = __curses_backgroundcolours[ attrs & 0x7f ]; *CURSES_BACKGROUND = __curses_backgroundcolours[ attrs & 0x7f ];
+    __curses_fore = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ]; *CURSES_FOREGROUND = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ];
+    __curses_back = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ]; *CURSES_BACKGROUND = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ];
 }
 
 int deleteln( void ) {
