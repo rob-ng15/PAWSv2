@@ -914,7 +914,7 @@ void backgrounddemo( void ) {
     copper_program( 0, COPPER_SET, 7, 0, BKG_SNOW, BLACK, WHITE );
     copper_program( 1, COPPER_VARIABLE, COPPER_SET_VARIABLE, 0, 0, 0, 0 );
     copper_program( 2, COPPER_VARIABLE, COPPER_ADD_VARIABLE, 1, 0, 0, 0 );
-    copper_program( 3, COPPER_SET_FROM_VARIABLE, 1, 0, 0, 0, 0 );
+    copper_program( 3, COPPER_SET_FROM_VARIABLE, 2, 0, 0, 0, 0 );
     copper_program( 4, COPPER_JUMP, COPPER_JUMP_IF_VARIABLE_LESS, 256, 0, 0, 2 );
     copper_program( 5, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 1 );
     copper_startstop( 1 );

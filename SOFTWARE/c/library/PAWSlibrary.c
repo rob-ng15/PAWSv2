@@ -413,7 +413,7 @@ void set_tilemap_bitamps_from_spritesheet( unsigned char tm_layer, unsigned char
             *( tm_layer ? UPPER_TM_WRITER_TILE_NUMBER : LOWER_TM_WRITER_TILE_NUMBER ) = xt * 8 + yt;
             for( int y = 0; y < 16; y++ ) {
                 for( int x = 0; x < 16; x++ ) {
-                    *(tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_TILE_NUMBER) = tile_bitmaps[ xt * 16 + yt * 2048 + y * 128 + x ];
+                    *(tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR) = tile_bitmaps[ xt * 16 + yt * 2048 + y * 128 + x ];
                 }
             }
         }

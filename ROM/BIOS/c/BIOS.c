@@ -588,9 +588,9 @@ int main( void ) {
 
     // FILE SELECTOR
     gpu_outputstringcentre( WHITE, 72, 1, "Select File", 0 );
-    gpu_outputstringcentre( WHITE, 88, 0, "SELECT USING FIRE 1", 0 );
-    gpu_outputstringcentre( WHITE, 96, 0, "SCROLL USING LEFT & RIGHT", 0 );
-    gpu_outputstringcentre( WHITE, 104, 0, "RETURN FROM DIRECTORY USING UP", 0 );
+    gpu_outputstringcentre( WHITE, 88, 0, "SELECT USING \x0f", 0 );
+    gpu_outputstringcentre( WHITE, 96, 0, "SCROLL USING \x1b & \x1a", 0 );
+    gpu_outputstringcentre( WHITE, 104, 0, "RETURN FROM DIRECTORY USING \x18", 0 );
     gpu_outputstringcentre( RED, 144, 1, "No Files Found", 0 );
 
     // CALL FILEBROWSER
