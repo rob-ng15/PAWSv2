@@ -154,60 +154,6 @@ extern void terminal_printf( const char *,... );
 extern void netppm_display( unsigned char *, unsigned char );
 extern void netppm_decoder( unsigned char *, unsigned char *);
 
-// nanojpeg.c from https://keyj.emphy.de/nanojpeg/
-#ifndef _NANOJPEG_H
-typedef enum _nj_result {
-    NJ_OK = 0,        // no error, decoding successful
-    NJ_NO_JPEG,       // not a JPEG file
-    NJ_UNSUPPORTED,   // unsupported format
-    NJ_OUT_OF_MEM,    // out of memory
-    NJ_INTERNAL_ERR,  // internal error
-    NJ_SYNTAX_ERROR,  // syntax error
-    __NJ_FINISHED,    // used internally, will never be reported
-} nj_result_t;
-extern void njInit(void);
-extern nj_result_t njDecode(const void* jpeg, const int size);
-extern int njGetWidth(void);
-extern int njGetHeight(void);
-extern int njIsColor(void);
-extern unsigned char* njGetImage(void);
-extern int njGetImageSize(void);
-extern void njDone(void);
-#endif
-
-// SIMPLE CURSES
-extern void initscr( void );
-extern int endwin( void );
-extern int refresh( void );
-extern int clear( void );
-extern void cbreak( void );
-extern void echo( void );
-extern void noecho( void );
-extern void scroll( void );
-extern void noscroll( void );
-extern void curs_set( int );
-extern void autorefresh( int );
-extern int start_color( void );
-extern bool has_colors( void );
-extern bool can_change_color( void );
-extern int init_pair( short pair, short f, short b );
-extern int init_color( short color, short r, short g, short b );
-extern int move( int y, int x );
-extern void getyx( int *y, int *x );
-extern int addch( unsigned char ch );
-extern int mvaddch( int y, int x, unsigned char ch );
-extern int printw( const char *fmt,... );
-extern int mvprintw( int y, int x, const char *fmt,... );
-extern int attron( int attrs );
-extern int attroff( int attrs );
-extern void bkgdset( int attrs );
-extern int deleteln( void );
-extern int clrtoeol( void );
-extern int clrtobot( void );
-extern int intrflush( void *, bool );
-extern int keypad( void *, bool );
-extern void *stdscr;
-
 // SDCARD using PAWS fat32
 extern unsigned char *sdcard_selectfile( char *, char *, unsigned int *, char *);
 

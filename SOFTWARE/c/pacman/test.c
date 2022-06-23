@@ -16,17 +16,17 @@ char pacmaze[60][28] = {
     "B EDDE EE EDDDDDDE EE EDDE B",
     "3    r  r        r  r    r 1",
     "B EDDE DD EDDFFDDE DD EDDE B",
-    "3 ssst 31 sssr sst 13 ssst 1",
+    "3 ssst 31 sssr sst 31 ssst 1",
     "B      DD    DD    DD      B",
-    "3      31    31    13      1",
+    "3      31    31    31      1",
     "ABBBBE DEDDE DD EDDED EBBBBA",
-    "sssssr 3sssr 31    t3  sssst",
+    "sssssr 3sssr 31    t1  sssst",
     "     B DEDDE EE EDDED B     ",
-    "     3 3 sst st sssr3 1     ",
+    "     3 3 sst st sssr1 1     ",
     "     B DD          DD B     ",
-    "     3 31          13 1     ",
+    "     3 31          31 1     ",
     "     B DD GBHIJHBG DD B     ",
-    "     3 31  sr   sr 13 1     ",
+    "     3 31  sr   sr 31 1     ",
     "BBBBBE EE B      B EE EBBBBB",
     "     t st 1      3 st s     ",
     "          B      B          ", // TUNNEL
@@ -34,11 +34,11 @@ char pacmaze[60][28] = {
     "BBBBBE EE B      B EE EBBBBB",
     "sssssr  r 1      3  r  sssss",
     "     B DD GBBBBBBG DD B     ",
-    "     3 31 s      t 13 1     ",
+    "     3 31 s      t 31 1     ",
     "     B DD          DD B     ",
-    "     3 31          13 1     ",
+    "     3 31          31 1     ",
     "     B DD EDDDDDDE DD B     ",
-    "     3 31        r 13 1     ",
+    "     3 31        r 31 1     ",
     "ABBBBE EE EDDFFDDE EE EBBBBA",
     "     t st sssr sst st s    r",
     "B EDDE EDDDE DD EDDDE EDDE B",
@@ -46,11 +46,21 @@ char pacmaze[60][28] = {
     "B EDED EDDDE EE EDDDE DEDE B",
     "3 ssr1 sssst st sssst 3 st 1",
     "B   DD                DD   B",
-    "3   31                13   1",
+    "3   31                31   1",
     "KDE DD EE EDDDDDDE EE DD EDC",
-    "3 r 31  r        r  r 13   1",
+    "3 r 31  r        r  r 31   1",
     "CDE EE DD EDDFFDDE DD EE EDK",
-    "3 t st 31 sssstssr 13 st ss1",
+    "3st st 31 sssr sst 31 st ss1",
+    "B      DD    DD    DD      B",
+    "3      31    31    31      1",
+    "B EDDDDEEDDE DD EDDEEDDDDE B",
+    "3      ts  r 31    ts    r 1",
+    "B EDDDDDDDDE EE EDDDDDDDDE B",
+    "3 ssssssssst st ssssssssst 1",
+    "B                          B",
+    "3                          1",
+    "ABBBBBBBBBBBBBBBBBBBBBBBBBBA",
+    "ssssssssssssssssssssssssssst"
 
 };
 
@@ -81,7 +91,7 @@ void drawmaze() {
                             break;
             }
             tile = ( pacmaze[ y * 2 ][ x ] == ' ' ) ? 0 : pacmaze[ y * 2 ][ x ] - '@';
-            set_tilemap_tile( LOWER_LAYER, x + 4, y + 1, tile, action );
+            set_tilemap_tile( LOWER_LAYER, x + 7, y + 1, tile, action );
         }
     }
 }

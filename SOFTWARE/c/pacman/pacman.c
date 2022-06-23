@@ -131,13 +131,20 @@
     As mentioned above, there's a whole little function vocabulary built around
     time triggers, but those are hopefully all self-explanatory.
 */
-#include "sokol_app.h"
-#include "sokol_gfx.h"
-#include "sokol_audio.h"
-#include "sokol_glue.h"
 #include <assert.h>
 #include <string.h> // memset()
 #include <stdlib.h> // abs()
+
+#include <PAWSlibrary.h>
+
+#define int8_t char
+#define int16_t short
+#define int32_t int
+#define int64_t long
+#define uint8_t unsigned char
+#define uint16_t unsigned short
+#define uint32_t unsigned int
+#define uint64_t unsigned long
 
 // config defines and global constants
 #define AUDIO_VOLUME (0.5f)
@@ -498,20 +505,20 @@ static struct {
         // up to 16 debug markers
         debugmarker_t debug_marker[NUM_DEBUG_MARKERS];
 
-        // sokol-gfx resources
-        sg_pass_action pass_action;
-        struct {
-            sg_buffer vbuf;
-            sg_image tile_img;
-            sg_image palette_img;
-            sg_image render_target;
-            sg_pipeline pip;
-            sg_pass pass;
-        } offscreen;
-        struct {
-            sg_buffer quad_vbuf;
-            sg_pipeline pip;
-        } display;
+//        // sokol-gfx resources
+//        sg_pass_action pass_action;
+//        struct {
+//            sg_buffer vbuf;
+//            sg_image tile_img;
+//            sg_image palette_img;
+//            sg_image render_target;
+//            sg_pipeline pip;
+//            sg_pass pass;
+//        } offscreen;
+//        struct {
+//            sg_buffer quad_vbuf;
+//            sg_pipeline pip;
+//        } display;
 
         // intermediate vertex buffer for tile- and sprite-rendering
         int num_vertices;
@@ -667,7 +674,7 @@ static const sound_desc_t snd_frightened = {
 static void init(void);
 static void frame(void);
 static void cleanup(void);
-static void input(const sapp_event*);
+static void input();
 
 static void start(trigger_t* t);
 static bool now(trigger_t t);
@@ -699,19 +706,6 @@ static const uint8_t rom_hwcolors[32];
 static const uint8_t rom_palette[256];
 static const uint8_t rom_wavetable[256];
 
-/*== APPLICATION ENTRY AND CALLBACKS =========================================*/
-sapp_desc sokol_main(int argc, char* argv[]) {
-    return (sapp_desc) {
-        .init_cb = init,
-        .frame_cb = frame,
-        .cleanup_cb = cleanup,
-        .event_cb = input,
-        .width = DISPLAY_TILES_X * TILE_WIDTH * 2,
-        .height = DISPLAY_TILES_Y * TILE_HEIGHT * 2,
-        .window_title = "pacman.c"
-    };
-}
-
 static void init(void) {
     gfx_init();
     snd_init();
@@ -727,7 +721,8 @@ static void init(void) {
 static void frame(void) {
 
     // run the game at a fixed tick rate regardless of frame rate
-    uint32_t frame_time_ns = (uint32_t) (sapp_frame_duration() * 1000000000.0);
+//    uint32_t frame_time_ns = (uint32_t) (sapp_frame_duration() * 1000000000.0);
+    uint32_t frame_time_ns = (uint32_t) 33333333;
     // clamp max frame time (so the timing isn't messed up when stopping in the debugger)
     if (frame_time_ns > 33333333) {
         frame_time_ns = 33333333;
@@ -762,36 +757,36 @@ static void frame(void) {
     snd_frame(frame_time_ns);
 }
 
-static void input(const sapp_event* ev) {
-    if (state.input.enabled) {
-        if ((ev->type == SAPP_EVENTTYPE_KEY_DOWN) || (ev->type == SAPP_EVENTTYPE_KEY_UP)) {
-            bool btn_down = ev->type == SAPP_EVENTTYPE_KEY_DOWN;
-            switch (ev->key_code) {
-                case SAPP_KEYCODE_UP:
-                case SAPP_KEYCODE_W:
-                    state.input.up = state.input.anykey = btn_down;
-                    break;
-                case SAPP_KEYCODE_DOWN:
-                case SAPP_KEYCODE_S:
-                    state.input.down = state.input.anykey = btn_down;
-                    break;
-                case SAPP_KEYCODE_LEFT:
-                case SAPP_KEYCODE_A:
-                    state.input.left = state.input.anykey = btn_down;
-                    break;
-                case SAPP_KEYCODE_RIGHT:
-                case SAPP_KEYCODE_D:
-                    state.input.right = state.input.anykey = btn_down;
-                    break;
-                case SAPP_KEYCODE_ESCAPE:
-                    state.input.esc = state.input.anykey = btn_down;
-                    break;
-                default:
-                    state.input.anykey = btn_down;
-                    break;
-            }
-        }
-    }
+static void input() {
+//    if (state.input.enabled) {
+//        if ((ev->type == SAPP_EVENTTYPE_KEY_DOWN) || (ev->type == SAPP_EVENTTYPE_KEY_UP)) {
+//            bool btn_down = ev->type == SAPP_EVENTTYPE_KEY_DOWN;
+//            switch (ev->key_code) {
+//                case SAPP_KEYCODE_UP:
+//                case SAPP_KEYCODE_W:
+//                    state.input.up = state.input.anykey = btn_down;
+//                    break;
+//                case SAPP_KEYCODE_DOWN:
+//                case SAPP_KEYCODE_S:
+//                    state.input.down = state.input.anykey = btn_down;
+//                    break;
+//                case SAPP_KEYCODE_LEFT:
+//                case SAPP_KEYCODE_A:
+//                    state.input.left = state.input.anykey = btn_down;
+//                    break;
+//                case SAPP_KEYCODE_RIGHT:
+//                case SAPP_KEYCODE_D:
+//                    state.input.right = state.input.anykey = btn_down;
+//                    break;
+//                case SAPP_KEYCODE_ESCAPE:
+//                    state.input.esc = state.input.anykey = btn_down;
+//                    break;
+//                default:
+//                    state.input.anykey = btn_down;
+//                    break;
+//            }
+//        }
+//    }
 }
 
 static void cleanup(void) {

@@ -234,9 +234,10 @@ $$end
     );
 
     video_memmap VIDEO_Map <@clock_io,!reset> (
+        video_clock <: $clock_25mhz$,
+        gpu_clock <: $clock_25mhz$,
         memoryAddressDirect <: CPU.address,
         byteaccess <: byteaccess,
-        video_clock <: $clock_25mhz$,
         memoryAddress <: CPU.address[0,12],
         writeData <: CPU.writedata,
 $$if HDMI then
@@ -331,14 +332,10 @@ unit bramcontroller_write(
     input   uint16  writedata
 ) <reginputs> {
     // FLAGS FOR BRAM ACCESS
-    ram.wenable1 := 0; ram.addr1 := address[1,14];
+    ram.wenable1 := 0; ram.addr1 := address[1,14]; ram.wdata1 := byteaccess ? { {2{writedata[0,8]}} } : writedata;
 
     always_after {
-        ram.wdata1 = byteaccess ? { {2{writedata[0,8]}} } : writedata;
-
-        if( writeflag ) {
-            ram.wenable1 = byteaccess ? address[0,1] ? 2b10 : 2b01 : 2b11;
-        }
+        if( writeflag ) { ram.wenable1 = byteaccess ? address[0,1] ? 2b10 : 2b01 : 2b11; }
     }
 }
 
@@ -407,10 +404,8 @@ unit cachecontroller(
     uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
     uint1   doreadsdram <:: ( doread | ( dowrite & byteaccess ) );
 
-    // SDRAM ACCESS
-    SDRAM.readflag := 0; SDRAM.writeflag := 0;
-
-    DCACHEW.update := 0; ICACHEW.update := 0;
+    // SDRAM ACCESS AND CACHE UPDATE FLAGS
+    SDRAM.readflag := 0; SDRAM.writeflag := 0; DCACHEW.update := 0; ICACHEW.update := 0;
 
     algorithm <autorun> {
         while(1) {
@@ -426,21 +421,21 @@ unit cachecontroller(
                         dowrite = 0;
                     }
                 } else {
-                    busy = 1;
-                    if( DCACHE.needswrite ) {                                                                   // CHECK IF CACHE LINE IS OCCUPIED
-                        if( SDRAM.busy ) { while( SDRAM.busy ) {} } else { SDRAM.writeflag = 0; }                   // WAIT FOR SDRAM
-                        SDRAM.address = DCACHE.cacheaddress; SDRAM.writeflag = 1;                                   // EVICT FROM CACHE TO SDRAM
+                    busy = 1;                                                                                               // CACHE MISS
+                    if( ( DCACHE.needswrite | doreadsdram ) & SDRAM.busy ) { while( SDRAM.busy ) {} } else { busy = 1; }        // WAIT FOR SDRAM IF BUSY AND NEEDED
+                    if( DCACHE.needswrite ) {                                                                                   // CHECK IF CACHE LINE IS OCCUPIED
+                        SDRAM.address = DCACHE.cacheaddress;                                                                    // EVICT FROM CACHE TO SDRAM
+                        if( doreadsdram ) { SDRAM.writeflag = 1; while( SDRAM.busy ) {} } else { SDRAM.writeflag = 1; }         // WRITE TO SDRAM, WAIT IF NEEDED FOR READING
                     } else {
                         SDRAM.writeflag = 0;
                     }
-                    if( doreadsdram ) {                                                                         // NEED TO READ SDRAM
-                        if( SDRAM.busy ) { while( SDRAM.busy ) {} } else { SDRAM.readflag = 0; }                    // WAIT FOR SDRAM
-                        SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                         // READ FOR READ OR 8 BIT WRITE
-                        DCACHEW.update = cacheselect;                                                               // UPDATE THE CACHE
-                        ICACHEW.update = ~cacheselect;                                                              // UPDATE ICACHE IF NEEDED
+                    if( doreadsdram ) {                                                                                         // NEED TO READ SDRAM
+                        SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                     // READ FOR READ OR 8 BIT WRITE
+                        DCACHEW.update = cacheselect;                                                                           // UPDATE THE CACHE
+                        ICACHEW.update = ~cacheselect;                                                                          // UPDATE ICACHE IF NEEDED
                     } else {
-                        DCACHEW.update = dowrite;                                                               // UPDATE CACHE FOR 16 BIT WRITE
-                        ICACHEW.update = Icacheupdate;                                                          // UPDATE ICACHE IF NEEDED
+                        DCACHEW.update = dowrite;                                                                               // UPDATE CACHE FOR 16 BIT WRITE
+                        ICACHEW.update = Icacheupdate;                                                                          // UPDATE ICACHE IF NEEDED
                     }
                     busy = 0;
                 }
@@ -468,7 +463,7 @@ unit dcache_read(
     // DATA CACHE for SDRAM - CACHE SIZE DETERMINED BY L1Dsize DEFINED ABOVE, MUST BE A POWER OF 2
     // DATA CACHE ADDRESS IS LOWER bits of the address, dropping the BYTE address bit
     // DATA CACHE TAG IS REMAINING bits of the address + 1 bit for valid flag + 1 bit for needwritetosdram flag
-    always_before {
+    always_after {
         cache.addr0 = address[1,$L1Dcacheaddrwidth$]; tags.addr0 = address[1,$L1Dcacheaddrwidth$]; rdata = cache.rdata0;
         tagmatch = ( { L1Dcachetag(tags.rdata0).valid, L1Dcachetag(tags.rdata0).partaddress } == { 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] } );
         cacheaddress = { L1Dcachetag(tags.rdata0).partaddress, address[1,$L1Dcacheaddrwidth$], 1b0 };
@@ -502,7 +497,7 @@ unit icache_read(
     output! uint16  rdata
 ) <reginputs> {
     // INSTRUCTION CACHE for SDRAM, DEFINED AS ABOVE EXCEPT NO NEED FOR needwritetosdram flag
-    always_before {
+    always_after {
         cache.addr0 = address[1,$L1Icacheaddrwidth$]; tags.addr0 = address[1,$L1Icacheaddrwidth$]; rdata = cache.rdata0;
         tagmatch = ( tags.rdata0 == { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] } );
     }
