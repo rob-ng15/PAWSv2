@@ -3,6 +3,35 @@ unit passthrough(input uint1 i,output! uint1 o)
   always { o=i; }
 }
 
+// CHARACTER GENERATOR ROMS FOR TERMINAL AND CHARACTERMAP
+unit characterrom256(
+    input!  uint8   tile,
+    input!  uint3   y,
+    output! uint8   line
+) <reginputs> {
+    brom uint8 characterGenerator8x8[] = {
+        $include('ROM/characterROM8x8nobold.inc')
+    };
+
+    // Setup the reading of the characterGenerator8x16 ROM
+    characterGenerator8x8.addr := { tile, y };
+    line := characterGenerator8x8.rdata;
+}
+
+unit characterrom512(
+    input!  uint9   tile,
+    input!  uint3   y,
+    output! uint8   line
+) <reginputs> {
+    brom uint8 characterGenerator8x8[] = {
+        $include('ROM/characterROM8x8.inc')
+    };
+
+    // Setup the reading of the characterGenerator8x16 ROM
+    characterGenerator8x8.addr := { tile, y };
+    line := characterGenerator8x8.rdata;
+}
+
 unit video_memmap(
     // CLOCKS
     input   uint1   video_clock,
@@ -74,7 +103,15 @@ $$if HDMI then
         blue    <: video_b
     );
 $$end
-    // CREATE DISPLAY LAYERS
+    // CREATE DISPLAY LAYERS, PREPARE COORDINATES FOR PRE-FETCHERS, ALL LAYERS BUT BACKGROUND
+    // HDMI IMAGE STARTS IMMEDIATELY AFTER VBLANK, VGA HAS A "PORCH" FOR EACH LINE, PART OF HBLANK
+$$if HDMI then
+    uint10   xscreen <: pix_active ? pix_x : 0;
+    uint9    yscreen <: vblank ? 0 : pix_active ? pix_y : pix_y + 1;
+$$else
+    uint10   xscreen <: pix_active ? pix_x : 0;
+    uint9    yscreen <: vblank ? 0 : pix_y;
+$$end
 
     // FLAG FOR hi (640x480) or lo (320x240) SWITCH FOR TILEMAPS
     uint2   hilorez = 0;
@@ -97,8 +134,8 @@ $$end
         video_clock <: video_clock,
         video_reset <: video_reset,
         gpu_clock <: gpu_clock,
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+        pix_x      <: xscreen,
+        pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
         memoryAddress <: memoryAddress,
@@ -114,8 +151,8 @@ $$end
     charactermap_memmap CHARACTER_MAP(
         video_clock <: video_clock,
         video_reset <: video_reset,
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+        pix_x      <: xscreen,
+        pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
         blink <: blink,
@@ -127,8 +164,8 @@ $$end
     sprite_memmap LOWER_SPRITE(
         video_clock <: video_clock,
         video_reset <: video_reset,
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+        pix_x      <: xscreen,
+        pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
         memoryAddress <: memoryAddress,
@@ -141,8 +178,8 @@ $$end
     sprite_memmap UPPER_SPRITE(
         video_clock <: video_clock,
         video_reset <: video_reset,
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+        pix_x      <: xscreen,
+        pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
         memoryAddress <: memoryAddress,
@@ -158,8 +195,8 @@ $$end
     terminal_memmap TERMINAL(
         video_clock <: video_clock,
         video_reset <: video_reset,
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+        pix_x      <: xscreen,
+        pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
         blink <: blink,
@@ -172,8 +209,8 @@ $$end
         video_clock <: video_clock,
         video_reset <: video_reset,
         lorez <: hilorez[0,1],
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+        pix_x      <: xscreen,
+        pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
         memoryAddress <: memoryAddress,
@@ -183,8 +220,8 @@ $$end
         video_clock <: video_clock,
         video_reset <: video_reset,
         lorez <: hilorez[1,1],
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+        pix_x      <: xscreen,
+        pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
         memoryAddress <: memoryAddress,
@@ -234,8 +271,8 @@ $$end
             // READ IO Memory
             if( memoryRead ) {
                 switch( memoryAddress[8,4] ) {
-                    case 4h1: { readData = memoryAddress[1,1] ? LOWER_TILE.tm_lastaction : LOWER_TILE.tm_active; }
-                    case 4h2: { readData = memoryAddress[1,1] ? UPPER_TILE.tm_lastaction : UPPER_TILE.tm_active; }
+                    case 4h1: { readData = memoryAddress[2,1] ? LOWER_TILE.tm_read : memoryAddress[1,1] ? LOWER_TILE.tm_lastaction : LOWER_TILE.tm_active; }
+                    case 4h2: { readData = memoryAddress[2,1] ? UPPER_TILE.tm_read : memoryAddress[1,1] ? UPPER_TILE.tm_lastaction : UPPER_TILE.tm_active; }
                     case 4h3: {
                         switch( memoryAddress[1,7] ) {
                             $$for i=0,15 do
@@ -480,7 +517,6 @@ unit bitmap_memmap(
     // 64 x 16 x 16 1 bit tilemap for blit1tilemap
     simple_dualport_bram uint16 blit1tilemap <@video_clock,@clock> [ 1024 ] = uninitialized;
     // Character ROM 8x8 x 512 for character blitter
-//    simple_dualport_bram uint8 characterGenerator8x8 <@video_clock,@clock> [] = {file("ROM/CODE437-THINBOLD.bin")};
     simple_dualport_bram uint8 characterGenerator8x8 <@video_clock,@clock> [] = {
         $include('ROM/characterROM8x8.inc')
     };
@@ -520,6 +556,9 @@ unit bitmap_memmap(
     uint9   CTWtile = uninitialized;                uint3   CTWline = uninitialised;                    uint3   CTWnext <:: CTWline + 1;
     uint6   CBTWtile = uninitialized;               uint8   CBTWpixel = uninitialised;                  uint8   CBTWnext <:: CBTWpixel + 1;
 
+    // ADJUST FOR 11bit underflow/overflow for pixel coordinates
+    uint11  minmax <:: ( __signed(writeData) < __signed(16b1111110000000000) ) ? 11b10000000000 : ( __signed(writeData) > __signed(16b0000001111111111) ) ? 11b01111111111 : writeData;
+
     blit1tilemap.wdata1 := writeData; blit1tilemap.wenable1 := 0;
     characterGenerator8x8.wdata1 := writeData; characterGenerator8x8.wenable1 := 0;
     colourblittilemap.wdata1 := writeData; colourblittilemap.wenable1 := 0;
@@ -536,14 +575,14 @@ unit bitmap_memmap(
                 switch( memoryAddress[4,4] ) {
                     case 4h0: {
                         switch( memoryAddress[1,3] ) {
-                            case 3h0: { pixel_writer.gpu_x = writeData; }
-                            case 3h1: { pixel_writer.gpu_y = writeData; }
-                            case 3h2: { pixel_writer.gpu_param0 = writeData; }
-                            case 3h3: { pixel_writer.gpu_param1 = writeData; }
-                            case 3h4: { pixel_writer.gpu_param2 = writeData; }
-                            case 3h5: { pixel_writer.gpu_param3 = writeData; }
-                            case 3h6: { pixel_writer.gpu_param4 = writeData; }
-                            case 3h7: { pixel_writer.gpu_param5 = writeData; }
+                            case 3h0: { pixel_writer.gpu_x = minmax; }
+                            case 3h1: { pixel_writer.gpu_y = minmax; }
+                            case 3h2: { pixel_writer.gpu_param0 = minmax; }
+                            case 3h3: { pixel_writer.gpu_param1 = minmax; }
+                            case 3h4: { pixel_writer.gpu_param2 = minmax; }
+                            case 3h5: { pixel_writer.gpu_param3 = minmax; }
+                            case 3h6: { pixel_writer.gpu_param4 = minmax; }
+                            case 3h7: { pixel_writer.gpu_param5 = minmax; }
                         }
                     }
                     case 4h1: {
@@ -609,10 +648,10 @@ unit bitmap_memmap(
                     }
                     case 4he: {
                         switch( memoryAddress[1,2] ) {
-                            case 2h0: { pixel_writer.crop_left = writeData; }
-                            case 2h1: { pixel_writer.crop_right = writeData; }
-                            case 2h2: { pixel_writer.crop_top = writeData; }
-                            case 2h3: { pixel_writer.crop_bottom = writeData; }
+                            case 2h0: { pixel_writer.crop_left = minmax; }
+                            case 2h1: { pixel_writer.crop_right = minmax; }
+                            case 2h2: { pixel_writer.crop_top = minmax; }
+                            case 2h3: { pixel_writer.crop_bottom = minmax; }
                         }
                     }
                     case 4hf: {
@@ -665,6 +704,7 @@ unit charactermap_memmap(
     // CHARACTER MAP DISPLAY
     uint1   tpu_showcursor = uninitialized;
     character_map character_map_window <@video_clock,!video_reset> (
+        clockCG <: clock,
         charactermap <:> charactermap,
         colourmap <:> colourmap,
         pix_x      <: pix_x,
@@ -691,7 +731,7 @@ unit charactermap_memmap(
 
     always_before {
         // HIDE CURSOR AT RESET + SET CURESES INITIAL TERMINAL TO WHITE ON BLACK
-        if( reset ) { character_map_window.tpu_showcursor = 0; CMW.curses_wipe_background = 0; CMW.curses_wipe_foreground = 63; }
+        if( reset ) { character_map_window.tpu_showcursor = 0; CMW.curses_wipe_background = 0; CMW.curses_wipe_foreground = 255; }
     }
 
     always_after {
@@ -845,6 +885,7 @@ unit terminal_memmap(
     dualport_bram uint8 terminal <@video_clock,@clock> [640] = uninitialized;
 
     terminal terminal_window <@video_clock,!video_reset> (
+        clockCG <: clock,
         terminal <:> terminal,
         pix_x      <: pix_x,
         pix_y      <: pix_y,
@@ -892,11 +933,14 @@ unit tilemap_memmap(
     input   uint6   memoryAddress,
     input   uint1   memoryWrite,
     input   uint16  writeData,
+    output  uint9   tm_read,
+    output  uint6   tm_base_x,
+    output  uint5   tm_base_y,
     output  uint4   tm_lastaction,
     output  uint3   tm_active
 ) <reginputs> {
     // Tiles 64 x 16 x 16 ARRGGBB ( first tile defaults to transparent )
-    simple_dualport_bram uint8 tiles16x16 <@video_clock,@clock> [ 16384 ] = {
+    simple_dualport_bram uint8 tiles16x16[ 16384 ] = {
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
@@ -921,6 +965,7 @@ unit tilemap_memmap(
 
     uint10  dopix_x <: lorez ? pix_x[1,9] : pix_x;  uint10  dopix_y <: lorez ? pix_y[1,9] : pix_y;
     tilemap tile_map <@video_clock,!video_reset> (
+        clockTG <: clock,
         tiles16x16 <:> tiles16x16,
         tiles <:> tiles,
         pix_x      <: dopix_x,
@@ -928,12 +973,14 @@ unit tilemap_memmap(
         pix_active <: pix_active,
         pix_vblank <: pix_vblank,
         pixel    :> pixel,
+        base_x <: TMW.base_x,
+        base_y <: TMW.base_y,
         tm_offset_x <: TMW.tm_offset_x,
         tm_offset_y <: TMW.tm_offset_y,
         tilemap_display :> pixel_display
     );
 
-    tile_map_writer TMW( tiles <:> tiles, tm_lastaction :> tm_lastaction, tm_active :> tm_active );
+    tile_map_writer TMW( tiles <:> tiles, tm_read :> tm_read, base_x :> tm_base_x, base_y :> tm_base_y, tm_lastaction :> tm_lastaction, tm_active :> tm_active );
 
     // TILEBITMAP WRITER - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
     uint6   TBMWtile = uninitialised;               uint8   TBMWpixel = uninitialised;                  uint8   TBMWnext <:: TBMWpixel + 1;

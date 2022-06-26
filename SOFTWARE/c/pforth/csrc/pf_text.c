@@ -26,6 +26,8 @@
 ***************************************************************/
 
 #include "pf_all.h"
+#include <stdbool.h>
+#include <curses.h>
 #include <PAWSlibrary.h>
 
 #define PF_ENGLISH

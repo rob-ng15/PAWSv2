@@ -216,9 +216,8 @@ void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y,
 }
 
 // SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
-//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN and SCROLL at limit
-//  action == 5 to 8 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN and WRAP at limit
-//  action == 9 clear the tilemap
+//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN
+//  action == 5 clear the tilemap
 //  RETURNS 0 if no action taken other than pixel shift, action if SCROLL WRAP or CLEAR was actioned
 unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
     while( *( tm_layer ? UPPER_TM_STATUS : LOWER_TM_STATUS ) );
@@ -262,8 +261,8 @@ void reset_display( void ) {
     *SCREENMODE = 0; *COLOUR = 0; *REZ = 0; *DIMMER = 0;
     *TPU_CURSOR = 0; tpu_cs();
     *TERMINAL_SHOW = 0; *TERMINAL_RESET = 1;
-    *LOWER_TM_SCROLLWRAPCLEAR = 9;
-    *UPPER_TM_SCROLLWRAPCLEAR = 9;
+    *LOWER_TM_SCROLLWRAPCLEAR = 5;
+    *UPPER_TM_SCROLLWRAPCLEAR = 5;
     for( unsigned short i = 0; i < 16; i++ ) {
         LOWER_SPRITE_ACTIVE[i] = 0;
         UPPER_SPRITE_ACTIVE[i] = 0;
@@ -277,8 +276,8 @@ void scrollbars( void ) {
     while(1) {
         await_vblank();count++;
         if( count == 32 ) {
-            tilemap_scrollwrapclear( 0, 7, 1 );
-            tilemap_scrollwrapclear( 1, 5, 1 );
+            tilemap_scrollwrapclear( 0, 3, 1 );
+            tilemap_scrollwrapclear( 1, 1, 1 );
             count = 0;
             ledcount++;
             if( ledcount == 16 ) {

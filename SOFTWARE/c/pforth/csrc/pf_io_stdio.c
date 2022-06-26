@@ -22,6 +22,8 @@
 ***************************************************************/
 
 #include "pf_all.h"
+#include <stdbool.h>
+#include <curses.h>
 #include <PAWSlibrary.h>
 
 /* Default portable terminal I/O. */

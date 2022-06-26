@@ -538,12 +538,12 @@ void draw() {
 
     // MOVE THE TILEMAPS
     if( road[cnr].tu < 0 ) {
-        tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_LEFT, ( road[cnr].tu <= -0.5 ) ? 2 : 1 );
-        tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_LEFT,1 );
+        tilemap_scrollwrapclear( LOWER_LAYER, TM_LEFT, ( road[cnr].tu <= -0.5 ) ? 2 : 1 );
+        tilemap_scrollwrapclear( UPPER_LAYER, TM_LEFT,1 );
     }
     if( road[cnr].tu > 0 ) {
-        tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_RIGHT, ( road[cnr].tu >= 0.5 ) ? 2 : 1 );
-        tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_RIGHT, 1 );
+        tilemap_scrollwrapclear( LOWER_LAYER, TM_RIGHT, ( road[cnr].tu >= 0.5 ) ? 2 : 1 );
+        tilemap_scrollwrapclear( UPPER_LAYER, TM_RIGHT, 1 );
    }
 
     for( int i = 0; i < DRAWSEGMENTS; i++ ) {

@@ -160,15 +160,11 @@
 #define TM_UPPER_DOUBLE 2
 
 // TILEMAP DIRECTION FLAGS
-#define TM_SCROLL_LEFT 1
-#define TM_SCROLL_UP 2
-#define TM_SCROLL_RIGHT 3
-#define TM_SCROLL_DOWN 4
-#define TM_WRAP_LEFT 5
-#define TM_WRAP_UP 6
-#define TM_WRAP_RIGHT 7
-#define TM_WRAP_DOWN 8
-#define TM_CLEAR 9,0
+#define TM_LEFT 1
+#define TM_UP 2
+#define TM_RIGHT 3
+#define TM_DOWN 4
+#define TM_CLEAR 5,0
 
 // CROP RECTANGLE
 #define CROPFULLSCREEN 0,0,319,239

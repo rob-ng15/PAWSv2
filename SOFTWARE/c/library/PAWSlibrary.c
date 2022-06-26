@@ -363,7 +363,7 @@ void set_copper_cpuinput( unsigned short value ) {
 // The tilemap is 42 x 32, with 40 x 30 displayed, with an x and y offset in the range -15 to 15 to scroll the tilemap
 // The tilemap can scroll or wrap once x or y is at -15 or 15
 
-// SET THE TILEMAP TILE at (x,y) to tile
+// SET THE TILEMAP TILE at (x,y) to tile - (0,0) always top left, even after scrolling
 void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
     switch( tm_layer ) {
         case 0:
@@ -381,6 +381,24 @@ void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y,
             *UPPER_TM_TILE = tile;
             *UPPER_TM_ACTION = action;
             *UPPER_TM_COMMIT = 1;
+            break;
+    }
+}
+
+// READ THE TILEMAP TILE+ACTION at (x,y) - (0,0) always top left, even after scrolling
+unsigned short read_tilemap_tile(  unsigned char tm_layer, unsigned char x, unsigned char y ) {
+    switch( tm_layer ) {
+        case 0:
+            while( *LOWER_TM_STATUS );
+            *LOWER_TM_X = x;
+            *LOWER_TM_Y = y;
+            return( *LOWER_TM_TILE );
+            break;
+        case 1:
+            while( *UPPER_TM_STATUS );
+            *UPPER_TM_X = x;
+            *UPPER_TM_Y = y;
+            return( *UPPER_TM_TILE );
             break;
     }
 }
@@ -429,10 +447,9 @@ void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned c
 }
 
 // SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
-//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN and SCROLL at limit
-//  action == 5 to 8 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN and WRAP at limit
-//  action == 9 clear the tilemap
-//  RETURNS 0 if no action taken other than pixel shift, action if SCROLL WRAP or CLEAR was actioned
+//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN
+//  action == 5 clear the tilemap
+//  RETURNS 0 if no action taken other than pixel shift, action if SCROLL was actioned
 unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
     while( *( tm_layer ? UPPER_TM_STATUS : LOWER_TM_STATUS ) );
     *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
@@ -1680,10 +1697,9 @@ void __write_curses_cell( unsigned short x, unsigned short y, __curses_cell writ
 }
 
 void initscr( void ) {
-    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE;
     while( *TPU_COMMIT );
-    *TPU_COMMIT = 6;
-    __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; *TPU_CURSOR = 1; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
+    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE; *TPU_COMMIT = 6;  while( *TPU_COMMIT );
+    __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
     __stdinout_init = TRUE;
 }
 
@@ -1692,14 +1708,12 @@ int endwin( void ) {
 }
 
 int refresh( void ) {
-    while( *TPU_COMMIT );
-    *TPU_COMMIT = 7;
+    while( *TPU_COMMIT ); *TPU_COMMIT = 7;
     return( true );
 }
 
 int clear( void ) {
-    while( *TPU_COMMIT );
-    *TPU_COMMIT = 6;
+    while( *TPU_COMMIT ); *TPU_COMMIT = 6;
     __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; __curses_bold = 0; __update_tpu();
     return( true );
 }

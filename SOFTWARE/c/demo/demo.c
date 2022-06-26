@@ -952,12 +952,12 @@ void tilemapdemo( void ) {
     for( unsigned short i = 0; i < 512; i++ ) {
         await_vblank();
         // LOWER LEFT AND UP 1 PIXEL AT A TIME
-        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_LEFT, 1 );
-        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_UP, 1 );
+        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_LEFT, 1 );
+        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_UP, 1 );
         // UPPER RIGHT AND DOWN 2 PIXELS AT A TIME
-        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_RIGHT, 2 );
-        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_DOWN, 2 );
-        sleep1khz( 10, 0 );
+        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_RIGHT, 2 );
+        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_DOWN, 2 );
+        await_vblank_finish();
     }
 }
 

@@ -67,6 +67,7 @@ extern void copper_program( unsigned char, unsigned char, unsigned char, unsigne
 
 // TILEMAP
 extern void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action );
+extern unsigned short read_tilemap_tile(  unsigned char tm_layer, unsigned char x, unsigned char y );
 extern void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap );
 extern void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap );
 extern void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned char start_tile );

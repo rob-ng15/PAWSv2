@@ -1,4 +1,18 @@
+unit tile1616(
+    simple_dualport_bram_port0 tiles16x16,
+    input   uint6   tile,
+    input   uint4   x,
+    input   uint4   y,
+    output! uint8   pixel
+) <reginputs> {
+    // Setup the reading and writing of the tiles16x16 using rotation/reflection
+    tiles16x16.addr0 := { tile, y, x };
+    pixel := tiles16x16.rdata0;
+}
+
 unit tilemap(
+    input   uint1   clockTG,
+
     simple_dualport_bram_port0 tiles16x16,
     dualport_bram_port0 tiles,
 
@@ -10,20 +24,23 @@ unit tilemap(
     output! uint1   tilemap_display,
 
     // For scrolling/wrapping
+    input   uint6   base_x(0),
+    input   uint5   base_y(0),
     input   int5    tm_offset_x,
     input   int5    tm_offset_y
 ) <reginputs> {
-    int11   xscreen <: pix_active ? pix_x + 1 : 0;
-    int11   yscreen <: pix_vblank ? 0 : pix_y;
-
     // Character position on the screen x 0-41, y 0-31 * 42 ( used to fetch the tile number and action for that cell )
     // Adjust for the offsets, effective 0 point margin is ( 1,1 ) to ( 40,30 ) with a 1 tile border
-    uint6   xtmpos <: ( {{6{tm_offset_x[4,1]}}, tm_offset_x } + xscreen + 11d16 + pix_active ) >> 4;
+    uint6   xtmpos <: ( {{6{tm_offset_x[4,1]}}, tm_offset_x } + pix_x + 11d16 + pix_active ) >> 4;
     uint6   ytmpos <: ( {{6{tm_offset_y[4,1]}}, tm_offset_y } + ( 11d16 + pix_y ) ) >> 4;
 
+    // Adjust for base, keep in range 0-41, 0-31
+    uint6   tmxpb <: ( xtmpos + base_x );           uint6   actualxtmpos <: tmxpb > 41 ? tmxpb - 42 : tmxpb;
+    uint6   tmypb <: ( ytmpos + base_y );           uint6   actualytmpos <: tmypb > 31 ? tmypb - 32 : tmypb;
+
     // Derive the x and y coordinate within the current 16x16 tilemap block x 0-15, y 0-15, adjusted for offsets
-    uint4   xintm <: { 1b0, xscreen[0,4] } + tm_offset_x;                                               uint4   revx <: ~xintm;
-    uint4   yintm <: { 1b0, yscreen[0,4] } + tm_offset_y;                                               uint4   revy <: ~yintm;
+    uint4   xintm <: { 1b0, pix_x[0,4] } + tm_offset_x;                                               uint4   revx <: ~xintm;
+    uint4   yintm <: { 1b0, pix_y[0,4] } + tm_offset_y;                                               uint4   revy <: ~yintm;
 
     // Apply rotation/reflection
     uint1   action00 <: ( ~|tmentry( tiles.rdata0 ).action );                                           uint1   action01 <: ( tmentry( tiles.rdata0 ).action == 2b01 );
@@ -31,15 +48,15 @@ unit tilemap(
     uint4   xpixel <: tmentry( tiles.rdata0 ).rflag ? action00 ? xintm : action01 ? yintm : action10 ? revx : revy : tiles.rdata0[6,1] ? revx : xintm;
     uint4   ypixel <: tmentry( tiles.rdata0 ).rflag ? action00 ? yintm : action01 ? revx : action10 ? revy : xintm : tiles.rdata0[7,1] ? revy : yintm;
 
-    // Set up reading of the tilemap
-    tiles.addr0 := xtmpos + ytmpos * 42;
+    // DOUBLE CLOCKED TILE GENERATOR
+    tile1616 TG <@clockTG> ( tiles16x16 <:> tiles16x16, tile <: tmentry( tiles.rdata0 ).tilenumber, x <: xpixel, y <: ypixel );
 
-    // Setup the reading and writing of the tiles16x16 using rotation/reflection
-    tiles16x16.addr0 := { tmentry( tiles.rdata0 ).tilenumber, ypixel, xpixel };
+    // Set up reading of the tilemap
+    tiles.wenable0 := 0; tiles.addr0 := actualxtmpos + actualytmpos * 42;
 
     always_after {
-        tilemap_display = pix_active & ( tiles16x16.rdata0 != 64 );
-        pixel = tiles16x16.rdata0;
+        tilemap_display = pix_active & ( TG.pixel != 64 );
+        pixel = TG.pixel;
     }
 }
 
@@ -60,32 +77,6 @@ unit   calcoffset(
         MAX = ( offsetPLUS > 15 );                     NEXT= offsetPLUS - ( MAX ? 16 : 0 );
     }
 }
-unit tmxaddresses(
-    input   uint6   x_cursor,
-    input   uint1   tm_dodir,
-    output  uint6   xNEXT,
-    output  uint6   xPREV,
-    output  uint11  xSAVED
-) <reginputs> {
-    always_after {
-        xNEXT = x_cursor + 1;
-        xPREV = x_cursor - 1;
-        xSAVED = x_cursor + ( tm_dodir ? 1302 : 0 );
-    }
-}
-unit tmyaddresses(
-    input   uint11  y_cursor_addr,
-    input   uint1   tm_dodir,
-    output  uint11  yNEXT,
-    output  uint11  yPREV,
-    output  uint11  ySAVED
-) <reginputs> {
-    always_after {
-        yNEXT = y_cursor_addr + 42;
-        yPREV = y_cursor_addr - 42;
-        ySAVED = y_cursor_addr + ( tm_dodir ? 41 : 0 );
-    }
-}
 unit tile_map_writer(
     dualport_bram_port1 tiles,
 
@@ -95,111 +86,73 @@ unit tile_map_writer(
     input   uint6   tm_character,
     input   uint3   tm_actions,
     input   uint1   tm_write,
+    output  uint9   tm_read,
 
     // For scrolling/wrapping
+    output  uint6   base_x(0),
+    output  uint5   base_y(0),
     output  int5    tm_offset_x(0),
     output  int5    tm_offset_y(0),
 
     input   uint4   tm_scrollwrap,
     input   uint4   tm_adjust,
     output  uint4   tm_lastaction,
-    output  uint3   tm_active
+    output  uint1   tm_active
 ) <reginputs> {
     // OFFSET CALCULATIONS
     calcoffset TMOX( offset <: tm_offset_x, adjust <: tm_adjust );       calcoffset TMOY( offset <: tm_offset_y, adjust <: tm_adjust );
 
-    // Scroller/Wrapper FLAGS
-    uint1   tm_scroll = uninitialized;              uint1   tm_dodir = uninitialized;
-    uint1   doscrollwrap <:: ( tm_scrollwrap < 5 ); uint2   doaction <:: ( tm_scrollwrap - 1 ) & 3;
+    // READ/WRITE ADDRESS, ADJUSTED FOR OFFSET
+    uint6   tmxpb <:: ( tm_x + base_x );            uint6   write_x <:: tmxpb > 41 ? tmxpb - 42 : tmxpb;
+    uint6   tmypb <:: ( tm_y + base_y );            uint6   write_y <:: tmypb > 31 ? tmypb - 32: tmypb;
+    uint11  write_address <:: write_x + write_y * 42;
 
-    // CURSORS AND ADDRESSES FOR SCROLLING WRAPPING
-    uint6   x_cursor = uninitialized;               tmxaddresses TMX( x_cursor <: x_cursor, tm_dodir <: tm_dodir );
-    uint11  y_cursor_addr = uninitialized;          tmyaddresses TMY( y_cursor_addr <: y_cursor_addr, tm_dodir <: tm_dodir );
-
-    uint11  temp_1 = uninitialized;
-    uint11  temp_2 <:: x_cursor + y_cursor_addr;    uint11  temp_2NEXT1 <:: temp_2 + ( tm_dodir ? 1 : (-1) );
-                                                    uint11  temp_2NEXT42 <:: temp_2 + ( tm_dodir ? 42 : (-42) );
-    uint11  write_address <:: tm_x + tm_y * 42;
-
-    // STORAGE FOR SAVED CHARACTER WHEN WRAPPING
-    uint9   new_tile = uninitialized;
+    // NEXT BASE FOR LEFT/RIGHT UP/DOWN
+    uint6   base_left <:: ( base_x == 41 ) ? 0 : base_x + 1;
+    uint6   base_right <:: ( ~|base_x ) ? 41 : base_x - 1;
+    uint5   base_up <:: ( base_y == 31 ) ? 0 : base_y + 1;
+    uint5   base_down <:: ( ~|base_y ) ? 31 : base_y - 1;
 
     // CLEARSCROLL address
     uint11  tmcsaddr = uninitialized;               uint11  tmcsNEXT <:: tmcsaddr + 1;
 
     // TILEMAP WRITE FLAGS
-    tiles.wenable1 := 0;
+    tiles.wenable1 := 0; tm_read := tiles.rdata1;
 
     algorithm <autorun> {
         while(1) {
-            if( |tm_active ) {
-                onehot( tm_active ) {
-                    default: {                                                                                      // SCROLL/WRAP LEFT/RIGHT UP/DOWN
-                        while( tm_active[0,1] ? ( y_cursor_addr != 1344 ) : ( x_cursor != 42 ) ) {                  // REPEAT UNTIL AT BOTTOM/RIGHT OF THE SCREEN
-                            onehot( tm_active ) {
-                                case 0: { x_cursor = tm_dodir ? 0 : 41; }                                           // SAVE CHARACTER AT START/END OF LINE FOR WRAPPING
-                                default: {  y_cursor_addr = tm_dodir ? 0 : 1302; }                                  // SAVE CHARACTER AT TOP/BOTTOM OF THE SCREEN FOR WRAPPING
-                            }
-                            temp_1 = y_cursor_addr + x_cursor;
-                            tiles.addr1 = temp_1;
-                            ++:
-                            new_tile = tm_scroll ? 0 : tiles.rdata1;
-                            while( tm_active[0,1] ? tm_dodir ? ( x_cursor != 42 ) : ( |x_cursor ) :                 // START AT THE LEFT/RIGHT OF THE LINE
-                                                    tm_dodir ? ( y_cursor_addr != 1302 ) : ( |y_cursor_addr ) ) {   // START AT TOP/BOTTOM OF THE SCREEN
-                                onehot( tm_active ) {
-                                    case 0: { temp_1 = temp_2NEXT1; }                                               // SAVE THE ADJACENT CHARACTER IN LINE
-                                    default: { temp_1 = temp_2NEXT42; }                                             // SAVE THE ADJACENT CHARACTER IN COLUMN
-                                }
-                                tiles.addr1 = temp_1;
-                                ++:
-                                tiles.addr1 = temp_2;                                                               // COPY INTO NEW LOCATION
-                                tiles.wdata1 = tiles.rdata1; tiles.wenable1 = 1;
-                                onehot( tm_active ) {
-                                    case 0: { x_cursor = tm_dodir ? TMX.xNEXT : TMX.xPREV;}                         // MOVE TO NEXT CHARACTER ON THE LINE
-                                    default: { y_cursor_addr = tm_dodir ? TMY.yNEXT : TMY.yPREV; }                  // MOVE TO THE NEXT CHARACTER IN THE COLUMN
-                                }
-                            }
-                            onehot( tm_active ) {
-                                case 0: { tiles.addr1 = TMY.ySAVED; y_cursor_addr = TMY.yNEXT; }                    // SET SAVED ADDRESS, MOVE TO NEXT LINE
-                                default: { tiles.addr1 = TMX.xSAVED; x_cursor = TMX.xNEXT; }                        // SET SAVED ADDRESS, MOVE TO NEXT COLUMN
-                            }
-                            tiles.wdata1 = new_tile; tiles.wenable1 = 1;                                            // WRITE BLANK OR WRAPPED CHARACTER
-                        }
-                    }
-                    case 2: {                                                                                       // CLEAR
-                        tiles.wdata1 = 0;
-                        while( tmcsaddr != 1344 ) {
-                            tiles.addr1 = tmcsaddr; tiles.wenable1 = 1; tmcsaddr = tmcsNEXT;
-                        }
-                        tm_offset_x = 0; tm_offset_y = 0;
-                    }
-                }
+            if( tm_active ) {                                                                                               // CLEAR
+                tiles.wdata1 = 0;
+                while( tmcsaddr != 1344 ) { tiles.addr1 = tmcsaddr; tiles.wenable1 = 1; tmcsaddr = tmcsNEXT; }
                 tm_active = 0;
             } else {
-                tmcsaddr = 0; y_cursor_addr = 0; x_cursor = 0;                                                      // RESET SCROLL/WRAP
+                tmcsaddr = 0;
             }
         }
     }
 
     always_after {
-        if( tm_write ) {
-            // Write character to the tilemap
-            tiles.addr1 = write_address; tiles.wdata1 = { tm_actions, tm_character }; tiles.wenable1 = 1;
-        }
-
-        switch( tm_scrollwrap ) {                                                                                   // ACT AS PER tm_scrollwrap
-            case 0: {}                                                                                              // NO ACTION
-            case 9: { tm_active = 4; tm_lastaction = 9; }                                                           // CLEAR
-            default: {                                                                                              // SCROLL / WRAP
-                tm_scroll = doscrollwrap;
-                switch( doaction ) {
-                    case 0: { if( TMOX.MAX ) { tm_dodir = 1; tm_active = 1; } tm_offset_x = TMOX.NEXT; }            // LEFT
-                    case 1: { if( TMOY.MAX ) { tm_dodir = 1; tm_active = 2; } tm_offset_y = TMOY.NEXT; }            // UP
-                    case 2: { if( TMOX.MIN ) { tm_dodir = 0; tm_active = 1; } tm_offset_x = TMOX.PREV; }            // RIGHT
-                    case 3: { if( TMOY.MIN ) { tm_dodir = 0; tm_active = 2; } tm_offset_y = TMOY.PREV; }            // DOWN
-                }
-                tm_lastaction = ( |tm_active ) ? tm_scrollwrap : 0;
+        if( tm_write ) { tiles.addr1 = write_address; tiles.wdata1 = { tm_actions, tm_character }; tiles.wenable1 = 1; }    // WRITE
+        if( |tm_scrollwrap ) { tm_lastaction = 0; }
+        switch( tm_scrollwrap ) {
+            case 1: {                                                                                                       // LEFT
+                if( TMOX.MAX ) { base_x = base_left; tm_lastaction = 1; }
+                tm_offset_x = TMOX.NEXT;
             }
+            case 2: {                                                                                                       // UP
+                if( TMOY.MAX ) { base_y = base_up; tm_lastaction = 2; }
+                tm_offset_y = TMOY.NEXT;
+            }
+            case 3: {                                                                                                       // RIGHT
+                if( TMOX.MIN ) { base_x = base_right; tm_lastaction = 3; }
+                tm_offset_x = TMOX.PREV;
+            }
+            case 4: {                                                                                                       // DOWN
+                if( TMOY.MIN ) { base_y = base_down; tm_lastaction = 4; }
+                tm_offset_y = TMOY.PREV;
+            }
+            case 5: { tm_active = 1; base_x = 0; base_y = 0; tm_offset_x = 0; tm_offset_y = 0; }                            // CLEAR
+            default: {}
         }
     }
 }
