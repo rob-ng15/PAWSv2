@@ -1,4 +1,4 @@
-include ../makefile-lto.inc
+include ../makefile.inc
 
 PROJECT=PFORTH
 PROJECTTYPE=COMPUTER/PFORTH

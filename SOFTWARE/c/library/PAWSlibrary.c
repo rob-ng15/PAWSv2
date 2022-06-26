@@ -98,26 +98,24 @@ void paws_memset_rectangle( void *restrict destination, int value, size_t count,
 // OUTPUT TO UART
 // OUTPUT INDIVIDUAL CHARACTER/STRING TO THE UART
 void uart_outputcharacter(char c) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS; short volatile *IO_REGS_H = (short volatile *)IO_REGS;
+    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS;
 
     while( IO_REGS_B[ 0x02 ] & 2 ) {} IO_REGS_B[ 0x00 ] = c;
     if( c == '\n' ) uart_outputcharacter('\r');
 }
 void uart_outputstring( const char *s ) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS; short volatile *IO_REGS_H = (short volatile *)IO_REGS;
-
     while( *s ) uart_outputcharacter( *s++ );
 }
 // INPUT FROM UART
 // RETURN 1 IF UART CHARACTER AVAILABLE, OTHERWISE 0
 unsigned char uart_character_available( void ) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS; short volatile *IO_REGS_H = (short volatile *)IO_REGS;
+    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS;
 
     return( IO_REGS_B[ 0x02 ] & 1 );
 }
 // RETURN CHARACTER FROM UART
 char uart_inputcharacter( void ) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS; short volatile *IO_REGS_H = (short volatile *)IO_REGS;
+    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS;
 
     while( !uart_character_available() ) {}
     return IO_REGS_B[ 0x00 ];
@@ -144,7 +142,7 @@ unsigned short rng( unsigned short range ) {
 
         default:
             if( _rv32_cpop( range ) == 1 ) return( TIMER_REGS_H[ 0x01 ] & ( range - 1 ) );          // POWER OF 2
-            mask = ( 1 << ( _rv32_clz( range ) - 16 ) ) -1;                                         // SET MASK TO -1 POWER OF 2 THAT COVERS RANGE
+            mask = ( 1 << ( _rv32_clz( range ) - 14 ) ) - 1;                                        // SET MASK TO -1 POWER OF 2 THAT COVERS RANGE
             do { trial = TIMER_REGS_H[ 0x00 ] & mask; } while ( trial >= range );                   // SELECT RNG UNTIL WITHIN RANGE
     }
 
@@ -153,55 +151,38 @@ unsigned short rng( unsigned short range ) {
 
 // SLEEP FOR counter milliseconds
 void sleep1khz( unsigned short counter, unsigned char timer ) {
-    switch( timer ) {
-        case 0:
-            *SLEEPTIMER0 = counter;
-            while( *SLEEPTIMER0 );
-            break;
-        case 1:
-            *SLEEPTIMER1 = counter;
-            while( *SLEEPTIMER1 );
-            break;
-    }
+    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
+    TIMER_REGS_H[ 0x0c + timer ] = counter; while( TIMER_REGS_H[ 0x0c + timer ] );
 }
 
 // SET THE 1khz COUNTDOWN TIMER
 void set_timer1khz( unsigned short counter, unsigned char timer ) {
-    switch( timer ) {
-        case 0:
-            *TIMER1KHZ0 = counter;
-            break;
-        case 1:
-            *TIMER1KHZ1 = counter;
-            break;
-    }
+    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
+    TIMER_REGS_H[ 0x0a + timer ] = counter;
 }
 
 // READ THE 1khz COUNTDOWN TIMER
 unsigned short get_timer1khz( unsigned char timer  ) {
-    return( timer ? *TIMER1KHZ1 : *TIMER1KHZ0 );
+    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
+    return( TIMER_REGS_H[ 0x0a + timer ] );
 }
 
 // WAIT FOR THE 1khz COUNTDOWN TIMER
 void wait_timer1khz( unsigned char timer  ) {
-    while( timer ? *TIMER1KHZ1 : *TIMER1KHZ0 );
+    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
+    while( TIMER_REGS_H[ 0x0a + timer ] );
 }
 
 // READ THE 1hz TIMER
 unsigned short get_timer1hz( unsigned char timer  ) {
-    return( timer ? *TIMER1HZ1 : *TIMER1HZ0 );
+    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
+    return( TIMER_REGS_H[ 0x08 + timer ] );
 }
 
 // RESET THE 1hz TIMER
 void reset_timer1hz( unsigned char timer  ) {
-    switch( timer ) {
-        case 0:
-            *TIMER1HZ0 = 1;
-            break;
-        case 1:
-            *TIMER1HZ1 = 1;
-            break;
-    }
+    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
+    TIMER_REGS_H[ 0x08 + timer ] = 0;
 }
 
 // SYSTEM CLOCK, SECONDS SINCE RESET
@@ -382,7 +363,7 @@ void set_copper_cpuinput( unsigned short value ) {
 // The tilemap is 42 x 32, with 40 x 30 displayed, with an x and y offset in the range -15 to 15 to scroll the tilemap
 // The tilemap can scroll or wrap once x or y is at -15 or 15
 
-// SET THE TILEMAP TILE at (x,y) to tile
+// SET THE TILEMAP TILE at (x,y) to tile - (0,0) always top left, even after scrolling
 void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
     switch( tm_layer ) {
         case 0:
@@ -404,6 +385,24 @@ void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y,
     }
 }
 
+// READ THE TILEMAP TILE+ACTION at (x,y) - (0,0) always top left, even after scrolling
+unsigned short read_tilemap_tile(  unsigned char tm_layer, unsigned char x, unsigned char y ) {
+    switch( tm_layer ) {
+        case 0:
+            while( *LOWER_TM_STATUS );
+            *LOWER_TM_X = x;
+            *LOWER_TM_Y = y;
+            return( *LOWER_TM_TILE );
+            break;
+        case 1:
+            while( *UPPER_TM_STATUS );
+            *UPPER_TM_X = x;
+            *UPPER_TM_Y = y;
+            return( *UPPER_TM_TILE );
+            break;
+    }
+}
+
 // SET THE TILE BITMAP for tile to the 16 x 16 pixel bitmap
 void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap ) {
     *( tm_layer ? UPPER_TM_WRITER_TILE_NUMBER : LOWER_TM_WRITER_TILE_NUMBER ) = tile;
@@ -412,15 +411,28 @@ void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned ch
 
 // SET THE TILE BITMAP for 4 tiles to the 32 x 32 pixel bitmap
 void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap ) {
-    for( short i = 0; i < 4; i++ ) {
+    for( int i = 0; i < 4; i++ ) {
         if( tm_layer ) {
             *UPPER_TM_WRITER_TILE_NUMBER = tile + i;
         } else {
             *LOWER_TM_WRITER_TILE_NUMBER = tile + i;
         }
-        for( short y = 0; y < 16; y++ ) {
-            for( short x = 0; x < 16; x++ ) {
+        for( int y = 0; y < 16; y++ ) {
+            for( int x = 0; x < 16; x++ ) {
                 *( tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR ) = bitmap[ ( y + (i&1 ? 16 : 0) )* 32 + ( x + ( i>1 ? 16 : 0 ) ) ];
+            }
+        }
+    }
+}
+
+void set_tilemap_bitamps_from_spritesheet( unsigned char tm_layer, unsigned char *tile_bitmaps ) {
+    for( int xt = 0; xt < 8; xt++ ) {
+        for( int yt = 0; yt < 8; yt++ ) {
+            *( tm_layer ? UPPER_TM_WRITER_TILE_NUMBER : LOWER_TM_WRITER_TILE_NUMBER ) = xt * 8 + yt;
+            for( int y = 0; y < 16; y++ ) {
+                for( int x = 0; x < 16; x++ ) {
+                    *(tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR) = tile_bitmaps[ xt * 16 + yt * 2048 + y * 128 + x ];
+                }
             }
         }
     }
@@ -435,10 +447,9 @@ void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned c
 }
 
 // SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
-//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN and SCROLL at limit
-//  action == 5 to 8 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN and WRAP at limit
-//  action == 9 clear the tilemap
-//  RETURNS 0 if no action taken other than pixel shift, action if SCROLL WRAP or CLEAR was actioned
+//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN
+//  action == 5 clear the tilemap
+//  RETURNS 0 if no action taken other than pixel shift, action if SCROLL was actioned
 unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
     while( *( tm_layer ? UPPER_TM_STATUS : LOWER_TM_STATUS ) );
     *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
@@ -845,34 +856,55 @@ void set_vector_vertex( unsigned char block, unsigned char vertex, unsigned char
     *VECTOR_WRITER_DELTAY = deltay;
 }
 
-// SOFTWARE VECTORS AND DRAWLISTS
+// SOFTWARE VECTORS AND DRAWLISTS - FAST SINE. COSINE, TANGENT VIA LOOKUP TABLES FOR INTEGER ANGLES
+float sint[720], cost[720], tant[720];
+int trigt_init = 0;
+
+void paws_triginit( void ) {
+    for( int x = -359; x < 360; x++ ) {
+        float radx = x*0.01745329252;
+        sint[ x + 359 ] = sinf( radx );
+        cost[ x + 359 ] = cosf( radx );
+        tant[ x + 359 ] = tanf( radx );
+    }
+    trigt_init = 1;
+}
+
+float paws_sin( short angle ) {
+    return( sint[ angle + 359 ] );
+}
+float paws_cos( short angle ) {
+    return( cost[ angle + 359 ] );
+}
+float paws_tan( short angle ) {
+    return( tant[ angle + 359 ] );
+}
 
 // SCALE A POINT AND MOVE TO CENTRE POINT
-struct Point2D Scale2D( struct Point2D point, short xc, short yc, float scale ) {
-    struct Point2D newpoint;
-    newpoint.dx = point.dx * scale + xc;
-    newpoint.dy = point.dy * scale + yc;
+union Point2D Scale2D( union Point2D point, short xc, short yc, float scale ) {
+    union Point2D newpoint;
+    newpoint.packed = _rv32_pack( point.dx * scale + xc, point.dy * scale + yc );
     return( newpoint );
 }
-struct Point2D Rotate2D( struct Point2D point, short xc, short yc, short angle, float scale ) {
-    struct Point2D newpoint;
-    float radians = angle*0.01745329252;
+union Point2D Rotate2D( union Point2D point, short xc, short yc, short angle, float scale ) {
+    union Point2D newpoint; if( !trigt_init ) paws_triginit();
 
-    newpoint.dx = ( (point.dx * scale)*cosf(radians)-(point.dy * scale)*sinf(radians) ) + xc;
-    newpoint.dy = ( (point.dx * scale)*sinf(radians)+(point.dy * scale)*cosf(radians) ) + yc;
+    float sine = paws_sin(angle), cosine = paws_cos(angle);
 
+    newpoint.packed = _rv32_pack( ( (point.dx * scale)*cosine-(point.dy * scale)*sine ) + xc,
+                                  ( (point.dx * scale)*sine+(point.dy * scale)*cosine ) + yc );
     return( newpoint );
 }
 
-struct Point2D MakePoint2D( short x, short y ) {
-    struct Point2D newpoint;
-    newpoint.dx = x; newpoint.dy = y;
+union Point2D MakePoint2D( short x, short y ) {
+    union Point2D newpoint;
+    newpoint.packed = _rv32_pack( x, y );
     return( newpoint );
 }
 
 // PROCESS A SOFTWARE VECTOR BLOCK AFTER SCALING AND ROTATION
-void DrawVectorShape2D( unsigned char colour, struct Point2D *points, short numpoints, short xc, short yc, short angle, float scale ) {
-    struct Point2D *NewShape  = (struct Point2D *)0x1800;
+void DrawVectorShape2D( unsigned char colour, union Point2D *points, short numpoints, short xc, short yc, short angle, float scale ) {
+    union Point2D *NewShape  = (union Point2D *)0x1800;
     for( short vertex = 0; vertex < numpoints; vertex++ ) {
         NewShape[ vertex ] = Rotate2D( points[vertex], xc, yc, angle, scale );
     }
@@ -883,7 +915,7 @@ void DrawVectorShape2D( unsigned char colour, struct Point2D *points, short nump
 
 // PROCESS A DRAWLIST DRAWING SHAPES AFTER SCALING, ROTATING AND MOVING TO CENTRE POINT
 void DoDrawList2D( struct DrawList2D *list, short numentries, short xc, short yc, short angle, float scale ) {
-    struct Point2D XY1, XY2, XY3, XY4;
+    union Point2D XY1, XY2, XY3, XY4;
     for( int i = 0; i < numentries; i++ ) {
         gpu_dither( list[i].dithermode, list[i].alt_colour );
         switch( list[i].shape ) {
@@ -929,7 +961,7 @@ void DoDrawList2D( struct DrawList2D *list, short numentries, short xc, short yc
 
 // PROCESS A DRAWLIST DRAWING SHAPES AFTER SCALING AND MOVING TO CENTRE POINT
 void DoDrawList2Dscale( struct DrawList2D *list, short numentries, short xc, short yc, float scale ) {
-    struct Point2D XY1, XY2, XY3, XY4;
+    union Point2D XY1, XY2, XY3, XY4;
     for( int i = 0; i < numentries; i++ ) {
         gpu_dither( list[i].dithermode, list[i].alt_colour );
         switch( list[i].shape ) {
@@ -978,15 +1010,29 @@ void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number
     DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, 1 );
 }
 
+// SET THE 16x16 SPRITES FROM A SPRITESHEET
 void set_sprite_bitamps_from_spritesheet( unsigned char sprite_layer, unsigned char *sprite_bitmaps ) {
-    for( unsigned char i = 0; i < 16; i++ ) {
+    for( int i = 0; i < 16; i++ ) {
         *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = i;
-        for( unsigned char y = 0; y < 128; y++ ) {
-            for( unsigned x = 0; x < 16; x++ ) {
+        for( int y = 0; y < 128; y++ ) {
+            for( int x = 0; x < 16; x++ ) {
                 *(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR) = sprite_bitmaps[ i*16 + x + y*256 ];
             }
         }
    }
+}
+
+// SET THE 32x32 ( 4 x 16x16 ) FROM A SPRITESHEET
+void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_layer, unsigned char *sprite_bitmaps ) {
+        for( int s = 0; s < 16; s++ ) {
+            *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = s;
+            for( int y = 0; y < 128; y++ ) {
+                int base = ( s & 0x0c ) * 2048 + ( s & 0x01 ) * 4096 + ( s & 0x02 ) * 8 + ( y & 0xf0 ) * 2 + ( y & 0x0f ) * 256;
+                for( int x = 0; x < 16; x++ ) {
+                    *(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR) = sprite_bitmaps[ base + x ];
+                }
+            }
+        }
 }
 
 // SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
@@ -1008,6 +1054,26 @@ void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsign
             UPPER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
             break;
     }
+}
+
+// SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
+void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
+    static unsigned char positions[][4] = {
+        { 0, 1, 2, 3 }, // NO ACTION
+        { 2, 3, 0, 1 }, // REFLECT X
+        { 1, 0, 3, 2 }, // REFLECT Y
+        { 3, 2, 1, 0 }, // REFLECT X AND Y
+        { 0, 1, 2, 3 }, // ROTATE 0
+        { 2, 0, 3, 1 }, // ROTATE 90
+        { 3, 2, 1, 0 }, // ROTATE 180
+        { 1, 3, 0, 2 }, // ROTATE 270
+    };
+    int size = (  sprite_attributes & 8 ) ? 32 : 16;
+
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][0], active, x - size, y - size, tile, sprite_attributes );
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][1], active, x - size, y, tile, sprite_attributes );
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][2], active, x, y - size, tile, sprite_attributes );
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][3], active, x, y, tile, sprite_attributes );
 }
 
 // SET or GET ATTRIBUTES for sprite_number in sprite_layer
@@ -1594,10 +1660,10 @@ void *stdscr;
 typedef union curses_cell {
     unsigned int bitfield;
     struct {
-        unsigned int pad : 9;
+        unsigned int pad : 7;
         unsigned int character : 9;
-        unsigned int background : 7;
-        unsigned int foreground : 7;
+        unsigned int background : 8;
+        unsigned int foreground : 8;
     } cell;
 } __curses_cell;
 
@@ -1631,10 +1697,9 @@ void __write_curses_cell( unsigned short x, unsigned short y, __curses_cell writ
 }
 
 void initscr( void ) {
-    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE;
     while( *TPU_COMMIT );
-    *TPU_COMMIT = 6;
-    __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; *TPU_CURSOR = 1; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
+    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE; *TPU_COMMIT = 6;  while( *TPU_COMMIT );
+    __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
     __stdinout_init = TRUE;
 }
 
@@ -1643,14 +1708,12 @@ int endwin( void ) {
 }
 
 int refresh( void ) {
-    while( *TPU_COMMIT );
-    *TPU_COMMIT = 7;
+    while( *TPU_COMMIT ); *TPU_COMMIT = 7;
     return( true );
 }
 
 int clear( void ) {
-    while( *TPU_COMMIT );
-    *TPU_COMMIT = 6;
+    while( *TPU_COMMIT ); *TPU_COMMIT = 6;
     __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; __curses_bold = 0; __update_tpu();
     return( true );
 }
@@ -1846,8 +1909,8 @@ int mvprintw( int y, int x, const char *fmt,... ) {
 
 int attron( int attrs ) {
     if( attrs & COLORS ) {
-        __curses_fore = __curses_foregroundcolours[ attrs & 0x7f ];
-        __curses_back = __curses_backgroundcolours[ attrs & 0x7f ];
+        __curses_fore = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ];
+        __curses_back = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ];
         __update_tpu();
     }
     if( attrs & A_NORMAL ) {
@@ -1876,8 +1939,8 @@ int attroff( int attrs ) {
 }
 
 void bkgdset( int attrs ) {
-    __curses_fore = __curses_foregroundcolours[ attrs & 0x7f ]; *CURSES_FOREGROUND = __curses_foregroundcolours[ attrs & 0x7f ];
-    __curses_back = __curses_backgroundcolours[ attrs & 0x7f ]; *CURSES_BACKGROUND = __curses_backgroundcolours[ attrs & 0x7f ];
+    __curses_fore = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ]; *CURSES_FOREGROUND = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ];
+    __curses_back = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ]; *CURSES_BACKGROUND = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ];
 }
 
 int deleteln( void ) {

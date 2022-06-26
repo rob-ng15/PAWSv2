@@ -217,7 +217,7 @@ struct DrawList2D POWERGHOSTMOUTH[] = {
 };
 
 // SET GHOST BODY COLOUR
-    unsigned char ghost_body_colour[] = { CYAN, PINK, ORANGE, RED };
+unsigned char ghost_body_colour[] = { CYAN, PINK, ORANGE, RED };
 void setghostcolour( unsigned short ghost ) {
     for( int i = 0; i < 5; i++ ) {
         GHOSTBODY[i].colour = powerstatus ? ( powerstatus > 40 ) ? BLUE : WHITE : ghost_body_colour[ ghost ];

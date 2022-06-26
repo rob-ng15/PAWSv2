@@ -16,7 +16,7 @@ $$ L0Isize = 32
 $$ L0Icacheaddrwidth = clog2(L0Isize)
 
 // HART 0 - MAIN
-$$ L00Iblocks = 16
+$$ L00Iblocks = 8
 $$ L00Icount = clog2(L00Iblocks)
 $$ L00Ipartaddresswidth = addr_width - 1 - L00Icount - L0Icacheaddrwidth
 $$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
@@ -228,33 +228,30 @@ unit PAWSCPU(
         address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed
     );
     uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );
-    uint1   L0update_0 <:: ~SMT & ~ICACHE_0.tagmatch;
-    uint1   L0update_1 <:: SMT & ~ICACHE_1.tagmatch;
+    uint32  L0instruction <:: { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
+    uint1   L0compressed <:: SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
+    uint1   ICACHEUPDATE = uninitialised;
     ICACHE_0W.update := 0; ICACHE_1W.update := 0; ICACHE_0.invalidate := ~|pc; ICACHE_1.invalidate := ~|pc; ICACHE_0W.invalidate := ~|pc; ICACHE_1W.invalidate := ~|pc;
 
     // CONTROLS FOR MEMORY ACCESSES AND UNIT START FLAGS
-    FETCH.start := 0; LOAD.start := 0; STORE.start := 0; DMA.start := 0; EXECUTESLOW.start := 0; COMMIT := 0;
+    FETCH.start := 0; LOAD.start := 0; STORE.start := 0; DMA.start := 0; EXECUTESLOW.start := 0; COMMIT := 0; ICACHEUPDATE := 0;
     readmemory := DMA.readmemory | LOAD.readmemory | FETCH.readmemory; writememory := DMA.writememory | STORE.writememory;
 
     algorithm <autorun> {
-        while( |resetCounter | memorybusy | EXECUTESLOW.busy ) { resetCounter = resetNEXT; }                                         // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
+        while( |resetCounter | memorybusy | EXECUTESLOW.busy ) { resetCounter = resetNEXT; }                                        // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
 
         cacheselect = 0; FETCH.start = 1;                                                                                           // FETCH FIRST INSTRUCTION
 
         while(1) {
             COMMIT_SMT = SMT;
-
             if( L0match ) {                                                                                                         // FETCH INSTRUCTION
-                instruction =  { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };                                             // FROM CACHE
-                compressed = SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
+                instruction =  L0instruction; compressed = L0compressed;                                                                // FROM CACHE
             } else {
-                if( FETCH.busy ) { while( FETCH.busy ) {} } else { cacheselect = 0; }                                                   // FROM MEMORY
+                if( FETCH.busy ) { while( FETCH.busy ) {}  } else { cacheselect = 0; }                                                  // FROM MEMORY
                 instruction = FETCH.instruction; compressed = FETCH.compressed;
             }
             // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
-            ICACHE_0W.update = L0update_0; ICACHE_1W.update = L0update_1;                                                               // UPDATE ICACHE
-
-            cacheselect = 1; ++:                                                                                                        // SWITCH TO DATA CACHE
+            ICACHEUPDATE = 1; cacheselect = 1; ++:                                                                                      // SWITCH TO DATA CACHE, UPDATE ICACHE
 
             switch( { RV32CONTROL.IS_LOAD, RV32CONTROL.FASTPATH, RV32CONTROL.IS_STORE } ) {
                 case 3b000: { ++: EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                                 // DIVISION, CLMUL, FLOATING POINT, CSR
@@ -267,12 +264,11 @@ unit PAWSCPU(
                 }
                 case 3b110: { LOAD.start = 1; while( LOAD.busy ) {} }                                                                   // INTEGER + FLOAT LOAD
             }
-            COMMIT = 1; pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING;                                                      // UPDATE PC AND SWITCH THREADS IF SMT ENABLED
+            COMMIT = 1;                                                                                                                 // COMMIT REGISTERS< AND UPDATE PC AND SWITCH THREADS IF SMT ENABLED
 
             DMA.start = |DMAMODE;
             if( |DMAMODE ) {                                                                                                            // PROCESS MINI-DMA ENGINE REQUESTS
                 while( |DMAACTIVE ) {}
-
             } else { DMA.start = 0; }
 
             cacheselect = 0; FETCH.start = ~L0match;                                                                                    // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
@@ -288,6 +284,8 @@ unit PAWSCPU(
                 case 3: { address = FETCH.address; }                                                                                    // COPY MEMORY REQUESTS FROM DMA ENGINE
             }
         }
+        if( COMMIT ) { pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING; }
+        if( ICACHEUPDATE ) { ICACHE_0W.update = ~SMT; ICACHE_1W.update = SMT; }
     }
 }
 
@@ -785,7 +783,7 @@ unit dma(
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES;
+                DMAACTIVE = &dmamode[0,3] ? 2 : 1;
                 switch( dmamode ) {
                     default: { DMA16BIT = 0; }                                                                                       // DEFAULT TO 8 BIT MODE
                     case 3: { DMA16BIT = src16bit & dest16bit & ~DMACOUNT[0,1]; }                                                    // MEMCPY IS 16 BIT CAPABLE
@@ -793,11 +791,10 @@ unit dma(
                     case 8: { DMA16BIT = src16bit & dest16bit & ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1] & ~DMACOUNT[0,1]; }            // MEMCPY RECTANGLE IS 16 BIT CAPABLE
                     case 9: { DMA16BIT = srcSET & dest16bit & ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1] & ~DMACOUNT[0,1]; }              // MEMSET RECTANGLE IS 16 BIT CAPABLE
                 }
-                DMAACTIVE = &dmamode[0,3] ? 2 : 1;
                 switch( dmamode[3,1] ) {
                     case 0: {
                         while( |dmacount ) {                                                                                        // SINGLE CYCLE MODE
-                            address = dmasrc; readmemory = ~srcSET; writedata = { DMASET, DMASET };
+                            address = dmasrc; readmemory = ~srcSET;
                             switch( { srcSET, DMAACTIVE[1,1] } ) {
                                 case 2b00: {
                                     while( memorybusy ) {} memoryinput = readdata;
@@ -810,15 +807,8 @@ unit dma(
                                     ++: ++:
                                     writedata = memoryinput[8,8]; writememory = 1;
                                 }
-                                case 2b10: {
-                                    address = dmadest;
-                                    if( FASTSTORE ) { writememory = 1; } else { writememory = 1; while( memorybusy ) {} }
-                                }
-                                case 2b11: {
-                                    address = dmadest; writememory = 1;
-                                    ++: ++:
-                                    writememory = 1;
-                                }
+                                case 2b10: { address = dmadest; if( FASTSTORE ) { writememory = 1; } else { writememory = 1; while( memorybusy ) {} } }
+                                case 2b11: { address = dmadest; writememory = 1; ++: ++: writememory = 1; }
                             }
                             switch( dmamode[0,3] ) {
                                 default: {}                                                                                         // INACTIVE / UNDEFINED
@@ -836,7 +826,7 @@ unit dma(
                     case 1: {
                         while( |dmacycles ) {
                             while( |dmacount ) {                                                                                    // MULTI-CYCLE MODE
-                                address = dmasrc; readmemory = ~srcSET; writedata = { DMASET, DMASET };
+                                address = dmasrc; readmemory = ~srcSET;
                                 switch( { srcSET, FASTSTORE } ) {
                                     case 2b00: {
                                         while( memorybusy ) {} memoryinput = readdata;
@@ -848,29 +838,20 @@ unit dma(
                                         address = dmadest; writedata = DMA16BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
                                         writememory = 1;
                                     }
-                                    case 2b10: {
-                                        address = dmadest;  writememory = 1; while( memorybusy ) {}
-                                    }
-                                    case 2b11: {
-                                        address = dmadest; writememory = 1;
-                                    }
+                                    case 2b10: { address = dmadest;  writememory = 1; while( memorybusy ) {} }
+                                    case 2b11: { address = dmadest; writememory = 1; }
                                 }
-                                switch( dmamode[0,1] ) {
-                                    case 0: { dmasrc = dmasrcNEXT; dmadest = dmadestNEXT; }                                         // MEMCPY_RECTANGLE
-                                    case 1: { dmadest = dmadestNEXT; }                                                              // MEMSET RECTANGLE
-                                }
+                                if( ~dmamode[0,1] ) { dmasrc = dmasrcNEXT; }                                                        // MEMCPY_RECTANGLE
+                                dmadest = dmadestNEXT;                                                                              // MEMCPY and MEMSET RECTANGLE
                                 dmacount = dmacountNEXT;
                             }
-                            switch( dmamode[0,1] ) {
-                                case 0: { dmasrc = dmasrcNEXTLINE; }
-                                case 1: {}
-                            }
+                            if ( ~dmamode[0,1] ) { dmasrc = dmasrcNEXTLINE; }
                             dmadest = dnadestNEXTLINE; dmacount = DMACOUNT; dmacycles = dmacyclesNEXT;
                         }
                     }
                 }
                 DMAACTIVE = 0;
-            } else { DMAACTIVE = 0; }
+            } else { dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES; writedata = { DMASET, DMASET }; }
         }
     }
 }

@@ -28,9 +28,9 @@
 
 // Define this to add more debugging to the zone memory allocator.
 // Turned on by default in CMake debug builds.
-#ifndef NDEBUG
-#define ZONE_DEBUG
-#endif
+//#ifndef NDEBUG
+//#define ZONE_DEBUG
+//#endif
 
 //
 // ZONE MEMORY

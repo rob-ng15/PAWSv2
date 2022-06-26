@@ -455,8 +455,8 @@ void beepboop( void ) {
         draw_score();
 
         last_timer = get_timer1hz( 0 );
-        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_LEFT, 1 );
-        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_RIGHT, 2 );
+        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_LEFT, 1 );
+        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_RIGHT, 2 );
 
         switch( last_timer & 3 ) {
             case 0:
@@ -505,8 +505,8 @@ void beepboop( void ) {
                         beep( 1, 3, 63, 32 );
                     }
                 }
-                //(void)tilemap_scrollwrapclear( LOWER_LAYER, TM_WRAP_DOWN, 1 );
-                (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_WRAP_UP, 2 );
+                (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_DOWN, 1 );
+                (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_UP, 2 );
                 break;
         }
         if( lives == 0 ) { game_over(); }

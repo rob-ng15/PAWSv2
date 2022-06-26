@@ -5,7 +5,7 @@ unsigned char volatile *PS2_MODE = (unsigned char volatile *) 0xf100;
 unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf102;
 
 // MODIFIER KEYS
-unsigned char lshift, rshift, lalt, ralt, lctrl, rctrl, lwin, rwin, application, capslock, numlock;
+unsigned char lshift, rshift, lalt, ralt, lctrl, rctrl, lwin, rwin, application, capslock, numlock = 1;
 
 // RETURN IF A PS/2 KEYEVENT IS AVAILABLE
 char ps2_event_available( void ) {
@@ -171,7 +171,7 @@ unsigned char ps2_character_available() {
 
 unsigned short ps2_inputcharacter() {
     while( !ps2_character_available() );
-    unsigned char temp = availablecharacter; availablecharacter = 0;
+    unsigned short temp = availablecharacter; availablecharacter = 0;
     return temp;
 }
 

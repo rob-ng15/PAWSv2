@@ -114,19 +114,19 @@ void program_background( void ) {
     copper_program( 0, COPPER_WAIT_VBLANK, 7, 0, BKG_SNOW, BLACK, WHITE );
     copper_program( 1, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, WHITE );
     copper_program( 2, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 64, 0, 0, 1 );
-    copper_program( 3, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_RED );
+    copper_program( 3, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, RED );
     copper_program( 4, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 128, 0, 0, 3 );
-    copper_program( 5, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_ORANGE );
+    copper_program( 5, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, ORANGE );
     copper_program( 6, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 160, 0, 0, 5 );
-    copper_program( 7, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_YELLOW );
+    copper_program( 7, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, YELLOW );
     copper_program( 8, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 192, 0, 0, 7 );
-    copper_program( 9, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_GREEN );
+    copper_program( 9, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, GREEN );
     copper_program( 10, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 224, 0, 0, 9 );
-    copper_program( 11, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_LTBLUE );
+    copper_program( 11, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, LTBLUE );
     copper_program( 12, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 256, 0, 0, 11 );
-    copper_program( 13, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_PURPLE );
+    copper_program( 13, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, PURPLE );
     copper_program( 14, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 288, 0, 0, 13 );
-    copper_program( 15, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, P2_MAGENTA );
+    copper_program( 15, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, MAGENTA );
     copper_program( 16, COPPER_JUMP, COPPER_JUMP_ON_VBLANK_EQUAL, 0, 0, 0, 15 );
     copper_program( 17, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 1 );
     copper_startstop( 1 );
@@ -203,7 +203,7 @@ void initialise_graphics( void ) {
     unsigned char colour;
 
     // SET THE BACKGROUND - MULTICOLOURED STARFIELD VIA COPPER
-    program_background(); screen_mode( 0, MODE_PAWSv2, 0 );
+    program_background(); screen_mode( 0, MODE_RGBM, 0 );
     // CLEAR THE TILEMAPS
     tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
     tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
@@ -223,23 +223,23 @@ void initialise_graphics( void ) {
                             colour = TRANSPARENT;
                             break;
                         case 'B':
-                            colour = P2_DKBLUE;
+                            colour = BLUE3;
                             break;
                         case 'C':
                             switch( i ) {
                                 case 0:
-                                    colour = P2_RED;
+                                    colour = RED3;
                                     break;
                                 case 1:
-                                    colour = P2_DKMAGENTA;
+                                    colour = PURPLE;
                                     break;
                                 case 2:
-                                    colour = P2_DKCYAN - 1;
+                                    colour = 0x24;
                                     break;
                             }
                             break;
                         case 'Y':
-                            colour = YELLOW;
+                            colour = ( i == 0 ) ? 0xf0 : 0xc0;
                             break;
                     }
                     colour_blitter_bitmap[ y * 16 + x ] = colour;
@@ -265,9 +265,9 @@ void initialise_graphics( void ) {
     }
 
     // SET JUPITER SATURN COMET CRATER
-    set_tilemap_bitmap32x32( LOWER_LAYER, 3, &jupiter_tilemap32x32[ 0 ] );
-    set_tilemap_bitmap32x32( LOWER_LAYER, 7, &saturn_tilemap32x32[ 0 ] );
-    set_tilemap_bitmap32x32( LOWER_LAYER, 11, &comet_tilemap32x32[ 0 ] );
+    set_tilemap_bitmap32x32( LOWER_LAYER, 3, &planets_32x32[ 0 ] );
+    set_tilemap_bitmap32x32( LOWER_LAYER, 7, &planets_32x32[ 1024 ] );
+    set_tilemap_bitmap32x32( LOWER_LAYER, 11, &planets_32x32[ 2048 ] );
     set_tilemap_bitmap32x32( UPPER_LAYER, 25, &crater_tilemap32x32[ 0 ] );
 
     draw_moonscape();
@@ -316,8 +316,8 @@ void reset_aliens( void ) {
     for( short i = 0; i < 2; i++ ) {
         bitmap_draw( i );
         for( short j = 0; j < 4; j++ ) {
-            gpu_blit( P2_GREEN, 24 + j * 80, 208, 12, 0, 0 );
-            gpu_blit( P2_GREEN, 40 + j * 80, 208, 13, 0, 0 );
+            gpu_blit( GREEN, 24 + j * 80, 208, 12, 0, 0 );
+            gpu_blit( GREEN, 40 + j * 80, 208, 13, 0, 0 );
         }
     }
 
@@ -400,7 +400,7 @@ void draw_aliens( void ) {
                     Aliens[ y * 11 + x ].type--;
                     break;
                 default:
-                    gpu_blit( P2_RED, Aliens[ y * 11 + x ].x, Aliens[ y * 11 + x ].y, 8 + framebuffer, 0, 0 );
+                    gpu_blit( RED, Aliens[ y * 11 + x ].x, Aliens[ y * 11 + x ].y, 8 + framebuffer, 0, 0 );
                     Aliens[ y * 11 + x ].type--;
                     break;
             }
@@ -410,14 +410,14 @@ void draw_aliens( void ) {
     // DRAW UFO
     switch( UFO.active ) {
         case UFOONSCREEN:
-            gpu_blit( P2_MAGENTA, UFO.x, 16, 10 + framebuffer, 0, 0 );
+            gpu_blit( MAGENTA, UFO.x, 16, 10 + framebuffer, 0, 0 );
             if( !get_beep_active( 1 ) ) {
                 beep( 1, 2, UFO.pitchcount ? 25 : 37, 100 );
                 UFO.pitchcount = !UFO.pitchcount;
             }
             break;
         case UFOEXPLODE:
-            gpu_printf_centre( framebuffer ? P2_RED : P2_LTRED, UFO.x + 7, 16, BOLD, 0, 0, "%d", UFO.score );
+            gpu_printf_centre( framebuffer ? RED : 0xd1, UFO.x + 7, 16, BOLD, 0, 0, "%d", UFO.score );
             if( !get_beep_active( 1 ) ) {
                 beep( 1, 1, UFO.pitchcount ? 37 : 49, 25 );
                 UFO.pitchcount = !UFO.pitchcount;
@@ -908,10 +908,10 @@ void attract( void ) {
                     // WELCOME SCREEN
                     // DRAW TO HIDDEN FRAME BUFFER
                     bitmap_draw( !framebuffer ); gpu_cs();
-                    gpu_blit( WHITE, 128, 64, 2 + animation, 1, 0 ); gpu_printf_centre( P2_RED, 176, 64, BOLD, 1, 0, "%d", 30, 0 );
-                    gpu_blit( WHITE, 128, 96, 4 + animation, 1, 0 ); gpu_printf_centre( P2_RED, 176, 96, BOLD, 1, 0, "%d", 20, 0 );
-                    gpu_blit( WHITE, 128, 128, 6 + animation, 1, 0 ); gpu_printf_centre( P2_RED, 176, 128, BOLD, 1, 0, "%d", 10, 0 );
-                    gpu_blit( P2_MAGENTA, 126, 160, 10 + animation, 1, 0 ); gpu_printf_centre( P2_RED, 176, 160, BOLD, 1, ROTATE0 + ( systemclock() & 3 ), "?", 0 );
+                    gpu_blit( WHITE, 128, 64, 2 + animation, 1, 0 ); gpu_printf_centre( RED, 176, 64, BOLD, 1, 0, "%d", 30, 0 );
+                    gpu_blit( WHITE, 128, 96, 4 + animation, 1, 0 ); gpu_printf_centre( RED, 176, 96, BOLD, 1, 0, "%d", 20, 0 );
+                    gpu_blit( WHITE, 128, 128, 6 + animation, 1, 0 ); gpu_printf_centre( RED, 176, 128, BOLD, 1, 0, "%d", 10, 0 );
+                    gpu_blit( MAGENTA, 126, 160, 10 + animation, 1, 0 ); gpu_printf_centre( RED, 176, 160, BOLD, 1, ROTATE0 + ( systemclock() & 3 ), "?", 0 );
 
                     switch( animation ) {
                         case 0:

@@ -1,5 +1,6 @@
 #include <PAWSlibrary.h>
 
+// LOAD THE BACKDROPS
 unsigned char BACKDROPS[][320*240] = {
 #include "graphics/BD-map2.h"
 ,
@@ -7,6 +8,9 @@ unsigned char BACKDROPS[][320*240] = {
 ,
 #include "graphics/BD-village.h"
 };
+
+// LOAD THE SPRITES
+#include "graphics/spritesheet-1.h"
 
 unsigned char tune_treble[] = { 32,                             // OPENING BAR
 
@@ -97,6 +101,9 @@ void displayreset( void ) {
         set_sprite_attribute( LOWER_LAYER, i, SPRITE_ACTIVE, 0 );
         set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
     }
+
+    // SET THE INITIAL SPRITES FROM THE SPRITESHEET
+    set_sprite_bitamps_from_spritesheet32x32( UPPER_LAYER, &spritesheet_upper_1[0] );
 }
 
 // DISPLAY THE MAP, ROLLING DOWN FROM THE TOP TO THE VILLAGE
@@ -111,7 +118,7 @@ void display_map( void ) {
         gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, &BACKDROPS[0][ i * 320 ] );
     }
 
-     SMTSTART( (unsigned int )smt_thread ); sleep1khz( 2000, 0 );
+    SMTSTART( (unsigned int )smt_thread );
 
     for( int i = 0; i <=8; i++ ) { screen_dimmer( i ); sleep1khz( 100, 0 ); }
 }
@@ -123,6 +130,20 @@ int main( void ) {
 
     gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, BACKDROPS[2] );
     for( int i = 8; i >= 0; i-- ) { screen_dimmer( i ); sleep1khz( 100, 0 ); }
+
+    // DISPLAY A SMURF AND ANIMATE
+    set_sprite32( UPPER_LAYER, 0, 1, 64, 32, 0, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 4, 1, 128, 32, 0, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 8, 1, 192, 32, 0, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 12, 1, 256, 32, 0, SPRITE_DOUBLE );
+    for( int i = 0; i < 16; i ++ ) {
+        sleep1khz( 400, 0 );
+        set_sprite32( UPPER_LAYER, 0, 1, 64, 32, i & 7, SPRITE_DOUBLE );
+        set_sprite32( UPPER_LAYER, 4, 1, 128, 32, i & 7, SPRITE_DOUBLE );
+        set_sprite32( UPPER_LAYER, 8, 1, 192, 32, i & 7, SPRITE_DOUBLE );
+        set_sprite32( UPPER_LAYER, 12, 1, 256, 32, i & 7, SPRITE_DOUBLE );
+    }
+
     sleep1khz( 2000, 0 );
 }
 
