@@ -8,28 +8,32 @@ unit characterrom256(
     input!  uint8   tile,
     input!  uint3   y,
     output! uint8   line
-) <reginputs> {
+) {
     brom uint8 characterGenerator8x8[] = {
         $include('ROM/characterROM8x8nobold.inc')
     };
 
     // Setup the reading of the characterGenerator8x16 ROM
-    characterGenerator8x8.addr := { tile, y };
-    line := characterGenerator8x8.rdata;
+    always_after {
+        characterGenerator8x8.addr = { tile, y };
+        line = characterGenerator8x8.rdata;
+    }
 }
 
 unit characterrom512(
     input!  uint9   tile,
     input!  uint3   y,
     output! uint8   line
-) <reginputs> {
+) {
     brom uint8 characterGenerator8x8[] = {
         $include('ROM/characterROM8x8.inc')
     };
 
     // Setup the reading of the characterGenerator8x16 ROM
-    characterGenerator8x8.addr := { tile, y };
-    line := characterGenerator8x8.rdata;
+    always_after {
+        characterGenerator8x8.addr = { tile, y };
+        line = characterGenerator8x8.rdata;
+    }
 }
 
 unit video_memmap(
@@ -103,8 +107,10 @@ $$if HDMI then
         blue    <: video_b
     );
 $$end
-    // CREATE DISPLAY LAYERS, PREPARE COORDINATES FOR PRE-FETCHERS, ALL LAYERS BUT BACKGROUND
+    // CREATE DISPLAY LAYERS
+    // PREPARE COORDINATES FOR PRE-FETCHERS, ALL LAYERS BUT BACKGROUND
     // HDMI IMAGE STARTS IMMEDIATELY AFTER VBLANK, VGA HAS A "PORCH" FOR EACH LINE, PART OF HBLANK
+    // (xscreen,yscreen) is the screen coordinate that is next to be rendered.
 $$if HDMI then
     uint10   xscreen <: pix_active ? pix_x : 0;
     uint9    yscreen <: vblank ? 0 : pix_active ? pix_y : pix_y + 1;
@@ -271,8 +277,8 @@ $$end
             // READ IO Memory
             if( memoryRead ) {
                 switch( memoryAddress[8,4] ) {
-                    case 4h1: { readData = memoryAddress[2,1] ? LOWER_TILE.tm_read : memoryAddress[1,1] ? LOWER_TILE.tm_lastaction : LOWER_TILE.tm_active; }
-                    case 4h2: { readData = memoryAddress[2,1] ? UPPER_TILE.tm_read : memoryAddress[1,1] ? UPPER_TILE.tm_lastaction : UPPER_TILE.tm_active; }
+                    case 4h1: { readData = memoryAddress[1,1] ? LOWER_TILE.tm_lastaction : memoryAddress[2,1] ? LOWER_TILE.tm_read : LOWER_TILE.tm_active; }
+                    case 4h2: { readData = memoryAddress[1,1] ? UPPER_TILE.tm_lastaction : memoryAddress[2,1] ? UPPER_TILE.tm_read : UPPER_TILE.tm_active; }
                     case 4h3: {
                         switch( memoryAddress[1,7] ) {
                             $$for i=0,15 do
@@ -697,16 +703,13 @@ unit charactermap_memmap(
     output  uint6   curses_foreground
 ) <reginputs> {
     // 80 x 30 character buffer
-    // Setting background to 40 (ALPHA) allows the bitmap/background to show through, charactermap { BOLD, character }
-    simple_dualport_bram uint9 charactermap <@video_clock,@clock> [4800] = uninitialized;
-    simple_dualport_bram uint16 colourmap <@video_clock,@clock> [4800] = uninitialized;
+    simple_dualport_bram uint25 charactermap <@video_clock,@clock> [4800] = uninitialized;
 
     // CHARACTER MAP DISPLAY
     uint1   tpu_showcursor = uninitialized;
     character_map character_map_window <@video_clock,!video_reset> (
         clockCG <: clock,
         charactermap <:> charactermap,
-        colourmap <:> colourmap,
         pix_x      <: pix_x,
         pix_y      <: pix_y,
         pix_active <: pix_active,
@@ -721,7 +724,6 @@ unit charactermap_memmap(
     // CHARACTER MAP WRITER
     character_map_writer CMW(
         charactermap <:> charactermap,
-        colourmap <:> colourmap,
         tpu_active :> tpu_active,
         curses_character :> curses_character,
         curses_background :> curses_background,

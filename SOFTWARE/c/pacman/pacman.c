@@ -2378,7 +2378,7 @@ static void intro_tick(void) {
 
 /* create all sokol-gfx resources */
 static void gfx_create_resources(void) {
-    // pass action for clearing the background to black
+/*    // pass action for clearing the background to black
     state.gfx.pass_action = (sg_pass_action) {
         .colors[0] = { .action = SG_ACTION_CLEAR, .value = { 0.0f, 0.0f, 0.0f, 1.0f } }
     };
@@ -2693,6 +2693,8 @@ static void gfx_create_resources(void) {
         .wrap_v = SG_WRAP_CLAMP_TO_EDGE,
         .data.subimage[0][0] = SG_RANGE(state.gfx.color_palette)
     });
+
+*/
 }
 
 /*
@@ -2803,7 +2805,7 @@ static void gfx_decode_color_palette(void) {
 }
 
 static void gfx_init(void) {
-    sg_setup(&(sg_desc){
+/*    sg_setup(&(sg_desc){
         // reduce pool allocation size to what's actually needed
         .buffer_pool_size = 2,
         .image_pool_size = 3,
@@ -2815,14 +2817,15 @@ static void gfx_init(void) {
     disable(&state.gfx.fadein);
     disable(&state.gfx.fadeout);
     state.gfx.fade = 0xFF;
-    spr_clear();
+*/    spr_clear();
     gfx_decode_tiles();
     gfx_decode_color_palette();
     gfx_create_resources();
 }
 
 static void gfx_shutdown(void) {
-    sg_shutdown();
+/*    sg_shutdown();
+*/
 }
 
 static void gfx_add_vertex(float x, float y, float u, float v, uint8_t color_code, uint8_t opacity) {
@@ -2961,12 +2964,13 @@ static void gfx_adjust_viewport(int canvas_width, int canvas_height) {
         vp_h = (int)(canvas_width / playfield_aspect - 2*border);
         vp_y = (canvas_height - vp_h) / 2;
     }
-    sg_apply_viewport(vp_x, vp_y, vp_w, vp_h, true);
+/*    sg_apply_viewport(vp_x, vp_y, vp_w, vp_h, true);
+*/
 }
 
 // handle fadein/fadeout
 static void gfx_fade(void) {
-    if (between(state.gfx.fadein, 0, FADE_TICKS)) {
+/*    if (between(state.gfx.fadein, 0, FADE_TICKS)) {
         float t = (float)since(state.gfx.fadein) / FADE_TICKS;
         state.gfx.fade = (uint8_t) (255.0f * (1.0f - t));
     }
@@ -2980,6 +2984,7 @@ static void gfx_fade(void) {
     if (after_once(state.gfx.fadeout, FADE_TICKS)) {
         state.gfx.fade = 255;
     }
+*/
 }
 
 static void gfx_draw(void) {
@@ -2991,7 +2996,7 @@ static void gfx_draw(void) {
     gfx_add_playfield_vertices();
     gfx_add_sprite_vertices();
     gfx_add_debugmarker_vertices();
-    if (state.gfx.fade > 0) {
+/*    if (state.gfx.fade > 0) {
         gfx_add_fade_vertices();
     }
     assert(state.gfx.num_vertices <= MAX_VERTICES);
@@ -3021,14 +3026,16 @@ static void gfx_draw(void) {
     sg_draw(0, 4, 1);
     sg_end_pass();
     sg_commit();
+*/
 }
 
 /*== AUDIO SUBSYSTEM =========================================================*/
 static void snd_init(void) {
-    saudio_setup(&(saudio_desc){ 0 });
+//    saudio_setup(&(saudio_desc){ 0 });
 
     // compute sample duration in nanoseconds
-    int32_t samples_per_sec = saudio_sample_rate();
+    int32_t samples_per_sec = 25000;
+//    int32_t samples_per_sec = saudio_sample_rate();
     state.audio.sample_duration_ns = 1000000000 / samples_per_sec;
 
     /* compute number of 96kHz ticks per sample tick (the Namco sound generator
@@ -3038,7 +3045,7 @@ static void snd_init(void) {
 }
 
 static void snd_shutdown(void) {
-    saudio_shutdown();
+//    saudio_shutdown();
 }
 
 // the snd_voice_tick() function updates the Namco sound generator and must be called with 96 kHz
@@ -3068,7 +3075,7 @@ static void snd_sample_tick(void) {
     }
     state.audio.sample_buffer[state.audio.num_samples++] = sm * 0.333333f * AUDIO_VOLUME;
     if (state.audio.num_samples == NUM_SAMPLES) {
-        saudio_push(state.audio.sample_buffer, state.audio.num_samples);
+//        saudio_push(state.audio.sample_buffer, state.audio.num_samples);
         state.audio.num_samples = 0;
     }
 }
@@ -3281,6 +3288,11 @@ static void snd_func_frightened(int slot) {
     else {
         voice->frequency += 0x180;
     }
+}
+
+
+int main( int argc, char **argv ) {
+    init();
 }
 
 /*== EMBEDDED DATA ===========================================================*/
