@@ -119,8 +119,8 @@ $$else
     uint9    yscreen <: vblank ? 0 : pix_y;
 $$end
 
-    // FLAG FOR hi (640x480) or lo (320x240) SWITCH FOR TILEMAPS
-    uint2   hilorez = 0;
+    // FLAG FOR hi (640x480) or lo (320x240) SWITCH FOR TILEMAPS AND CHARACTERMAP
+    uint3   hilorez = 0;
 
     // BACKGROUND
     background_memmap BACKGROUND(
@@ -157,6 +157,7 @@ $$end
     charactermap_memmap CHARACTER_MAP(
         video_clock <: video_clock,
         video_reset <: video_reset,
+        lorez <: hilorez[2,1],
         pix_x      <: xscreen,
         pix_y      <: yscreen,
         pix_active <: pix_active,
@@ -309,9 +310,9 @@ $$end
                     }
                     case 4h5: {
                         switch( memoryAddress[1,3] ) {
-                            case 3h2: { readData = CHARACTER_MAP.curses_character; }
-                            case 3h3: { readData = CHARACTER_MAP.curses_background; }
-                            case 3h4: { readData = CHARACTER_MAP.curses_foreground; }
+                            case 3h2: { readData = memoryAddress[4,1] ? CHARACTER_MAP.tpu_cell[0,9] : CHARACTER_MAP.curses_cell[0,9]; }
+                            case 3h3: { readData = memoryAddress[4,1] ? CHARACTER_MAP.tpu_cell[17,8] : CHARACTER_MAP.curses_cell[17,8]; }
+                            case 3h4: { readData = memoryAddress[4,1] ? CHARACTER_MAP.tpu_cell[9,8] : CHARACTER_MAP.curses_cell[9,8]; }
                             case 3h5: { readData = CHARACTER_MAP.tpu_active; }
                             default: { readData = 0; }
                         }
@@ -691,6 +692,7 @@ unit charactermap_memmap(
     output! uint8   pixel,
     output! uint1   pixel_display,
     input   uint1   blink,
+    input   uint1   lorez,
 
     // Memory access
     input   uint4   memoryAddress,
@@ -698,20 +700,20 @@ unit charactermap_memmap(
     input   uint16  writeData,
 
     output  uint5   tpu_active,
-    output  uint9   curses_character,
-    output  uint8   curses_background,
-    output  uint6   curses_foreground
+    output  uint25  tpu_cell,
+    output  uint25  curses_cell,
 ) <reginputs> {
     // 80 x 30 character buffer
-    simple_dualport_bram uint25 charactermap <@video_clock,@clock> [4800] = uninitialized;
+    dualport_bram uint25 charactermap <@video_clock,@clock> [4800] = uninitialized;
 
     // CHARACTER MAP DISPLAY
     uint1   tpu_showcursor = uninitialized;
+    uint10  dopix_x <: lorez ? pix_x[1,9] : pix_x;  uint10  dopix_y <: lorez ? pix_y[1,9] : pix_y;
     character_map character_map_window <@video_clock,!video_reset> (
         clockCG <: clock,
         charactermap <:> charactermap,
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
+        pix_x      <: dopix_x,
+        pix_y      <: dopix_y,
         pix_active <: pix_active,
         pix_vblank <: pix_vblank,
         pixel    :> pixel,
@@ -725,9 +727,8 @@ unit charactermap_memmap(
     character_map_writer CMW(
         charactermap <:> charactermap,
         tpu_active :> tpu_active,
-        curses_character :> curses_character,
-        curses_background :> curses_background,
-        curses_foreground :> curses_foreground,
+        tpu_cell :> tpu_cell,
+        curses_cell :> curses_cell
     );
     CMW.tpu_write := 0;
 

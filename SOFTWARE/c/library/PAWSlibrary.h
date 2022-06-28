@@ -137,6 +137,10 @@ extern void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_layer
 extern void tpu_cs( void );
 extern void tpu_clearline( unsigned char );
 extern void tpu_set(  unsigned char, unsigned char, unsigned char, unsigned char );
+extern void tpu_move(  unsigned char, unsigned char );
+extern unsigned short tpu_read_cell( unsigned char x, unsigned char y );
+extern unsigned short tpu_read_colour( unsigned char x, unsigned char y );
+extern void tpu_write( short );
 extern void tpu_output_character( short );
 extern void tpu_printf( char, const char *,... );
 extern void tpu_printf_centre( unsigned char, unsigned char, unsigned char, char, const char *,... );

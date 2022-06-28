@@ -286,10 +286,10 @@ void await_vblank_finish( void ) {
 }
 
 // SET THE LAYER ORDER FOR THE DISPLAY
-void screen_mode( unsigned char screenmode, unsigned char colour, unsigned char tmresolution ) {
+void screen_mode( unsigned char screenmode, unsigned char colour, unsigned char resolution ) {
     *SCREENMODE = screenmode;
     *COLOUR = colour;
-    *REZ = tmresolution;
+    *REZ = resolution;
 }
 
 // SET THE DIMMER LEVEL FOR THE DISPLAY 0 == FULL BRIGHTNESS, 1 - 7 DIMMER, 8 - 15 BLANK
@@ -1209,12 +1209,31 @@ void tpu_clearline( unsigned char y ) {
     *TPU_COMMIT = 4;
 }
 
+// POSITION THE CURSOR to (x,y)
+void tpu_move( unsigned char x, unsigned char y ) {
+    while( *TPU_COMMIT );
+    *TPU_X = x; *TPU_Y = y; *TPU_COMMIT = 1;
+}
+// READ THE CHARACTER AT (x,y)
+unsigned short tpu_read_cell( unsigned char x, unsigned char y ) {
+    tpu_move( x, y );
+    return( *TPUREAD_CHARACTER );
+}
+// READ THE COLOUR AT (x,y)
+unsigned short tpu_read_colour( unsigned char x, unsigned char y ) {
+    tpu_move( x, y );
+    return( _rv32_packh( *TPUREAD_FOREGROUND, *TPUREAD_FOREGROUND ) );
+}
+void tpu_write( short c ) {
+     while( *TPU_COMMIT );
+    *TPU_CHARACTER = c; *TPU_COMMIT = 12;
+}
+
 // POSITION THE CURSOR to (x,y) and set background and foreground colours
-void tpu_set(  unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
     while( *TPU_COMMIT );
     *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
 }
-
 // OUTPUT CHARACTER, STRING, and PRINTF EQUIVALENT FOR THE TPU
 void tpu_output_character( short c ) {
     while( *TPU_COMMIT );

@@ -135,6 +135,8 @@
 #include <string.h> // memset()
 #include <stdlib.h> // abs()
 
+#include <stdio.h>
+#include <PAWSintrinsics.h>
 #include <PAWSlibrary.h>
 
 #define int8_t char
@@ -172,8 +174,8 @@ enum {
     TILE_HEIGHT         = 8,
     SPRITE_WIDTH        = 16,           // width and height of a sprite in pixels
     SPRITE_HEIGHT       = 16,
-    DISPLAY_TILES_X     = 28,           // tile buffer width and height
-    DISPLAY_TILES_Y     = 36,
+    DISPLAY_TILES_X     = 40,           // tile buffer width and height
+    DISPLAY_TILES_Y     = 30,
     DISPLAY_PIXELS_X    = DISPLAY_TILES_X * TILE_WIDTH,
     DISPLAY_PIXELS_Y    = DISPLAY_TILES_Y * TILE_HEIGHT,
     NUM_SPRITES         = 8,
@@ -200,10 +202,10 @@ enum {
    arcade machine and extracted by looking at memory locations of a Pacman emulator
 */
 enum {
-    TILE_SPACE          = 0x40,
-    TILE_DOT            = 0x10,
-    TILE_PILL           = 0x14,
-    TILE_GHOST          = 0xB0,
+    TILE_SPACE          = 0,
+    TILE_DOT            = 12,
+    TILE_PILL           = 14,
+    TILE_GHOST          = 56,
     TILE_LIFE           = 0x20, // 0x20..0x23
     TILE_CHERRIES       = 0x90, // 0x90..0x93
     TILE_STRAWBERRY     = 0x94, // 0x94..0x97
@@ -231,15 +233,15 @@ enum {
     SPRITETILE_PACMAN_CLOSED_MOUTH = 48,
 
     COLOR_BLANK         = 0x00,
-    COLOR_DEFAULT       = 0x0F,
-    COLOR_DOT           = 0x10,
-    COLOR_PACMAN        = 0x09,
-    COLOR_BLINKY        = 0x01,
-    COLOR_PINKY         = 0x03,
-    COLOR_INKY          = 0x05,
-    COLOR_CLYDE         = 0x07,
-    COLOR_FRIGHTENED    = 0x11,
-    COLOR_FRIGHTENED_BLINKING = 0x12,
+    COLOR_DEFAULT       = 255,
+    COLOR_DOT           = 237,
+    COLOR_PACMAN        = 249,
+    COLOR_BLINKY        = 201,
+    COLOR_PINKY         = 239,
+    COLOR_INKY          = 63,
+    COLOR_CLYDE         = 233,
+    COLOR_FRIGHTENED    = 15,
+    COLOR_FRIGHTENED_BLINKING = 247,
     COLOR_GHOST_SCORE   = 0x18,
     COLOR_EYES          = 0x19,
     COLOR_CHERRIES      = 0x14,
@@ -758,35 +760,14 @@ static void frame(void) {
 }
 
 static void input() {
-//    if (state.input.enabled) {
-//        if ((ev->type == SAPP_EVENTTYPE_KEY_DOWN) || (ev->type == SAPP_EVENTTYPE_KEY_UP)) {
-//            bool btn_down = ev->type == SAPP_EVENTTYPE_KEY_DOWN;
-//            switch (ev->key_code) {
-//                case SAPP_KEYCODE_UP:
-//                case SAPP_KEYCODE_W:
-//                    state.input.up = state.input.anykey = btn_down;
-//                    break;
-//                case SAPP_KEYCODE_DOWN:
-//                case SAPP_KEYCODE_S:
-//                    state.input.down = state.input.anykey = btn_down;
-//                    break;
-//                case SAPP_KEYCODE_LEFT:
-//                case SAPP_KEYCODE_A:
-//                    state.input.left = state.input.anykey = btn_down;
-//                    break;
-//                case SAPP_KEYCODE_RIGHT:
-//                case SAPP_KEYCODE_D:
-//                    state.input.right = state.input.anykey = btn_down;
-//                    break;
-//                case SAPP_KEYCODE_ESCAPE:
-//                    state.input.esc = state.input.anykey = btn_down;
-//                    break;
-//                default:
-//                    state.input.anykey = btn_down;
-//                    break;
-//            }
-//        }
-//    }
+    if (state.input.enabled) {
+        unsigned short joystick = get_buttons() & 0xfffe;
+        state.input.anykey = ( joystick != 0 );
+        state.input.up = _rv32_bext( joystick, 3 );
+        state.input.down = _rv32_bext( joystick, 4 );
+        state.input.right = _rv32_bext( joystick, 6 );
+        state.input.left = _rv32_bext( joystick, 5 );
+    }
 }
 
 static void cleanup(void) {
@@ -966,6 +947,8 @@ int2_t dist_to_tile_mid(int2_t pos) {
 static void vid_clear(uint8_t tile_code, uint8_t color_code) {
     memset(&state.gfx.video_ram, tile_code, sizeof(state.gfx.video_ram));
     memset(&state.gfx.color_ram, color_code, sizeof(state.gfx.color_ram));
+    tpu_cs();
+    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
 }
 
 // clear the playfield's rectangle in the color buffer
@@ -1000,7 +983,9 @@ static void vid_color_tile(int2_t tile_pos, uint8_t color_code, uint8_t tile_cod
     state.gfx.video_ram[tile_pos.y][tile_pos.x] = tile_code;
     state.gfx.color_ram[tile_pos.y][tile_pos.x] = color_code;
 }
-
+static void paws_tile(int2_t tile_pos, uint8_t tile_code) {
+    set_tilemap_tile( LOWER_LAYER, tile_pos.x, tile_pos.y - 3, tile_code, 0 );
+}
 // translate ASCII char into "NAMCO char"
 static char conv_char(char c) {
     switch (c) {
@@ -1014,23 +999,29 @@ static char conv_char(char c) {
     return c;
 }
 
-// put colored char into tile+color buffers
+// put colored char into tpu buffer
 static void vid_color_char(int2_t tile_pos, uint8_t color_code, char chr) {
     assert(valid_tile_pos(tile_pos));
-    state.gfx.video_ram[tile_pos.y][tile_pos.x] = conv_char(chr);
-    state.gfx.color_ram[tile_pos.y][tile_pos.x] = color_code;
+    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
+    tpu_output_character( chr );
+    //state.gfx.video_ram[tile_pos.y][tile_pos.x] = conv_char(chr);
+    //state.gfx.color_ram[tile_pos.y][tile_pos.x] = color_code;
 }
 
-// put char into tile buffer
+// put char into tpu buffer
 static void vid_char(int2_t tile_pos, char chr) {
     assert(valid_tile_pos(tile_pos));
-    state.gfx.video_ram[tile_pos.y][tile_pos.x] = conv_char(chr);
+    unsigned short colour = tpu_read_colour( tile_pos.x, tile_pos.y );
+    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, colour&0xff );
+    tpu_write( chr );
+    //state.gfx.video_ram[tile_pos.y][tile_pos.x] = conv_char(chr);
 }
 
-// put colored text into the tile+color buffers
+// put colored text into tpu buffer
 static void vid_color_text(int2_t tile_pos, uint8_t color_code, const char* text) {
     assert(valid_tile_pos(tile_pos));
     uint8_t chr;
+
     while ((chr = (uint8_t) *text++)) {
         if (tile_pos.x < DISPLAY_TILES_X) {
             vid_color_char(tile_pos, color_code, chr);
@@ -1042,10 +1033,11 @@ static void vid_color_text(int2_t tile_pos, uint8_t color_code, const char* text
     }
 }
 
-// put text into the tile buffer
+// put text into tpu buffer
 static void vid_text(int2_t tile_pos, const char* text) {
     assert(valid_tile_pos(tile_pos));
     uint8_t chr;
+
     while ((chr = (uint8_t) *text++)) {
         if (tile_pos.x < DISPLAY_TILES_X) {
             vid_char(tile_pos, chr);
@@ -1387,10 +1379,10 @@ static void game_init_playfield(void) {
         "L..........................R" // 32
         "2BBBBBBBBBBBBBBBBBBBBBBBBBB3"; // 33
        //0123456789012345678901234567
-    uint8_t t[128];
+    uint16_t t[128];
     for (int i = 0; i < 128; i++) { t[i]=TILE_DOT; }
-    t[' ']=0x40; t['0']=0xD1; t['1']=0xD0; t['2']=0xD5; t['3']=0xD4; t['4']=0xFB;
-    t['5']=0xFA; t['6']=0xD7; t['7']=0xD9; t['8']=0xD6; t['9']=0xD8; t['U']=0xDB;
+    t[' ']=0x0000; t['0']=0x0001; t['1']=0x0101; t['2']=0x0201; t['3']=0x0301; t['4']=0x0003;
+    t['5']=0x0103; t['6']=0x070b; t['7']=0x0703; t['8']=0x0503; t['9']=0x050b; t['U']=0x0002;
     t['L']=0xD3; t['R']=0xD2; t['B']=0xDC; t['b']=0xDF; t['e']=0xE7; t['f']=0xE6;
     t['g']=0xEB; t['h']=0xEA; t['l']=0xE8; t['r']=0xE9; t['u']=0xE5; t['w']=0xF5;
     t['x']=0xF2; t['y']=0xF3; t['z']=0xF4; t['m']=0xED; t['n']=0xEC; t['o']=0xEF;
@@ -1398,7 +1390,8 @@ static void game_init_playfield(void) {
     t['t']=0xF0; t['-']=TILE_DOOR; t['P']=TILE_PILL;
     for (int y = 3, i = 0; y <= 33; y++) {
         for (int x = 0; x < 28; x++, i++) {
-            state.gfx.video_ram[y][x] = t[tiles[i] & 127];
+            set_tilemap_tile( LOWER_LAYER, x, y - 3, t[tiles[i]]&0xff,(t[tiles[i]]&0xff00)>>8);
+            //state.gfx.video_ram[y][x] = t[tiles[i] & 127];
         }
     }
     // ghost house gate colors
@@ -2308,38 +2301,42 @@ static void intro_tick(void) {
         start(&state.gfx.fadein);
         input_enable();
         vid_clear(TILE_SPACE, COLOR_DEFAULT);
-        vid_text(i2(3,0),  "1UP   HIGH SCORE   2UP");
+        vid_color_text(i2(3,0),  COLOR_DEFAULT, "1UP");
+        vid_color_text(i2(3,29),  COLOR_DEFAULT, "HS");
+        vid_color_text(i2(34,0),  COLOR_DEFAULT, "2UP");
         vid_color_score(i2(6,1), COLOR_DEFAULT, 0);
         if (state.game.hiscore > 0) {
-            vid_color_score(i2(16,1), COLOR_DEFAULT, state.game.hiscore);
+            vid_color_score(i2(6,29), COLOR_DEFAULT, state.game.hiscore);
         }
-        vid_text(i2(7,5),  "CHARACTER / NICKNAME");
-        vid_text(i2(3,35), "CREDIT  0");
+        vid_color_text(i2(13,3),  COLOR_DEFAULT, "CHARACTER / NICKNAME");
+        vid_color_text(i2(34,29), COLOR_DEFAULT, "CREDIT  0");
     }
 
     // draw the animated 'ghost image.. name.. nickname' lines
     uint32_t delay = 30;
     const char* names[] = { "-SHADOW", "-SPEEDY", "-BASHFUL", "-POKEY" };
     const char* nicknames[] = { "BLINKY", "PINKY", "INKY", "CLYDE" };
+    const char colours[] = { COLOR_BLINKY, COLOR_PINKY, COLOR_INKY, COLOR_CLYDE };
+
     for (int i = 0; i < 4; i++) {
-        const uint8_t color = 2*i + 1;
         const uint8_t y = 3*i + 6;
         // 2*3 ghost image created from tiles (no sprite!)
         delay += 30;
         if (after_once(state.intro.started, delay)) {
-            vid_color_tile(i2(4,y+0), color, TILE_GHOST+0); vid_color_tile(i2(5,y+0), color, TILE_GHOST+1);
-            vid_color_tile(i2(4,y+1), color, TILE_GHOST+2); vid_color_tile(i2(5,y+1), color, TILE_GHOST+3);
-            vid_color_tile(i2(4,y+2), color, TILE_GHOST+4); vid_color_tile(i2(5,y+2), color, TILE_GHOST+5);
+            paws_tile( i2(11,y+5), TILE_GHOST+i );
+            //vid_color_tile(i2(4,y+0), color, TILE_GHOST+0); vid_color_tile(i2(5,y+0), color, TILE_GHOST+1);
+            //vid_color_tile(i2(4,y+1), color, TILE_GHOST+2); vid_color_tile(i2(5,y+1), color, TILE_GHOST+3);
+            //vid_color_tile(i2(4,y+2), color, TILE_GHOST+4); vid_color_tile(i2(5,y+2), color, TILE_GHOST+5);
         }
         // after 1 second, the name of the ghost
         delay += 60;
         if (after_once(state.intro.started, delay)) {
-            vid_color_text(i2(7,y+1), color, names[i]);
+            vid_color_text(i2(13,y+1), colours[i], names[i]);
         }
         // after 0.5 seconds, the nickname of the ghost
         delay += 30;
         if (after_once(state.intro.started, delay)) {
-            vid_color_text(i2(17,y+1), color, nicknames[i]);
+            vid_color_text(i2(23,y+1), colours[i], nicknames[i]);
         }
     }
 
@@ -2347,20 +2344,20 @@ static void intro_tick(void) {
     // O 50 PTS
     delay += 60;
     if (after_once(state.intro.started, delay)) {
-        vid_color_tile(i2(10,24), COLOR_DOT, TILE_DOT);
-        vid_text(i2(12,24), "10 \x5D\x5E\x5F");
-        vid_color_tile(i2(10,26), COLOR_DOT, TILE_PILL);
-        vid_text(i2(12,26), "50 \x5D\x5E\x5F");
+        paws_tile(i2(16,25), TILE_DOT);
+        vid_color_text(i2(18,21), COLOR_DEFAULT, "10 pts");
+        paws_tile(i2(16,27), TILE_PILL);
+        vid_color_text(i2(18,23), COLOR_DEFAULT, "50 pts");
     }
 
     // blinking "press any key" text
     delay += 60;
     if (after(state.intro.started, delay)) {
         if (since(state.intro.started) & 0x20) {
-            vid_color_text(i2(3,31), 3, "                       ");
+            vid_color_text(i2(9,27), 3, "                       ");
         }
         else {
-            vid_color_text(i2(3,31), 3, "PRESS ANY KEY TO START!");
+            vid_color_text(i2(9,27), 3, "PRESS ANY KEY TO START!");
         }
     }
 
@@ -2804,6 +2801,13 @@ static void gfx_decode_color_palette(void) {
     }
 }
 
+unsigned char tilemap_lower[] = {
+    #include "graphics/tilemap_lower.h"
+};
+unsigned char sprite_upper[] = {
+    #include "graphics/sprite_upper.h"
+};
+
 static void gfx_init(void) {
 /*    sg_setup(&(sg_desc){
         // reduce pool allocation size to what's actually needed
@@ -2817,7 +2821,11 @@ static void gfx_init(void) {
     disable(&state.gfx.fadein);
     disable(&state.gfx.fadeout);
     state.gfx.fade = 0xFF;
-*/    spr_clear();
+*/
+    set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, &tilemap_lower[0] );
+    set_sprite_bitamps_from_spritesheet( UPPER_LAYER, &sprite_upper[0] );
+
+    spr_clear();
     gfx_decode_tiles();
     gfx_decode_color_palette();
     gfx_create_resources();
@@ -3293,6 +3301,11 @@ static void snd_func_frightened(int slot) {
 
 int main( int argc, char **argv ) {
     init();
+    screen_mode( 0, MODE_RGBM, CM_LOW );
+    while(1) {
+        await_vblank();
+        frame();
+    }
 }
 
 /*== EMBEDDED DATA ===========================================================*/
