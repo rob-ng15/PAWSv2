@@ -1,4 +1,3 @@
-
 /*------------------------------------------------------------------------------
     pacman.c
 
@@ -131,22 +130,13 @@
     As mentioned above, there's a whole little function vocabulary built around
     time triggers, but those are hopefully all self-explanatory.
 */
+#include "sokol_app.h"
+#include "sokol_gfx.h"
+#include "sokol_audio.h"
+#include "sokol_glue.h"
 #include <assert.h>
 #include <string.h> // memset()
 #include <stdlib.h> // abs()
-
-#include <stdio.h>
-#include <PAWSintrinsics.h>
-#include <PAWSlibrary.h>
-
-#define int8_t char
-#define int16_t short
-#define int32_t int
-#define int64_t long
-#define uint8_t unsigned char
-#define uint16_t unsigned short
-#define uint32_t unsigned int
-#define uint64_t unsigned long
 
 // config defines and global constants
 #define AUDIO_VOLUME (0.5f)
@@ -202,10 +192,10 @@ enum {
    arcade machine and extracted by looking at memory locations of a Pacman emulator
 */
 enum {
-    TILE_SPACE          = 0,
-    TILE_DOT            = 12,
-    TILE_PILL           = 14,
-    TILE_GHOST          = 56,
+    TILE_SPACE          = 0x40,
+    TILE_DOT            = 0x10,
+    TILE_PILL           = 0x14,
+    TILE_GHOST          = 0xB0,
     TILE_LIFE           = 0x20, // 0x20..0x23
     TILE_CHERRIES       = 0x90, // 0x90..0x93
     TILE_STRAWBERRY     = 0x94, // 0x94..0x97
@@ -215,7 +205,7 @@ enum {
     TILE_GRAPES         = 0xA4, // 0xA4..0xA7
     TILE_GALAXIAN       = 0xA8, // 0xA8..0xAB
     TILE_KEY            = 0xAC, // 0xAC..0xAF
-    TILE_DOOR           = 0x09, // the ghost-house door
+    TILE_DOOR           = 0xCF, // the ghost-house door
 
     SPRITETILE_INVISIBLE    = 30,
     SPRITETILE_SCORE_200    = 40,
@@ -233,15 +223,15 @@ enum {
     SPRITETILE_PACMAN_CLOSED_MOUTH = 48,
 
     COLOR_BLANK         = 0x00,
-    COLOR_DEFAULT       = 255,
-    COLOR_DOT           = 237,
-    COLOR_PACMAN        = 249,
-    COLOR_BLINKY        = 201,
-    COLOR_PINKY         = 239,
-    COLOR_INKY          = 63,
-    COLOR_CLYDE         = 233,
-    COLOR_FRIGHTENED    = 15,
-    COLOR_FRIGHTENED_BLINKING = 247,
+    COLOR_DEFAULT       = 0x0F,
+    COLOR_DOT           = 0x10,
+    COLOR_PACMAN        = 0x09,
+    COLOR_BLINKY        = 0x01,
+    COLOR_PINKY         = 0x03,
+    COLOR_INKY          = 0x05,
+    COLOR_CLYDE         = 0x07,
+    COLOR_FRIGHTENED    = 0x11,
+    COLOR_FRIGHTENED_BLINKING = 0x12,
     COLOR_GHOST_SCORE   = 0x18,
     COLOR_EYES          = 0x19,
     COLOR_CHERRIES      = 0x14,
@@ -499,7 +489,7 @@ static struct {
 
         // the 36x28 tile framebuffer
         uint8_t video_ram[DISPLAY_TILES_Y][DISPLAY_TILES_X]; // tile codes
-//        uint8_t color_ram[DISPLAY_TILES_Y][DISPLAY_TILES_X]; // color codes
+        uint8_t color_ram[DISPLAY_TILES_Y][DISPLAY_TILES_X]; // color codes
 
         // up to 8 sprites
         sprite_t sprite[NUM_SPRITES];
@@ -507,20 +497,20 @@ static struct {
         // up to 16 debug markers
         debugmarker_t debug_marker[NUM_DEBUG_MARKERS];
 
-//        // sokol-gfx resources
-//        sg_pass_action pass_action;
-//        struct {
-//            sg_buffer vbuf;
-//            sg_image tile_img;
-//            sg_image palette_img;
-//            sg_image render_target;
-//            sg_pipeline pip;
-//            sg_pass pass;
-//        } offscreen;
-//        struct {
-//            sg_buffer quad_vbuf;
-//            sg_pipeline pip;
-//        } display;
+        // sokol-gfx resources
+        sg_pass_action pass_action;
+        struct {
+            sg_buffer vbuf;
+            sg_image tile_img;
+            sg_image palette_img;
+            sg_image render_target;
+            sg_pipeline pip;
+            sg_pass pass;
+        } offscreen;
+        struct {
+            sg_buffer quad_vbuf;
+            sg_pipeline pip;
+        } display;
 
         // intermediate vertex buffer for tile- and sprite-rendering
         int num_vertices;
@@ -676,7 +666,7 @@ static const sound_desc_t snd_frightened = {
 static void init(void);
 static void frame(void);
 static void cleanup(void);
-static void input();
+static void input(const sapp_event*);
 
 static void start(trigger_t* t);
 static bool now(trigger_t t);
@@ -708,6 +698,19 @@ static const uint8_t rom_hwcolors[32];
 static const uint8_t rom_palette[256];
 static const uint8_t rom_wavetable[256];
 
+/*== APPLICATION ENTRY AND CALLBACKS =========================================*/
+sapp_desc sokol_main(int argc, char* argv[]) {
+    return (sapp_desc) {
+        .init_cb = init,
+        .frame_cb = frame,
+        .cleanup_cb = cleanup,
+        .event_cb = input,
+        .width = DISPLAY_TILES_X * TILE_WIDTH * 2,
+        .height = DISPLAY_TILES_Y * TILE_HEIGHT * 2,
+        .window_title = "pacman.c"
+    };
+}
+
 static void init(void) {
     gfx_init();
     snd_init();
@@ -723,8 +726,7 @@ static void init(void) {
 static void frame(void) {
 
     // run the game at a fixed tick rate regardless of frame rate
-//    uint32_t frame_time_ns = (uint32_t) (sapp_frame_duration() * 1000000000.0);
-    uint32_t frame_time_ns = (uint32_t) 33333333;
+    uint32_t frame_time_ns = (uint32_t) (sapp_frame_duration() * 1000000000.0);
     // clamp max frame time (so the timing isn't messed up when stopping in the debugger)
     if (frame_time_ns > 33333333) {
         frame_time_ns = 33333333;
@@ -759,16 +761,35 @@ static void frame(void) {
     snd_frame(frame_time_ns);
 }
 
-static void input() {
+static void input(const sapp_event* ev) {
     if (state.input.enabled) {
-        unsigned short joystick = get_buttons() & 0xfffe;
-        state.input.anykey = ( joystick != 0 );
-        state.input.up = _rv32_bext( joystick, 3 );
-        state.input.down = _rv32_bext( joystick, 4 );
-        state.input.right = _rv32_bext( joystick, 6 );
-        state.input.left = _rv32_bext( joystick, 5 );
-    } else {
-        state.input.anykey = state.input.up = state.input.down = state.input.right = state.input.left = 0;
+        if ((ev->type == SAPP_EVENTTYPE_KEY_DOWN) || (ev->type == SAPP_EVENTTYPE_KEY_UP)) {
+            bool btn_down = ev->type == SAPP_EVENTTYPE_KEY_DOWN;
+            switch (ev->key_code) {
+                case SAPP_KEYCODE_UP:
+                case SAPP_KEYCODE_W:
+                    state.input.up = state.input.anykey = btn_down;
+                    break;
+                case SAPP_KEYCODE_DOWN:
+                case SAPP_KEYCODE_S:
+                    state.input.down = state.input.anykey = btn_down;
+                    break;
+                case SAPP_KEYCODE_LEFT:
+                case SAPP_KEYCODE_A:
+                    state.input.left = state.input.anykey = btn_down;
+                    break;
+                case SAPP_KEYCODE_RIGHT:
+                case SAPP_KEYCODE_D:
+                    state.input.right = state.input.anykey = btn_down;
+                    break;
+                case SAPP_KEYCODE_ESCAPE:
+                    state.input.esc = state.input.anykey = btn_down;
+                    break;
+                default:
+                    state.input.anykey = btn_down;
+                    break;
+            }
+        }
     }
 }
 
@@ -789,6 +810,7 @@ static uint32_t xorshift32(void) {
 }
 // get level spec for a game round
 static levelspec_t levelspec(int round) {
+    assert(round >= 0);
     if (round >= MAX_LEVELSPEC) {
         round = MAX_LEVELSPEC-1;
     }
@@ -832,6 +854,7 @@ static uint32_t since(trigger_t t) {
 
 // check if a time trigger is between begin and end tick
 static bool between(trigger_t t, uint32_t begin, uint32_t end) {
+    assert(begin < end);
     if (t.tick != DISABLED_TICKS) {
         uint32_t ticks = since(t);
         return (ticks >= begin) && (ticks < end);
@@ -943,25 +966,17 @@ int2_t dist_to_tile_mid(int2_t pos) {
     return i2((TILE_WIDTH/2) - pos.x % TILE_WIDTH, (TILE_HEIGHT/2) - pos.y % TILE_HEIGHT);
 }
 
-// clear tile buffer
+// clear tile and color buffer
 static void vid_clear(uint8_t tile_code, uint8_t color_code) {
     memset(&state.gfx.video_ram, tile_code, sizeof(state.gfx.video_ram));
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
-    // CLEAR CENTRE TEXT
-    for( int y = 0; y < 30; y++ ) {
-        tpu_set( 6, y, TRANSPARENT, WHITE );
-        tpu_outputstring( 0, "                            " );
-    }
-    // CLEAR SCORE / HISCORE
-    tpu_set( 0, 1, TRANSPARENT, WHITE ); tpu_outputstring( 0, "      " );
-    tpu_set( 0, 28, TRANSPARENT, WHITE ); tpu_outputstring( 0, "      " );
+    memset(&state.gfx.color_ram, color_code, sizeof(state.gfx.color_ram));
 }
 
 // clear the playfield's rectangle in the color buffer
 static void vid_color_playfield(uint8_t color_code) {
     for (int y = 3; y < DISPLAY_TILES_Y-2; y++) {
         for (int x = 0; x < DISPLAY_TILES_X; x++) {
-//            state.gfx.color_ram[y][x] = color_code;
+            state.gfx.color_ram[y][x] = color_code;
         }
     }
 }
@@ -973,23 +988,23 @@ static bool valid_tile_pos(int2_t tile_pos) {
 
 // put a color into the color buffer
 static void vid_color(int2_t tile_pos, uint8_t color_code) {
-//    state.gfx.color_ram[tile_pos.y][tile_pos.x] = color_code;
+    assert(valid_tile_pos(tile_pos));
+    state.gfx.color_ram[tile_pos.y][tile_pos.x] = color_code;
 }
 
 // put a tile into the tile buffer
 static void vid_tile(int2_t tile_pos, uint8_t tile_code) {
-//    state.gfx.video_ram[tile_pos.y][tile_pos.x] = tile_code;
+    assert(valid_tile_pos(tile_pos));
+    state.gfx.video_ram[tile_pos.y][tile_pos.x] = tile_code;
 }
 
 // put a colored tile into the tile and color buffers
 static void vid_color_tile(int2_t tile_pos, uint8_t color_code, uint8_t tile_code) {
-//    state.gfx.video_ram[tile_pos.y][tile_pos.x] = tile_code;
-//    state.gfx.color_ram[tile_pos.y][tile_pos.x] = color_code;
-}
-static void paws_tile(int2_t tile_pos, uint8_t tile_code) {
-    set_tilemap_tile( LOWER_LAYER, tile_pos.x + 7, tile_pos.y - 2, tile_code, 0 );
+    assert(valid_tile_pos(tile_pos));
     state.gfx.video_ram[tile_pos.y][tile_pos.x] = tile_code;
+    state.gfx.color_ram[tile_pos.y][tile_pos.x] = color_code;
 }
+
 // translate ASCII char into "NAMCO char"
 static char conv_char(char c) {
     switch (c) {
@@ -1003,16 +1018,47 @@ static char conv_char(char c) {
     return c;
 }
 
-// put colored text into tpu buffer
-static void vid_color_text(int2_t tile_pos, uint8_t color_code, const char* text) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-    tpu_outputstring( 0, (char *)text );
+// put colored char into tile+color buffers
+static void vid_color_char(int2_t tile_pos, uint8_t color_code, char chr) {
+    assert(valid_tile_pos(tile_pos));
+    state.gfx.video_ram[tile_pos.y][tile_pos.x] = conv_char(chr);
+    state.gfx.color_ram[tile_pos.y][tile_pos.x] = color_code;
 }
 
-// put text into tpu buffer
+// put char into tile buffer
+static void vid_char(int2_t tile_pos, char chr) {
+    assert(valid_tile_pos(tile_pos));
+    state.gfx.video_ram[tile_pos.y][tile_pos.x] = conv_char(chr);
+}
+
+// put colored text into the tile+color buffers
+static void vid_color_text(int2_t tile_pos, uint8_t color_code, const char* text) {
+    assert(valid_tile_pos(tile_pos));
+    uint8_t chr;
+    while ((chr = (uint8_t) *text++)) {
+        if (tile_pos.x < DISPLAY_TILES_X) {
+            vid_color_char(tile_pos, color_code, chr);
+            tile_pos.x++;
+        }
+        else {
+            break;
+        }
+    }
+}
+
+// put text into the tile buffer
 static void vid_text(int2_t tile_pos, const char* text) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, COLOR_DEFAULT );
-    tpu_outputstring( 0, (char *)text );
+    assert(valid_tile_pos(tile_pos));
+    uint8_t chr;
+    while ((chr = (uint8_t) *text++)) {
+        if (tile_pos.x < DISPLAY_TILES_X) {
+            vid_char(tile_pos, chr);
+            tile_pos.x++;
+        }
+        else {
+            break;
+        }
+    }
 }
 
 /* print colored score number into tile+color buffers from right to left(!),
@@ -1021,17 +1067,17 @@ static void vid_text(int2_t tile_pos, const char* text) {
     the Pacman arcade machine)
 */
 static void vid_color_score(int2_t tile_pos, uint8_t color_code, uint32_t score) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-    tpu_write( '0' );
+    vid_color_char(tile_pos, color_code, '0');
     tile_pos.x--;
     for (int digit = 0; digit < 8; digit++) {
         char chr = (score % 10) + '0';
-        tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-        tpu_write( chr );
-        tile_pos.x--;
-        score /= 10;
-        if (0 == score) {
-            break;
+        if (valid_tile_pos(tile_pos)) {
+            vid_color_char(tile_pos, color_code, chr);
+            tile_pos.x--;
+            score /= 10;
+            if (0 == score) {
+                break;
+            }
         }
     }
 }
@@ -1054,6 +1100,7 @@ static void vid_draw_tile_quad(int2_t tile_pos, uint8_t color_code, uint8_t tile
 
 // draw the fruit bonus score tiles (when Pacman has eaten the bonus fruit)
 static void vid_fruit_score(fruit_t fruit_type) {
+    assert((fruit_type >= 0) && (fruit_type < NUM_FRUITS));
     uint8_t color_code = (fruit_type == FRUIT_NONE) ? COLOR_DOT : COLOR_FRUIT_SCORE;
     for (int i = 0; i < 4; i++) {
         vid_color_tile(i2(12+i, 20), color_code, fruit_score_tiles[fruit_type][i]);
@@ -1063,8 +1110,6 @@ static void vid_fruit_score(fruit_t fruit_type) {
 // disable and clear all sprites
 static void spr_clear(void) {
     memset(&state.gfx.sprite, 0, sizeof(state.gfx.sprite));
-    for( int i = 0; i < 16; i++ )
-        set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, FALSE );
 }
 
 // get pointer to pacman sprite
@@ -1074,6 +1119,7 @@ static sprite_t* spr_pacman(void) {
 
 // get pointer to ghost sprite
 static sprite_t* spr_ghost(ghosttype_t type) {
+    assert((type >= 0) && (type < NUM_GHOSTS));
     return &state.gfx.sprite[SPRITE_BLINKY + type];
 }
 
@@ -1111,6 +1157,7 @@ static void spr_anim_pacman_death(uint32_t tick) {
 
 // set sprite to animated ghost
 static void spr_anim_ghost(ghosttype_t ghost_type, dir_t dir, uint32_t tick) {
+    assert((dir >= 0) && (dir < NUM_DIRS));
     static const uint8_t tiles[4][2]  = {
         { 32, 33 }, // right
         { 34, 35 }, // down
@@ -1147,6 +1194,7 @@ static void spr_anim_ghost_frightened(ghosttype_t ghost_type, uint32_t tick) {
     only the eyes visible
 */
 static void spr_anim_ghost_eyes(ghosttype_t ghost_type, dir_t dir) {
+    assert((dir >= 0) && (dir < NUM_DIRS));
     static const uint8_t tiles[NUM_DIRS] = { 32, 34, 36, 38 };
     sprite_t* spr = spr_ghost(ghost_type);
     spr->tile = tiles[dir];
@@ -1180,6 +1228,7 @@ static int2_t clamped_tile_pos(int2_t tile_pos) {
 
 // convert a direction to a movement vector
 static int2_t dir_to_vec(dir_t dir) {
+    assert((dir >= 0) && (dir < NUM_DIRS));
     static const int2_t dir_map[NUM_DIRS] = { { +1, 0 }, { 0, +1 }, { -1, 0 }, { 0, -1 } };
     return dir_map[dir];
 }
@@ -1196,12 +1245,14 @@ static dir_t reverse_dir(dir_t dir) {
 
 // return tile code at tile position
 static uint8_t tile_code_at(int2_t tile_pos) {
+    assert((tile_pos.x >= 0) && (tile_pos.x < DISPLAY_TILES_X));
+    assert((tile_pos.y >= 0) && (tile_pos.y < DISPLAY_TILES_Y));
     return state.gfx.video_ram[tile_pos.y][tile_pos.x];
 }
 
 // check if a tile position contains a blocking tile (walls and ghost house door)
 static bool is_blocking_tile(int2_t tile_pos) {
-    return ( tile_code_at(tile_pos) > 0 ) && ( tile_code_at(tile_pos) < TILE_DOT );
+    return tile_code_at(tile_pos) >= 0xC0;
 }
 
 // check if a tile position contains a dot tile
@@ -1291,6 +1342,7 @@ static void dbg_clear(void) {
 
 // set a debug marker
 static void dbg_marker(int index, int2_t tile_pos, uint8_t tile_code, uint8_t color_code) {
+    assert((index >= 0) && (index < NUM_DEBUG_MARKERS));
     state.gfx.debug_marker[index] = (debugmarker_t) {
         .enabled = true,
         .tile = tile_code,
@@ -1339,21 +1391,23 @@ static void game_init_playfield(void) {
         "L..........................R" // 32
         "2BBBBBBBBBBBBBBBBBBBBBBBBBB3"; // 33
        //0123456789012345678901234567
-    uint16_t t[128];
+    uint8_t t[128];
     for (int i = 0; i < 128; i++) { t[i]=TILE_DOT; }
-    t[' ']=0x0000; t['0']=0x0001; t['1']=0x0101; t['2']=0x0201; t['3']=0x0301; t['4']=0x0003;
-    t['5']=0x0103; t['6']=0x070b; t['7']=0x0703; t['8']=0x0503; t['9']=0x050b; t['U']=0x0002;
-    t['L']=0x0702; t['R']=0x0502; t['B']=0x0202; t['b']=0x0004; t['e']=0x0005; t['f']=0x0105;
-    t['g']=0x0205; t['h']=0x0305; t['l']=0x0504; t['r']=0x0704; t['u']=0x0204; t['w']=0x0305;
-    t['x']=0x0005; t['y']=0x0105; t['z']=0x0205; t['m']=0x0007; t['n']=0x0107; t['o']=0x0207;
-    t['p']=0x0307; t['j']=0x0202; t['i']=0x0502; t['k']=0x0002; t['q']=0x0702; t['s']=0x0108;
-    t['t']=0x0008; t['-']=TILE_DOOR; t['P']=TILE_PILL;
+    t[' ']=0x40; t['0']=0xD1; t['1']=0xD0; t['2']=0xD5; t['3']=0xD4; t['4']=0xFB;
+    t['5']=0xFA; t['6']=0xD7; t['7']=0xD9; t['8']=0xD6; t['9']=0xD8; t['U']=0xDB;
+    t['L']=0xD3; t['R']=0xD2; t['B']=0xDC; t['b']=0xDF; t['e']=0xE7; t['f']=0xE6;
+    t['g']=0xEB; t['h']=0xEA; t['l']=0xE8; t['r']=0xE9; t['u']=0xE5; t['w']=0xF5;
+    t['x']=0xF2; t['y']=0xF3; t['z']=0xF4; t['m']=0xED; t['n']=0xEC; t['o']=0xEF;
+    t['p']=0xEE; t['j']=0xDD; t['i']=0xD2; t['k']=0xDB; t['q']=0xD3; t['s']=0xF1;
+    t['t']=0xF0; t['-']=TILE_DOOR; t['P']=TILE_PILL;
     for (int y = 3, i = 0; y <= 33; y++) {
         for (int x = 0; x < 28; x++, i++) {
             state.gfx.video_ram[y][x] = t[tiles[i] & 127];
-            set_tilemap_tile( LOWER_LAYER, x + 7, y - 2, t[tiles[i]]&0xff,(t[tiles[i]]&0xff00)>>8);
         }
     }
+    // ghost house gate colors
+    vid_color(i2(13,15), 0x18);
+    vid_color(i2(14,15), 0x18);
 }
 
 // disable all game loop timers
@@ -1383,10 +1437,10 @@ static void game_init(void) {
 
     // draw the playfield and PLAYER ONE READY! message
     vid_clear(TILE_SPACE, COLOR_DOT);
-    vid_color_text(i2(0,29),  COLOR_DEFAULT, "HS");
+    vid_color_text(i2(9,0), COLOR_DEFAULT, "HIGH SCORE");
     game_init_playfield();
-    vid_color_text(i2(15,11), COLOR_INKY, "PLAYER ONE");
-    vid_color_text(i2(17, 17), COLOR_PACMAN, "READY!");
+    vid_color_text(i2(9,14), 0x5, "PLAYER ONE");
+    vid_color_text(i2(11, 20), 0x9, "READY!");
 }
 
 // setup state at start of a game round
@@ -1394,7 +1448,7 @@ static void game_round_init(void) {
     spr_clear();
 
     // clear the "PLAYER ONE" text
-    vid_color_text(i2(15,11), 0x10, "          ");
+    vid_color_text(i2(9,14), 0x10, "          ");
 
     /* if a new round was started because Pacman has "won" (eaten all dots),
         redraw the playfield and reset the global dot counter
@@ -1416,6 +1470,7 @@ static void game_round_init(void) {
         }
         state.game.num_lives--;
     }
+    assert(state.game.num_lives >= 0);
 
     state.game.active_fruit = FRUIT_NONE;
     state.game.freeze = FREEZETYPE_READY;
@@ -1423,7 +1478,7 @@ static void game_round_init(void) {
     state.game.num_ghosts_eaten = 0;
     game_disable_timers();
 
-    vid_color_text(i2(17, 17), COLOR_PACMAN, "READY!");
+    vid_color_text(i2(11, 20), 0x9, "READY!");
 
     // the force-house timer forces ghosts out of the house if Pacman isn't
     // eating dots for a while
@@ -1508,9 +1563,9 @@ static void game_round_init(void) {
 // update dynamic background tiles
 static void game_update_tiles(void) {
     // print score and hiscore
-    vid_color_score(i2(5,1), COLOR_DEFAULT, state.game.score);
+    vid_color_score(i2(6,1), COLOR_DEFAULT, state.game.score);
     if (state.game.hiscore > 0) {
-        vid_color_score(i2(5,28), COLOR_DEFAULT, state.game.hiscore);
+        vid_color_score(i2(16,1), COLOR_DEFAULT, state.game.hiscore);
     }
 
     // update the energizer pill colors (blinking/non-blinking)
@@ -1673,6 +1728,7 @@ static bool game_pacman_should_move(void) {
 // move/don't move boolean return value, because ghosts in eye state move faster
 // than one pixel per tick
 static int game_ghost_speed(const ghost_t* ghost) {
+    assert(ghost);
     switch (ghost->state) {
         case GHOSTSTATE_HOUSE:
         case GHOSTSTATE_LEAVEHOUSE:
@@ -1714,6 +1770,7 @@ static ghoststate_t game_scatter_chase_phase(void) {
 // of two important functions of the ghost AI (the other being the target selection
 // function below)
 static void game_update_ghost_state(ghost_t* ghost) {
+    assert(ghost);
     ghoststate_t new_state = ghost->state;
     switch (ghost->state) {
         case GHOSTSTATE_EYES:
@@ -1807,11 +1864,13 @@ static void game_update_ghost_state(ghost_t* ghost) {
 // update the ghost's target position, this is the other important function
 // of the ghost's AI
 static void game_update_ghost_target(ghost_t* ghost) {
+    assert(ghost);
     int2_t pos = ghost->target_pos;
     switch (ghost->state) {
         case GHOSTSTATE_SCATTER:
             // when in scatter mode, each ghost heads to its own scatter
             // target position in the playfield corners
+            assert((ghost->type >= 0) && (ghost->type < NUM_GHOSTS));
             pos = ghost_scatter_targets[ghost->type];
             break;
         case GHOSTSTATE_CHASE:
@@ -1876,6 +1935,7 @@ static void game_update_ghost_target(ghost_t* ghost) {
 // should always happen regardless of current ghost position or blocking
 // tiles (this special case is used for movement inside the ghost house)
 static bool game_update_ghost_dir(ghost_t* ghost) {
+    assert(ghost);
     // inside ghost-house, just move up and down
     if (ghost->state == GHOSTSTATE_HOUSE) {
         if (ghost->actor.pos.y <= 17*TILE_HEIGHT) {
@@ -2048,7 +2108,6 @@ static void game_update_actors(void) {
         const int2_t tile_pos = pixel_to_tile_pos(actor->pos);
         if (is_dot(tile_pos)) {
             vid_tile(tile_pos, TILE_SPACE);
-            paws_tile(tile_pos, TILE_SPACE);
             state.game.score += 1;
             start(&state.game.dot_eaten);
             start(&state.game.force_leave_house);
@@ -2057,7 +2116,6 @@ static void game_update_actors(void) {
         }
         if (is_pill(tile_pos)) {
             vid_tile(tile_pos, TILE_SPACE);
-            paws_tile(tile_pos, TILE_SPACE);
             state.game.score += 5;
             game_update_dots_eaten();
             start(&state.game.pill_eaten);
@@ -2160,7 +2218,7 @@ static void game_tick(void) {
     if (now(state.game.round_started)) {
         state.game.freeze &= ~FREEZETYPE_READY;
         // clear the 'READY!' message
-        vid_color_text(i2(17,17), 0x10, "      ");
+        vid_color_text(i2(11,20), 0x10, "      ");
         snd_start(1, &snd_weeooh);
     }
 
@@ -2209,7 +2267,7 @@ static void game_tick(void) {
     }
     if (now(state.game.game_over)) {
         // display game over string
-        vid_color_text(i2(15,17), COLOR_PACMAN, "GAME  OVER");
+        vid_color_text(i2(9,20), 0x01, "GAME  OVER");
         input_disable();
         start_after(&state.gfx.fadeout, GAMEOVER_TICKS);
         start_after(&state.intro.started, GAMEOVER_TICKS+FADE_TICKS);
@@ -2254,38 +2312,38 @@ static void intro_tick(void) {
         start(&state.gfx.fadein);
         input_enable();
         vid_clear(TILE_SPACE, COLOR_DEFAULT);
-        vid_color_text(i2(0,0),  COLOR_DEFAULT, "1UP");
-        vid_color_text(i2(0,29),  COLOR_DEFAULT, "HS");
-        vid_color_text(i2(37,0),  COLOR_DEFAULT, "2UP");
-        vid_color_score(i2(5,1), COLOR_DEFAULT, 0);
+        vid_text(i2(3,0),  "1UP   HIGH SCORE   2UP");
+        vid_color_score(i2(6,1), COLOR_DEFAULT, 0);
         if (state.game.hiscore > 0) {
-            vid_color_score(i2(5,28), COLOR_DEFAULT, state.game.hiscore);
+            vid_color_score(i2(16,1), COLOR_DEFAULT, state.game.hiscore);
         }
-        vid_color_text(i2(13,3),  COLOR_DEFAULT, "CHARACTER / NICKNAME");
-        vid_color_text(i2(34,29), COLOR_DEFAULT, "CREDIT");
+        vid_text(i2(7,5),  "CHARACTER / NICKNAME");
+        vid_text(i2(3,35), "CREDIT  0");
     }
 
     // draw the animated 'ghost image.. name.. nickname' lines
     uint32_t delay = 30;
     const char* names[] = { "-SHADOW", "-SPEEDY", "-BASHFUL", "-POKEY" };
     const char* nicknames[] = { "BLINKY", "PINKY", "INKY", "CLYDE" };
-    const char colours[] = { COLOR_BLINKY, COLOR_PINKY, COLOR_INKY, COLOR_CLYDE };
-
     for (int i = 0; i < 4; i++) {
+        const uint8_t color = 2*i + 1;
         const uint8_t y = 3*i + 6;
+        // 2*3 ghost image created from tiles (no sprite!)
         delay += 30;
         if (after_once(state.intro.started, delay)) {
-            paws_tile( i2(5,y+4), 56+i );
+            vid_color_tile(i2(4,y+0), color, TILE_GHOST+0); vid_color_tile(i2(5,y+0), color, TILE_GHOST+1);
+            vid_color_tile(i2(4,y+1), color, TILE_GHOST+2); vid_color_tile(i2(5,y+1), color, TILE_GHOST+3);
+            vid_color_tile(i2(4,y+2), color, TILE_GHOST+4); vid_color_tile(i2(5,y+2), color, TILE_GHOST+5);
         }
         // after 1 second, the name of the ghost
         delay += 60;
         if (after_once(state.intro.started, delay)) {
-            vid_color_text(i2(13,y+1), colours[i], names[i]);
+            vid_color_text(i2(7,y+1), color, names[i]);
         }
         // after 0.5 seconds, the nickname of the ghost
         delay += 30;
         if (after_once(state.intro.started, delay)) {
-            vid_color_text(i2(23,y+1), colours[i], nicknames[i]);
+            vid_color_text(i2(17,y+1), color, nicknames[i]);
         }
     }
 
@@ -2293,20 +2351,20 @@ static void intro_tick(void) {
     // O 50 PTS
     delay += 60;
     if (after_once(state.intro.started, delay)) {
-        paws_tile(i2(10,24), TILE_DOT);
-        vid_color_text(i2(18,21), COLOR_DEFAULT, "10 pts");
-        paws_tile(i2(10,26), TILE_PILL);
-        vid_color_text(i2(18,23), COLOR_DEFAULT, "50 pts");
+        vid_color_tile(i2(10,24), COLOR_DOT, TILE_DOT);
+        vid_text(i2(12,24), "10 \x5D\x5E\x5F");
+        vid_color_tile(i2(10,26), COLOR_DOT, TILE_PILL);
+        vid_text(i2(12,26), "50 \x5D\x5E\x5F");
     }
 
     // blinking "press any key" text
     delay += 60;
     if (after(state.intro.started, delay)) {
         if (since(state.intro.started) & 0x20) {
-            vid_color_text(i2(9,27), COLOR_DEFAULT, "                       ");
+            vid_color_text(i2(3,31), 3, "                       ");
         }
         else {
-            vid_color_text(i2(9,27), COLOR_PINKY, "PRESS ANY KEY TO START!");
+            vid_color_text(i2(3,31), 3, "PRESS ANY KEY TO START!");
         }
     }
 
@@ -2322,25 +2380,457 @@ static void intro_tick(void) {
 
 /*== GFX SUBSYSTEM ===========================================================*/
 
-unsigned char tilemap_lower[] = {
-    #include "graphics/tilemap_lower.h"
-};
-unsigned char sprite_upper[] = {
-    #include "graphics/sprite_upper.h"
-};
+/* create all sokol-gfx resources */
+static void gfx_create_resources(void) {
+    // pass action for clearing the background to black
+    state.gfx.pass_action = (sg_pass_action) {
+        .colors[0] = { .action = SG_ACTION_CLEAR, .value = { 0.0f, 0.0f, 0.0f, 1.0f } }
+    };
+
+    // create a dynamic vertex buffer for the tile and sprite quads
+    state.gfx.offscreen.vbuf = sg_make_buffer(&(sg_buffer_desc){
+        .type = SG_BUFFERTYPE_VERTEXBUFFER,
+        .usage = SG_USAGE_STREAM,
+        .size = sizeof(state.gfx.vertices),
+    });
+
+    // create a simple quad vertex buffer for rendering the offscreen render target to the display
+    float quad_verts[]= { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f };
+    state.gfx.display.quad_vbuf = sg_make_buffer(&(sg_buffer_desc){
+        .data = SG_RANGE(quad_verts)
+    });
+
+    // shader sources for all platforms (FIXME: should we use precompiled shader blobs instead?)
+    const char* offscreen_vs_src = 0;
+    const char* offscreen_fs_src = 0;
+    const char* display_vs_src = 0;
+    const char* display_fs_src = 0;
+    switch (sg_query_backend()) {
+        case SG_BACKEND_METAL_MACOS:
+            offscreen_vs_src =
+                "#include <metal_stdlib>\n"
+                "using namespace metal;\n"
+                "struct vs_in {\n"
+                "  float4 pos [[attribute(0)]];\n"
+                "  float2 uv [[attribute(1)]];\n"
+                "  float4 data [[attribute(2)]];\n"
+                "};\n"
+                "struct vs_out {\n"
+                "  float4 pos [[position]];\n"
+                "  float2 uv;\n"
+                "  float4 data;\n"
+                "};\n"
+                "vertex vs_out _main(vs_in in [[stage_in]]) {\n"
+                "  vs_out out;\n"
+                "  out.pos = float4((in.pos.xy - 0.5) * float2(2.0, -2.0), 0.5, 1.0);\n"
+                "  out.uv  = in.uv;"
+                "  out.data = in.data;\n"
+                "  return out;\n"
+                "}\n";
+            offscreen_fs_src =
+                "#include <metal_stdlib>\n"
+                "using namespace metal;\n"
+                "struct ps_in {\n"
+                "  float2 uv;\n"
+                "  float4 data;\n"
+                "};\n"
+                "fragment float4 _main(ps_in in [[stage_in]],\n"
+                "                      texture2d<float> tile_tex [[texture(0)]],\n"
+                "                      texture2d<float> pal_tex [[texture(1)]],\n"
+                "                      sampler tile_smp [[sampler(0)]],\n"
+                "                      sampler pal_smp [[sampler(1)]])\n"
+                "{\n"
+                "  float color_code = in.data.x;\n" // (0..31) / 255
+                "  float tile_color = tile_tex.sample(tile_smp, in.uv).x;\n" // (0..3) / 255
+                "  float2 pal_uv = float2(color_code * 4 + tile_color, 0);\n"
+                "  float4 color = pal_tex.sample(pal_smp, pal_uv) * float4(1, 1, 1, in.data.y);\n"
+                "  return color;\n"
+                "}\n";
+            display_vs_src =
+                "#include <metal_stdlib>\n"
+                "using namespace metal;\n"
+                "struct vs_in {\n"
+                "  float4 pos [[attribute(0)]];\n"
+                "};\n"
+                "struct vs_out {\n"
+                "  float4 pos [[position]];\n"
+                "  float2 uv;\n"
+                "};\n"
+                "vertex vs_out _main(vs_in in[[stage_in]]) {\n"
+                "  vs_out out;\n"
+                "  out.pos = float4((in.pos.xy - 0.5) * float2(2.0, -2.0), 0.0, 1.0);\n"
+                "  out.uv = in.pos.xy;\n"
+                "  return out;\n"
+                "}\n";
+            display_fs_src =
+                "#include <metal_stdlib>\n"
+                "using namespace metal;\n"
+                "struct ps_in {\n"
+                "  float2 uv;\n"
+                "};\n"
+                "fragment float4 _main(ps_in in [[stage_in]],\n"
+                "                      texture2d<float> tex [[texture(0)]],\n"
+                "                      sampler smp [[sampler(0)]])\n"
+                "{\n"
+                "  return tex.sample(smp, in.uv);\n"
+                "}\n";
+            break;
+        case SG_BACKEND_D3D11:
+            offscreen_vs_src =
+                "struct vs_in {\n"
+                "  float4 pos: POSITION;\n"
+                "  float2 uv: TEXCOORD0;\n"
+                "  float4 data: TEXCOORD1;\n"
+                "};\n"
+                "struct vs_out {\n"
+                "  float2 uv: UV;\n"
+                "  float4 data: DATA;\n"
+                "  float4 pos: SV_Position;\n"
+                "};\n"
+                "vs_out main(vs_in inp) {\n"
+                "  vs_out outp;"
+                "  outp.pos = float4(inp.pos.xy * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);\n"
+                "  outp.uv  = inp.uv;"
+                "  outp.data = inp.data;\n"
+                "  return outp;\n"
+                "}\n";
+            offscreen_fs_src =
+                "Texture2D<float4> tile_tex: register(t0);\n"
+                "Texture2D<float4> pal_tex: register(t1);\n"
+                "sampler tile_smp: register(s0);\n"
+                "sampler pal_smp: register(s1);\n"
+                "float4 main(float2 uv: UV, float4 data: DATA): SV_Target0 {\n"
+                "  float color_code = data.x;\n"
+                "  float tile_color = tile_tex.Sample(tile_smp, uv).x;\n"
+                "  float2 pal_uv = float2(color_code * 4 + tile_color, 0);\n"
+                "  float4 color = pal_tex.Sample(pal_smp, pal_uv) * float4(1, 1, 1, data.y);\n"
+                "  return color;\n"
+                "}\n";
+            display_vs_src =
+                "struct vs_out {\n"
+                "  float2 uv: UV;\n"
+                "  float4 pos: SV_Position;\n"
+                "};\n"
+                "vs_out main(float4 pos: POSITION) {\n"
+                "  vs_out outp;\n"
+                "  outp.pos = float4((pos.xy - 0.5) * float2(2.0, -2.0), 0.0, 1.0);\n"
+                "  outp.uv = pos.xy;\n"
+                "  return outp;\n"
+                "}\n";
+            display_fs_src =
+                "Texture2D<float4> tex: register(t0);\n"
+                "sampler smp: register(s0);\n"
+                "float4 main(float2 uv: UV): SV_Target0 {\n"
+                "  return tex.Sample(smp, uv);\n"
+                "}\n";
+            break;
+        case SG_BACKEND_GLCORE33:
+            offscreen_vs_src =
+                "#version 330\n"
+                "layout(location=0) in vec4 pos;\n"
+                "layout(location=1) in vec2 uv_in;\n"
+                "layout(location=2) in vec4 data_in;\n"
+                "out vec2 uv;\n"
+                "out vec4 data;\n"
+                "void main() {\n"
+                "  gl_Position = vec4((pos.xy - 0.5) * vec2(2.0, -2.0), 0.5, 1.0);\n"
+                "  uv  = uv_in;"
+                "  data = data_in;\n"
+                "}\n";
+            offscreen_fs_src =
+                "#version 330\n"
+                "uniform sampler2D tile_tex;\n"
+                "uniform sampler2D pal_tex;\n"
+                "in vec2 uv;\n"
+                "in vec4 data;\n"
+                "out vec4 frag_color;\n"
+                "void main() {\n"
+                "  float color_code = data.x;\n"
+                "  float tile_color = texture(tile_tex, uv).x;\n"
+                "  vec2 pal_uv = vec2(color_code * 4 + tile_color, 0);\n"
+                "  frag_color = texture(pal_tex, pal_uv) * vec4(1, 1, 1, data.y);\n"
+                "}\n";
+            display_vs_src =
+                "#version 330\n"
+                "layout(location=0) in vec4 pos;\n"
+                "out vec2 uv;\n"
+                "void main() {\n"
+                "  gl_Position = vec4((pos.xy - 0.5) * 2.0, 0.0, 1.0);\n"
+                "  uv = pos.xy;\n"
+                "}\n";
+            display_fs_src =
+                "#version 330\n"
+                "uniform sampler2D tex;\n"
+                "in vec2 uv;\n"
+                "out vec4 frag_color;\n"
+                "void main() {\n"
+                "  frag_color = texture(tex, uv);\n"
+                "}\n";
+                break;
+        case SG_BACKEND_GLES2:
+            offscreen_vs_src =
+                "attribute vec4 pos;\n"
+                "attribute vec2 uv_in;\n"
+                "attribute vec4 data_in;\n"
+                "varying vec2 uv;\n"
+                "varying vec4 data;\n"
+                "void main() {\n"
+                "  gl_Position = vec4((pos.xy - 0.5) * vec2(2.0, -2.0), 0.5, 1.0);\n"
+                "  uv  = uv_in;"
+                "  data = data_in;\n"
+                "}\n";
+            offscreen_fs_src =
+                "precision mediump float;\n"
+                "uniform sampler2D tile_tex;\n"
+                "uniform sampler2D pal_tex;\n"
+                "varying vec2 uv;\n"
+                "varying vec4 data;\n"
+                "void main() {\n"
+                "  float color_code = data.x;\n"
+                "  float tile_color = texture2D(tile_tex, uv).x;\n"
+                "  vec2 pal_uv = vec2(color_code * 4.0 + tile_color, 0.0);\n"
+                "  gl_FragColor = texture2D(pal_tex, pal_uv) * vec4(1.0, 1.0, 1.0, data.y);\n"
+                "}\n";
+            display_vs_src =
+                "attribute vec4 pos;\n"
+                "varying vec2 uv;\n"
+                "void main() {\n"
+                "  gl_Position = vec4((pos.xy - 0.5) * 2.0, 0.0, 1.0);\n"
+                "  uv = pos.xy;\n"
+                "}\n";
+            display_fs_src =
+                "precision mediump float;\n"
+                "uniform sampler2D tex;\n"
+                "varying vec2 uv;\n"
+                "void main() {\n"
+                "  gl_FragColor = texture2D(tex, uv);\n"
+                "}\n";
+                break;
+        default:
+            assert(false);
+    }
+
+    // create pipeline and shader object for rendering into offscreen render target
+    state.gfx.offscreen.pip = sg_make_pipeline(&(sg_pipeline_desc){
+        .shader = sg_make_shader(&(sg_shader_desc){
+           .attrs = {
+                [0] = { .name="pos", .sem_name="POSITION" },
+                [1] = { .name="uv_in", .sem_name="TEXCOORD", .sem_index=0 },
+                [2] = { .name="data_in", .sem_name="TEXCOORD", .sem_index=1 },
+            },
+            .vs.source = offscreen_vs_src,
+            .fs = {
+                .images[0] = { .name="tile_tex", .image_type = SG_IMAGETYPE_2D },
+                .images[1] = { .name="pal_tex", .image_type = SG_IMAGETYPE_2D },
+                .source = offscreen_fs_src
+            }
+        }),
+        .layout = {
+            .attrs = {
+                [0].format = SG_VERTEXFORMAT_FLOAT2,
+                [1].format = SG_VERTEXFORMAT_FLOAT2,
+                [2].format = SG_VERTEXFORMAT_UBYTE4N,
+            }
+        },
+        .depth.pixel_format = SG_PIXELFORMAT_NONE,
+        .colors[0] = {
+            .pixel_format = SG_PIXELFORMAT_RGBA8,
+            .blend = {
+                .enabled = true,
+                .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
+                .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            }
+        }
+    });
+
+    // create pipeline and shader for rendering into display
+    state.gfx.display.pip = sg_make_pipeline(&(sg_pipeline_desc){
+        .shader = sg_make_shader(&(sg_shader_desc){
+            .attrs[0] = { .name="pos", .sem_name="POSITION" },
+            .vs.source = display_vs_src,
+            .fs = {
+                .images[0] = { .name = "tex", .image_type = SG_IMAGETYPE_2D },
+                .source = display_fs_src
+            }
+        }),
+        .layout.attrs[0].format = SG_VERTEXFORMAT_FLOAT2,
+        .primitive_type = SG_PRIMITIVETYPE_TRIANGLE_STRIP
+    });
+
+    // create a render target image with a fixed upscale ratio
+    state.gfx.offscreen.render_target = sg_make_image(&(sg_image_desc){
+        .render_target = true,
+        .width = DISPLAY_PIXELS_X * 2,
+        .height = DISPLAY_PIXELS_Y * 2,
+        .pixel_format = SG_PIXELFORMAT_RGBA8,
+        .min_filter = SG_FILTER_LINEAR,
+        .mag_filter = SG_FILTER_LINEAR,
+        .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
+        .wrap_v = SG_WRAP_CLAMP_TO_EDGE,
+    });
+
+    // pass object for rendering into the offscreen render target
+    state.gfx.offscreen.pass = sg_make_pass(&(sg_pass_desc){
+        .color_attachments[0].image = state.gfx.offscreen.render_target
+    });
+
+    // create the 'tile-ROM-texture'
+    state.gfx.offscreen.tile_img = sg_make_image(&(sg_image_desc){
+        .width  = TILE_TEXTURE_WIDTH,
+        .height = TILE_TEXTURE_HEIGHT,
+        .pixel_format = SG_PIXELFORMAT_R8,
+        .min_filter = SG_FILTER_NEAREST,
+        .mag_filter = SG_FILTER_NEAREST,
+        .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
+        .wrap_v = SG_WRAP_CLAMP_TO_EDGE,
+        .data.subimage[0][0] = SG_RANGE(state.gfx.tile_pixels)
+    });
+
+    // create the palette texture
+    state.gfx.offscreen.palette_img = sg_make_image(&(sg_image_desc){
+        .width = 256,
+        .height = 1,
+        .pixel_format = SG_PIXELFORMAT_RGBA8,
+        .min_filter = SG_FILTER_NEAREST,
+        .mag_filter = SG_FILTER_NEAREST,
+        .wrap_u = SG_WRAP_CLAMP_TO_EDGE,
+        .wrap_v = SG_WRAP_CLAMP_TO_EDGE,
+        .data.subimage[0][0] = SG_RANGE(state.gfx.color_palette)
+    });
+}
+
+/*
+    8x4 tile decoder (taken from: https://github.com/floooh/chips/blob/master/systems/namco.h)
+
+    This decodes 2-bit-per-pixel tile data from Pacman ROM dumps into
+    8-bit-per-pixel texture data (without doing the RGB palette lookup,
+    this happens during rendering in the pixel shader).
+
+    The Pacman ROM tile layout isn't exactly strightforward, both 8x8 tiles
+    and 16x16 sprites are built from 8x4 pixel blocks layed out linearly
+    in memory, and to add to the confusion, since Pacman is an arcade machine
+    with the display 90 degree rotated, all the ROM tile data is counter-rotated.
+
+    Tile decoding only happens once at startup from ROM dumps into a texture.
+*/
+static inline void gfx_decode_tile_8x4(
+    uint32_t tex_x,
+    uint32_t tex_y,
+    const uint8_t* tile_base,
+    uint32_t tile_stride,
+    uint32_t tile_offset,
+    uint8_t tile_code)
+{
+    for (uint32_t tx = 0; tx < TILE_WIDTH; tx++) {
+        uint32_t ti = tile_code * tile_stride + tile_offset + (7 - tx);
+        for (uint32_t ty = 0; ty < (TILE_HEIGHT/2); ty++) {
+            uint8_t p_hi = (tile_base[ti] >> (7 - ty)) & 1;
+            uint8_t p_lo = (tile_base[ti] >> (3 - ty)) & 1;
+            uint8_t p = (p_hi << 1) | p_lo;
+            state.gfx.tile_pixels[tex_y + ty][tex_x + tx] = p;
+        }
+    }
+}
+
+// decode an 8x8 tile into the tile texture's upper half
+static inline void gfx_decode_tile(uint8_t tile_code) {
+    uint32_t x = tile_code * TILE_WIDTH;
+    uint32_t y0 = 0;
+    uint32_t y1 = y0 + (TILE_HEIGHT / 2);
+    gfx_decode_tile_8x4(x, y0, rom_tiles, 16, 8, tile_code);
+    gfx_decode_tile_8x4(x, y1, rom_tiles, 16, 0, tile_code);
+}
+
+// decode a 16x16 sprite into the tile texture's lower half
+static inline void gfx_decode_sprite(uint8_t sprite_code) {
+    uint32_t x0 = sprite_code * SPRITE_WIDTH;
+    uint32_t x1 = x0 + TILE_WIDTH;
+    uint32_t y0 = TILE_HEIGHT;
+    uint32_t y1 = y0 + (TILE_HEIGHT / 2);
+    uint32_t y2 = y1 + (TILE_HEIGHT / 2);
+    uint32_t y3 = y2 + (TILE_HEIGHT / 2);
+    gfx_decode_tile_8x4(x0, y0, rom_sprites, 64, 40, sprite_code);
+    gfx_decode_tile_8x4(x1, y0, rom_sprites, 64,  8, sprite_code);
+    gfx_decode_tile_8x4(x0, y1, rom_sprites, 64, 48, sprite_code);
+    gfx_decode_tile_8x4(x1, y1, rom_sprites, 64, 16, sprite_code);
+    gfx_decode_tile_8x4(x0, y2, rom_sprites, 64, 56, sprite_code);
+    gfx_decode_tile_8x4(x1, y2, rom_sprites, 64, 24, sprite_code);
+    gfx_decode_tile_8x4(x0, y3, rom_sprites, 64, 32, sprite_code);
+    gfx_decode_tile_8x4(x1, y3, rom_sprites, 64,  0, sprite_code);
+}
+
+// decode the Pacman tile- and sprite-ROM-dumps into a 8bpp texture
+static void gfx_decode_tiles(void) {
+    for (uint32_t tile_code = 0; tile_code < 256; tile_code++) {
+        gfx_decode_tile(tile_code);
+    }
+    for (uint32_t sprite_code = 0; sprite_code < 64; sprite_code++) {
+        gfx_decode_sprite(sprite_code);
+    }
+    // write a special opaque 16x16 block which will be used for the fade-effect
+    for (uint32_t y = TILE_HEIGHT; y < TILE_TEXTURE_HEIGHT; y++) {
+        for (uint32_t x = 64*SPRITE_WIDTH; x < 65*SPRITE_WIDTH; x++) {
+            state.gfx.tile_pixels[y][x] = 1;
+        }
+    }
+}
+
+/* decode the Pacman color palette into a palette texture, on the original
+    hardware, color lookup happens in two steps, first through 256-entry
+    palette which indirects into a 32-entry hardware-color palette
+    (of which only 16 entries are used on the Pacman hardware)
+*/
+static void gfx_decode_color_palette(void) {
+    uint32_t hw_colors[32];
+    for (int i = 0; i < 32; i++) {
+       /*
+           Each color ROM entry describes an RGB color in 1 byte:
+
+           | 7| 6| 5| 4| 3| 2| 1| 0|
+           |B1|B0|G2|G1|G0|R2|R1|R0|
+
+           Intensities are: 0x97 + 0x47 + 0x21
+        */
+        uint8_t rgb = rom_hwcolors[i];
+        uint8_t r = ((rgb>>0)&1) * 0x21 + ((rgb>>1)&1) * 0x47 + ((rgb>>2)&1) * 0x97;
+        uint8_t g = ((rgb>>3)&1) * 0x21 + ((rgb>>4)&1) * 0x47 + ((rgb>>5)&1) * 0x97;
+        uint8_t b = ((rgb>>6)&1) * 0x47 + ((rgb>>7)&1) * 0x97;
+        hw_colors[i] = 0xFF000000 | (b<<16) | (g<<8) | r;
+    }
+    for (int i = 0; i < 256; i++) {
+        state.gfx.color_palette[i] = hw_colors[rom_palette[i] & 0xF];
+        // first color in each color block is transparent
+        if ((i & 3) == 0) {
+            state.gfx.color_palette[i] &= 0x00FFFFFF;
+        }
+    }
+}
 
 static void gfx_init(void) {
-
-    set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, &tilemap_lower[0] );
-    set_sprite_bitamps_from_spritesheet( UPPER_LAYER, &sprite_upper[0] );
-
+    sg_setup(&(sg_desc){
+        // reduce pool allocation size to what's actually needed
+        .buffer_pool_size = 2,
+        .image_pool_size = 3,
+        .shader_pool_size = 2,
+        .pipeline_pool_size = 2,
+        .pass_pool_size = 1,
+        .context = sapp_sgcontext()
+    });
+    disable(&state.gfx.fadein);
+    disable(&state.gfx.fadeout);
+    state.gfx.fade = 0xFF;
     spr_clear();
+    gfx_decode_tiles();
+    gfx_decode_color_palette();
+    gfx_create_resources();
 }
 
 static void gfx_shutdown(void) {
+    sg_shutdown();
 }
 
 static void gfx_add_vertex(float x, float y, float u, float v, uint8_t color_code, uint8_t opacity) {
+    assert(state.gfx.num_vertices < MAX_VERTICES);
     vertex_t* vtx = &state.gfx.vertices[state.gfx.num_vertices++];
     vtx->x = x;
     vtx->y = y;
@@ -2350,6 +2840,7 @@ static void gfx_add_vertex(float x, float y, float u, float v, uint8_t color_cod
 }
 
 static void gfx_add_tile_vertices(uint32_t tx, uint32_t ty, uint8_t tile_code, uint8_t color_code) {
+    assert((tx >= 0) && (tx < DISPLAY_TILES_X) && (ty >= 0) && (ty < DISPLAY_TILES_Y));
     const float dx = 1.0f / DISPLAY_TILES_X;
     const float dy = 1.0f / DISPLAY_TILES_Y;
     const float du = (float)TILE_WIDTH / TILE_TEXTURE_WIDTH;
@@ -2380,13 +2871,13 @@ static void gfx_add_tile_vertices(uint32_t tx, uint32_t ty, uint8_t tile_code, u
 }
 
 static void gfx_add_playfield_vertices(void) {
-//    for (uint32_t ty = 0; ty < DISPLAY_TILES_Y; ty++) {
-//        for (uint32_t tx = 0; tx < DISPLAY_TILES_X; tx++) {
-//            const uint8_t tile_code = state.gfx.video_ram[ty][tx];
-//            const uint8_t color_code = state.gfx.color_ram[ty][tx] & 0x1F;
-//            gfx_add_tile_vertices(tx, ty, tile_code, color_code);
-//        }
-//    }
+    for (uint32_t ty = 0; ty < DISPLAY_TILES_Y; ty++) {
+        for (uint32_t tx = 0; tx < DISPLAY_TILES_X; tx++) {
+            const uint8_t tile_code = state.gfx.video_ram[ty][tx];
+            const uint8_t color_code = state.gfx.color_ram[ty][tx] & 0x1F;
+            gfx_add_tile_vertices(tx, ty, tile_code, color_code);
+        }
+    }
 }
 
 static void gfx_add_debugmarker_vertices(void) {
@@ -2398,64 +2889,42 @@ static void gfx_add_debugmarker_vertices(void) {
     }
 }
 
-#define tocoords(a,b) a*2+96,b*2-48
 static void gfx_add_sprite_vertices(void) {
-    sprite_t* spr; int action, basesprite;
-    actor_t* actor = &state.game.pacman.actor;
-
-    for( int i = SPRITE_PACMAN; i <= SPRITE_FRUIT; i++ ) {
-        spr = &state.gfx.sprite[ i ];
-        switch( i ) {
-            case SPRITE_PACMAN:
-                // PACMAN IS PAWS SPRITE 15
-                action = SPRITE_DOUBLE;
-                switch(actor->dir) {
-                    case 0: break;
-                    case 1: action += ROTATE90; break;
-                    case 2: action += ROTATE180; break;
-                    case 3: action += ROTATE270; break;
-                }
-                basesprite = ( spr->tile == SPRITETILE_PACMAN_CLOSED_MOUTH ) ? 2 : ( actor->anim_tick&1);
-                set_sprite( UPPER_LAYER, 15, spr->enabled && (spr->tile != SPRITETILE_INVISIBLE), tocoords(spr->pos.x, spr->pos.y), basesprite, action );
-                break;
-            case SPRITE_BLINKY:
-            case SPRITE_PINKY:
-            case SPRITE_INKY:
-            case SPRITE_CLYDE:
-                basesprite = i-1; ghost_t* ghost = &state.game.ghost[i-1];
-                if (spr->enabled && (spr->tile != SPRITETILE_INVISIBLE)) {
-                    action = SPRITE_DOUBLE;
-                    switch (ghost->state) {
-                        case GHOSTSTATE_EYES:
-                            set_sprite( UPPER_LAYER, basesprite+4, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir + 4, action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 4 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 8 );
-                            break;
-                        case GHOSTSTATE_ENTERHOUSE:
-                            set_sprite( UPPER_LAYER, basesprite+4, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->actor.dir + 4, action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 4 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 8 );
-                            break;
-                        case GHOSTSTATE_FRIGHTENED:
-                            set_sprite( UPPER_LAYER, basesprite+4, TRUE, tocoords(spr->pos.x, spr->pos.y), (spr->color == COLOR_FRIGHTENED_BLINKING) ? 2 : 0 + (ghost->actor.anim_tick&1), action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 4 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 8 );
-                            break;
-                        default:
-                            set_sprite( UPPER_LAYER, basesprite, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir * 2 + (ghost->actor.anim_tick&1), action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+4, SPRITE_ACTIVE, 4 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 8 );
-                    }
-                } else {
-                    set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
-                    set_sprite_attribute( UPPER_LAYER, basesprite+4, SPRITE_ACTIVE, 4 );
-                    set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 8 );
-                }
-                break;
-            case SPRITE_FRUIT:
-                action = SPRITE_DOUBLE;
-                set_sprite( UPPER_LAYER, 12, spr->enabled, tocoords(spr->pos.x, spr->pos.y), state.game.active_fruit - 1, action );
-                break;
+    const float dx = 1.0f / DISPLAY_PIXELS_X;
+    const float dy = 1.0f / DISPLAY_PIXELS_Y;
+    const float du = (float)SPRITE_WIDTH / TILE_TEXTURE_WIDTH;
+    const float dv = (float)SPRITE_HEIGHT / TILE_TEXTURE_HEIGHT;
+    for (int i = 0; i < NUM_SPRITES; i++) {
+        const sprite_t* spr = &state.gfx.sprite[i];
+        if (spr->enabled) {
+            float x0, x1, y0, y1;
+            if (spr->flipx) {
+                x1 = spr->pos.x * dx;
+                x0 = x1 + dx * SPRITE_WIDTH;
+            }
+            else {
+                x0 = spr->pos.x * dx;
+                x1 = x0 + dx * SPRITE_WIDTH;
+            }
+            if (spr->flipy) {
+                y1 = spr->pos.y * dy;
+                y0 = y1 + dy * SPRITE_HEIGHT;
+            }
+            else {
+                y0 = spr->pos.y * dy;
+                y1 = y0 + dy * SPRITE_HEIGHT;
+            }
+            const float u0 = spr->tile * du;
+            const float u1 = u0 + du;
+            const float v0 = ((float)TILE_HEIGHT / TILE_TEXTURE_HEIGHT);
+            const float v1 = v0 + dv;
+            const uint8_t color = spr->color;
+            gfx_add_vertex(x0, y0, u0, v0, color, 0xFF);
+            gfx_add_vertex(x1, y0, u1, v0, color, 0xFF);
+            gfx_add_vertex(x1, y1, u1, v1, color, 0xFF);
+            gfx_add_vertex(x0, y0, u0, v0, color, 0xFF);
+            gfx_add_vertex(x1, y1, u1, v1, color, 0xFF);
+            gfx_add_vertex(x0, y1, u0, v1, color, 0xFF);
         }
     }
 }
@@ -2496,13 +2965,12 @@ static void gfx_adjust_viewport(int canvas_width, int canvas_height) {
         vp_h = (int)(canvas_width / playfield_aspect - 2*border);
         vp_y = (canvas_height - vp_h) / 2;
     }
-/*    sg_apply_viewport(vp_x, vp_y, vp_w, vp_h, true);
-*/
+    sg_apply_viewport(vp_x, vp_y, vp_w, vp_h, true);
 }
 
 // handle fadein/fadeout
 static void gfx_fade(void) {
-/*    if (between(state.gfx.fadein, 0, FADE_TICKS)) {
+    if (between(state.gfx.fadein, 0, FADE_TICKS)) {
         float t = (float)since(state.gfx.fadein) / FADE_TICKS;
         state.gfx.fade = (uint8_t) (255.0f * (1.0f - t));
     }
@@ -2516,7 +2984,6 @@ static void gfx_fade(void) {
     if (after_once(state.gfx.fadeout, FADE_TICKS)) {
         state.gfx.fade = 255;
     }
-*/
 }
 
 static void gfx_draw(void) {
@@ -2528,15 +2995,44 @@ static void gfx_draw(void) {
     gfx_add_playfield_vertices();
     gfx_add_sprite_vertices();
     gfx_add_debugmarker_vertices();
+    if (state.gfx.fade > 0) {
+        gfx_add_fade_vertices();
+    }
+    assert(state.gfx.num_vertices <= MAX_VERTICES);
+    sg_update_buffer(state.gfx.offscreen.vbuf, &(sg_range){ .ptr=state.gfx.vertices, .size=state.gfx.num_vertices * sizeof(vertex_t) });
+
+    // render tiles and sprites into offscreen render target
+    sg_begin_pass(state.gfx.offscreen.pass, &state.gfx.pass_action);
+    sg_apply_pipeline(state.gfx.offscreen.pip);
+    sg_apply_bindings(&(sg_bindings){
+        .vertex_buffers[0] = state.gfx.offscreen.vbuf,
+        .fs_images[0] = state.gfx.offscreen.tile_img,
+        .fs_images[1] = state.gfx.offscreen.palette_img,
+    });
+    sg_draw(0, state.gfx.num_vertices, 1);
+    sg_end_pass();
+
+    // upscale-render the offscreen render target into the display framebuffer
+    const int canvas_width = sapp_width();
+    const int canvas_height = sapp_height();
+    sg_begin_default_pass(&state.gfx.pass_action, canvas_width, canvas_height);
+    gfx_adjust_viewport(canvas_width, canvas_height);
+    sg_apply_pipeline(state.gfx.display.pip);
+    sg_apply_bindings(&(sg_bindings){
+        .vertex_buffers[0] = state.gfx.display.quad_vbuf,
+        .fs_images[0] = state.gfx.offscreen.render_target
+    });
+    sg_draw(0, 4, 1);
+    sg_end_pass();
+    sg_commit();
 }
 
 /*== AUDIO SUBSYSTEM =========================================================*/
 static void snd_init(void) {
-//    saudio_setup(&(saudio_desc){ 0 });
+    saudio_setup(&(saudio_desc){ 0 });
 
     // compute sample duration in nanoseconds
-    int32_t samples_per_sec = 25000;
-//    int32_t samples_per_sec = saudio_sample_rate();
+    int32_t samples_per_sec = saudio_sample_rate();
     state.audio.sample_duration_ns = 1000000000 / samples_per_sec;
 
     /* compute number of 96kHz ticks per sample tick (the Namco sound generator
@@ -2546,7 +3042,7 @@ static void snd_init(void) {
 }
 
 static void snd_shutdown(void) {
-//    saudio_shutdown();
+    saudio_shutdown();
 }
 
 // the snd_voice_tick() function updates the Namco sound generator and must be called with 96 kHz
@@ -2576,7 +3072,7 @@ static void snd_sample_tick(void) {
     }
     state.audio.sample_buffer[state.audio.num_samples++] = sm * 0.333333f * AUDIO_VOLUME;
     if (state.audio.num_samples == NUM_SAMPLES) {
-//        saudio_push(state.audio.sample_buffer, state.audio.num_samples);
+        saudio_push(state.audio.sample_buffer, state.audio.num_samples);
         state.audio.num_samples = 0;
     }
 }
@@ -2611,6 +3107,7 @@ static void snd_tick(void) {
         }
         else if (snd->flags & SOUNDFLAG_ALL_VOICES) {
             // register-dump sound effect
+            assert(snd->data);
             if (snd->cur_tick == snd->num_ticks) {
                 snd_stop(sound_slot);
                 continue;
@@ -2643,6 +3140,10 @@ static void snd_clear(void) {
 
 // start a sound effect
 static void snd_start(int slot, const sound_desc_t* desc) {
+    assert((slot >= 0) && (slot < NUM_SOUNDS));
+    assert(desc);
+    assert((desc->ptr && desc->size) || desc->func);
+
     sound_t* snd = &state.audio.sound[slot];
     *snd = (sound_t) { 0 };
     int num_voices = 0;
@@ -2657,6 +3158,8 @@ static void snd_start(int slot, const sound_desc_t* desc) {
         snd->func = desc->func;
     }
     else {
+        assert(num_voices > 0);
+        assert((desc->size % (num_voices*sizeof(uint32_t))) == 0);
         snd->stride = num_voices;
         snd->num_ticks = desc->size / (snd->stride*sizeof(uint32_t));
         snd->data = desc->ptr;
@@ -2665,6 +3168,8 @@ static void snd_start(int slot, const sound_desc_t* desc) {
 
 // stop a sound effect
 static void snd_stop(int slot) {
+    assert((slot >= 0) && (slot < NUM_SOUNDS));
+
     // silence the sound's output voices
     for (int i = 0; i < NUM_VOICES; i++) {
         if (state.audio.sound[slot].flags & (1<<i)) {
@@ -2678,6 +3183,7 @@ static void snd_stop(int slot) {
 
 // procedural sound effects
 static void snd_func_eatdot1(int slot) {
+    assert((slot >= 0) && (slot < NUM_SOUNDS));
     const sound_t* snd = &state.audio.sound[slot];
     voice_t* voice = &state.audio.voice[2];
     if (snd->cur_tick == 0) {
@@ -2694,6 +3200,7 @@ static void snd_func_eatdot1(int slot) {
 }
 
 static void snd_func_eatdot2(int slot) {
+    assert((slot >= 0) && (slot < NUM_SOUNDS));
     const sound_t* snd = &state.audio.sound[slot];
     voice_t* voice = &state.audio.voice[2];
     if (snd->cur_tick == 0) {
@@ -2710,6 +3217,7 @@ static void snd_func_eatdot2(int slot) {
 }
 
 static void snd_func_eatghost(int slot) {
+    assert((slot >= 0) && (slot < NUM_SOUNDS));
     const sound_t* snd = &state.audio.sound[slot];
     voice_t* voice = &state.audio.voice[2];
     if (snd->cur_tick == 0) {
@@ -2726,6 +3234,7 @@ static void snd_func_eatghost(int slot) {
 }
 
 static void snd_func_eatfruit(int slot) {
+    assert((slot >= 0) && (slot < NUM_SOUNDS));
     const sound_t* snd = &state.audio.sound[slot];
     voice_t* voice = &state.audio.voice[2];
     if (snd->cur_tick == 0) {
@@ -2745,6 +3254,7 @@ static void snd_func_eatfruit(int slot) {
 }
 
 static void snd_func_weeooh(int slot) {
+    assert((slot >= 0) && (slot < NUM_SOUNDS));
     const sound_t* snd = &state.audio.sound[slot];
     voice_t* voice = &state.audio.voice[1];
     if (snd->cur_tick == 0) {
@@ -2761,6 +3271,7 @@ static void snd_func_weeooh(int slot) {
 }
 
 static void snd_func_frightened(int slot) {
+    assert((slot >= 0) && (slot < NUM_SOUNDS));
     const sound_t* snd = &state.audio.sound[slot];
     voice_t* voice = &state.audio.voice[1];
     if (snd->cur_tick == 0) {
@@ -2773,17 +3284,6 @@ static void snd_func_frightened(int slot) {
     }
     else {
         voice->frequency += 0x180;
-    }
-}
-
-
-int main( int argc, char **argv ) {
-    init();
-    screen_mode( 0, MODE_RGBM, CM_LOW );
-    while(1) {
-        await_vblank();
-        input();
-        frame();
     }
 }
 

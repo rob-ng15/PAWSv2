@@ -22,11 +22,6 @@ $$if VGA then
 $include('vga.ice')
 $$end
 
-// I2C (EMARD FOR RTC)
-import('../common/emard/i2c_master.v')
-//import('../common/emard/i2c_master_8bit.v')
-import('../common/emard/mcp7940n.v')
-
 // IO - UART, SDCARD and PS/2 KEYBOARD
 $include('../common/uart.ice')
 $include('../common/sdcard_write.si')
@@ -69,4 +64,9 @@ $include('../CPU.si')
 
 // MAIN
 $include('../PAWS.si')
+
+// I2C (EMARD FOR RTC)
+append('../common/emard/i2c_master.v')
+append('../common/emard/mcp7940n.v')
+import('../common/emard/rtc-wrapper.v')
 

@@ -22,11 +22,11 @@ $$if not SIMULATION then
     output  uint1   sd_mosi,
     output  uint1   sd_csn,
     input   uint1   sd_miso,
-$$end
 
     // I2C
     inout   uint1   gpdi_sda,
     inout   uint1   gpdi_scl,
+$$end
 
     // CLOCKS
     input   uint1   clock_25mhz,
@@ -76,15 +76,11 @@ $$if not SIMULATION then
         buffer_in <:> buffer_in,
         buffer_out <:> buffer_out
     );
-$$end
 
     // I2C FOR RTC
-    mcp7940n RTC <@clock_25mhz> (
-//        clk <: clock_25mhz,
-//        reset <: reset,
-//        sda <:> gpdi_sda,
-//        scl <:> gpdi_scl
-    );
+    uint56  LATCHrtc = uninitialised;
+    rtc RTC( clk <: clock_25mhz, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );
+$$end
 
     // ACCELERATOR FOR DOOM FIXED POINT 16.16 DIVISION
     fixed_t_divide FIXED_DIVIDE();
@@ -96,7 +92,7 @@ $$end
     FIXED_DIVIDE.start := 0;
 
     always_before {
-        // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE
+        // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE, RTC to read mode
         if( reset ) {
             SMTRUNNING = 0;
             $$if not SIMULATION then
@@ -139,6 +135,14 @@ $$end
                     case 4h2: { readData = PS2.outputkeycodes ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
                     case 4h4: { readData = SDCARD.ready; }
                     case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = INPLUS1; }
+                    case 4h6: {
+                        switch( memoryAddress[1,2] ) {
+                            case 0: { LATCHrtc = RTC.datetime; readData = LATCHrtc[0,16]; }
+                            case 1: { readData = LATCHrtc[16,16]; }
+                            case 2: { readData = LATCHrtc[32,16]; }
+                            case 3: { readData = LATCHrtc[48,16]; }
+                        }
+                    }
                     $$end
                     case 4h3: { readData = leds; }
                     case 4h8: {
@@ -174,6 +178,8 @@ $$end
                         case 1: { buffer_out.addr1 = OUTPLUS1; buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
                     }
                 }
+                $$else
+                case 4h0: { __display("%x",writeData); }
                 $$end
                 case 4h3: { leds = writeData; }
                 case 4h8: {
@@ -216,7 +222,7 @@ unit timers_memmap(
     input   uint1   clock_25mhz,
 
     // Memory access
-    input   uint5   memoryAddress,
+    input   uint6   memoryAddress,
     input   uint1   memoryWrite,
     input   uint1   memoryRead,
     input   uint16  writeData,
@@ -230,6 +236,10 @@ unit timers_memmap(
     timers_rng timers <@clock_25mhz> ( seconds :> cursor, g_noise_out :> static16bit );
     uint32  floatrng <:: { 1b0, 5b01111, &timers.u_noise_out[0,3] ? 3b110 : timers.u_noise_out[0,3], timers.g_noise_out[0,16], timers.u_noise_out[3,7] };
 
+    // LATCH TIME OF DAY
+    uint64  LATCHseconds = uninitialised;
+    uint25  LATCHmilliseconds = uninitialised;
+
     // LATCH MEMORYWRITE
     uint1   LATCHmemoryWrite = uninitialized;
 
@@ -237,23 +247,31 @@ unit timers_memmap(
         while(1) {
             // READ IO Memory
             if( memoryRead ) {
-                switch( memoryAddress[1,4] ) {
-                    // RNG ( 2 interger, 1 float 0 <= fng < 1 ) and TIMERS
-                    case 4h0: { readData = timers.g_noise_out; }
-                    case 4h1: { readData = timers.u_noise_out; }
-                    case 4h2: { readData = floatrng[0,16]; }
-                    case 4h3: { readData = floatrng[16,16]; }
-                    case 4h4: { readData = timers.seconds; }
-                    case 4h5: { readData = timers.milliseconds[0,16]; }
-                    case 4h6: { readData = timers.milliseconds[16,9]; }
-                    case 4h8: { readData = timers.timer1hz0; }
-                    case 4h9: { readData = timers.timer1hz1; }
-                    case 4ha: { readData = timers.timer1khz0; }
-                    case 4hb: { readData = timers.timer1khz1; }
-                    case 4hc: { readData = timers.sleepTimer0; }
-                    case 4hd: { readData = timers.sleepTimer1; }
-                    // RETURN NULL VALUE
-                    default: { readData = 0; }
+                if( memoryAddress[5,1] ) {
+                    switch( memoryAddress[1,3] ) {
+                        case 3h0: { LATCHseconds = timers.seconds; LATCHmilliseconds = timers.milliseconds; readData = LATCHseconds[0,16]; __display("LATCH %x",timers.seconds); __display("  MHZ %x",timers.milliseconds); }
+                        case 3h1: { readData = LATCHseconds[16,16]; __display("      R1"); }
+                        case 3h2: { readData = LATCHseconds[32,16]; __display("      R2");}
+                        case 3h3: { readData = LATCHseconds[48,16]; __display("      R3");}
+                        case 3h4: { readData = LATCHmilliseconds[0,16]; }
+                        case 3h5: { readData = LATCHmilliseconds[16,9]; }
+                        default: { readData = 0; }
+                    }
+                } else {
+                    switch( memoryAddress[1,4] ) {
+                        // RNG ( 2 interger, 1 float 0 <= fng < 1 ) and TIMERS
+                        case 4h0: { readData = timers.g_noise_out; }
+                        case 4h1: { readData = timers.u_noise_out; }
+                        case 4h2: { readData = floatrng[0,16]; }
+                        case 4h3: { readData = floatrng[16,16]; }
+                        case 4h8: { readData = timers.timer1hz0; }
+                        case 4h9: { readData = timers.timer1hz1; }
+                        case 4ha: { readData = timers.timer1khz0; }
+                        case 4hb: { readData = timers.timer1khz1; }
+                        case 4hc: { readData = timers.sleepTimer0; }
+                        case 4hd: { readData = timers.sleepTimer1; }
+                        default: { readData = 0; }
+                    }
                 }
             }
         }
@@ -272,8 +290,8 @@ unit timers_memmap(
 
 // TIMERS and RNG Controllers
 unit timers_rng(
-    output  uint16  seconds,
-    output  uint25  milliseconds,
+    output  uint64  seconds,
+    output  uint20  milliseconds,
     output  uint16  timer1hz0,
     output  uint16  timer1hz1,
     output  uint16  timer1khz0,
@@ -299,6 +317,7 @@ unit timers_rng(
     pulse1khz STimer0( counter1khz :> sleepTimer0 );
     pulse1khz STimer1( counter1khz :> sleepTimer1 );
 
+    P1.resettime := 0;
     T1hz0.resetCounter := 0; T1hz1.resetCounter := 0;
     T0khz0.resetCounter := 0; T1khz1.resetCounter := 0;
     STimer0.resetCounter := 0; STimer1.resetCounter := 0;

@@ -41,8 +41,9 @@ extern unsigned short get_timer1khz( unsigned char );
 extern void wait_timer1khz( unsigned char );
 extern unsigned short get_timer1hz( unsigned char );
 extern void reset_timer1hz( unsigned char );
-extern unsigned short systemclock( void );
+extern unsigned long systemclock( void );
 extern int paws_gettimeofday( struct paws_timeval *restrict tv, void *tz );
+extern unsigned long get_systemrtc( void );
 
 // AUDIO
 extern void beep( unsigned char, unsigned char, unsigned char, unsigned short );
@@ -140,6 +141,7 @@ extern void tpu_set(  unsigned char, unsigned char, unsigned char, unsigned char
 extern void tpu_move(  unsigned char, unsigned char );
 extern unsigned short tpu_read_cell( unsigned char x, unsigned char y );
 extern unsigned short tpu_read_colour( unsigned char x, unsigned char y );
+extern void tpu_outputstring( char attribute, char *s );
 extern void tpu_write( short );
 extern void tpu_output_character( short );
 extern void tpu_printf( char, const char *,... );

@@ -165,14 +165,15 @@ unsigned char volatile *AUDIO_R_ACTIVE = (unsigned char volatile *) 0xe012;
 unsigned short volatile *RNG = (unsigned short volatile *) 0xc000;
 unsigned short volatile *ALT_RNG = (unsigned short volatile *) 0xc002;
 float volatile *FRNG = (float volatile *) 0xc004;
-unsigned short volatile *SYSTEMSECONDS = (unsigned short volatile *) 0xc008;
-unsigned int volatile *SYSTEMMILLISECONDS = (unsigned int volatile *)0xc00a;
 unsigned short volatile *TIMER1HZ0 = (unsigned short volatile *) 0xc010;
 unsigned short volatile *TIMER1HZ1 = (unsigned short volatile *) 0xc012;
 unsigned short volatile *TIMER1KHZ0 = (unsigned short volatile *) 0xc014;
 unsigned short volatile *TIMER1KHZ1 = (unsigned short volatile *) 0xc016;
 unsigned short volatile *SLEEPTIMER0 = (unsigned short volatile *) 0xc018;
 unsigned short volatile *SLEEPTIMER1 = (unsigned short volatile *) 0xc01a;
+unsigned long volatile *SYSTEMSECONDS = (unsigned long volatile *) 0xc020;
+unsigned int volatile *SYSTEMMILLISECONDS = (unsigned int volatile *)0xc028;
+unsigned long volatile *RTC = (unsigned long volatile *) 0xf600;
 
 // HANDLE SMT - RUNNING STATUS AND POINTER TO CODE TO RUN
 unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;

@@ -537,6 +537,7 @@ void main( void ) {
 
     while(1) {
         await_vblank();
+        if( (j&0xff)==0xff ) *UART_DATA = *SYSTEMSECONDS & 0xff;
         tilemap_scrollwrapclear( 0, 3, 1 );
         tilemap_scrollwrapclear( 1, 1, 1 );
         for( i = 0; i < 2; i++ ) update_sprite( 1, i, 1 );

@@ -186,8 +186,13 @@ void reset_timer1hz( unsigned char timer  ) {
 }
 
 // SYSTEM CLOCK, SECONDS SINCE RESET
-unsigned short systemclock( void ) {
+unsigned long systemclock( void ) {
     return( *SYSTEMSECONDS );
+}
+
+// RETURN RTC FROM ulx3s
+unsigned long get_systemrtc( void ){
+    return( *RTC );
 }
 
 // AUDIO OUTPUT
@@ -386,7 +391,7 @@ void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y,
 }
 
 // READ THE TILEMAP TILE+ACTION at (x,y) - (0,0) always top left, even after scrolling
-unsigned short read_tilemap_tile(  unsigned char tm_layer, unsigned char x, unsigned char y ) {
+unsigned short read_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y ) {
     switch( tm_layer ) {
         case 0:
             while( *LOWER_TM_STATUS );
@@ -1717,8 +1722,9 @@ void __write_curses_cell( unsigned short x, unsigned short y, __curses_cell writ
 
 void initscr( void ) {
     while( *TPU_COMMIT );
-    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE; *TPU_COMMIT = 6;  while( *TPU_COMMIT );
+    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE; *TPU_COMMIT = 6; while( *TPU_COMMIT );
     __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
+    *TPU_CURSOR = TRUE;
     __stdinout_init = TRUE;
 }
 
@@ -2259,8 +2265,10 @@ void  __attribute__ ((noreturn)) _exit( int status ){
     while(1);
 }
 int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
-    tv->tv_sec = (time_t)*SYSTEMSECONDS;
-    tv->tv_usec = (suseconds_t)*SYSTEMMILLISECONDS;
+    int *storage = (int *)tv;
+    storage[0] = TIMER_REGS[8]; storage[1] = TIMER_REGS[9]; storage[2] = storage[3] = TIMER_REGS[10];
+//    tv->tv_sec = (time_t)*SYSTEMSECONDS;
+//    tv->tv_usec = (suseconds_t)*SYSTEMMILLISECONDS;
     return( 0 );
 }
 int _times() {
