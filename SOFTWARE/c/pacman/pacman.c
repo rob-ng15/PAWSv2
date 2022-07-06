@@ -159,13 +159,6 @@
 #define DBG_GODMODE         (0)     // set to (1) to disable dying
 
 enum {
-    // tick duration in nanoseconds
-    #if DBG_DOUBLE_SPEED
-        TICK_DURATION_NS = 8333333,
-    #else
-        TICK_DURATION_NS = 16666666,
-    #endif
-    TICK_TOLERANCE_NS   = 1000000,      // per-frame tolerance in nanoseconds
     NUM_VOICES          = 3,            // number of sound voices
     NUM_SOUNDS          = 3,            // max number of sounds effects that can be active at a time
     NUM_SAMPLES         = 128,          // max number of audio samples in local sample buffer
@@ -207,21 +200,21 @@ enum {
     TILE_PILL           = 14,
     TILE_GHOST          = 56,
     TILE_LIFE           = 0x20, // 0x20..0x23
-    TILE_CHERRIES       = 0x90, // 0x90..0x93
-    TILE_STRAWBERRY     = 0x94, // 0x94..0x97
-    TILE_PEACH          = 0x98, // 0x98..0x9B
-    TILE_BELL           = 0x9C, // 0x9C..0x9F
-    TILE_APPLE          = 0xA0, // 0xA0..0xA3
-    TILE_GRAPES         = 0xA4, // 0xA4..0xA7
-    TILE_GALAXIAN       = 0xA8, // 0xA8..0xAB
-    TILE_KEY            = 0xAC, // 0xAC..0xAF
+    TILE_CHERRIES       = 48, // 0x90..0x93
+    TILE_STRAWBERRY     = 49, // 0x94..0x97
+    TILE_PEACH          = 50, // 0x98..0x9B
+    TILE_BELL           = 51, // 0x9C..0x9F
+    TILE_APPLE          = 52, // 0xA0..0xA3
+    TILE_GRAPES         = 53, // 0xA4..0xA7
+    TILE_GALAXIAN       = 54, // 0xA8..0xAB
+    TILE_KEY            = 55, // 0xAC..0xAF
     TILE_DOOR           = 0x09, // the ghost-house door
 
     SPRITETILE_INVISIBLE    = 30,
-    SPRITETILE_SCORE_200    = 40,
-    SPRITETILE_SCORE_400    = 41,
-    SPRITETILE_SCORE_800    = 42,
-    SPRITETILE_SCORE_1600   = 43,
+    SPRITETILE_SCORE_200    = 0,
+    SPRITETILE_SCORE_400    = 1,
+    SPRITETILE_SCORE_800    = 2,
+    SPRITETILE_SCORE_1600   = 3,
     SPRITETILE_CHERRIES     = 0,
     SPRITETILE_STRAWBERRY   = 1,
     SPRITETILE_PEACH        = 2,
@@ -617,6 +610,26 @@ static const levelspec_t levelspec_table[MAX_LEVELSPEC] = {
     // from here on repeating
 };
 
+// PAWS sound effects
+unsigned char tune_treble[] = {  24, 36, 31, 28, 36, 30, 24, 27,  0,
+                                 36, 37, 32, 29, 37, 32, 25, 29,  0,
+                                 24, 36, 31, 28, 36, 30, 24, 27,  0,
+                                 28, 29, 30,  0, 30, 31, 32,  0, 32, 33, 34,  0, 36,  0, 0xff };
+unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 16, 16, 16,
+                                 16, 16, 16, 16,  8,  8, 16, 16, 16,
+                                 16, 16, 16, 16,  8,  8, 16, 16, 16,
+                                  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8, 24,  8, 0xff };
+
+
+unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
+                                13,  0,  0, 20, 13,  0,  0, 19,
+                                12,  0,  0, 19, 12,  0,  0, 20,
+                                19,  0, 20,  0, 22,  0,  24, 0, 0xff };
+
+#define SND_UPDATE 0
+#define SND_START_INTRO 1
+#define SND_STOP_ALL 255
+
 // forward-declared sound-effect register dumps (recorded from Pacman arcade emulator)
 static const uint32_t snd_dump_prelude[490];
 static const uint32_t snd_dump_dead[90];
@@ -693,6 +706,8 @@ static void gfx_shutdown(void);
 static void gfx_fade(void);
 static void gfx_draw(void);
 
+static void paws_snd( int action );
+
 static void snd_init(void);
 static void snd_shutdown(void);
 static void snd_tick(void); // called per game tick
@@ -720,43 +735,29 @@ static void init(void) {
     #endif
 }
 
+// RUN ONE FRAME, SPEED IS CONTROLLED BY THE MAIN LOOP, WHICH LIMITS TO 60 fps to match original speed
 static void frame(void) {
+    state.timing.tick++;
 
-    // run the game at a fixed tick rate regardless of frame rate
-//    uint32_t frame_time_ns = (uint32_t) (sapp_frame_duration() * 1000000000.0);
-    uint32_t frame_time_ns = (uint32_t) 33333333;
-    // clamp max frame time (so the timing isn't messed up when stopping in the debugger)
-    if (frame_time_ns > 33333333) {
-        frame_time_ns = 33333333;
+    // check for game state change
+    if (now(state.intro.started)) {
+        state.gamestate = GAMESTATE_INTRO;
     }
-    state.timing.tick_accum += frame_time_ns;
-    while (state.timing.tick_accum > -TICK_TOLERANCE_NS) {
-        state.timing.tick_accum -= TICK_DURATION_NS;
-        state.timing.tick++;
+    if (now(state.game.started)) {
+        state.gamestate = GAMESTATE_GAME;
+    }
 
-        // call per-tick sound function (updates sound 'registers' with current sound effect values)
-        snd_tick();
-
-        // check for game state change
-        if (now(state.intro.started)) {
-            state.gamestate = GAMESTATE_INTRO;
-        }
-        if (now(state.game.started)) {
-            state.gamestate = GAMESTATE_GAME;
-        }
-
-        // call the top-level game state update function
-        switch (state.gamestate) {
-            case GAMESTATE_INTRO:
-                intro_tick();
-                break;
-            case GAMESTATE_GAME:
-                game_tick();
-                break;
-        }
+    // call the top-level game state update function
+    switch (state.gamestate) {
+        case GAMESTATE_INTRO:
+            intro_tick();
+            break;
+        case GAMESTATE_GAME:
+            game_tick();
+            break;
     }
     gfx_draw();
-    snd_frame(frame_time_ns);
+    paws_snd( SND_UPDATE );
 }
 
 static void input() {
@@ -1006,13 +1007,13 @@ static char conv_char(char c) {
 // put colored text into tpu buffer
 static void vid_color_text(int2_t tile_pos, uint8_t color_code, const char* text) {
     tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-    tpu_outputstring( 0, (char *)text );
+    tpu_outputstring( BOLD, (char *)text );
 }
 
 // put text into tpu buffer
 static void vid_text(int2_t tile_pos, const char* text) {
     tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, COLOR_DEFAULT );
-    tpu_outputstring( 0, (char *)text );
+    tpu_outputstring( BOLD, (char *)text );
 }
 
 /* print colored score number into tile+color buffers from right to left(!),
@@ -1027,7 +1028,7 @@ static void vid_color_score(int2_t tile_pos, uint8_t color_code, uint32_t score)
     for (int digit = 0; digit < 8; digit++) {
         char chr = (score % 10) + '0';
         tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-        tpu_write( chr );
+        tpu_write( chr + 256 );
         tile_pos.x--;
         score /= 10;
         if (0 == score) {
@@ -1531,20 +1532,17 @@ static void game_update_tiles(void) {
 
     // remaining lives at bottom left screen
     for (int i = 0; i < NUM_LIVES; i++) {
-        uint8_t color = (i < state.game.num_lives) ? COLOR_PACMAN : 0;
-        vid_draw_tile_quad(i2(2+2*i,34), color, TILE_LIFE);
+        set_tilemap_tile( LOWER_LAYER, 1, 4 + i, (i < state.game.num_lives) ? 60 : 0, 0 );
     }
 
     // bonus fruit list in bottom-right corner
     {
-        int16_t x = 24;
+        int y = 27;
         for (int i = ((int)state.game.round - NUM_STATUS_FRUITS + 1); i <= (int)state.game.round; i++) {
             if (i >= 0) {
                 fruit_t fruit = levelspec(i).bonus_fruit;
-                uint8_t tile_code = fruit_tiles_colors[fruit][0];
-                uint8_t color_code = fruit_tiles_colors[fruit][2];
-                vid_draw_tile_quad(i2(x,34), color_code, tile_code);
-                x -= 2;
+                set_tilemap_tile( LOWER_LAYER, 1, y, fruit_tiles_colors[fruit][0], 0 );
+                y--;
             }
         }
     }
@@ -2148,7 +2146,7 @@ static void game_tick(void) {
     if (now(state.game.started)) {
         start(&state.gfx.fadein);
         start_after(&state.game.ready_started, 2*prelude_ticks_per_sec);
-        snd_start(0, &snd_prelude);
+        paws_snd( SND_START_INTRO );
         game_init();
     }
     // initialize new round (each time Pacman looses a life), make actors visible, remove "PLAYER ONE", start a new life
@@ -2330,7 +2328,6 @@ unsigned char sprite_upper[] = {
 };
 
 static void gfx_init(void) {
-
     set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, &tilemap_lower[0] );
     set_sprite_bitamps_from_spritesheet( UPPER_LAYER, &sprite_upper[0] );
 
@@ -2338,64 +2335,6 @@ static void gfx_init(void) {
 }
 
 static void gfx_shutdown(void) {
-}
-
-static void gfx_add_vertex(float x, float y, float u, float v, uint8_t color_code, uint8_t opacity) {
-    vertex_t* vtx = &state.gfx.vertices[state.gfx.num_vertices++];
-    vtx->x = x;
-    vtx->y = y;
-    vtx->u = u;
-    vtx->v = v;
-    vtx->attr = (opacity<<8) | color_code;
-}
-
-static void gfx_add_tile_vertices(uint32_t tx, uint32_t ty, uint8_t tile_code, uint8_t color_code) {
-    const float dx = 1.0f / DISPLAY_TILES_X;
-    const float dy = 1.0f / DISPLAY_TILES_Y;
-    const float du = (float)TILE_WIDTH / TILE_TEXTURE_WIDTH;
-    const float dv = (float)TILE_HEIGHT / TILE_TEXTURE_HEIGHT;
-
-    const float x0 = tx * dx;
-    const float x1 = x0 + dx;
-    const float y0 = ty * dy;
-    const float y1 = y0 + dy;
-    const float u0 = tile_code * du;
-    const float u1 = u0 + du;
-    const float v0 = 0.0f;
-    const float v1 = dv;
-    /*
-        x0,y0
-        +-----+
-        | *   |
-        |   * |
-        +-----+
-                x1,y1
-    */
-    gfx_add_vertex(x0, y0, u0, v0, color_code, 0xFF);
-    gfx_add_vertex(x1, y0, u1, v0, color_code, 0xFF);
-    gfx_add_vertex(x1, y1, u1, v1, color_code, 0xFF);
-    gfx_add_vertex(x0, y0, u0, v0, color_code, 0xFF);
-    gfx_add_vertex(x1, y1, u1, v1, color_code, 0xFF);
-    gfx_add_vertex(x0, y1, u0, v1, color_code, 0xFF);
-}
-
-static void gfx_add_playfield_vertices(void) {
-//    for (uint32_t ty = 0; ty < DISPLAY_TILES_Y; ty++) {
-//        for (uint32_t tx = 0; tx < DISPLAY_TILES_X; tx++) {
-//            const uint8_t tile_code = state.gfx.video_ram[ty][tx];
-//            const uint8_t color_code = state.gfx.color_ram[ty][tx] & 0x1F;
-//            gfx_add_tile_vertices(tx, ty, tile_code, color_code);
-//        }
-//    }
-}
-
-static void gfx_add_debugmarker_vertices(void) {
-    for (int i = 0; i < NUM_DEBUG_MARKERS; i++) {
-        const debugmarker_t* dbg = &state.gfx.debug_marker[i];
-        if (dbg->enabled) {
-            gfx_add_tile_vertices(dbg->tile_pos.x, dbg->tile_pos.y, dbg->tile, dbg->color);
-        }
-    }
 }
 
 #define tocoords(a,b) a*2+96,b*2-48
@@ -2407,7 +2346,7 @@ static void gfx_add_sprite_vertices(void) {
         spr = &state.gfx.sprite[ i ];
         switch( i ) {
             case SPRITE_PACMAN:
-                // PACMAN IS PAWS SPRITE 15
+                // PACMAN IS PAWS SPRITE 15, 3 tiles, half open, full open, closed (facing right) generate remainder by rotation
                 action = SPRITE_DOUBLE;
                 switch(actor->dir) {
                     case 0: break;
@@ -2427,29 +2366,29 @@ static void gfx_add_sprite_vertices(void) {
                     action = SPRITE_DOUBLE;
                     switch (ghost->state) {
                         case GHOSTSTATE_EYES:
-                            set_sprite( UPPER_LAYER, basesprite+4, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir + 4, action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 4 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 8 );
+                            set_sprite( UPPER_LAYER, basesprite+4, spr->color != COLOR_GHOST_SCORE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir + 4, action );
+                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
+                            set_sprite( UPPER_LAYER, basesprite+8, spr->color == COLOR_GHOST_SCORE, tocoords(spr->pos.x, spr->pos.y), spr->tile, action );
                             break;
                         case GHOSTSTATE_ENTERHOUSE:
                             set_sprite( UPPER_LAYER, basesprite+4, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->actor.dir + 4, action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 4 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 8 );
+                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
                             break;
                         case GHOSTSTATE_FRIGHTENED:
                             set_sprite( UPPER_LAYER, basesprite+4, TRUE, tocoords(spr->pos.x, spr->pos.y), (spr->color == COLOR_FRIGHTENED_BLINKING) ? 2 : 0 + (ghost->actor.anim_tick&1), action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 4 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 8 );
+                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
                             break;
                         default:
                             set_sprite( UPPER_LAYER, basesprite, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir * 2 + (ghost->actor.anim_tick&1), action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+4, SPRITE_ACTIVE, 4 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 8 );
+                            set_sprite_attribute( UPPER_LAYER, basesprite+4, SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
                     }
                 } else {
                     set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
-                    set_sprite_attribute( UPPER_LAYER, basesprite+4, SPRITE_ACTIVE, 4 );
-                    set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 8 );
+                    set_sprite_attribute( UPPER_LAYER, basesprite+4, SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
                 }
                 break;
             case SPRITE_FRUIT:
@@ -2460,77 +2399,46 @@ static void gfx_add_sprite_vertices(void) {
     }
 }
 
-static void gfx_add_fade_vertices(void) {
-    // sprite tile 64 is a special 16x16 opaque block
-    const float du = (float)SPRITE_WIDTH / TILE_TEXTURE_WIDTH;
-    const float dv = (float)SPRITE_HEIGHT / TILE_TEXTURE_HEIGHT;
-    const float u0 = 64 * du;
-    const float u1 = u0 + du;
-    const float v0 = (float)TILE_HEIGHT / TILE_TEXTURE_HEIGHT;
-    const float v1 = v0 + dv;
-
-    const uint8_t fade = state.gfx.fade;
-    gfx_add_vertex(0.0f, 0.0f, u0, v0, 0, fade);
-    gfx_add_vertex(1.0f, 0.0f, u1, v0, 0, fade);
-    gfx_add_vertex(1.0f, 1.0f, u1, v1, 0, fade);
-    gfx_add_vertex(0.0f, 0.0f, u0, v0, 0, fade);
-    gfx_add_vertex(1.0f, 1.0f, u1, v1, 0, fade);
-    gfx_add_vertex(0.0f, 1.0f, u0, v1, 0, fade);
-}
-
-// adjust the viewport so that the aspect ratio is always correct
-static void gfx_adjust_viewport(int canvas_width, int canvas_height) {
-    const float canvas_aspect = (float)canvas_width / (float)canvas_height;
-    const float playfield_aspect = (float)DISPLAY_TILES_X / (float)DISPLAY_TILES_Y;
-    int vp_x, vp_y, vp_w, vp_h;
-    const int border = 10;
-    if (playfield_aspect < canvas_aspect) {
-        vp_y = border;
-        vp_h = canvas_height - 2*border;
-        vp_w = (int)(canvas_height * playfield_aspect - 2*border);
-        vp_x = (canvas_width - vp_w) / 2;
-    }
-    else {
-        vp_x = border;
-        vp_w = canvas_width - 2*border;
-        vp_h = (int)(canvas_width / playfield_aspect - 2*border);
-        vp_y = (canvas_height - vp_h) / 2;
-    }
-/*    sg_apply_viewport(vp_x, vp_y, vp_w, vp_h, true);
-*/
-}
-
-// handle fadein/fadeout
-static void gfx_fade(void) {
-/*    if (between(state.gfx.fadein, 0, FADE_TICKS)) {
-        float t = (float)since(state.gfx.fadein) / FADE_TICKS;
-        state.gfx.fade = (uint8_t) (255.0f * (1.0f - t));
-    }
-    if (after_once(state.gfx.fadein, FADE_TICKS)) {
-        state.gfx.fade = 0;
-    }
-    if (between(state.gfx.fadeout, 0, FADE_TICKS)) {
-        float t = (float)since(state.gfx.fadeout) / FADE_TICKS;
-        state.gfx.fade = (uint8_t) (255.0f * t);
-    }
-    if (after_once(state.gfx.fadeout, FADE_TICKS)) {
-        state.gfx.fade = 255;
-    }
-*/
-}
 
 static void gfx_draw(void) {
-    // handle fade in/out
-    gfx_fade();
-
     // update the playfield and sprite vertex buffer
     state.gfx.num_vertices = 0;
-    gfx_add_playfield_vertices();
     gfx_add_sprite_vertices();
-    gfx_add_debugmarker_vertices();
 }
 
 /*== AUDIO SUBSYSTEM =========================================================*/
+static void paws_snd( int action ) {
+    static int intro_playing = 0, trebleposition = 0, bassposition = 0;
+
+    switch( action ) {
+        case SND_UPDATE:
+            break;
+        case SND_START_INTRO:
+            intro_playing = 1; trebleposition = bassposition = 0;
+            beep( 3, 0, 0, 0 );
+            break;
+        case SND_STOP_ALL:
+            intro_playing = 0;
+            beep( 3, 0, 0, 0 );
+            break;
+    }
+
+    if( intro_playing ) {
+        if( tune_treble[ trebleposition ] != 0xff ) {
+            if( !get_beep_active( 1 ) ) {
+                beep( 1, 0, tune_treble[ trebleposition ], size_treble[ trebleposition ] << 3 );
+                trebleposition++;
+            }
+        }
+        if( tune_bass[ bassposition ] != 0xff ) {
+            if( !get_beep_active( 2 ) ) {
+                beep( 2, 0, tune_bass[ bassposition ], 16 << 3 );
+                bassposition++;
+            }
+        }
+    }
+}
+
 static void snd_init(void) {
 //    saudio_setup(&(saudio_desc){ 0 });
 
@@ -2784,6 +2692,7 @@ int main( int argc, char **argv ) {
         await_vblank();
         input();
         frame();
+        await_vblank_finish();
     }
 }
 
