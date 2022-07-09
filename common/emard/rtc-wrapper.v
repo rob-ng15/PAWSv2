@@ -1,14 +1,14 @@
 module rtc
 (
-  input  clk,        // System clock, wr_ctrl should be synchronous to this
-  input  reset,      // 1:reset - puts I2C bus into idle state
-  input  wr,
-  input  [2:0] addr,
-  input  [7:0] r_data,
-  output tick,       // ticks every second -> 1: datetime_o is valid
-  output [55:0] datetime, // BCD {YY,MM,DD, WD, HH,MM,SS}
-  inout  sda,        // I2C Serial data line, pulled high at board level
-  inout  scl         // I2C Serial clock line, pulled high at board level
+  input  wire        clk,        // System clock, wr_ctrl should be synchronous to this
+  input  wire        reset,      // 1:reset - puts I2C bus into idle state
+  input  wire        wr,         // write enable
+  input  wire [2:0]  addr,       // 0-6:writing, 7:circular reading
+  input  wire [7:0]  data,       // data to write at addr
+  output reg         tick,       // ticks every second -> 1: datetime_o is valid
+  output wire [55:0] datetime,   // BCD {YY,MM,DD, WD, HH,MM,SS}
+  inout  wire        sda,        // I2C Serial data line, pulled high at board level
+  inout  wire        scl         // I2C Serial clock line, pulled high at board level
 );
   mcp7940n
   #(
@@ -24,8 +24,8 @@ module rtc
     .data(0),
     .tick(tick),
     .datetime_o(datetime),
-    .sda(gpdi_sda),
-    .scl(gpdi_scl)
+    .sda(sda),
+    .scl(scl)
   );
 
 endmodule
