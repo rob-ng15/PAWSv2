@@ -180,6 +180,9 @@
 // SCREEN MODES
 #define MODE_RGBM 0
 #define MODE_GREY 1
+#define LTM_LOW 1
+#define UTM_LOW 2
+#define CM_LOW 4
 
 // PIXEL BLOCK MODES
 #define PB_REMAP 1

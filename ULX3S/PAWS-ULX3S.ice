@@ -65,3 +65,8 @@ $include('../CPU.si')
 // MAIN
 $include('../PAWS.si')
 
+// I2C (EMARD FOR RTC)
+append('../common/emard/i2c_master.v')
+append('../common/emard/mcp7940n.v')
+import('../common/emard/rtc-wrapper.v')
+

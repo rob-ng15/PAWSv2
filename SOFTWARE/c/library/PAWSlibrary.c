@@ -186,8 +186,13 @@ void reset_timer1hz( unsigned char timer  ) {
 }
 
 // SYSTEM CLOCK, SECONDS SINCE RESET
-unsigned short systemclock( void ) {
+unsigned long systemclock( void ) {
     return( *SYSTEMSECONDS );
+}
+
+// RETURN RTC FROM ulx3s
+unsigned long get_systemrtc( void ){
+    return( *RTC );
 }
 
 // AUDIO OUTPUT
@@ -286,10 +291,10 @@ void await_vblank_finish( void ) {
 }
 
 // SET THE LAYER ORDER FOR THE DISPLAY
-void screen_mode( unsigned char screenmode, unsigned char colour, unsigned char tmresolution ) {
+void screen_mode( unsigned char screenmode, unsigned char colour, unsigned char resolution ) {
     *SCREENMODE = screenmode;
     *COLOUR = colour;
-    *REZ = tmresolution;
+    *REZ = resolution;
 }
 
 // SET THE DIMMER LEVEL FOR THE DISPLAY 0 == FULL BRIGHTNESS, 1 - 7 DIMMER, 8 - 15 BLANK
@@ -385,8 +390,24 @@ void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y,
     }
 }
 
+// HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
+void set_tilemap_32x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile( tm_layer, x + 1, y, start_tile + 2, 0 );
+    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
+}
+
+// HELPER FOR PLACING A 2 TILE 16 x 32 TILE TO THE TILEMAPS with REFLECTION for right hand side
+void set_tilemap_16x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile( tm_layer, x + 1, y, start_tile, REFLECT_X );
+    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 1, REFLECT_X );
+}
+
 // READ THE TILEMAP TILE+ACTION at (x,y) - (0,0) always top left, even after scrolling
-unsigned short read_tilemap_tile(  unsigned char tm_layer, unsigned char x, unsigned char y ) {
+unsigned short read_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y ) {
     switch( tm_layer ) {
         case 0:
             while( *LOWER_TM_STATUS );
@@ -1209,12 +1230,31 @@ void tpu_clearline( unsigned char y ) {
     *TPU_COMMIT = 4;
 }
 
+// POSITION THE CURSOR to (x,y)
+void tpu_move( unsigned char x, unsigned char y ) {
+    while( *TPU_COMMIT );
+    *TPU_X = x; *TPU_Y = y; *TPU_COMMIT = 1;
+}
+// READ THE CHARACTER AT (x,y)
+unsigned short tpu_read_cell( unsigned char x, unsigned char y ) {
+    tpu_move( x, y );
+    return( *TPUREAD_CHARACTER );
+}
+// READ THE COLOUR AT (x,y)
+unsigned short tpu_read_colour( unsigned char x, unsigned char y ) {
+    tpu_move( x, y );
+    return( _rv32_packh( *TPUREAD_FOREGROUND, *TPUREAD_FOREGROUND ) );
+}
+void tpu_write( short c ) {
+     while( *TPU_COMMIT );
+    *TPU_CHARACTER = c; *TPU_COMMIT = 12;
+}
+
 // POSITION THE CURSOR to (x,y) and set background and foreground colours
-void tpu_set(  unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
     while( *TPU_COMMIT );
     *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
 }
-
 // OUTPUT CHARACTER, STRING, and PRINTF EQUIVALENT FOR THE TPU
 void tpu_output_character( short c ) {
     while( *TPU_COMMIT );
@@ -1698,8 +1738,9 @@ void __write_curses_cell( unsigned short x, unsigned short y, __curses_cell writ
 
 void initscr( void ) {
     while( *TPU_COMMIT );
-    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE; *TPU_COMMIT = 6;  while( *TPU_COMMIT );
+    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE; *TPU_COMMIT = 6; while( *TPU_COMMIT );
     __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
+    *TPU_CURSOR = TRUE;
     __stdinout_init = TRUE;
 }
 
@@ -2240,8 +2281,10 @@ void  __attribute__ ((noreturn)) _exit( int status ){
     while(1);
 }
 int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
-    tv->tv_sec = (time_t)*SYSTEMSECONDS;
-    tv->tv_usec = (suseconds_t)*SYSTEMMILLISECONDS;
+    int *storage = (int *)tv;
+    storage[0] = TIMER_REGS[8]; storage[1] = TIMER_REGS[9]; storage[2] = storage[3] = TIMER_REGS[10];
+//    tv->tv_sec = (time_t)*SYSTEMSECONDS;
+//    tv->tv_usec = (suseconds_t)*SYSTEMMILLISECONDS;
     return( 0 );
 }
 int _times() {

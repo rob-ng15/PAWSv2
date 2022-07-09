@@ -141,6 +141,9 @@ unsigned char volatile *TPU_COMMIT = (unsigned char volatile *) 0xd50a;
 unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd50c;
 unsigned char volatile *CURSES_BACKGROUND = (unsigned char volatile *) 0xd50e;
 unsigned char volatile *CURSES_FOREGROUND = (unsigned char volatile *) 0xd50f;
+unsigned short volatile *TPUREAD_CHARACTER = (unsigned short volatile *) 0xd514;
+unsigned char volatile *TPUREAD_BACKGROUND = (unsigned char volatile *) 0xd516;
+unsigned char volatile *TPUREAD_FOREGROUND = (unsigned char volatile *) 0xd518;
 
 unsigned char volatile *TERMINAL_COMMIT = (unsigned char volatile *) 0xd700;
 unsigned char volatile *TERMINAL_STATUS = (unsigned char volatile *) 0xd700;
@@ -160,14 +163,15 @@ unsigned char volatile *AUDIO_R_ACTIVE = (unsigned char volatile *) 0xe012;
 unsigned short volatile *RNG = (unsigned short volatile *) 0xc000;
 unsigned short volatile *ALT_RNG = (unsigned short volatile *) 0xc002;
 float volatile *FRNG = (float volatile *) 0xc004;
-unsigned short volatile *SYSTEMSECONDS = (unsigned short volatile *) 0xc008;
-unsigned int volatile *SYSTEMMILLISECONDS = (unsigned int volatile *)0xc00a;
 unsigned short volatile *TIMER1HZ0 = (unsigned short volatile *) 0xc010;
 unsigned short volatile *TIMER1HZ1 = (unsigned short volatile *) 0xc012;
 unsigned short volatile *TIMER1KHZ0 = (unsigned short volatile *) 0xc014;
 unsigned short volatile *TIMER1KHZ1 = (unsigned short volatile *) 0xc016;
 unsigned short volatile *SLEEPTIMER0 = (unsigned short volatile *) 0xc018;
 unsigned short volatile *SLEEPTIMER1 = (unsigned short volatile *) 0xc01a;
+unsigned int volatile *SYSTEMSECONDS = (unsigned int volatile *) 0xc020;
+unsigned int volatile *SYSTEMMILLISECONDS = (unsigned int volatile *)0xc028;
+unsigned int volatile *RTC = (unsigned int volatile *) 0xf600;
 
 // HANDLE SMT - RUNNING STATUS AND POINTER TO CODE TO RUN
 unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;

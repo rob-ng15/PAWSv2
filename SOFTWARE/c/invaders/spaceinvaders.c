@@ -92,22 +92,6 @@ void remove_sprites( short start_sprite ) {
     }
 }
 
-// HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
-void set_tilemap_32x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
-    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
-    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y, start_tile + 2, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
-}
-
-// HELPER FOR PLACING A 2 TILE 16 x 32 TILE TO THE TILEMAPS with REFLECTION for right hand side
-void set_tilemap_16x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
-    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
-    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y, start_tile, REFLECT_X );
-    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 1, REFLECT_X );
-}
-
 // PROGRAM THE BACKGROUND COPPER FOR THE FALLING STARS
 void program_background( void ) {
     copper_startstop( 0 );
