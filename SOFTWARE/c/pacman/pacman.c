@@ -553,23 +553,27 @@ unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 16, 16, 16,
                                  16, 16, 16, 16,  8,  8, 16, 16, 16,
                                   8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8, 24,  8, 0xff };
 
-
 unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
                                 13,  0,  0, 20, 13,  0,  0, 19,
                                 12,  0,  0, 19, 12,  0,  0, 20,
                                 19,  0, 20,  0, 22,  0,  24, 0, 0xff };
 
-unsigned char eat_dot[] = { 25, 24 };
 unsigned char eat_pill[] = { 30, 34, 37 };
 unsigned char eat_fruit[] = { 36, 39, 36 };
+unsigned char eat_ghost[] = { 25, 25, 32 };
 unsigned char eat_pacman[] = { 37, 36, 34, 32, 30, 29, 27, 25 };
+unsigned char alert_normal[] = { 39, 36 };
+unsigned char alert_frightended[] = { 47, 45 };
 
 #define SND_UPDATE 0
 #define SND_START_INTRO 1
 #define SND_START_DOT 2
-#define SND_START_FRUIT 3
-#define SND_START_GHOST 4
-#define SND_START_PACMAN 5
+#define SND_START_PILL 3
+#define SND_START_FRUIT 4
+#define SND_START_GHOST 5
+#define SND_START_PACMAN 6
+#define SND_START_NORMAL 7
+#define SND_START_FRIGHTENDED 8
 #define SND_STOP_ALL 255
 
 // PAWS BITMAPS
@@ -585,6 +589,9 @@ unsigned char tilemap_upper[] = {
 unsigned char sprite_upper[] = {
     #include "graphics/sprite_upper.h"
 };
+
+// INCLUDE 3D PACMAN BACKDROP
+#include "graphics/3DPACMAN_BMP.h"
 
 // CONVERT FROM PACMAN COORDINATES TO PAWS_TILE COORDINATES
 #define tocoords(a,b) a*2+96,b*2-57
@@ -1883,7 +1890,13 @@ static void game_update_dots_eaten(void) {
     }
 
     // play crunch sound effect when a dot has been eaten
-    paws_snd( SND_START_DOT );
+    // play alternating crunch sound effect when a dot has been eaten
+    if (state.game.num_dots_eaten & 1) {
+        beep( CHANNEL_RIGHT, WAVE_SAW, 37, 250 );
+    }
+    else {
+        beep( CHANNEL_RIGHT, WAVE_SAW, 34, 250 );
+    }
 }
 
 // the central Pacman and ghost behaviour function, called once per game tick
@@ -1922,7 +1935,7 @@ static void game_update_actors(void) {
             for (int i = 0; i < NUM_GHOSTS; i++) {
                 start(&state.game.ghost[i].frightened);
             }
-            //snd_start(1, &snd_frightened);
+            paws_snd( SND_START_FRIGHTENDED );
         }
         // check if Pacman eats the bonus fruit
         if (state.game.active_fruit != FRUIT_NONE) {
@@ -2018,7 +2031,7 @@ static void game_tick(void) {
         state.game.freeze &= ~FREEZETYPE_READY;
         // clear the 'READY!' message
         vid_color_text(i2(17,17), 0x10, "      ");
-        //snd_start(1, &snd_weeooh);
+        paws_snd( SND_START_NORMAL );
     }
 
     // activate/deactivate bonus fruit
@@ -2031,7 +2044,7 @@ static void game_tick(void) {
 
     // stop frightened sound and start weeooh sound
     if (after_once(state.game.pill_eaten, levelspec(state.game.round).fright_ticks)) {
-        //snd_start(1, &snd_weeooh);
+        paws_snd( SND_START_NORMAL );
     }
 
     // if game is frozen because Pacman ate a ghost, unfreeze after a while
@@ -2276,48 +2289,72 @@ static void gfx_draw(void) {
 
 /*== AUDIO SUBSYSTEM =========================================================*/
 static void paws_snd( int action ) {
-    static int intro_playing = 0, trebleposition = 0, bassposition = 0;
+    static int intro_playing = 0, alert_playing = 0, trebleposition = 0, bassposition = 0;
 
     switch( action ) {
         case SND_UPDATE:
             break;
         case SND_START_INTRO:
-            intro_playing = 1; trebleposition = bassposition = 0;
+            intro_playing = 1; alert_playing = 0; trebleposition = bassposition = 0;
             beep( CHANNEL_BOTH, 0, 0, 0 );
             break;
         case SND_START_DOT:
-            sample_upload( CHANNEL_RIGHT, 2, &eat_dot[0] );
-            beep( CHANNEL_RIGHT, 7, 0, 250 );
+            break;
+        case SND_START_PILL:
+            sample_upload( CHANNEL_RIGHT, 2, &eat_pill[0] );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SAW, 0, 250 );
             break;
         case SND_START_FRUIT:
-            sample_upload( CHANNEL_RIGHT, 3, &eat_pill[0] );
-            beep( CHANNEL_RIGHT, 7, 0, 250 );
+            sample_upload( CHANNEL_RIGHT, 3, &eat_fruit[0] );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SINE, 0, 250 );
             break;
         case SND_START_GHOST:
-            sample_upload( CHANNEL_RIGHT, 3, &eat_fruit[0] );
-            beep( CHANNEL_RIGHT, 7, 0, 250 );
+            sample_upload( CHANNEL_RIGHT, 3, &eat_ghost[0] );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SAW, 0, 250 );
             break;
         case SND_START_PACMAN:
             sample_upload( CHANNEL_RIGHT, 8, &eat_pacman[0] );
-            beep( CHANNEL_RIGHT, 7, 0, 500 );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SINE, 0, 500 );
+            break;
+        case SND_START_NORMAL:
+            sample_upload( CHANNEL_LEFT, 2, &alert_normal[0] );
+            alert_playing = 1;
+            break;
+        case SND_START_FRIGHTENDED:
+            sample_upload( CHANNEL_LEFT, 2, &alert_frightended[0] );
+            alert_playing = 2;
             break;
         case SND_STOP_ALL:
-            intro_playing = 0;
+            intro_playing = 0; alert_playing = 0;
             beep( CHANNEL_BOTH, 0, 0, 0 );
             break;
     }
-
     if( intro_playing ) {
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
-                beep( CHANNEL_LEFT, 0, tune_treble[ trebleposition ], size_treble[ trebleposition ] << 3 );
+                beep( CHANNEL_LEFT, WAVE_SINE, tune_treble[ trebleposition ], size_treble[ trebleposition ] << 3 );
                 trebleposition++;
             }
         }
         if( tune_bass[ bassposition ] != 0xff ) {
             if( !get_beep_active( 2 ) ) {
-                beep( CHANNEL_RIGHT, 0, tune_bass[ bassposition ], 16 << 3 );
+                beep( CHANNEL_RIGHT, WAVE_SINE, tune_bass[ bassposition ], 16 << 3 );
                 bassposition++;
+            }
+        }
+    } else {
+        if( !get_beep_active( CHANNEL_LEFT ) ) {
+            switch( alert_playing ) {
+                case 1:
+                    sample_upload( CHANNEL_LEFT, 2, &alert_normal[0] );
+                    beep( CHANNEL_LEFT, WAVE_SAMPLE | WAVE_SQUARE, 0, 750 );
+                    break;
+                case 2:
+                    sample_upload( CHANNEL_LEFT, 2, &alert_frightended[0] );
+                    beep( CHANNEL_LEFT, WAVE_SAMPLE | WAVE_SAW, 0, 150 );
+                    break;
+                default:
+                    break;
             }
         }
     }
@@ -2331,6 +2368,15 @@ static void snd_shutdown(void) {
 int main( int argc, char **argv ) {
     init();
     screen_mode( 0, MODE_RGBM, CM_LOW );
+
+    // DISPLAY WELCOME SCREEN
+    gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, pacman3dbitmap );
+    tpu_set( 0, 27, TRANSPARENT, WHITE ); tpu_outputstring( TRUE, "Ported from" );
+    tpu_set( 0, 28, TRANSPARENT, WHITE ); tpu_outputstring( FALSE, "https://github.com/floooh/pacman.c" );
+    tpu_set( 0, 29, TRANSPARENT, WHITE ); tpu_outputstring( TRUE, "by Andre Weissflog" );
+    sleep1khz( 4000, 0 );
+    tpu_cs(); gpu_cs();
+
     while(1) {
         await_vblank();
         input();

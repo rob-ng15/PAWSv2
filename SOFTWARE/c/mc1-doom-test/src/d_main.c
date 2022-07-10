@@ -64,6 +64,7 @@
 
 #include "d_main.h"
 
+#include <curses.h>
 #include <PAWSlibrary.h>
 
 //

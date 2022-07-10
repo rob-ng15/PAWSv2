@@ -432,18 +432,6 @@ void generate_maze( unsigned short width, unsigned short height ) {
 // GHOST COLOUR SELECTOR
 unsigned char ghostcolour( unsigned short ghost ) {
     return( ghost_body_colour[ghost] );
-//    switch( ghost ) {
-//        case 0:
-//            return( CYAN );
-//        case 1:
-//            return( PINK );
-//        case 2:
-//            return( ORANGE );
-//        case 3:
-//            return( RED );
-//        default:
-//            return( BLACK );
-//    }
 }
 void draw_map( unsigned short width, unsigned short height, unsigned short currentx, unsigned short currenty, unsigned short direction, unsigned char mapmaze, unsigned short mappeeks )
 {

@@ -1,4 +1,5 @@
 // SIMPLE CURSES
+#include <stdbool.h>
 extern void initscr( void );
 extern int endwin( void );
 extern int refresh( void );
