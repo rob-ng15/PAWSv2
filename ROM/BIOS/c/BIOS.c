@@ -522,6 +522,13 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
     }
 }
 
+void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
+    *AUDIO_WAVEFORM = waveform; *AUDIO_FREQUENCY = note; *AUDIO_DURATION = duration; *AUDIO_START = channel_number;
+}
+void volume( unsigned char left, unsigned char right ) {
+    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
+}
+
 extern int _bss_start, _bss_end;
 int main( void ) {
     unsigned int isa;
@@ -534,9 +541,9 @@ int main( void ) {
     // CLEAR MEMORY
     memset( &_bss_start, 0, &_bss_end - &_bss_end );
 
-    // RESET THE DISPLAY
-//    reset_display(); set_background( DKBLUE - 1, BLACK, BKG_SOLID );
+    // RESET THE DISPLAY, AUDIO AND VOLUME
     reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
+    beep( 3, 0, 0, 0 ); volume( 7, 7 );
 
     // KEYBOARD INTO JOYSTICK MODE
     *PS2_MODE = 0;

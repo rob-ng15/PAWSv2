@@ -200,16 +200,18 @@ unsigned long get_systemrtc( void ){
 // OF duration MILLISECONDS TO THE LEFT ( channel_number == 1 ) RIGHT ( channel_number == 2 ) or BOTH ( channel_number == 3 ) AUDIO CHANNEL
 // IN waveform 0 == SQUARE, 1 == SAWTOOTH, 2 == TRIANGLE, 3 == SINE, 4 == WHITE NOISE, 7 == SAMPLE MODE
 // 1 = C 2 or Deep C
-// 13 = C 3
-// 25 = C 4 or Middle C
-// 37 = C 5 or Tenor C
-// 49 = C 6 or Soprano C
-// 61 = C 7 or Double High C
+// 25 = C 3
+// 49 = C 4 or Middle C
+// 73 = C 5 or Tenor C
+// 97 = C 6 or Soprano C
+// 121 = C 7 or Double High C
 void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
     AUDIO_REGS[ 0x00 ] = _rv32_pack( waveform, note );
     AUDIO_REGS[ 0x01 ] = _rv32_pack( duration, channel_number );
 }
-
+void volume( unsigned char left, unsigned char right ) {
+    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
+}
 void await_beep( unsigned char channel_number ) {
     unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
     while( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) ) {}
@@ -222,6 +224,7 @@ unsigned short get_beep_active( unsigned char channel_number ) {
 
 // USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
 void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
+    beep( channel_number, 0, 0, 0 );
     *AUDIO_NEW_SAMPLE = channel_number;
     if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }
     if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }

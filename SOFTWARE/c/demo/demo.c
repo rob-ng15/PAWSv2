@@ -1264,13 +1264,13 @@ void spritedemo( void ) {
         // PACMAN "TUNE" - SLIGHTLY OUT
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
-                beep( 1, 0, tune_treble[ trebleposition ], size_treble[ trebleposition ] << 3 );
+                beep( 1, 0, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
                 trebleposition++;
             }
         }
         if( tune_bass[ bassposition ] != 0xff ) {
             if( !get_beep_active( 2 ) ) {
-                beep( 2, 0, tune_bass[ bassposition ], 16 << 3 );
+                beep( 2, 0, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
                 bassposition++;
             }
         }

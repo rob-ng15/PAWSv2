@@ -47,6 +47,7 @@ extern unsigned long get_systemrtc( void );
 
 // AUDIO
 extern void beep( unsigned char, unsigned char, unsigned char, unsigned short );
+extern void volume( unsigned char left, unsigned char right );
 extern void await_beep( unsigned char );
 extern unsigned short get_beep_active( unsigned char );
 extern void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
