@@ -161,6 +161,8 @@ unsigned char volatile *AUDIO_LEFT_SAMPLE = (unsigned char volatile *) 0xe009;
 unsigned char volatile *AUDIO_RIGHT_SAMPLE = (unsigned char volatile *) 0xe00a;
 unsigned char volatile *AUDIO_L_ACTIVE = (unsigned char volatile *) 0xe010;
 unsigned char volatile *AUDIO_R_ACTIVE = (unsigned char volatile *) 0xe012;
+unsigned char volatile *AUDIO_L_VOLUME = (unsigned char volatile *) 0xe010;
+unsigned char volatile *AUDIO_R_VOLUME = (unsigned char volatile *) 0xe012;
 
 unsigned short volatile *RNG = (unsigned short volatile *) 0xc000;
 unsigned short volatile *ALT_RNG = (unsigned short volatile *) 0xc002;

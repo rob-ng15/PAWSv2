@@ -552,28 +552,32 @@ unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 16, 16, 16,
                                  16, 16, 16, 16,  8,  8, 16, 16, 16,
                                  16, 16, 16, 16,  8,  8, 16, 16, 16,
                                   8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8, 24,  8, 0xff };
-
 unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
                                 13,  0,  0, 20, 13,  0,  0, 19,
                                 12,  0,  0, 19, 12,  0,  0, 20,
                                 19,  0, 20,  0, 22,  0,  24, 0, 0xff };
 
-unsigned char eat_pill[] = { 30, 34, 37 };
-unsigned char eat_fruit[] = { 36, 39, 36 };
-unsigned char eat_ghost[] = { 25, 25, 32 };
-unsigned char eat_pacman[] = { 37, 36, 34, 32, 30, 29, 27, 25 };
-unsigned char alert_normal[] = { 39, 36 };
-unsigned char alert_frightended[] = { 47, 45 };
+unsigned char eat_dot_1[6] = { 107, 111, 115, 119, 123, 127 };
+unsigned char eat_dot_2[6] = { 69, 82, 91, 98, 103, 106 };
+unsigned char eat_fruit[] = { 109, 106, 103, 100, 97, 94, 91, 88, 85, 82, 79, 82, 85, 88, 91, 94, 97, 100, 103, 106, 109, 112, 115, 118 };
+unsigned char eat_ghost[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 0 };
+unsigned char eat_pacman[90] = { 121, 120, 119, 118, 117, 118, 119, 120, 121, 122, 123, 119, 118, 117, 116, 115, 114, 115, 116, 117, 118, 119, 120, 117,
+                                 116, 115, 114, 113, 112, 113, 114, 115, 116, 117, 118, 115, 114, 113, 112, 111, 110, 111, 112, 113, 114, 115, 116, 113,
+                                 112, 111, 110, 109, 108, 109, 110, 111, 112, 113, 114, 111, 110, 109, 108, 107, 106, 107, 108, 74, 76, 78, 80, 82, 84,
+                                 86, 88, 90, 92, 94, 0, 74, 76, 78, 80, 82, 84, 86, 88, 90, 92, 94 };
+unsigned char alert_normal[] = { 98, 102, 106, 108, 110, 112, 114, 116, 118, 120, 122, 124, 126, 124, 122, 120, 118, 116, 114, 112, 110, 108 };
+unsigned char alert_frightended[] = { 28, 42, 54, 64, 72, 78, 80, 82 };
 
 #define SND_UPDATE 0
 #define SND_START_INTRO 1
-#define SND_START_DOT 2
-#define SND_START_PILL 3
-#define SND_START_FRUIT 4
-#define SND_START_GHOST 5
-#define SND_START_PACMAN 6
-#define SND_START_NORMAL 7
-#define SND_START_FRIGHTENDED 8
+#define SND_START_DOT1 2
+#define SND_START_DOT2 3
+#define SND_START_PILL 4
+#define SND_START_FRUIT 5
+#define SND_START_GHOST 6
+#define SND_START_PACMAN 7
+#define SND_START_NORMAL 8
+#define SND_START_FRIGHTENDED 9
 #define SND_STOP_ALL 255
 
 // PAWS BITMAPS
@@ -1424,9 +1428,10 @@ static void game_update_tiles(void) {
     if (after(state.game.round_won, 1*60)) {
         if (since(state.game.round_won) & 0x10) {
             set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, &tilemap_lower[0] );
-        }
-        else {
+            gpu_line( 15, 48, 0, 271, 0 ); gpu_line( 15, 48, 239, 271, 239 );
+        } else {
             set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, &tilemap_lower_alt[0] );
+            gpu_line( 255, 48, 0, 271, 0 ); gpu_line( 255, 48, 239, 271, 239 );
         }
     }
 }
@@ -1892,10 +1897,9 @@ static void game_update_dots_eaten(void) {
     // play crunch sound effect when a dot has been eaten
     // play alternating crunch sound effect when a dot has been eaten
     if (state.game.num_dots_eaten & 1) {
-        beep( CHANNEL_RIGHT, WAVE_SAW, 37, 250 );
-    }
-    else {
-        beep( CHANNEL_RIGHT, WAVE_SAW, 34, 250 );
+        paws_snd( SND_START_DOT1 );
+    } else {
+        paws_snd( SND_START_DOT2 );
     }
 }
 
@@ -2079,7 +2083,7 @@ static void game_tick(void) {
     }
     if (now(state.game.game_over)) {
         // display game over string
-        vid_color_text(i2(15,17), COLOR_BLINKY, "GAME  OVER");
+        vid_color_text(i2(15,17), COLOR_BLINKY, "GAME OVER!");
         input_disable();
         start_after(&state.gfx.fadeout, GAMEOVER_TICKS);
         start_after(&state.intro.started, GAMEOVER_TICKS+FADE_TICKS);
@@ -2293,69 +2297,64 @@ static void paws_snd( int action ) {
 
     switch( action ) {
         case SND_UPDATE:
+            if( intro_playing ) { volume( 7, 7 ); } else { volume( 5, 7 ); }
             break;
         case SND_START_INTRO:
             intro_playing = 1; alert_playing = 0; trebleposition = bassposition = 0;
             beep( CHANNEL_BOTH, 0, 0, 0 );
             break;
-        case SND_START_DOT:
+        case SND_START_DOT1:
+            sample_upload( CHANNEL_RIGHT, 6, &eat_dot_1[0] );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
             break;
-        case SND_START_PILL:
-            sample_upload( CHANNEL_RIGHT, 2, &eat_pill[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SAW, 0, 250 );
+        case SND_START_DOT2:
+            sample_upload( CHANNEL_RIGHT, 6, &eat_dot_2[0] );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
             break;
         case SND_START_FRUIT:
-            sample_upload( CHANNEL_RIGHT, 3, &eat_fruit[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SINE, 0, 250 );
+            sample_upload( CHANNEL_RIGHT, 24, &eat_fruit[0] );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
             break;
         case SND_START_GHOST:
-            sample_upload( CHANNEL_RIGHT, 3, &eat_ghost[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SAW, 0, 250 );
+            sample_upload( CHANNEL_RIGHT, 33, &eat_ghost[0] );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
             break;
         case SND_START_PACMAN:
-            sample_upload( CHANNEL_RIGHT, 8, &eat_pacman[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SINE, 0, 500 );
+            sample_upload( CHANNEL_RIGHT, 90, &eat_pacman[0] );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 48 );
             break;
         case SND_START_NORMAL:
-            sample_upload( CHANNEL_LEFT, 2, &alert_normal[0] );
-            alert_playing = 1;
+            sample_upload( CHANNEL_LEFT, 22, &alert_normal[0] );
+            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_TRIANGLE, 0, 16 );
+            intro_playing = 0; alert_playing = 1;
             break;
         case SND_START_FRIGHTENDED:
-            sample_upload( CHANNEL_LEFT, 2, &alert_frightended[0] );
-            alert_playing = 2;
+            sample_upload( CHANNEL_LEFT, 8, &alert_frightended[0] );
+            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_TRIANGLE, 0, 16 );
+            intro_playing = 0; alert_playing = 2;
             break;
         case SND_STOP_ALL:
             intro_playing = 0; alert_playing = 0;
             beep( CHANNEL_BOTH, 0, 0, 0 );
             break;
     }
+
+    // TUNE IS STORED USING THE OLD PAWS NOTE TABLE, *2+3 TO PAWSv2 EXTENDED NOTE TABLE
     if( intro_playing ) {
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
-                beep( CHANNEL_LEFT, WAVE_SINE, tune_treble[ trebleposition ], size_treble[ trebleposition ] << 3 );
+                beep( CHANNEL_LEFT, WAVE_SINE, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
                 trebleposition++;
             }
         }
         if( tune_bass[ bassposition ] != 0xff ) {
             if( !get_beep_active( 2 ) ) {
-                beep( CHANNEL_RIGHT, WAVE_SINE, tune_bass[ bassposition ], 16 << 3 );
+                beep( CHANNEL_RIGHT, WAVE_SINE, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
                 bassposition++;
             }
         }
-    } else {
-        if( !get_beep_active( CHANNEL_LEFT ) ) {
-            switch( alert_playing ) {
-                case 1:
-                    sample_upload( CHANNEL_LEFT, 2, &alert_normal[0] );
-                    beep( CHANNEL_LEFT, WAVE_SAMPLE | WAVE_SQUARE, 0, 750 );
-                    break;
-                case 2:
-                    sample_upload( CHANNEL_LEFT, 2, &alert_frightended[0] );
-                    beep( CHANNEL_LEFT, WAVE_SAMPLE | WAVE_SAW, 0, 150 );
-                    break;
-                default:
-                    break;
-            }
+        if( ( tune_treble[ trebleposition ] == 0xff ) && ( tune_bass[ bassposition ] == 0xff ) ) {
+            intro_playing = 0;
         }
     }
 }

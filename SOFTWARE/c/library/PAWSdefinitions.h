@@ -198,6 +198,7 @@
 #define WAVE_SINE 3
 #define WAVE_NOISE 4
 #define WAVE_SAMPLE 8
+#define SAMPLE_REPEAT 16
 
 // STRUCTURE OF THE SPRITE UPDATE FLAG
 struct sprite_update_flag {
