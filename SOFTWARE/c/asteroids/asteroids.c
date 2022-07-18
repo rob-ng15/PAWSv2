@@ -31,7 +31,7 @@
     short last_fire;
 
     // ASTEROIDS and UFO
-    unsigned char asteroid_active[MAXASTEROIDS], asteroid_direction[MAXASTEROIDS], ufo_sprite_number = 0xff, ufo_leftright = 0, ufo_bullet_direction = 0;
+    unsigned char asteroid_active[MAXASTEROIDS], asteroid_direction[MAXASTEROIDS], ufo_sprite_number = 0xff, ufo_leftright = 0, ufo_bullet_direction = 0, sample_change = 0;
 
     // BEEP / BOOP TIMER
     short last_timer = 0;
@@ -255,7 +255,7 @@ void move_asteroids( void ) {
                 if( get_sprite_attribute( ASN( asteroid_number), 0 ) == 0 ) {
                     // UFO OFF SCREEN
                     asteroid_active[asteroid_number] = 0;
-                    ufo_sprite_number = 0xff;
+                    ufo_sprite_number = 0xff; sample_change = 1;
                 }
             }
 
@@ -450,7 +450,29 @@ void update_bullet( void ) {
     update_sprite( 1, UFOBULLETSPRITE, bullet_directions[ ufo_bullet_direction ] );
 }
 
+unsigned char asteroids_sample[] = { 3, 0, 5, 0 };
+unsigned char ufo_sample[] = { 75, 83, 89, 0 };
+
 void beepboop( void ) {
+    switch( sample_change ) {
+        case 0:
+            break;
+        case 1: // switch to asteroid beeps
+            sample_upload( CHANNEL_LEFT, 4, &asteroids_sample[0] );
+            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 500 );
+            sample_change = 0;
+            break;
+        case 2: // switch to ufo beeps
+            sample_upload( CHANNEL_LEFT, 4, &ufo_sample[0] );
+            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 250 );
+            sample_change = 0;
+            break;
+        case 3: // beeps off
+            beep( CHANNEL_LEFT, 0, 0, 0 );
+            sample_change = 0;
+            break;
+    }
+
     if( last_timer != get_timer1hz( 0 ) ) {
         draw_score();
 
@@ -463,12 +485,6 @@ void beepboop( void ) {
                 if( lives == 0 ) {
                     tpu_print_centre( 6, TRANSPARENT, DKBLUE, 0, "Controls: Fire 1 - FIRE" );
                     tpu_print_centre( 52, TRANSPARENT, BLUE, 1, "Welcome to Risc-ICE-V Asteroids" );
-                } else {
-                    if( ufo_sprite_number != 0xff ) {
-                        beep( 1, 3, 63, 32 );
-                    } else {
-                        beep( 1, 0, 1, 500 );
-                    }
                 }
                 break;
 
@@ -476,10 +492,6 @@ void beepboop( void ) {
                 if( lives == 0 ) {
                     tpu_print_centre( 6, TRANSPARENT, PURPLE, 0, "Controls: Fire 2 - SHIELD" );
                     tpu_print_centre( 52, TRANSPARENT, CYAN, 0, "By @robng15 (Twitter) from Whitebridge, Scotland" );
-                } else {
-                    if( ufo_sprite_number != 0xff ) {
-                        beep( 1, 3, 63, 32 );
-                    }
                 }
                 break;
 
@@ -487,12 +499,6 @@ void beepboop( void ) {
                 if( lives == 0 ) {
                     tpu_print_centre( 6, TRANSPARENT, ORANGE, 0, "Controls: Left / Right - TURN" );
                     tpu_print_centre( 52, TRANSPARENT, YELLOW, 0, "Press UP to start" );
-                } else {
-                    if( ufo_sprite_number != 0xff ) {
-                        beep( 1, 3, 63, 32 );
-                    } else {
-                        beep( 1, 0, 2, 500 );
-                    }
                 }
                 break;
 
@@ -500,10 +506,6 @@ void beepboop( void ) {
                 if( lives == 0 ) {
                     tpu_print_centre( 6, TRANSPARENT, DKRED, 0, "Controls: UP - MOVE" );
                     tpu_print_centre( 52, TRANSPARENT, RED, 0, "Written in Silice by @sylefeb" );
-                } else {
-                    if( ufo_sprite_number != 0xff ) {
-                        beep( 1, 3, 63, 32 );
-                    }
                 }
                 (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_DOWN, 1 );
                 (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_UP, 2 );
@@ -612,7 +614,7 @@ void check_hit( void ) {
                         x = get_sprite_attribute( ASN( asteroid_hit ), SPRITE_X );
                         y = get_sprite_attribute( ASN( asteroid_hit ), SPRITE_Y );
                         set_sprite_attribute( ASN( asteroid_hit ), SPRITE_TILE, 7 );
-                        ufo_sprite_number = 0xff;
+                        ufo_sprite_number = 0xff; sample_change = 1;
                         asteroid_active[asteroid_hit] = 32;
                         // AVOID BONUS FUEL AND SHIELD
                         fuel += 10 + rng( ( level < 2 ) ? 10 : 40 );
@@ -721,7 +723,7 @@ int main( void ) {
 
                 ufo_leftright = rng( 2 );
                 set_sprite( ASN( ufo_sprite_number ), 1, ( ufo_leftright == 1 ) ? 639 : ( level < 2 ) ? -31 : -15, ufo_y, 6, ( level < 2 ) ? SPRITE_DOUBLE : 0 );
-                asteroid_active[ ufo_sprite_number ] = 3;
+                asteroid_active[ ufo_sprite_number ] = 3; sample_change = 2;
             }
         }
 
@@ -836,11 +838,13 @@ int main( void ) {
                             draw_lives();
                             fuel = 1000;
                             drawfuel(1); drawshield(1);
+                            sample_change = 1;
                         }
 
                         if( lives == 0 ) {
                             placeAsteroids = 4;
                             risc_ice_v_logo();
+                            sample_change = 3;
                         }
                     }
                 }

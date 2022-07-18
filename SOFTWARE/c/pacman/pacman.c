@@ -544,18 +544,14 @@ static const levelspec_t levelspec_table[MAX_LEVELSPEC] = {
 };
 
 // PAWS sound effects
-unsigned char tune_treble[] = {  24, 36, 31, 28, 36, 30, 24, 27,  0,
-                                 36, 37, 32, 29, 37, 32, 25, 29,  0,
-                                 24, 36, 31, 28, 36, 30, 24, 27,  0,
-                                 28, 29, 30,  0, 30, 31, 32,  0, 32, 33, 34,  0, 36,  0, 0xff };
-unsigned short size_treble[] = { 16, 16, 16, 16,  8,  8, 16, 16, 16,
-                                 16, 16, 16, 16,  8,  8, 16, 16, 16,
-                                 16, 16, 16, 16,  8,  8, 16, 16, 16,
-                                  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8,  8, 24,  8, 0xff };
-unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
-                                13,  0,  0, 20, 13,  0,  0, 19,
-                                12,  0,  0, 19, 12,  0,  0, 20,
-                                19,  0, 20,  0, 22,  0,  24, 0, 0xff };
+unsigned char tune_treble[] = { 51, 51, 75, 75, 65, 65, 59, 59, 75, 63, 51, 51, 57, 57, 0, 0,
+                                75, 75, 77, 77, 65, 65, 61, 61, 77, 65, 53, 53, 61, 61, 0, 0,
+                                51, 51, 75, 75, 65, 65, 59, 59, 75, 63, 51, 51, 57, 57, 0, 0,
+                                59, 61, 63,  0, 63, 65, 65,  0, 65, 69, 71,  0, 75, 75, 75, 0 };
+unsigned char tune_bass[] = { 27,  0,  0, 41, 27,  0,  0, 43,
+                              29,  0,  0, 43, 29,  0,  0, 41,
+                              27,  0,  0, 41, 27,  0,  0, 43,
+                              41,  0, 43,  0, 47,  0,  51, 0 };
 
 unsigned char eat_dot_1[6] = { 107, 111, 115, 119, 123, 127 };
 unsigned char eat_dot_2[6] = { 69, 82, 91, 98, 103, 106 };
@@ -568,7 +564,6 @@ unsigned char eat_pacman[90] = { 121, 120, 119, 118, 117, 118, 119, 120, 121, 12
 unsigned char alert_normal[] = { 98, 102, 106, 108, 110, 112, 114, 116, 118, 120, 122, 124, 126, 124, 122, 120, 118, 116, 114, 112, 110, 108 };
 unsigned char alert_frightended[] = { 28, 42, 54, 64, 72, 78, 80, 82 };
 
-#define SND_UPDATE 0
 #define SND_START_INTRO 1
 #define SND_START_DOT1 2
 #define SND_START_DOT2 3
@@ -657,7 +652,6 @@ static void frame(void) {
             break;
     }
     gfx_draw();
-    paws_snd( SND_UPDATE );
 }
 
 static void input() {
@@ -2293,15 +2287,11 @@ static void gfx_draw(void) {
 
 /*== AUDIO SUBSYSTEM =========================================================*/
 static void paws_snd( int action ) {
-    static int intro_playing = 0, alert_playing = 0, trebleposition = 0, bassposition = 0;
-
     switch( action ) {
-        case SND_UPDATE:
-            if( intro_playing ) { volume( 7, 7 ); } else { volume( 5, 7 ); }
-            break;
         case SND_START_INTRO:
-            intro_playing = 1; alert_playing = 0; trebleposition = bassposition = 0;
-            beep( CHANNEL_BOTH, 0, 0, 0 );
+            sample_upload( CHANNEL_LEFT, 64, &tune_treble[0] ); sample_upload( CHANNEL_RIGHT, 32, &tune_bass[0] );
+            beep( CHANNEL_LEFT, WAVE_SAMPLE | WAVE_SINE, 0, 8 << 3 );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SINE, 0, 16 << 3 );
             break;
         case SND_START_DOT1:
             sample_upload( CHANNEL_RIGHT, 6, &eat_dot_1[0] );
@@ -2321,41 +2311,19 @@ static void paws_snd( int action ) {
             break;
         case SND_START_PACMAN:
             sample_upload( CHANNEL_RIGHT, 90, &eat_pacman[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 48 );
+            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
             break;
         case SND_START_NORMAL:
             sample_upload( CHANNEL_LEFT, 22, &alert_normal[0] );
             beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_TRIANGLE, 0, 16 );
-            intro_playing = 0; alert_playing = 1;
             break;
         case SND_START_FRIGHTENDED:
             sample_upload( CHANNEL_LEFT, 8, &alert_frightended[0] );
             beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_TRIANGLE, 0, 16 );
-            intro_playing = 0; alert_playing = 2;
             break;
         case SND_STOP_ALL:
-            intro_playing = 0; alert_playing = 0;
             beep( CHANNEL_BOTH, 0, 0, 0 );
             break;
-    }
-
-    // TUNE IS STORED USING THE OLD PAWS NOTE TABLE, *2+3 TO PAWSv2 EXTENDED NOTE TABLE
-    if( intro_playing ) {
-        if( tune_treble[ trebleposition ] != 0xff ) {
-            if( !get_beep_active( 1 ) ) {
-                beep( CHANNEL_LEFT, WAVE_SINE, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
-                trebleposition++;
-            }
-        }
-        if( tune_bass[ bassposition ] != 0xff ) {
-            if( !get_beep_active( 2 ) ) {
-                beep( CHANNEL_RIGHT, WAVE_SINE, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
-                bassposition++;
-            }
-        }
-        if( ( tune_treble[ trebleposition ] == 0xff ) && ( tune_bass[ bassposition ] == 0xff ) ) {
-            intro_playing = 0;
-        }
     }
 }
 
