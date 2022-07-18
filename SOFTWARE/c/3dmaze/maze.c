@@ -75,13 +75,13 @@ void playtune( void ) {
     while( ( tune_treble[ trebleposition ] != 0xff ) || ( tune_bass[ bassposition ] != 0xff ) ) {
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
-                beep( 1, WAVE_SINE, tune_treble[ trebleposition ], size_treble[ trebleposition ] << 3 );
+                beep( 1, WAVE_SINE, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
                 trebleposition++;
             }
         }
         if( tune_bass[ bassposition ] != 0xff ) {
             if( !get_beep_active( 2 ) ) {
-                beep( 2, WAVE_SINE, tune_bass[ bassposition ], 16 << 3 );
+                beep( 2, WAVE_SINE, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
                 bassposition++;
             }
         }
@@ -103,7 +103,7 @@ void drawwelcome( void ) {
     gpu_printf_centre( YELLOW, 160, 8, BOLD, 1, 0, "3D MONSTER MAZE" );
 
     // DRAW JOYSTICK AND LABEL
-    gpu_printf_centre( YELLOW, 229, 102, BOLD, 0, 0,  "STEP" );
+    gpu_printf_centre( YELLOW, 229, 102, BOLD, 0, 0, "STEP" );
     gpu_printf_centre( YELLOW, 242, 123, BOLD, 0, 0, "BACK" );
     gpu_printf_centre( YELLOW, 211, 135, BOLD, 0, 0, "LEFT" );
     gpu_printf_centre( YELLOW, 272, 109, BOLD, 0, 0, "RIGHT" );

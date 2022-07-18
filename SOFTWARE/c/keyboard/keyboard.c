@@ -6,6 +6,15 @@
 #include <curses.h>
 #include <PAWSlibrary.h>
 
+unsigned char tune_treble[] = {  51, 51, 75, 75, 65, 65, 59, 59, 75, 63, 51, 51, 57, 57, 0, 0,
+                                 75, 75, 77, 77, 65, 65, 61, 61, 77, 65, 53, 53, 61, 61, 0, 0,
+                                 51, 51, 75, 75, 65, 65, 59, 59, 75, 63, 51, 51, 57, 57, 0, 0,
+                                 59, 61, 63,  0, 63, 65, 65,  0, 65, 69, 71,  0, 75, 75, 75, 0 };
+unsigned char tune_bass[] = {   27,  0,  0, 41, 27,  0,  0, 43,
+                                29,  0,  0, 43, 29,  0,  0, 41,
+                                27,  0,  0, 41, 27,  0,  0, 43,
+                                41,  0, 43,  0, 47,  0,  51, 0 };
+
 int main( void ) {
     ps2_keyboardmode(PS2_KEYBOARD);
 
@@ -24,6 +33,10 @@ int main( void ) {
     printw( "RTC   REG[0] = %8x, REG[1] = %8x\n", IO_REGS[180], IO_REGS[181] );
     int cursor_x, cursor_y;
     unsigned short thecharacter;
+
+    sample_upload( CHANNEL_LEFT, 64, &tune_treble[0] ); sample_upload( CHANNEL_RIGHT, 32, &tune_bass[0] );
+    beep( CHANNEL_LEFT, WAVE_SAMPLE | WAVE_SINE, 0, 8 << 3 );
+    beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SINE, 0, 16 << 3 );
 
     while(1) {
         if( ps2_character_available() ) {

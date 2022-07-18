@@ -123,9 +123,10 @@ int I_StartSound (int id, int vol, int sep, int pitch, int priority)
     unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
 
     __lastchannel = 3 - __lastchannel;                                                                                              // MOVE TO NEXT CHANNEL
+    AUDIO_REGS[ 0x00 ] = 0; AUDIO_REGS_H[ 0x02 ] = 0; AUDIO_REGS_B[ 0x06 ] = __lastchannel;                                         // STOP THE CHANNEL
     AUDIO_REGS_B[ 0x08 ] = __lastchannel; DMA_REGS[1] = ( __lastchannel == 1 ) ? 0xe009 : 0xe00a;                                   // SELECT THE CHANNEL
     DMA_REGS[0] = (int)S_sfx[id].data + 4;  DMA_REGS[2] = s_sfx_lengths[id] - 4; DMA_REGS_B[0x0c] = 1;                              // TRANSFER THE SAMPLE VIA DMA
-    AUDIO_REGS[ 0x00 ] = 0x10000 | WAVE_SAMPLE; AUDIO_REGS_H[ 0x02 ] = 16; AUDIO_REGS_B[ 0x06 ] = __lastchannel;                    // START THE SAMPLE ( 32 counts per sample )
+    AUDIO_REGS[ 0x00 ] = 0x10000 | WAVE_SAMPLE; AUDIO_REGS_H[ 0x02 ] = 8; AUDIO_REGS_B[ 0x06 ] = __lastchannel;                     // START THE SAMPLE ( 8 counts per sample ~ 140 Hz )
 
     return id;
 }

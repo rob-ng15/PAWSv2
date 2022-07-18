@@ -153,12 +153,12 @@ unsigned char volatile *TERMINAL_SHOW = (unsigned char volatile *) 0xd702;
 unsigned char volatile *TERMINAL_RESET = (unsigned char volatile *) 0xd704;
 
 unsigned char volatile *AUDIO_WAVEFORM = (unsigned char volatile *) 0xe000;
-unsigned short volatile *AUDIO_FREQUENCY = (unsigned short volatile *) 0xe002;
+unsigned char volatile *AUDIO_FREQUENCY = (unsigned char volatile *) 0xe002;
 unsigned short volatile *AUDIO_DURATION = (unsigned short volatile *) 0xe004;
 unsigned char volatile *AUDIO_START = (unsigned char volatile *) 0xe006;
 unsigned char volatile *AUDIO_NEW_SAMPLE = (unsigned char volatile *) 0xe008;
-unsigned char volatile *AUDIO_LEFT_SAMPLE = (unsigned char volatile *) 0xe009;
-unsigned char volatile *AUDIO_RIGHT_SAMPLE = (unsigned char volatile *) 0xe00a;
+unsigned char volatile *AUDIO_LEFT_SAMPLE = (unsigned char volatile *) 0xe00a;
+unsigned char volatile *AUDIO_RIGHT_SAMPLE = (unsigned char volatile *) 0xe00c;
 unsigned char volatile *AUDIO_L_ACTIVE = (unsigned char volatile *) 0xe010;
 unsigned char volatile *AUDIO_R_ACTIVE = (unsigned char volatile *) 0xe012;
 unsigned char volatile *AUDIO_L_VOLUME = (unsigned char volatile *) 0xe010;
@@ -196,6 +196,8 @@ int volatile *FIXED_A = (int volatile *)0xf800;
 int volatile *FIXED_B = (int volatile *)0xf804;
 int volatile *FIXED_RESULT = (int volatile*)0xf800;
 unsigned char volatile *FIXED_STATUS = (unsigned char volatile *)0xf808;
+
+int volatile *AUDIO_REGS = (int volatile *) 0xe000;
 
 // TYPES AND STRUCTURES
 typedef unsigned int size_t;
@@ -306,6 +308,18 @@ typedef struct {
 // LOWER AND UPPER SPRITES/TILEMAPS
 #define LOWER 0
 #define UPPER 1
+
+// SOUNDS
+#define CHANNEL_LEFT 1
+#define CHANNEL_RIGHT 2
+#define CHANNEL_BOTH 3
+#define WAVE_SQUARE 0
+#define WAVE_SAW 1
+#define WAVE_TRIANGLE 2
+#define WAVE_SINE 3
+#define WAVE_NOISE 4
+#define WAVE_SAMPLE 8
+#define SAMPLE_REPEAT 16
 
  // MISCELLANEOUS USEFUL INTRINSICS
 static inline int _rv32_mulh(int rs1, int rs2) { int rd; __asm__ ("mulh   %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }

@@ -101,6 +101,14 @@ void await_vblank( void ) {
     while( !*VBLANK );
 }
 
+// AUDIO CONTROLS
+void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
+    *AUDIO_WAVEFORM = waveform; *AUDIO_FREQUENCY = note; *AUDIO_DURATION = duration; *AUDIO_START = channel_number;
+}
+void volume( unsigned char left, unsigned char right ) {
+    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
+}
+
 // BACKGROUND GENERATOR
 void set_background( unsigned char colour, unsigned char altcolour, unsigned char backgroundmode ) {
     *BACKGROUND_COPPER_STARTSTOP = 0;
@@ -479,7 +487,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 
         if( entries == 0xffff ) {
             // NO ENTRIES FOUND
-            return(0);
+            beep( 3, 3, 3, 500 ); return(0);
         }
 
         sortdirectoryentries( entries );
@@ -520,13 +528,6 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
             }
         }
     }
-}
-
-void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
-    *AUDIO_WAVEFORM = waveform; *AUDIO_FREQUENCY = note; *AUDIO_DURATION = duration; *AUDIO_START = channel_number;
-}
-void volume( unsigned char left, unsigned char right ) {
-    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
 }
 
 extern int _bss_start, _bss_end;
@@ -605,8 +606,8 @@ int main( void ) {
         while(1) {}
     }
 
-    // STOP SMT TO ALLOW FASTER LOADING
-    SMTSTOP();
+    // ACKNOWLEDGE SELECTION AND STOP SMT TO ALLOW FASTER LOADING
+    beep( 3, 3, 75, 250 ); SMTSTOP();
 
     *LEDS = 255;
     gpu_outputstringcentre( WHITE, 72, 1, "PAW File", 0 );

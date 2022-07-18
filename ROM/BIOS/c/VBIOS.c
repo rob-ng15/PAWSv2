@@ -185,6 +185,41 @@ void sleep( unsigned short counter ) {
     while( *SLEEPTIMER0 );
 }
 
+// AUDIO OUTPUT
+// START A note (1 == DEEP C, 25 == MIDDLE C )
+// OF duration MILLISECONDS TO THE LEFT ( channel_number == 1 ) RIGHT ( channel_number == 2 ) or BOTH ( channel_number == 3 ) AUDIO CHANNEL
+// IN waveform 0 == SQUARE, 1 == SAWTOOTH, 2 == TRIANGLE, 3 == SINE, 4 == WHITE NOISE, 7 == SAMPLE MODE
+// 1 = C 2 or Deep C
+// 25 = C 3
+// 49 = C 4 or Middle C
+// 73 = C 5 or Tenor C
+// 97 = C 6 or Soprano C
+// 121 = C 7 or Double High C
+void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
+    AUDIO_REGS[ 0x00 ] = _rv32_pack( waveform, note );
+    AUDIO_REGS[ 0x01 ] = _rv32_pack( duration, channel_number );
+}
+void volume( unsigned char left, unsigned char right ) {
+    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
+}
+void await_beep( unsigned char channel_number ) {
+    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
+    while( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) ) {}
+}
+
+unsigned short get_beep_active( unsigned char channel_number ) {
+    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
+    return( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) );
+}
+
+// USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
+void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
+    beep( channel_number, 0, 0, 0 );
+    *AUDIO_NEW_SAMPLE = channel_number;
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
+}
+
 // WAIT FOR VBLANK TO START
 void await_vblank( void ) {
     while( !*VBLANK );
@@ -495,6 +530,8 @@ void smtthread( void ) {
     SMTSTOP();
 }
 
+unsigned char ufo_sample[] = { 75, 83, 89, 0 };
+
 extern int _bss_start, _bss_end;
 void main( void ) {
     unsigned int isa;
@@ -534,6 +571,9 @@ void main( void ) {
 
     set_sprite( 1, 0, 1, 0, 440, 4, 13 );
     set_sprite( 1, 1, 1, 64, 440, 0, 8);
+
+    sample_upload( CHANNEL_LEFT, 4, &ufo_sample[0] );
+    beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 250 );
 
     while(1) {
         await_vblank();

@@ -156,9 +156,6 @@
 #define ROTATE180 6
 #define ROTATE270 7
 
-#define TM_LOWER_DOUBLE 1
-#define TM_UPPER_DOUBLE 2
-
 // TILEMAP DIRECTION FLAGS
 #define TM_LEFT 1
 #define TM_UP 2

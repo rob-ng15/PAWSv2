@@ -20,7 +20,7 @@ module rtc
     .clk(clk),
     .reset(reset),
     .wr(0),
-    .addr(7),
+    .addr(6),
     .data(0),
     .tick(tick),
     .datetime_o(datetime),
