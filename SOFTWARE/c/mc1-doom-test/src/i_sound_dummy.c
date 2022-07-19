@@ -116,24 +116,28 @@ int I_GetSfxLumpNum (sfxinfo_t* sfx)
     return W_GetNumForName (namebuf);
 }
 
-unsigned char __lastchannel = 1;
+int __lastchannel = 1; int __handles[3] = { 0, 0, 0 };
 int I_StartSound (int id, int vol, int sep, int pitch, int priority)
 {
     unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS; short volatile *AUDIO_REGS_H = (short volatile *)AUDIO_REGS;
     unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
 
-    __lastchannel = 3 - __lastchannel;                                                                                              // MOVE TO NEXT CHANNEL
+    __lastchannel = 3 - __lastchannel; __handles[ __lastchannel ] = id;                                                             // MOVE TO NEXT CHANNEL, STORE THE SOUND ID
     AUDIO_REGS[ 0x00 ] = 0; AUDIO_REGS_H[ 0x02 ] = 0; AUDIO_REGS_B[ 0x06 ] = __lastchannel;                                         // STOP THE CHANNEL
-    AUDIO_REGS_B[ 0x08 ] = __lastchannel; DMA_REGS[1] = ( __lastchannel == 1 ) ? 0xe009 : 0xe00a;                                   // SELECT THE CHANNEL
+    AUDIO_REGS_B[ 0x08 ] = __lastchannel; DMA_REGS[1] = ( __lastchannel == 1 ) ? 0xe00a : 0xe00c;                                   // SELECT THE CHANNEL
     DMA_REGS[0] = (int)S_sfx[id].data + 4;  DMA_REGS[2] = s_sfx_lengths[id] - 4; DMA_REGS_B[0x0c] = 1;                              // TRANSFER THE SAMPLE VIA DMA
-    AUDIO_REGS[ 0x00 ] = 0x10000 | WAVE_SAMPLE; AUDIO_REGS_H[ 0x02 ] = 8; AUDIO_REGS_B[ 0x06 ] = __lastchannel;                     // START THE SAMPLE ( 8 counts per sample ~ 140 Hz )
+    AUDIO_REGS[ 0x00 ] = 0x10000 | WAVE_SAMPLE | WAVE_SINE ; AUDIO_REGS_H[ 0x02 ] = 8; AUDIO_REGS_B[ 0x06 ] = __lastchannel;        // START THE SAMPLE ( 8 counts per sample ~ 140 Hz )
 
     return id;
 }
 
 void I_StopSound (int handle)
 {
-    (void)handle;
+    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS; short volatile *AUDIO_REGS_H = (short volatile *)AUDIO_REGS;
+    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
+
+    if( __handles[ 1 ] == handle ) { AUDIO_REGS[ 0x00 ] = 0; AUDIO_REGS_H[ 0x02 ] = 0; AUDIO_REGS_B[ 0x06 ] = 1; }                  // STOP IF HANDLE IS PLAYING LEFT
+    if( __handles[ 2 ] == handle ) { AUDIO_REGS[ 0x00 ] = 0; AUDIO_REGS_H[ 0x02 ] = 0; AUDIO_REGS_B[ 0x06 ] = 2; }                  // STOP IF HANDLE IS PLAYING RIGHT
 }
 
 void I_StopAllSounds ()
@@ -143,8 +147,8 @@ void I_StopAllSounds ()
 
 int I_SoundIsPlaying (int handle)
 {
-    (void)handle;
-    return 0;
+    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS, *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
+    return ( __handles[ 1 ] == handle ) ? AUDIO_REGS_B[ 0x10 ] : ( __handles[ 2 ] == handle ) ? AUDIO_REGS_B[ 0x12 ] : 0;;          // IS HANDLE STILL PLAYING ON A CHANNEL?
 }
 
 void I_UpdateSoundParams (int handle, int vol, int sep, int pitch)
