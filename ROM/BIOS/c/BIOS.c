@@ -108,6 +108,12 @@ void beep( unsigned char channel_number, unsigned char waveform, unsigned char n
 void volume( unsigned char left, unsigned char right ) {
     *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
 }
+void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
+    beep( channel_number, 0, 0, 0 );
+    *AUDIO_NEW_SAMPLE = channel_number;
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
+}
 
 // BACKGROUND GENERATOR
 void set_background( unsigned char colour, unsigned char altcolour, unsigned char backgroundmode ) {
@@ -487,7 +493,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 
         if( entries == 0xffff ) {
             // NO ENTRIES FOUND
-            beep( 3, 3, 3, 500 ); return(0);
+            beep( CHANNEL_BOTH, WAVE_SAW, 3, 1000 ); return(0);
         }
 
         sortdirectoryentries( entries );
@@ -531,6 +537,8 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 }
 
 extern int _bss_start, _bss_end;
+unsigned char chime[] = { 75, 83, 89, 0 };
+
 int main( void ) {
     unsigned int isa;
     unsigned short i, j, x, y;
@@ -570,7 +578,6 @@ int main( void ) {
     while( *PS2_AVAILABLE ) { short temp = *PS2_DATA; }
 
     gpu_outputstringcentre( RED, 72, 0, "Waiting for SDCARD", 0 );
-    //sleep( 2000 );
     gpu_outputstringcentre( RED, 80, 0, "Press RESET if not detected", 0 );
     sdcard_readsector( 0, BOOTRECORD );
     PARTITIONS = (PartitionTable *) &BOOTRECORD[ 0x1BE ];
@@ -607,7 +614,7 @@ int main( void ) {
     }
 
     // ACKNOWLEDGE SELECTION AND STOP SMT TO ALLOW FASTER LOADING
-    beep( 3, 3, 75, 250 ); SMTSTOP();
+    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 250 ); SMTSTOP();
 
     *LEDS = 255;
     gpu_outputstringcentre( WHITE, 72, 1, "PAW File", 0 );

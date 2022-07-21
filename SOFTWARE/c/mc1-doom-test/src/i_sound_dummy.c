@@ -117,7 +117,7 @@ int I_GetSfxLumpNum (sfxinfo_t* sfx)
 }
 
 int __lastchannel = 1; int __handles[3] = { 0, 0, 0 };
-int I_StartSound (int id, int vol, int sep, int pitch, int priority)
+int I_StartSound (int id, int vol)
 {
     unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS; short volatile *AUDIO_REGS_H = (short volatile *)AUDIO_REGS;
     unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
@@ -126,7 +126,8 @@ int I_StartSound (int id, int vol, int sep, int pitch, int priority)
     AUDIO_REGS[ 0x00 ] = 0; AUDIO_REGS_H[ 0x02 ] = 0; AUDIO_REGS_B[ 0x06 ] = __lastchannel;                                         // STOP THE CHANNEL
     AUDIO_REGS_B[ 0x08 ] = __lastchannel; DMA_REGS[1] = ( __lastchannel == 1 ) ? 0xe00a : 0xe00c;                                   // SELECT THE CHANNEL
     DMA_REGS[0] = (int)S_sfx[id].data + 4;  DMA_REGS[2] = s_sfx_lengths[id] - 4; DMA_REGS_B[0x0c] = 1;                              // TRANSFER THE SAMPLE VIA DMA
-    AUDIO_REGS[ 0x00 ] = 0x10000 | WAVE_SAMPLE | WAVE_SINE ; AUDIO_REGS_H[ 0x02 ] = 8; AUDIO_REGS_B[ 0x06 ] = __lastchannel;        // START THE SAMPLE ( 8 counts per sample ~ 140 Hz )
+    AUDIO_REGS[ 0x00 ] = 0x10000 | WAVE_SAMPLE | WAVE_SQUARE; AUDIO_REGS_H[ 0x02 ] = 8; AUDIO_REGS_B[ 0x06 ] = __lastchannel;         // START THE SAMPLE ( 8 counts per sample ~ 140 Hz )
+    AUDIO_REGS_B[ ( __lastchannel == 1 ) ? 0x10 : 0x12 ] = 7 - ( ( 8 - vol ) >> 1 );                                                // SET THE VOLUME, CONVERT FROM 8 to 1 to PAWS 7 - 0
 
     return id;
 }

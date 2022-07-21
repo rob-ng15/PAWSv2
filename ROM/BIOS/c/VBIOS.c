@@ -572,8 +572,7 @@ void main( void ) {
     set_sprite( 1, 0, 1, 0, 440, 4, 13 );
     set_sprite( 1, 1, 1, 64, 440, 0, 8);
 
-    sample_upload( CHANNEL_LEFT, 4, &ufo_sample[0] );
-    beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 250 );
+    beep( CHANNEL_LEFT, WAVE_TRIANGLE, 3, 250 );
 
     while(1) {
         await_vblank();
