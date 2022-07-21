@@ -2290,6 +2290,7 @@ static void paws_snd( int action ) {
     switch( action ) {
         case SND_START_INTRO:
             sample_upload( CHANNEL_LEFT, 64, &tune_treble[0] ); sample_upload( CHANNEL_RIGHT, 32, &tune_bass[0] );
+            volume( 7, 7 );
             beep( CHANNEL_LEFT, WAVE_SAMPLE | WAVE_SINE, 0, 8 << 3 );
             beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SINE, 0, 16 << 3 );
             break;
@@ -2314,14 +2315,17 @@ static void paws_snd( int action ) {
             beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
             break;
         case SND_START_NORMAL:
+            volume( 6, 7 );
             sample_upload( CHANNEL_LEFT, 22, &alert_normal[0] );
-            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_TRIANGLE, 0, 16 );
+            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 16 );
             break;
         case SND_START_FRIGHTENDED:
+            volume( 6, 7 );
             sample_upload( CHANNEL_LEFT, 8, &alert_frightended[0] );
-            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_TRIANGLE, 0, 16 );
+            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 16 );
             break;
         case SND_STOP_ALL:
+            volume( 7, 7 );
             beep( CHANNEL_BOTH, 0, 0, 0 );
             break;
     }

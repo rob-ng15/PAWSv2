@@ -313,10 +313,7 @@ S_StartSoundAtVolume
   //  mix/output buffer.
   channels[cnum].handle = I_StartSound(sfx_id,
                                        /*sfx->data,*/
-                                       volume,
-                                       sep,
-                                       pitch,
-                                       priority);
+                                       volume);
 }
 
 void
