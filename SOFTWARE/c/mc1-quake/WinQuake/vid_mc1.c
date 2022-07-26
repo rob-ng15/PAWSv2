@@ -30,6 +30,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <mr32intrin.h>
 #endif
 
+#include <PAWSlibrary.h>
+
 // Video resolution (hardcoded).
 #define BASEWIDTH 320
 #define BASEHEIGHT ((BASEWIDTH * 9 + 8) / 16)
@@ -55,14 +57,6 @@ unsigned d_8to24table[256];
 static byte *s_vram_alloc_ptr;
 static byte *s_vram_alloc_end;
 
-static void MC1_AllocInit (void)
-{
-	// We assume that the Quake binary is loaded into XRAM (0x80000000...), or
-	// into the "ROM" (0x00000000...) for the simulator, and that it has
-	// complete ownership of VRAM (0x40000000...).
-	s_vram_alloc_ptr = (byte *)0x40000100;
-	s_vram_alloc_end = (byte *)(0x40000000 + GET_MMIO (VRAMSIZE));
-}
 
 static byte *MC1_VRAM_Alloc (const size_t bytes)
 {
@@ -104,8 +98,8 @@ static void MC1_Free (byte *ptr)
 static void VID_CreateVCP (void)
 {
 	// Get the native video signal resolution and calculate the scaling factors.
-	unsigned native_width = GET_MMIO (VIDWIDTH);
-	unsigned native_height = GET_MMIO (VIDHEIGHT);
+	unsigned native_width = 320;
+	unsigned native_height = 240;
 	unsigned xincr = ((BASEWIDTH - 1) << 16) / (native_width - 1);
 	unsigned yincr = ((native_height - 1) << 16) / (BASEHEIGHT - 1);
 
@@ -176,7 +170,7 @@ void VID_Init (unsigned char *palette)
 	const size_t framebuffer_size = BASEWIDTH * BASEHEIGHT * sizeof (byte);
 	s_vcp = MC1_VRAM_Alloc (vcp_size);
 	s_palette = MC1_VRAM_Alloc (palette_size);
-	s_framebuffer = MC1_VRAM_Alloc (framebuffer_size);
+	s_framebuffer = (byte*)0x2020000;
 	if (s_framebuffer == NULL)
 	{
 		printf ("Error: Not enough VRAM!\n");

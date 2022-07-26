@@ -22,7 +22,7 @@ $$if VGA then
 $include('vga.ice')
 $$end
 
-// IO - UART, SDCARD and PS/2 KEYBOARD
+// IO - UART, SDCARD, I2C and PS/2 KEYBOARD
 $include('../common/uart.ice')
 $include('../common/sdcard_write.si')
 $include('../common/ps2.si')
@@ -70,3 +70,5 @@ append('../common/emard/i2c_master.v')
 append('../common/emard/mcp7940n.v')
 import('../common/emard/rtc-wrapper.v')
 
+// I2C (Silice Test Version)
+//$include('../common/mcp7940_i2c.si')
