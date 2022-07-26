@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <sys/time.h>
+#include <time.h>
 #include <errno.h>
 #undef errno
 extern int errno;
@@ -209,7 +210,7 @@ void beep( unsigned char channel_number, unsigned char waveform, unsigned char n
     AUDIO_REGS[ 0x00 ] = _rv32_pack( waveform, note );
     AUDIO_REGS[ 0x01 ] = _rv32_pack( duration, channel_number );
 }
-void volume( unsigned char left, unsigned char right ) {
+void set_volume( unsigned char left, unsigned char right ) {
     *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
 }
 void await_beep( unsigned char channel_number ) {
@@ -2283,13 +2284,6 @@ void  __attribute__ ((noreturn)) _exit( int status ){
     ((void(*)(void))0x00000000)();
     while(1);
 }
-int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
-    int *storage = (int *)tv;
-    storage[0] = TIMER_REGS[8]; storage[1] = TIMER_REGS[9]; storage[2] = storage[3] = TIMER_REGS[10];
-//    tv->tv_sec = (time_t)*SYSTEMSECONDS;
-//    tv->tv_usec = (suseconds_t)*SYSTEMMILLISECONDS;
-    return( 0 );
-}
 int _times() {
     return( 0 );
 }
@@ -2457,9 +2451,36 @@ int paws_rmdir (const char *__path) {
 }
 
 // PAWS SYSTEMCLOCK
+int __gettimeofday_init = 0;
+int bcdtobin( int bcd ) {
+    return( ( ( bcd & 0xf0 ) >> 4) * 10 + ( bcd & 0x0f ) );
+}
+// CONVERT ULX3S BCD RTC TO LINUX EPOCH TIME
+void paws_settime( void ) {
+    struct tm calendar; uint64_t rtc = *((uint64_t *)RTC), sinceepoch;
+
+    calendar.tm_sec = bcdtobin( ( rtc & 0x00000000000000ff ) >> 0 );
+    calendar.tm_min = bcdtobin( ( rtc & 0x000000000000ff00 ) >> 8 );
+    calendar.tm_hour = bcdtobin( ( rtc & 0x0000000000ff0000 ) >> 16 );
+    calendar.tm_mday = bcdtobin( ( rtc & 0x000000ff00000000 ) >> 32 );
+    calendar.tm_mon = bcdtobin( ( rtc & 0x0000ff0000000000 ) >> 40 ) - 1;
+    calendar.tm_year = 2000 + bcdtobin( ( rtc & 0x00ff000000000000 ) >> 48 ) - 1900;
+    calendar.tm_wday = 0; calendar.tm_yday = 0; calendar.tm_isdst = 0;
+    sinceepoch = mktime( &calendar );
+    TIMER_REGS[8] = (int)(sinceepoch & 0xffffffff); TIMER_REGS[9] = (int)(sinceepoch >> 32); TIMER_REGS[10] = 0xffffffff;
+}
+int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
+    int *storage = (int *)tv;
+    if( !__gettimeofday_init ) {
+        paws_settime();
+        __gettimeofday_init = 1;
+    }
+    storage[0] = TIMER_REGS[8]; storage[1] = TIMER_REGS[9]; storage[2] = storage[3] = TIMER_REGS[10];
+    return( 0 );
+}
 int paws_clock_gettime( clockid_t clk_id, void *tz ) {
     struct timespec *tv = tz;
-    tv->tv_sec = (time_t)*SYSTEMSECONDS;
+    tv->tv_sec = (time_t)*((long *)SYSTEMSECONDS);
     tv->tv_nsec = (long)(*SYSTEMMILLISECONDS/1000);
     return( 0 );
 }

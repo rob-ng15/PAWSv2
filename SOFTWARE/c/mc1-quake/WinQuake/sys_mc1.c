@@ -19,16 +19,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
-#ifdef MC1_SDK
-#include <mc1/newlib_integ.h>
-#endif
-
 #include "quakedef.h"
 #include "errno.h"
 #include "mc1.h"
 
 #include <stdint.h>
 #include <sys/time.h>
+
+#include <PAWSlibrary.h>
 
 qboolean isDedicated;
 
@@ -295,8 +293,6 @@ void Sys_Quit (void)
 
 double Sys_FloatTime (void)
 {
-#if 1
-	// MRISC32 simulator timing: Use gettimeofday().
 	static qboolean s_first = true;
 	static struct timeval s_t0;
 	struct timeval t;
@@ -311,33 +307,6 @@ double Sys_FloatTime (void)
 	t_sec = (float)(t.tv_sec - s_t0.tv_sec) +
 			0.000001F * (float)(t.tv_usec - s_t0.tv_usec);
 	return (double)t_sec;
-#else
-	// MC1 timing: Use CLKCNTHI:CLKCNTLO MMIO registers directly.
-	static qboolean s_first = true;
-	static double s_inv_clk;
-	uint32_t hi_old, hi, lo;
-	uint64_t cycles;
-	double t;
-
-	// Get 1 / cycles per s.
-	if (s_first)
-	{
-		s_inv_clk = 1.0 / (double)GET_MMIO (CPUCLK);
-		s_first = false;
-	}
-
-	// Get number of CPU cycles (64-bit number).
-	hi = GET_MMIO (CLKCNTHI);
-	do
-	{
-		hi_old = hi;
-		lo = GET_MMIO (CLKCNTLO);
-		hi = GET_MMIO (CLKCNTHI);
-	} while (hi != hi_old);
-
-	cycles = (((uint64_t)hi) << 32) | (uint64_t)lo;
-	return s_inv_clk * (double)cycles;
-#endif
 }
 
 char *Sys_ConsoleInput (void)

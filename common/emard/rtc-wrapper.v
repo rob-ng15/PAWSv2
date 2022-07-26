@@ -6,7 +6,7 @@ module rtc
   input  wire [2:0]  addr,       // 0-6:writing, 7:circular reading
   input  wire [7:0]  data,       // data to write at addr
   output reg         tick,       // ticks every second -> 1: datetime_o is valid
-  output wire [55:0] datetime,   // BCD {YY,MM,DD, WD, HH,MM,SS}
+  output wire [55:0] datetime_o, // BCD {YY,MM,DD, WD, HH,MM,SS}
   inout  wire        sda,        // I2C Serial data line, pulled high at board level
   inout  wire        scl         // I2C Serial clock line, pulled high at board level
 );
@@ -20,10 +20,10 @@ module rtc
     .clk(clk),
     .reset(reset),
     .wr(0),
-    .addr(6),
+    .addr(7),
     .data(0),
     .tick(tick),
-    .datetime_o(datetime),
+    .datetime_o(datetime_o),
     .sda(sda),
     .scl(scl)
   );

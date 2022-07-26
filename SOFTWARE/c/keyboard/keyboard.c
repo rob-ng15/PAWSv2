@@ -30,7 +30,12 @@ int main( void ) {
     printw( "\nPS/2 Keyboard Test PS/2 in WHITE, UART in YELLOW\n\n");
 
     printw( "TIMER REG[0] = %8x, REG[1] = %8x, REG[2] = %8x\n",TIMER_REGS[8], TIMER_REGS[9], TIMER_REGS[10] );
-    printw( "RTC   REG[0] = %8x, REG[1] = %8x\n", IO_REGS[180], IO_REGS[181] );
+    printw( "RTC   REG[0] = %8x, REG[1] = %8x\n", IO_REGS[384], IO_REGS[385] );
+
+    struct timeval tv; struct timezone tz;
+    gettimeofday( &tv, &tz );
+    printw( "GTD = %ld =  %s\n",(long)tv.tv_sec,ctime( &tv.tv_sec ) );
+
     int cursor_x, cursor_y;
     unsigned short thecharacter;
 
