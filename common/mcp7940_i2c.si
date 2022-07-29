@@ -28,8 +28,22 @@ unit mcp7940n(
 
     i2c_master I2C(
         SDA <:> sda,
-        SCL <:> scl
+        SCL <:> scl,
+        wr_ctrl <: slow[ $c_slow_bits$, 1 ]
     );
+    I2C.ctrl_data := { wr_cycle ? 8h00: 8h80, 8h6f, 5h0, wr_cycle ? r_addr_wr : reg_addr, r_data_wr };
+
+    // missing bits should be 0
+    datetime_o := {
+             8h20,                      // 20
+             datetime[ 6 ][ 0, 8 ],     // year
+        3h0, datetime[ 5 ][ 0, 5 ],     // month
+        1h0, datetime[ 4 ][ 0, 7 ],     // day
+        5h0, datetime[ 3 ][ 0, 3 ],     // weekday
+        2h0, datetime[ 2 ][ 0, 6 ],     // hours
+        1h0, datetime[ 1 ][ 0, 7 ],     // minutes
+        1h0, datetime[ 0 ][ 0, 7 ]      // seconds
+    };
 
     always_before {
         if( slow[ $c_slow_bits$, 1 ] ) {
@@ -58,35 +72,20 @@ unit mcp7940n(
                     r_data_wr = data;
                 }
             }
-
-            I2C.ctrl_data = { wr_cycle ? 8h00: 8h80, 8h6f, 5h0, wr_cycle ? r_addr_wr : reg_addr, r_data_wr };
-            I2C.wr_ctrl = slow[ $c_slow_bits$, 1 ];
-
-            // take data when ready to register
-            if( I2C.status[ 28, 1 ] & prev_busy & ~I2C.status[ 31, 1 ] ) {
-                datetime[ prev_reg_addr ] = I2C.status[ 0, 8 ];
-                if( prev_reg_addr == 0 ) {
-                    tick = 1;
-                }
-            } else {
-                tick = 0;
-            }
-            prev_busy = I2C.status[ 31, 1 ];
         }
     }
 
     always_after {
-        // missing bits should be 0
-        datetime_o = {
-                 8h20,                      // 20
-                 datetime[ 6 ][ 0, 8 ],     // year
-            3h0, datetime[ 5 ][ 0, 5 ],     // month
-            1h0, datetime[ 4 ][ 0, 7 ],     // day
-            5h0, datetime[ 3 ][ 0, 3 ],     // weekday
-            2h0, datetime[ 2 ][ 0, 6 ],     // hours
-            1h0, datetime[ 1 ][ 0, 7 ],     // minutes
-            1h0, datetime[ 0 ][ 0, 7 ]      // seconds
-        };
+        // take data when ready to register
+        if( I2C.status[ 28, 1 ] & prev_busy & ~I2C.status[ 31, 1 ] ) {
+            datetime[ prev_reg_addr ] = I2C.status[ 0, 8 ];
+            if( prev_reg_addr == 0 ) {
+                tick = 1;
+            }
+        } else {
+            tick = 0;
+        }
+        prev_busy = I2C.status[ 31, 1 ];
     }
 }
 
@@ -125,10 +124,10 @@ unit i2c_master(
     input   uint1   wr_ctrl,                // Write enable for control register, also starts I2C cycles
     output  uint32  status                  // Status of I2C including most recently read data
 ) <reginputs> {
-    uint1   float_sda = 1;                  // This is essentially SDA when we are sourcing it (open drain at pin)
-    uint1   float_scl = 1;                  // This is essentially SCL when we are sourcing it (open drain at pin)
+    uint1   float_sda(1);                  // This is essentially SDA when we are sourcing it (open drain at pin)
+    uint1   float_scl(1);                  // This is essentially SCL when we are sourcing it (open drain at pin)
 
-    uint32  ctrl_reg = 0;
+    uint32  ctrl_reg(0);
     // Bit definitions:
     //  31    Read / not write.
     //  30    Repeated Start.  On read cycles setting this bit uses repeated start instad of stop start sequence.
@@ -137,7 +136,34 @@ unit i2c_master(
     //  15:8  Register Subaddress
     //  7:0   Data to write.  Don't care on read cycles.
 
-    //reg [31:0] status;      // I2C status register
+    uint1   status_busy(1);                        // At reset status = 32h84000000 busy & initializing
+    uint1   status_anack(0);
+    uint1   status_dnack(0);
+    uint1   status_read(0);
+    uint1   status_overrun(0);
+    uint1   status_initialising(1);
+    uint8   status_data(0);
+
+    uint$time_width$  timer($t_low$);
+    uint27  shift_reg(27h7ffffff);                 // Data to shift out.  Includes ack positions: 1 = NACK or slave ack.
+    uint5   bit_count(0);                          // Counts bits during shift states.
+    uint4   state($pre_start_up$);                 // Main state machine state variable
+    uint4   rtn_state($pre_start_up$);             // Return state for "subroutines"
+    uint1   wr_cyc(1);                             // Every access starts with a write cycle for subaddress.
+    uint8   read_data(0);                          // Input shift register for reads
+    uint4   scl_startup_count(0);                 // Clock SCL at least 12 times after SDA is detected high
+
+    // debounced, deglitched SDA and SCL inputs
+    uint4   sda_sr(4b1111);                 uint1   sda(1);
+    uint4   scl_sr(4b1111);                 uint1   scl(1);
+
+    // I/O buffers for the I2C open-drain signals
+    // Note that even if no slaves drive SCL, you need to use feedback
+    // to sense the rising edge of SCL to be sure to meet hold time.
+    SCL.oenable := ~float_scl; SCL.o := float_scl;
+    SDA.oenable := ~float_sda; SDA.o := float_scl;
+    status := { status_busy, status_anack, status_dnack, status_read, status_overrun, status_initialising, 18h0, status_data };
+
     // Bit definitions
     //  31    Busy.  Not ready to accept new control register writes.
     //  30    Address NACK.  Last address cycle resulted in no acknowledge from slave.
@@ -149,30 +175,10 @@ unit i2c_master(
     //  25:8  Reserved.  Tied to zero.
     //  7:0   Read data.  Valid after a read cycle when bit 28 is set.
 
-    uint1   status_busy = 1;                        // At reset status = 32h84000000 busy & initializing
-    uint1   status_anack = 0;
-    uint1   status_dnack = 0;
-    uint1   status_read = 0;
-    uint1   status_overrun = 0;
-    uint1   status_initialising = 1;
-    uint8   status_data = 0;
-
-    uint$time_width$  timer = $t_low$;
-    uint27  shift_reg = 27h7ffffff;                 // Data to shift out.  Includes ack positions: 1 = NACK or slave ack.
-    uint5   bit_count = 0;                          // Counts bits during shift states.
-    uint4   state = $pre_start_up$;                 // Main state machine state variable
-    uint4   rtn_state = uninitialised;              // Return state for "subroutines"
-    uint1   wr_cyc = 1;                             // Every access starts with a write cycle for subaddress.
-    uint8   read_data = 0;                          // Input shift register for reads
-    uint4   scl_startup_count = 0;                  // Clock SCL at least 12 times after SDA is detected high
-
-    // debounced, deglitched SDA and SCL inputs
-    uint4   sda_sr = uninitialised;                 uint1   sda = uninitialised;
-    uint4   scl_sr = uninitialised;                 uint1   scl = uninitialised;
-
     always_before {
         if( reset ) {
-            sda_sr = 4b1111; sda = 1;               // Start up assuming quiescent state of inputs
+            // Start up assuming quiescent state of inputs
+            sda_sr = 4b1111; sda = 1;
             scl_sr = 4b1111; scl = 1;
         } else {
             sda_sr = { sda_sr[ 0, 3 ], SDA.i };
@@ -196,191 +202,179 @@ unit i2c_master(
                     status_overrun = 0;
                 }
             }
-
-            switch( state ) {
-                case $pre_start_up$: {
-                    // In pre-start-up state wait for SDA to go high while clocking SCL as necessary
-                    if( timer == 0 ) {
-                        // every 5 us
-                        if( float_scl ) {
-                            if( sda && ( scl_startup_count == 12 ) ) {
-                                // quiescent?
-                                scl_startup_count = 0;
-                                state = $start_up$;
-                            } else {
-                                // Start another SCL clock cycle if SDA is still low
-                                float_scl = 0;
-                                timer = $t_low$;
-                                scl_startup_count = scl_startup_count + 1;
-                            }
-                        } else {
-                            // Currently driving SCL
-                            float_scl = 1;
-                            timer = $t_low$;
-                        }
-                    } else {
-                        if( scl | !float_scl ) {
-                            // Start timing after rising edge of SCL if not driven
-                            timer = timer - 1;
-                        }
-                    }
-                }
-                case $start_up$: {
-                    // In start-up state, generate a start and stop with no clocks in between
-                    if( timer == 0 ) {
-                        // every 5 us
-                        timer = $t_low$;
-                        scl_startup_count = scl_startup_count + 1;
-                        if( scl_startup_count == 2 ) { float_sda = 0; }     // Create a start condition
-                        if( scl_startup_count == 12 ) { float_sda = 1; }    // Create a stop condition
-                        if( scl_startup_count == 15 ) { state = $idle$; }
-                    } else {
-                        timer = timer - 1;
-                    }
-                }
-                case $idle$: {
-                    float_sda = 1;
-                    float_scl = 1;
-                    wr_cyc = 1;
-                    status_busy = 0;
-                    status_initialising = 0;
-                    if( wr_ctrl & !status_busy ) {
-                        state = $start$;
-                        status_busy = 1;
-                    }
-                }
-                case $start$: {
-                    // Create high to low transition on SDA.
-                    // Both SDA and SCL were high at least 4.7us before entering this state
-                    float_sda = 0;
-                    float_scl = 1;
-                    if( !sda ) {
-                        // Continue when we see sda driven low
-                        // 7-bit ADDR, R/WN, Slave Ack, 8-bit Subaddr, Slave Ack, 8-bit Data, Slave Ack
-                        // Data byte and final Slave Ack do not apply for reads
-                        // For Stop then start, SDA must be low after last ack cycle.
-                        // For repeated start, SDA must be high after last ack cycle.
-                        if( ctrl_reg[ 31, 1 ] ) {
-                            // reading requires subaddr write then data read
-                            if( wr_cyc ) {
-                                shift_reg = { ctrl_reg[ 16, 7 ], 1b0, 1b1, ctrl_reg[ 8, 8 ], 1b1, ctrl_reg[ 30, 1 ], 7b0, 1b0 };
-                            } else {
-                                shift_reg = { ctrl_reg[ 16, 7 ], 1b1, 1b1, 8hff, 1b1, 8b0, 1b0};
-                            }
-                        } else {
-                            // Writing
-                            shift_reg = { ctrl_reg[ 16, 7 ], 1b0, 1b1, ctrl_reg[ 8, 8 ], 1b1, ctrl_reg[ 0, 8 ], 1b1 };
-                        }
-                        bit_count = 0;
-                        timer = $t_hd_sta$;
-                        rtn_state = $clock_low$;
-                        state = $spin$;
-                    }
-                }
-                case $clock_low$: {
-                    // Assert SCL low and when it is low, wait for t_hold before changing SDA
-                    float_scl = 0;
-                    if( !scl ) {
-                        // Continue when SCL line has gone low
-                        timer = $t_hold$;
-                        rtn_state = $shift_data$;
-                        state = $spin$;
-                    }
-                }
-                case $shift_data$: {
-                    // Shift data onto the SDA line
-                    float_sda = shift_reg[ 26, 1 ];
-                    shift_reg = { shift_reg[ 0, 26 ], 1b0};     // shift left
-                    timer = $t_low$;                            // 4.7us min from spec
-                    rtn_state = $clock_high$;
-                    state = $spin$;
-                }
-                case $clock_high$: {
-                    // Release low drive on SCL and when it goes high
-                    // sample SDA and move on
-                    float_scl = 1;
-                    if( scl ) {
-                        bit_count = bit_count + 1;
-                        if( bit_count == 8 ) {
-                            // Address ACK cycle
-                            // SDA should be driven low for slave ACK
-                            status_anack = sda;
-                        } else {
-                            if( ( ( bit_count == 17 ) & wr_cyc ) | ( bit_count == 26 ) ) {
-                                // Data ACK cycles
-                                // SDA should be driven low for slave ACK
-                                status_dnack = sda;
-                            }
-                        }
-                        if( ( ( bit_count == 18 ) & ctrl_reg[ 31, 1 ] ) | ( bit_count == 27 ) ) {
-                            // Reading and past first data ack
-                            // Past second data ack
-                            timer = $t_su_sto$;
-                            rtn_state = $stop$;
-                            state = $spin$;
-                        } else {
-                            // shift data in, MSB first
-                            if( bit_count == 17 ) { read_data = { read_data[ 0, 7 ], sda }; }
-                            timer = $t_high$; // 4.0us from spec, but use 5.0 instead to meet cycle time
-                            rtn_state = $clock_low$;
-                            state = $spin$;
-                        }
-                    }
-                }
-                case $stop$: {
-                    // We get here twice for read cycles, once for writes.  On reads if
-                    // using repeated start we don't need to wait as long before asserting SDA
-                    // for start since t_su_sto has already elapsed (4.0us)
-                    float_sda = 1;   // SDA will already be high in the case of repeated start
-                    if( sda ) {
-                        if( ctrl_reg[ 31, 1] ) {
-                            // reading
-                            if( wr_cyc ) {
-                                // just finished sending subaddress
-                                if( ctrl_reg[ 30, 1 ] ) {
-                                    // repeated start
-                                    timer = $t_su_sta$ - $t_su_sto$;
-                                } else {
-                                    timer = $t_su_sta$;
-                                }
-                                rtn_state = $start$;
-                            } else {
-                                status_data = read_data;
-                                status_read = 1;
-                                timer = $t_su_sta$; // Setup to start is same as bus-free, 4.7us from spec
-                                rtn_state = $idle$; // For writes we're all done
-                            }
-                            wr_cyc = 0;
-                            state = $spin$;
-                        } else {
-                            // writing
-                            status_read = 0;
-                            timer = $t_su_sta$;
-                            rtn_state = $idle$;
-                            state = $spin$;
-                        }
-                    }
-                }
-                case $spin$: {
-                    // stay in this state for requested time period then "return"
-                    if( timer > 0 ) {
-                        timer = timer - 1;
-                    } else {
-                        state = rtn_state;
-                    }
-                }
-            }
-
-            status = { status_busy, status_anack, status_dnack, status_read, status_overrun, status_initialising, 18h0, status_data };
         }
     }
 
     always_after {
-        // I/O buffers for the I2C open-drain signals
-        // Note that even if no slaves drive SCL, you need to use feedback
-        // to sense the rising edge of SCL to be sure to meet hold time.
-        SCL.oenable = ~float_scl; SCL.o = float_scl;
-        SDA.oenable = ~float_sda; SDA.o = float_sda;
+        switch( state ) {
+            case $pre_start_up$: {
+                // In pre-start-up state wait for SDA to go high while clocking SCL as necessary
+                if( timer == 0 ) {
+                    // every 5 us
+                    if( float_scl ) {
+                        if( sda & ( scl_startup_count == 12 ) ) {
+                            // quiescent?
+                            scl_startup_count = 0;
+                            state = $start_up$;
+                        } else {
+                            // Start another SCL clock cycle if SDA is still low
+                            float_scl = 0;
+                            timer = $t_low$;
+                            scl_startup_count = scl_startup_count + 1;
+                        }
+                    } else {
+                        // Currently driving SCL
+                        float_scl = 1;
+                        timer = $t_low$;
+                    }
+                } else {
+                    if( scl | ~float_scl ) {
+                        // Start timing after rising edge of SCL if not driven
+                        timer = timer - 1;
+                    }
+                }
+            }
+            case $start_up$: {
+                // In start-up state, generate a start and stop with no clocks in between
+                if( timer == 0 ) {
+                    // every 5 us
+                    timer = $t_low$;
+                    if( scl_startup_count == 2 ) { float_sda = 0; }     // Create a start condition
+                    if( scl_startup_count == 12 ) { float_sda = 1; }    // Create a stop condition
+                    if( scl_startup_count == 15 ) { state = $idle$; }
+                    scl_startup_count = scl_startup_count + 1;
+                } else {
+                    timer = timer - 1;
+                }
+            }
+            case $idle$: {
+                float_sda = 1;
+                float_scl = 1;
+                wr_cyc = 1;
+                status_initialising = 0;
+                if( wr_ctrl & ~status_busy ) {
+                    state = $start$;
+                    status_busy = 1;
+                } else {
+                    status_busy = 0;
+                }
+            }
+            case $start$: {
+                // Create high to low transition on SDA.
+                // Both SDA and SCL were high at least 4.7us before entering this state
+                float_sda = 0;
+                float_scl = 1;
+                if( !sda ) {
+                    // Continue when we see sda driven low
+                    // 7-bit ADDR, R/WN, Slave Ack, 8-bit Subaddr, Slave Ack, 8-bit Data, Slave Ack
+                    // Data byte and final Slave Ack do not apply for reads
+                    // For Stop then start, SDA must be low after last ack cycle.
+                    // For repeated start, SDA must be high after last ack cycle.
+                    if( ctrl_reg[ 31, 1 ] ) {
+                        // reading requires subaddr write then data read
+                        if( wr_cyc ) {
+                            shift_reg = { ctrl_reg[ 16, 7 ], 1b0, 1b1, ctrl_reg[ 8, 8 ], 1b1, ctrl_reg[ 30, 1 ], 7b0, 1b0 };
+                        } else {
+                            shift_reg = { ctrl_reg[ 16, 7 ], 1b1, 1b1, 8hff, 1b1, 8b0, 1b0};
+                        }
+                    } else {
+                        // Writing
+                        shift_reg = { ctrl_reg[ 16, 7 ], 1b0, 1b1, ctrl_reg[ 8, 8 ], 1b1, ctrl_reg[ 0, 8 ], 1b1 };
+                    }
+                    bit_count = 0;
+                    timer = $t_hd_sta$;
+                    rtn_state = $clock_low$;
+                    state = $spin$;
+                }
+            }
+            case $clock_low$: {
+                // Assert SCL low and when it is low, wait for t_hold before changing SDA
+                float_scl = 0;
+                if( ~scl ) {
+                    // Continue when SCL line has gone low
+                    timer = $t_hold$;
+                    rtn_state = $shift_data$;
+                    state = $spin$;
+                }
+            }
+            case $shift_data$: {
+                // Shift data onto the SDA line
+                float_sda = shift_reg[ 26, 1 ];
+                shift_reg = { shift_reg[ 0, 26 ], 1b0};     // shift left
+                timer = $t_low$;                            // 4.7us min from spec
+                rtn_state = $clock_high$;
+                state = $spin$;
+            }
+            case $clock_high$: {
+                // Release low drive on SCL and when it goes high
+                // sample SDA and move on
+                float_scl = 1;
+                if( scl ) {
+                    bit_count = bit_count + 1;
+                    if( bit_count == 8 ) {
+                        // Address ACK cycle
+                        // SDA should be driven low for slave ACK
+                        status_anack = sda;
+                    } else {
+                        if( ( ( bit_count == 17 ) & wr_cyc ) | ( bit_count == 26 ) ) {
+                            // Data ACK cycles
+                            // SDA should be driven low for slave ACK
+                            status_dnack = sda;
+                        }
+                    }
+                    if( ( ( bit_count == 18 ) & ctrl_reg[ 31, 1 ] ) | ( bit_count == 27 ) ) {
+                        // Reading and past first data ack
+                        // Past second data ack
+                        timer = $t_su_sto$;
+                        rtn_state = $stop$;
+                        state = $spin$;
+                    } else {
+                        // shift data in, MSB first
+                        if( bit_count == 17 ) { read_data = { read_data[ 0, 7 ], sda }; }
+                        timer = $t_high$; // 4.0us from spec, but use 5.0 instead to meet cycle time
+                        rtn_state = $clock_low$;
+                        state = $spin$;
+                    }
+                }
+            }
+            case $stop$: {
+                // We get here twice for read cycles, once for writes.  On reads if
+                // using repeated start we don't need to wait as long before asserting SDA
+                // for start since t_su_sto has already elapsed (4.0us)
+                float_sda = 1;   // SDA will already be high in the case of repeated start
+                if( sda ) {
+                    if( ctrl_reg[ 31, 1] ) {
+                        // reading
+                        if( wr_cyc ) {
+                            // just finished sending subaddress
+                            if( ctrl_reg[ 30, 1 ] ) {
+                                // repeated start
+                                timer = $t_su_sta$ - $t_su_sto$;
+                            } else {
+                                timer = $t_su_sta$;
+                            }
+                            rtn_state = $start$;
+                        } else {
+                            status_data = read_data;
+                            status_read = 1;
+                            timer = $t_su_sta$; // Setup to start is same as bus-free, 4.7us from spec
+                            rtn_state = $idle$; // For writes we're all done
+                        }
+                        wr_cyc = 0;
+                        state = $spin$;
+                    } else {
+                        // writing
+                        status_read = 0;
+                        timer = $t_su_sta$;
+                        rtn_state = $idle$;
+                        state = $spin$;
+                    }
+                }
+            }
+            default: {
+                // spin stay in this state for requested time period then "return"
+                if( timer > 0 ) { timer = timer - 1; } else { state = rtn_state; }
+            }
+        }
     }
-
 }

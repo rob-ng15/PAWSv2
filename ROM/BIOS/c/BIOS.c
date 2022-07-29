@@ -283,18 +283,31 @@ void reset_display( void ) {
     }
 }
 
+// POSITION THE CURSOR to (x,y) and set background and foreground colours
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
+    while( *TPU_COMMIT );
+    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
+}
+// OUTPUT CHARACTER, STRING, and PRINTF EQUIVALENT FOR THE TPU
+void tpu_output_character( short c ) {
+    while( *TPU_COMMIT );
+    *TPU_CHARACTER = c; *TPU_COMMIT = 2;
+}
+
 // SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
 void scrollbars( void ) {
     unsigned char leds = 1, direction = 0, ledcount = 0;
     short count = 0;
+    int rtc_low, rtc_high;
+
     while(1) {
         await_vblank();count++;
-        if( count == 32 ) {
+        if( count == 64 ) {
             tilemap_scrollwrapclear( 0, 3, 1 );
             tilemap_scrollwrapclear( 1, 1, 1 );
             count = 0;
             ledcount++;
-            if( ledcount == 16 ) {
+            if( ledcount == 32 ) {
                 if( direction ) {
                     if( leds == 1 ) { direction = 0; } else { leds = leds >> 1; }
                 } else {
@@ -302,6 +315,19 @@ void scrollbars( void ) {
                 }
                 *LEDS = leds;
                 ledcount = 0;
+                tpu_set( 0, 17, TRANSPARENT, WHITE );
+                rtc_high = RTC[0] << 8; rtc_low = RTC[1] + 0x20000000;
+                for( int i = 0; i < 8; i++ ) {
+                    tpu_output_character( 48 + ( ( rtc_low & 0xf0000000 ) >> 28 ) );
+                    rtc_low = rtc_low << 4;
+                    if( ( i == 3 ) || ( i == 5 ) ) tpu_output_character('-');
+                }
+                tpu_output_character(' ');
+                for( int i = 0; i < 6; i++ ) {
+                    tpu_output_character( 48 + ( ( rtc_high & 0xf0000000 ) >> 28 ) );
+                    rtc_high = rtc_high << 4;
+                    if( ( i == 1 ) || ( i == 3 ) ) tpu_output_character(':');
+                }
             }
         }
     }
@@ -614,7 +640,7 @@ int main( void ) {
     }
 
     // ACKNOWLEDGE SELECTION AND STOP SMT TO ALLOW FASTER LOADING
-    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 250 ); SMTSTOP();
+    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 125 ); SMTSTOP();
 
     *LEDS = 255;
     gpu_outputstringcentre( WHITE, 72, 1, "PAW File", 0 );

@@ -55,6 +55,7 @@
 #include <string.h>
 #include <time.h>
 
+#include <curses.h>
 #include <PAWSlibrary.h>
 
 #ifdef __cplusplus
@@ -1420,7 +1421,7 @@ static int do_beep(struct mb_interpreter_t* s, void** l) {
 
 	mb_check(mb_attempt_func_end(s, l));
 
-	putchar('\a');
+	beep( CHANNEL_BOTH, WAVE_SINE, 51, 250 );
 
 	return result;
 }
