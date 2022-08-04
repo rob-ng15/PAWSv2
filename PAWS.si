@@ -89,7 +89,7 @@ $$end
     uint1   clock_cpu = uninitialized;
     uint1   clock_decode = uninitialized;
     uint1   clock_cache = uninitialized;
-    uint1   clock_io25 = uninitialized;
+    uint1   clock_ramcache = uninitialized;
 $$if VERILATOR then
     $$clock_25mhz = 'video_clock'
     // --- PLL
@@ -100,8 +100,8 @@ $$if VERILATOR then
       compute_clock :> clock_system,
       compute_clock :> clock_cpu,
       compute_clock :> clock_io,
-      sdram_clock :> clock_cache,
-      video_clock :> clock_io25,
+      clock_decode :> clock_cache,
+      clock_decode :> clock_ramcache,
     );
 $$else
     $$clock_25mhz = 'clock'
@@ -122,7 +122,7 @@ $$else
         clkin    <: $clock_25mhz$,
         clkCPU :> clock_cpu,
         clkDECODE :> clock_decode,
-        clkIO25 :> clock_io25,
+        clkRAMCACHE :> clock_ramcache,
         clkCACHE :> clock_cache,
         locked   :> pll_lock_CPU
     );
@@ -162,33 +162,18 @@ $$end
     );
 
     // SDRAM ( via CACHE )
-    // byteaccess controls byte read/writes
-    uint1   byteaccess <:: ( ~|CPU.accesssize[0,2] );
     cachecontroller DRAM <@clock_system,!reset> (
         sio <:> sio_halfrate,
         clock_cache <: clock_cache,
-        byteaccess <: byteaccess,
+        accesssize <: CPU.accesssize,
         cacheselect <: CPU.cacheselect,
         address <: CPU.address[0,26],
         writedata <: CPU.writedata
     );
 
-   //  BRAM (for BIOS AND FAST BRAM ) SELECT BIOS FOR FPGA OR SIMULATION
-    $$config['simple_dualport_bram_wmask_byte_wenable1_width'] = 'data'
-    $$if not SIMULATION then
-        // RISC-V FAST BRAM and BIOS
-        simple_dualport_bram uint16 ram <"simple_dualport_bram_wmask_byte",@clock_system,@clock_system> [16384] = {file("ROM/BIOS.bin"), pad(uninitialized)};
-    $$else
-        // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
-        simple_dualport_bram uint16 ram<"simple_dualport_bram_wmask_byte",@clock_system,@clock_system> [16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
-    $$end
-    bramcontroller_read RAM_R <@clock_system,!reset> (
-        ram <:> ram,
-        address <: CPU.address[0,15]
-    );
-    bramcontroller_write RAM_W <@clock_system,!reset> (
-        ram <:> ram,
-        byteaccess <: byteaccess,
+    // BRAM (for BIOS AND FAST BRAM ) SELECT BIOS FOR FPGA OR SIMULATION
+    bramcontroller RAM <@clock_system,!reset> (
+        accesssize <: CPU.accesssize,
         address <: CPU.address[0,15],
         writedata <: CPU.writedata
     );
@@ -214,6 +199,7 @@ $$end
 
         clock_25mhz <: $clock_25mhz$,
 
+        accesssize <: CPU.accesssize,
         memoryAddress <: CPU.address[0,12],
         writeData <: CPU.writedata,
         DMAACTIVE <: CPU.DMAACTIVE
@@ -232,6 +218,7 @@ $$end
     audio_memmap AUDIO_Map <@clock_io,!reset> (
         clock_25mhz <: $clock_25mhz$,
         memoryAddress <: CPU.address[0,5],
+        accesssize <: CPU.accesssize,
         writeData <: CPU.writedata,
         audio_l :> audio_l,
         audio_r :> audio_r,
@@ -242,7 +229,7 @@ $$end
         video_clock <: $clock_25mhz$,
         gpu_clock <: $clock_25mhz$,
         memoryAddressDirect <: CPU.address,
-        byteaccess <: byteaccess,
+        accesssize <: CPU.accesssize,
         memoryAddress <: CPU.address[0,12],
         writeData <: CPU.writedata,
 $$if HDMI then
@@ -271,8 +258,7 @@ $$end
         DMACOUNT <: IO_Map.DMACOUNT,
         DMACYCLES <: IO_Map.DMACYCLES,
         DMASET <: IO_Map.DMASET,
-        DMAMODE <: IO_Map.DMAMODE,
-        readdata <: readdata
+        DMAMODE <: IO_Map.DMAMODE
     );
 
     // IDENTIFY ADDRESS BLOCK
@@ -284,9 +270,9 @@ $$end
     uint1   IO <:: IOmem & ( &CPU.address[12,2] );
 
     // READ FROM SDRAM / BRAM / IO REGISTERS
-    uint16  readdata <:: SDRAM ? DRAM.readdata :
+    CPU.readdata := SDRAM ? DRAM.readdata :
                 VIDEODIRECT ? VIDEO_Map.readDataDirect :
-                BRAM ? RAM_R.readdata :
+                BRAM ? RAM.readdata :
                 TIMERS ? TIMERS_Map.readData :
                 VIDEO ? VIDEO_Map.readData :
                 AUDIO ? AUDIO_Map.readData :
@@ -301,7 +287,7 @@ $$end
         VIDEO_Map.memoryReadDirect = VIDEODIRECT & CPU.readmemory;
 
         DRAM.writeflag = SDRAM & CPU.writememory;
-        RAM_W.writeflag = BRAM & CPU.writememory;
+        RAM.writeflag = BRAM & CPU.writememory;
         AUDIO_Map.memoryWrite = AUDIO & CPU.writememory;
         IO_Map.memoryWrite = IO & CPU.writememory;
         TIMERS_Map.memoryWrite = TIMERS & CPU.writememory;
@@ -314,34 +300,40 @@ $$end
 }
 
 // RAM - BRAM controller
-// MEMORY IS 16 BIT, 8 bit WRITES ARE READ MODIFY WRITE
-unit bramcontroller_read(
-    simple_dualport_bram_port0 ram,
+unit bramcontroller(
     input   uint15  address,
-    input   uint1   byteaccess,
-
+    input   uint2   accesssize,
     input   uint1   writeflag,
-    input   uint16  writedata,
-
-    output  uint16  readdata
+    input   uint32  writedata,
+    output  uint32  readdata
 ) <reginputs> {
-    // FLAGS FOR BRAM ACCESS
-    ram.addr0 := address[1,14]; readdata := ram.rdata0;
-}
-unit bramcontroller_write(
-    simple_dualport_bram_port1 ram,
-    input   uint15  address,
-    input   uint1   byteaccess,
+    // BRAM (for BIOS AND FAST BRAM ) SELECT BIOS FOR FPGA OR SIMULATION
+    $$config['dualport_bram_wmask_byte_wenable0_width'] = 'data'
+    $$config['dualport_bram_wmask_byte_wenable1_width'] = 'data'
+    $$if not SIMULATION then
+        // RISC-V FAST BRAM and BIOS
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [16384] = {file("ROM/BIOS.bin"), pad(uninitialized)};
+    $$else
+        // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
+    $$end
 
-    input   uint1   writeflag,
-    input   uint16  writedata
-) <reginputs> {
-    // FLAGS FOR BRAM ACCESS
-    ram.wenable1 := 0;
+    uint1   aligned32 <: ~|address[0,3];
+
+    // FLAGS FOR BRAM ADDRESSES - ram0 lower 16 bits, ram1 upper 16 bits
+    ram.addr0 := address[1,14]; ram.addr1 := address[1,14] + 1;
+
+    // READ AND WRITE DATA
+    readdata := { ram.rdata1, ram.rdata0 }; ram.wenable0 := 0; ram.wenable1 := 0;
 
     always_after {
-        ram.addr1 = address[1,14]; ram.wdata1 = byteaccess ? { {2{writedata[0,8]}} } : writedata;
-        if( writeflag ) { ram.wenable1 = byteaccess ? address[0,1] ? 2b10 : 2b01 : 2b11; }
+        if( writeflag ) {
+            switch( accesssize ) {
+                default: { ram.wdata0 = { {2{writedata[0,8]}} }; ram.wenable0 = address[0,1] ? 2b10 : 2b01; }
+                case 2b01: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; }
+                case 2b10: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; ram.wdata1 = writedata[16,16]; ram.wenable1 = 2b11; }
+            }
+        }
     }
 }
 
@@ -357,19 +349,92 @@ unit bramcontroller_write(
 $$ sdram_addr_width = 26
 
 // CACHES SIZES - L1
+$$if VERILATOR then
+$$ L1Dsize = 256
+$$else
 $$ L1Dsize = 4096
+$$end
 $$ L1Dcacheaddrwidth = clog2(L1Dsize)
 $$ L1Dpartaddresswidth = sdram_addr_width - 1 - L1Dcacheaddrwidth
 $$ L1Dpartaddressstart = 1 + L1Dcacheaddrwidth
 bitfield L1Dcachetag{ uint1 needswrite, uint1 valid, uint$L1Dpartaddresswidth$ partaddress }
 
+$$if VERILATOR then
+$$ L1Isize = 256
+$$else
 $$ L1Isize = 4096
+$$end
 $$ L1Icacheaddrwidth = clog2(L1Isize)
 $$ L1Ipartaddresswidth = sdram_addr_width - 1 - L1Icacheaddrwidth
 $$ L1Ipartaddressstart = 1 + L1Icacheaddrwidth
 bitfield Icachetag{ uint1 valid, uint$L1Ipartaddresswidth$ partaddress }
 
+// 16 bit to 32 bit controller
+// CPU has a 32 bit memory bus, with 16 bit aligned read/writes
+// SDRAM is 16 bit
+// Interface the 32 bit CPU memory bus to the 16 bit SDRAM memory bus
 unit cachecontroller(
+    sdram_user      sio,
+    input   uint1   clock_cache,
+    input   uint1   cacheselect,
+    input   uint$sdram_addr_width$  address,
+    input   uint2   accesssize,
+    input   uint1   writeflag,
+    input   uint32  writedata,
+    input   uint1   readflag,
+    output  uint32  readdata,
+    output  uint1   busy(0)
+) <reginputs> {
+    evictioncache ECACHE(
+        sio <:> sio,
+        clock_cache <: clock_cache,
+        cacheselect <: cacheselect
+    );
+    ECACHE.writeflag := 0; ECACHE.readflag := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            switch( { writeflag, readflag } ) {
+                case 2b01: {
+                    busy = 1; ECACHE.byteaccess = ~|accesssize;
+                    switch( accesssize[1,1] ) {
+                        case 0: {
+                            ECACHE.address = address; ECACHE.readflag = 1; while( ECACHE.busy ) {}
+                            readdata = ECACHE.readdata;
+//                            busy = 0;
+                        }
+                        case 1: {
+                            ECACHE.address = address; ECACHE.readflag = 1; while( ECACHE.busy ) {}
+                            readdata[0,16] = ECACHE.readdata;
+                            ECACHE.address = address + 2; ECACHE.readflag = 1; while( ECACHE.busy ) {}
+                            readdata[16,16] = ECACHE.readdata;
+//                            busy = 0;
+                        }
+                    }
+                    __display("CPU: READ OF %x FROM %x SIZE %b",readdata,address,accesssize);
+                }
+                case 2b10: {
+                    busy = 1; ECACHE.byteaccess = ~|accesssize;
+                    switch( accesssize[1,1] ) {
+                        case 0: {
+                            ECACHE.address = address; ECACHE.writedata = writedata[0,16]; ECACHE.writeflag = 1; while( ECACHE.busy ) {}
+//                            busy = 0;
+                        }
+                        case 1: {
+                            ECACHE.address = address; ECACHE.writedata = writedata[0,16]; ECACHE.writeflag = 1; while( ECACHE.busy ) {}
+                            ECACHE.address = address + 2; ECACHE.writedata = writedata[16,16]; ECACHE.writeflag = 1; while( ECACHE.busy ) {}
+//                            busy = 0;
+                        }
+                    }
+                    __display("CPU: WRITE OF %x TO %x SIZE %b",writedata,address,accesssize);
+                }
+                default: { busy = 0; }
+            }
+        }
+    }
+}
+
+unit evictioncache(
     sdram_user      sio,
     input   uint1   clock_cache,
     input   uint1   cacheselect,
@@ -394,7 +459,7 @@ unit cachecontroller(
     icache_write ICACHEW( cache <:> Icache, tags <:> Itags, address <: address, writedata <: cachewritevalue );
 
     // SDRAM CONTROLLER
-    sdramcontroller SDRAM( sio <:> sio, writedata <: DCACHE.rdata );
+    sdramcontroller SDRAM( sio <:> sio );
 
     // CACHE TAG match flags
     uint1   Dcachematch <:: ( cacheselect & DCACHE.tagmatch );
@@ -408,51 +473,64 @@ unit cachecontroller(
 
     // MEMORY ACCESS FLAGS
     uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
+    uint1   readflag_s = uninitialized;             uint1   writeflag_s = uninitialized;
     uint1   doreadsdram <:: ( doread | ( dowrite & byteaccess ) );
 
     // SDRAM ACCESS AND CACHE UPDATE FLAGS
     SDRAM.readflag := 0; SDRAM.writeflag := 0; DCACHEW.update := 0; ICACHEW.update := 0;
 
+    always_before {
+        if( readflag ) { readflag_s = 1; busy = 1; }
+        if( writeflag ) { writeflag_s = 1; busy = 1; }
+    }
+
     algorithm <autorun> {
         while(1) {
-            doread = readflag; dowrite = writeflag;
+            doread = readflag_s; dowrite = writeflag_s;
+            readflag_s = 0; writeflag_s = 0;
 
             if( doread | dowrite ) {
+                __display("ECACHE: R = %b, W = %b, address = %x, writedata = %x MATCH I = %b D = %b DSR = %b EVT = %b",doread,dowrite,address,writedata,Icachematch,Dcachematch,doreadsdram,DCACHE.needswrite);
                 if( ( doread & Icachematch ) | Dcachematch ) {                                              // READ/WRITE IN CACHE
                     if( dowrite ) {
                         ++:
                         DCACHEW.update = 1;                                                                     // UPDATE CACHE IF WRITE
                         ICACHEW.update = Icacheupdate;                                                          // UPDATE ICACHE IF NEEDED
                     } else {
-                        dowrite = 0;
+                        readdata = Icachematch ? ICACHE.rdata : DCACHE.rdata;
                     }
-                } else {
-                    busy = 1;                                                                                               // CACHE MISS
-                    if( ( DCACHE.needswrite | doreadsdram ) & SDRAM.busy ) { while( SDRAM.busy ) {} } else { busy = 1; }        // WAIT FOR SDRAM IF BUSY AND NEEDED
+                } else {                                                                                                         // CACHE MISS
+                    if( SDRAM.busy ) { while( SDRAM.busy ) {} } else { busy = 1; }                                              // WAIT FOR SDRAM IF BUSY
                     if( DCACHE.needswrite ) {                                                                                   // CHECK IF CACHE LINE IS OCCUPIED
-                        SDRAM.address = DCACHE.cacheaddress;                                                                    // EVICT FROM CACHE TO SDRAM
-                        if( doreadsdram ) { SDRAM.writeflag = 1; while( SDRAM.busy ) {} } else { SDRAM.writeflag = 1; }         // WRITE TO SDRAM, WAIT IF NEEDED FOR READING
+                        __display("EVICT (%x to %x)",DCACHE.rdata,DCACHE.cacheaddress);
+                        if( doreadsdram ) {                                                                                         // EVICT FROM CACHE TO SDRAM
+                            SDRAM.address = DCACHE.cacheaddress; SDRAM.writedata = DCACHE.rdata;
+                            SDRAM.writeflag = 1; while( SDRAM.busy ) {}
+                            SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                    // READ FOR READ OR 8 BIT WRITE
+                            DCACHEW.update = cacheselect;                                                                           // UPDATE THE CACHE
+                            ICACHEW.update = ~cacheselect;                                                                          // UPDATE ICACHE IF NEEDED
+                        } else {
+                            SDRAM.address = DCACHE.cacheaddress; SDRAM.writedata = DCACHE.rdata;
+                            SDRAM.writeflag = 1;
+                            DCACHEW.update = dowrite;                                                                               // UPDATE CACHE FOR 16 BIT WRITE
+                            ICACHEW.update = Icacheupdate;                                                                          // UPDATE ICACHE IF NEEDED
+                        }
                     } else {
-                        SDRAM.writeflag = 0;
+                        if( doreadsdram ) {
+                            SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                    // READ FOR READ OR 8 BIT WRITE
+                            DCACHEW.update = cacheselect;                                                                           // UPDATE THE CACHE
+                            ICACHEW.update = ~cacheselect;                                                                          // UPDATE ICACHE IF NEEDED
+                        } else {
+                            DCACHEW.update = dowrite;                                                                               // UPDATE CACHE FOR 16 BIT WRITE
+                            ICACHEW.update = Icacheupdate;                                                                          // UPDATE ICACHE IF NEEDED
+                        }
                     }
-                    if( doreadsdram ) {                                                                                         // NEED TO READ SDRAM
-                        SDRAM.address = address; SDRAM.readflag = 1; while( SDRAM.busy ) {}                                     // READ FOR READ OR 8 BIT WRITE
-                        DCACHEW.update = cacheselect;                                                                           // UPDATE THE CACHE
-                        ICACHEW.update = ~cacheselect;                                                                          // UPDATE ICACHE IF NEEDED
-                    } else {
-                        DCACHEW.update = dowrite;                                                                               // UPDATE CACHE FOR 16 BIT WRITE
-                        ICACHEW.update = Icacheupdate;                                                                          // UPDATE ICACHE IF NEEDED
-                    }
-                    busy = 0;
+                    readdata = cachewritevalue;                                                                                     // 16 bit READ
                 }
             } else {
                 busy = 0;
             }
         }
-    }
-
-    always_after {
-        readdata = Icachematch ? ICACHE.rdata : Dcachematch ? DCACHE.rdata : SDRAM.readdata;                    // 16 bit READ
     }
 }
 
@@ -533,9 +611,17 @@ unit sdramcontroller(
     output  uint16  readdata,
     output  uint1   busy(0)
 ) <reginputs> {
+    sio.in_valid := 0; sio.rw := 0;
+
     always_after {
-        sio.addr = { address[1,$sdram_addr_width-1$], 1b0 }; sio.data_in = writedata; readdata = sio.data_out; sio.rw = writeflag;
-        sio.in_valid = ( readflag | writeflag );
-        busy = ( sio.done ) ? 0 : ( readflag | writeflag ) ? 1 : busy;
+        if( readflag | writeflag ) {
+            sio.addr = { address[1,$sdram_addr_width-1$], 1b0 };
+            if( writeflag ) { sio.data_in = writedata; sio.rw = 1; }
+            sio.in_valid = 1;
+            busy = 1;
+            __display("SDRAM R = %b, W = %b, address = %x, writedata = %x",readflag,writeflag,address,writedata);
+        }
+        readdata = sio.data_out;
+        if( sio.done ) { busy = 0; __display("SDRAM                               readdata = %x",readdata); }
     }
 }

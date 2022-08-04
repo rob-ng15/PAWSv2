@@ -35,9 +35,9 @@ unit PAWSCPU(
     output  uint2   accesssize,
     output  uint27  address(0),
     output  uint1   cacheselect(0),
-    output  uint16  writedata,
+    output  uint32  writedata,
     output  uint1   writememory,
-    input   uint16  readdata,
+    input   uint32  readdata,
     output  uint1   readmemory,
     input   uint1   memorybusy,
 
@@ -66,14 +66,17 @@ unit PAWSCPU(
     uint27  pcSMT = uninitialized;                  uint27  pcSMT_next <:: SMT ? AGU.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;       // HART 1 pc + update
     uint27  PC <:: SMT ? pcSMT : pc;                                                                                                // SELECT PC FOR THIS CYCLE
 
+    // MEMORY CONTROL UNITS
+    uint4 memorycontrols <: { FETCH.busy, LOAD.busy, STORE.busy, |DMAACTIVE };
+
     // RISC-V 32 BIT CONTROLLER
     uint32  result <:: RV32CONTROL.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
     uint1   frd <:: RV32CONTROL.FASTPATH ? RV32CONTROL.writeRegisterF : EXECUTESLOW.frd;
     uint1   write <:: COMMIT & RV32CONTROL.writeRegister;
     control RV32CONTROL <@clock_CPUdecoder> (
         cacheselect <: cacheselect,
-        DMAACTIVE <: DMAACTIVE[0,1],
-        DMA16BIT <: DMA.DMA16BIT,
+        DMAACTIVE <: DMA.DMAACTIVE,
+        DMAACCESSSIZE <: DMA.DMAACCESSSIZE,
         SMT <:: SMT,
         COMMIT_SMT <:: COMMIT_SMT,
         frd <: frd,
@@ -95,9 +98,6 @@ unit PAWSCPU(
         takeBranch <: takeBranch
     );
 
-    // MEMORY CONTROL UNITS
-    uint4 memorycontrols <: { FETCH.busy, LOAD.busy, STORE.busy, |DMAACTIVE };
-
     // MINI DMA CONTROLLER
     dma DMA(
         DMASOURCE <: DMASOURCE,
@@ -116,7 +116,6 @@ unit PAWSCPU(
     // FETCH UNIT
     fetch FETCH(
         clock_CPUdecoder <: clock_CPUdecoder,
-        PC <: PC,
         readdata <: readdata,
         memorybusy <: memorybusy
     );
@@ -124,20 +123,18 @@ unit PAWSCPU(
     // LOAD UNIT
     load LOAD(
         clock_CPUdecoder <: clock_CPUdecoder,
-        loadAddress <: AGU.loadAddress,
         accesssize <: accesssize,
+        byteaccess <: AGU.loadAddress[0,1],
         dounsigned <: RV32CONTROL.function3[2,1],
         readdata <: readdata,
         memorybusy <: memorybusy
     );
 
     // STORE VALUE SELECTION
-    uint1   STORE168FAST <:: ( ~AGU.storeAddress[26,1] & ~AGU.storeAddress[25,1] & ~accesssize[1,1] );
     uint32  storeValue <:: RV32CONTROL.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
+    uint1   faststore <:: ~AGU.storeAddress[26,1] & ~AGU.storeAddress[25,1];
     store STORE(
-        storeAddress <: AGU.storeAddress,
-        storeValue <: storeValue,
-        accesssize <: accesssize,
+        faststore <: faststore,
         memorybusy <: memorybusy
     );
 
@@ -279,9 +276,9 @@ unit PAWSCPU(
         if( |memorycontrols ) {
             onehot( memorycontrols ) {
                 case 0: { address = DMA.address; writedata = DMA.writedata; }                                                           // COPY MEMORY REQUESTS FROM DMA ENGINE
-                case 1: { address = STORE.address; writedata = STORE.writedata; }                                                       // COPY MEMORY REQUESTS FROM THE STORE UNIT
-                case 2: { address = LOAD.address; }                                                                                     // COPY MEMORY REQUESTS FROM DMA ENGINE
-                case 3: { address = FETCH.address; }                                                                                    // COPY MEMORY REQUESTS FROM DMA ENGINE
+                case 1: { address = AGU.storeAddress; writedata = storeValue; }                                                         // COPY MEMORY REQUESTS FROM THE STORE UNIT
+                case 2: { address = AGU.loadAddress; }                                                                                  // COPY MEMORY REQUESTS FROM THE LOAD UNIT
+                case 3: { address = PC; }                                                                                               // COPY MEMORY REQUESTS FROM INSTRUCTION FETCH
             }
         }
         if( COMMIT ) { pc = pc_next; pcSMT = pcSMT_next; SMT = ~SMT & SMTRUNNING; }
@@ -619,41 +616,33 @@ unit cpuexecuteFASTPATH(
 unit fetch(
     input   uint1   clock_CPUdecoder,
     input   uint1   start,
-    output!  uint1   busy(0),
-    input!  uint27  PC,
+    output! uint1   busy(0),
     output  uint32  instruction,
     output  uint1   compressed,
 
-    output! uint27  address,
-    input!  uint16  readdata,
+    input!  uint32  readdata,
     output! uint1   readmemory,
     input!  uint1   memorybusy
 ) <reginputs> {
-    uint27  PC2 <:: PC + 2;
-
     // COMPRESSED INSTRUCTION EXPANDER
-    compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata ); compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata ); compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata );
+    compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata[0,16] );
+    compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata[0,16] );
+    compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata[0,16] );
 
     readmemory := 0;
 
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1;
-                address = PC; readmemory = 1; while( memorybusy ) {}                                                                            // FETCH POTENTIAL COMPRESSED OR 1ST 16 BITS
+                busy = 1; readmemory = 1; while( memorybusy ) {}                                                                        // FETCH INSTRUCTION ( 32 bits )
                 compressed = ( ~&readdata[0,2] );
-                if( compressed ) {
-                    switch( readdata[0,2] ) {                                                                                                   // EXPAND COMPRESSED INSTRUCTION
-                        case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
-                        case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
-                        case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
-                        default: {}
-                    }
-                    busy = 0;
-                } else {
-                    instruction[0,16] = readdata; address = PC2; readmemory = 1; while( memorybusy ) {} instruction[16,16] = readdata;         // 32 BIT INSTRUCTION FETCH 2ND 16 BITS
-                    busy = 0;
+                switch( readdata[0,2] ) {                                                                                                   // EXPAND COMPRESSED INSTRUCTION
+                    case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }
+                    case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
+                    case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
+                    default: { instruction = readdata; }
                 }
+                busy = 0;
             } else { busy = 0; }
         }
     }
@@ -664,23 +653,20 @@ unit load(
     input   uint1   clock_CPUdecoder,
     input   uint1   start,
     output! uint1   busy(0),
-    input   uint27  loadAddress,
+    input   uint1   byteaccess,
     input   uint2   accesssize,
     input   uint1   dounsigned,
     output  int32   memoryinput,
 
-    output! uint27  address,
-    input!  uint16  readdata,
+    input!  uint32  readdata,
     output! uint1   readmemory,
     input!  uint1   memorybusy
 ) <reginputs> {
-    uint27  LA2 <:: loadAddress + 2;
-
     // SIGN EXTENDER FOR 8 AND 16 BIT LOADS
     signextend SIGNEXTEND <@clock_CPUdecoder> (
-        readdata <: readdata,
+        readdata <: readdata[0,16],
         is16or8 <: accesssize[0,1],
-        byteaccess <: loadAddress[0,1],
+        byteaccess <: byteaccess,
         dounsigned <: dounsigned
     );
 
@@ -689,17 +675,9 @@ unit load(
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1;
-                address = loadAddress; readmemory = 1;                                                          // START READ OF 1ST 8 or 16 BITS
-                switch( accesssize[1,1] ) {
-                    case 0: {
-                        while( memorybusy ) {} memoryinput = SIGNEXTEND.memory168; busy = 0;                    // RETURN 8 OR 16 BIT READ WITH OPTIONAL SIGN EXTENSION
-                    }
-                    case 1: {
-                        while( memorybusy ) {} memoryinput[0,16] = readdata; address = LA2; readmemory = 1;     // START READ OF 2ND 16 BITS
-                        while( memorybusy ) {} memoryinput[16,16] = readdata; busy = 0;                         // RETURN 32 BIT READ
-                    }
-                }
+                busy = 1; readmemory = 1; while( memorybusy ) {}                                   // START READ
+                memoryinput = accesssize[1,1] ? readdata : SIGNEXTEND.memory168;
+                busy = 0;
             }
         }
     }
@@ -709,31 +687,18 @@ unit load(
 unit store(
     input   uint1   start,
     output! uint1   busy(0),
-    input   uint27  storeAddress,
-    input   int32   storeValue,
-    input   uint2   accesssize,
+    input   uint1   faststore,
 
-    output! uint27  address,
-    output! uint16  writedata,
     output! uint1   writememory,
     input!  uint1   memorybusy
 ) <reginputs> {
-    uint1   FASTSTORE <:: ~storeAddress[26,1] & ~storeAddress[25,1];
-    uint27  SA2 <:: storeAddress + 2;
     writememory := 0;
 
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1; address = storeAddress; writedata = storeValue[0,16]; writememory = 1;                                            // STORE 8, 16 BITS OR 1ST 16 BITS OF 32
-                switch( accesssize[1,1] ) {
-                    case 0: { if( FASTSTORE ) { ++: } else { while( memorybusy ) {} } busy = 0; }
-                    case 1: {
-                        if( FASTSTORE ) { ++: } else { while( memorybusy ) {} }
-                        address = SA2; writedata = storeValue[16,16]; writememory = 1;                                                      // STORE 2ND 16 BITS OF 32
-                        if( FASTSTORE ) { ++: } else { while( memorybusy ) {} } busy = 0;
-                    }
-                }
+                busy = 1; writememory = 1;
+                if( faststore ) { ++: } else { while( memorybusy ) {} } busy = 0;
             }
         }
     }
@@ -749,33 +714,38 @@ unit dma(
     input   uint8   DMACYCLES,
     input   uint4   DMAMODE,
     input   uint8   DMASET,
-    output  uint1   DMA16BIT(0),
+    output  uint2   DMAACCESSSIZE,
     output! uint2   DMAACTIVE(0),
 
     input   uint1   start,
     output! uint27  address,
-    output! uint16  writedata,
+    output! uint32  writedata,
     output! uint1   writememory,
     output! uint1   readmemory,
-    input!  uint16  readdata,
+    input!  uint32  readdata,
     input!  uint1   memorybusy
 ) <reginputs> {
-    uint1   srcBRAM <:: ~DMASOURCE[26,1] & ~DMASOURCE[25,1] & ~DMASOURCE[15,1];                         // SOURCE IS BRAM
-    uint1   destBRAM <:: ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[15,1];                              // DEST IS BRAM
+    uint1   srcBRAM <:: ~DMASOURCE[26,1] & ~DMASOURCE[25,1] & ~DMASOURCE[15,1];                                                     // SOURCE IS BRAM
+    uint1   destBRAM <:: ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[15,1];                                                          // DEST IS BRAM
+    uint1   srcVIDEO <:: ~DMASOURCE[26,1] & DMASOURCE[25,1];                                                                        // SOURCE IS FRAMEBUFFER
+    uint1   destVIDEO <:: ~DMADEST[26,1] & DMADEST[25,1];                                                                           // DEST IS FRAMEBUFFER
 
-    uint1   srcSET <:: ( DMASOURCE == 27hfe0e );                                                        // SOURCE IS THE SET VALUE REGISTER, NO LOADING REQUIRED
-    uint1   src16bit <:: ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~DMASOURCE[0,1];    // SOURCE IS 16 BIT CAPABLE
-    uint1   destIO <:: ~DMADEST[26,1] & ~DMADEST[25,1] & DMADEST[15,1];                                 // DESTINATION IS I/O REGISTER
-    uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                 // DESTINATION IS 16 BIT CAPABLE
+    uint1   srcSET <:: ( DMASOURCE == 27hfe0e );                                                                                    // SOURCE IS THE SET VALUE REGISTER, NO LOADING REQUIRED
+    uint1   src16bit <:: ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~DMASOURCE[0,1];                                // SOURCE IS 16 BIT CAPABLE
+    uint1   src32bit <:: ~srcVIDEO & ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~|DMASOURCE[0,2];                   // SOURCE IS 32 BIT CAPABLE
+    uint1   destIO <:: ~DMADEST[26,1] & ~DMADEST[25,1] & DMADEST[15,1];                                                             // DESTINATION IS I/O REGISTER
+    uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                             // DESTINATION IS 16 BIT CAPABLE
+    uint1   dest32bit <:: ~destVIDEO & ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~|DMADEST[0,2];                               // DESTINATION IS 32 BIT CAPABLE
+    uint1   DMA16BIT = uninitialised;               uint1   DMA32BIT = uninitialised;
 
-    uint4   dmamode = uninitialized;                uint27  dmacount = uninitialised;                   uint27  dmacountNEXT <:: dmacount - ( DMA16BIT ? 2 : 1 );
+    uint4   dmamode = uninitialized;                uint27  dmacount = uninitialised;                   uint27  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT ? 2 : 1 );
     uint8   dmacycles = uninitialised;              uint8   dmacyclesNEXT <:: dmacycles - 1;
-    uint27  dmasrc = uninitialised;                 uint27  dmasrc2 <:: dmasrc + 2;                     uint27  dmasrcNEXT <:: DMA16BIT ? dmasrc2 : dmasrc + 1;
+    uint27  dmasrc = uninitialised;                 uint27  dmasrc2 <:: dmasrc + 2;                     uint27  dmasrcNEXT <:: DMA32BIT ? dmasrc + 4 : DMA16BIT ? dmasrc2 : dmasrc + 1;
     uint27  dmasrcADD <:: dmasrc + DMASOURCEADD;    uint27  dmasrcNEXTLINE <:: dmasrcADD - DMACOUNT;
-    uint27  dmadest = uninitialised;                uint27  dmadest2 <:: dmadest + 2;                   uint27  dmadestNEXT <:: DMA16BIT ? dmadest2 : dmadest + 1;
+    uint27  dmadest = uninitialised;                uint27  dmadest2 <:: dmadest + 2;                   uint27  dmadestNEXT <:: DMA32BIT ? dmadest + 4 : DMA16BIT ? dmadest2 : dmadest + 1;
     uint27  dmadestADD <:: dmadest + DMADESTADD;    uint27  dnadestNEXTLINE <:: dmadestADD - DMACOUNT;
     uint1   dmablue <:: ( dmadest[0,4] == 4h6 );
-    uint16  memoryinput = uninitialised;
+    uint32  memoryinput = uninitialised;
     uint1   FASTSTORE <:: ~dmadest[26,1] & ~dmadest[25,1];
 
     writememory := 0; readmemory := 0;
@@ -783,14 +753,27 @@ unit dma(
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                DMAACTIVE = &dmamode[0,3] ? 2 : 1;
+                DMAACTIVE = &dmamode[0,3] ? 2 : 1; DMA16BIT = 0; DMA32BIT = 0;
                 switch( dmamode ) {
-                    default: { DMA16BIT = 0; }                                                                                       // DEFAULT TO 8 BIT MODE
-                    case 3: { DMA16BIT = src16bit & dest16bit & ~DMACOUNT[0,1]; }                                                    // MEMCPY IS 16 BIT CAPABLE
-                    case 4: { DMA16BIT = srcSET & dest16bit & ~DMACOUNT[0,1]; }                                                      // MEMSET IS 16 BIT CAPABLE
-                    case 8: { DMA16BIT = src16bit & dest16bit & ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1] & ~DMACOUNT[0,1]; }            // MEMCPY RECTANGLE IS 16 BIT CAPABLE
-                    case 9: { DMA16BIT = srcSET & dest16bit & ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1] & ~DMACOUNT[0,1]; }              // MEMSET RECTANGLE IS 16 BIT CAPABLE
+                    default: {}                                                                                                     // DEFAULT TO 8 BIT MODE
+                    case 3: {                                                                                                       // MEMCPY IS 32/16 BIT CAPABLE
+                        DMA32BIT = src32bit & dest32bit & ~|DMACOUNT[0,2];
+                        DMA16BIT = src16bit & dest16bit & ~DMACOUNT[0,1];
+                    }
+                    case 4: {                                                                                                       // MEMSET IS 32/16 BIT CAPABLE
+                        DMA32BIT = srcSET & dest32bit & ~|DMACOUNT[0,2];
+                        DMA16BIT = srcSET & dest16bit & ~DMACOUNT[0,1];
+                    }
+                    case 8: {                                                                                                       // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
+                        DMA32BIT = src32bit & dest32bit & ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2] & ~|DMACOUNT[0,2];
+                        DMA16BIT = src16bit & dest16bit & ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1] & ~DMACOUNT[0,1];
+                    }
+                    case 9: {                                                                                                       // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
+                        DMA32BIT = srcSET & dest32bit & ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2] & ~|DMACOUNT[0,2];
+                        DMA16BIT = srcSET & dest16bit & ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1] & ~DMACOUNT[0,1];
+                    }
                 }
+                DMAACCESSSIZE = DMA32BIT ? 2b10 : DMA16BIT | &dmamode[0,3] ? 2b01: 2b00;                                            // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS ALWAYS 16 )
                 switch( dmamode[3,1] ) {
                     case 0: {
                         while( |dmacount ) {                                                                                        // SINGLE CYCLE MODE
@@ -798,10 +781,10 @@ unit dma(
                             switch( { srcSET, DMAACTIVE[1,1] } ) {
                                 case 2b00: {
                                     while( memorybusy ) {} memoryinput = readdata;
-                                    address = dmadest; writedata = DMA16BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
+                                    address = dmadest; writedata = DMA16BIT | DMA32BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
                                     if( FASTSTORE ) { writememory = 1; } else { writememory = 1; while( memorybusy ) {} }
                                 }
-                                case 2b01: {
+                                case 2b01: {                                                                                        // SPECIAL MULTI-PIXEL PIXELBLOCK / TILE / SAMPLE / SDCARD WRITE
                                     while( memorybusy ) {} memoryinput = readdata;
                                     address = dmadest; writedata = memoryinput[0,8]; writememory = 1;
                                     ++: ++:
@@ -851,7 +834,7 @@ unit dma(
                     }
                 }
                 DMAACTIVE = 0;
-            } else { dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES; writedata = { DMASET, DMASET }; }
+            } else { dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES; writedata = {4{DMASET}}; }
         }
     }
 }

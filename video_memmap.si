@@ -43,11 +43,11 @@ unit video_memmap(
 
     // Memory access via normal I/O registers
     input   uint12  memoryAddress,
-    input   uint1   byteaccess,
+    input   uint2   accesssize,
     input   uint1   memoryWrite,
     input   uint1   memoryRead,
-    input   uint16  writeData,
-    output  uint16  readData,
+    input   uint32  writeData,
+    output  uint32  readData,
 
     // Memory access direct to bitmap
     input   uint18  memoryAddressDirect,
@@ -149,7 +149,7 @@ $$end
         memoryAddressDirect <: memoryAddressDirect,
         memoryWriteDirect <: writeDirectDo[0,1],
         readDataDirect :> readDataDirect,
-        byteaccess <: byteaccess,
+        accesssize <: accesssize,
         static8bit <: static8bit
     );
 
@@ -330,7 +330,7 @@ $$end
         // WRITE BITMAP MEMORY DIRECTLY
         writeDirectDo = writeDirectDo >> 1;
         if( memoryWriteDirect ) {
-            requestWriteDirect = 1; BITMAP.writeDataDirect = byteaccess ? { {2{writeData[0,8]}} } : writeData;
+            requestWriteDirect = 1; BITMAP.writeDataDirect = ~|accesssize ? { {2{writeData[0,8]}} } : writeData;
         }
         if( requestWriteDirect & ~BITMAP.gpu_active ) {
             writeDirectDo = 2b11; requestWriteDirect = 0;
@@ -483,12 +483,12 @@ unit bitmap_memmap(
     // Memory access via I/O registers
     input   uint8   memoryAddress,
     input   uint1   memoryWrite,
-    input   uint16  writeData,
+    input   uint32  writeData,
 
     // Memory access direct to bitmap
     input   uint1   cpu_access_cycles,
     input   uint18  memoryAddressDirect,
-    input   uint1   byteaccess,
+    input   uint2   accesssize,
     input   uint1   memoryWriteDirect,
     input   uint16  writeDataDirect,
     output  uint16  readDataDirect,
@@ -503,7 +503,7 @@ unit bitmap_memmap(
     simple_dualport_bram uint8 bitmap_1h <@video_clock,@gpu_clock> [ 38400 ] = uninitialized; simple_dualport_bram uint8 bitmap_1l <@video_clock,@gpu_clock> [ 38400 ] = uninitialized;
 
     // BITMAP DISPLAY
-    bitmap bitmap_window <@video_clock,!video_reset> (
+    framebuffer_read framebuffer_display <@video_clock,!video_reset> (
         cpu_access_cycles <: cpu_access_cycles,
         memoryAddressDirect <: memoryAddressDirect,
         readDataDirect :> readDataDirect,
@@ -516,6 +516,27 @@ unit bitmap_memmap(
         pix_vblank <: pix_vblank,
         pixel    :> pixel,
         bitmap_display :> pixel_display
+    );
+
+    framebuffer_write framebuffer <@gpu_clock,!video_reset> (
+        memoryAddressDirect <: memoryAddressDirect,
+        byteaccess <: byteaccess,
+        memoryWriteDirect <: memoryWriteDirect,
+        writeDataDirect <: writeDataDirect,
+
+        bitmap_0h <:> bitmap_0h, bitmap_0l <:> bitmap_0l,
+        bitmap_1h <:> bitmap_1h, bitmap_1l <:> bitmap_1l,
+        bitmap_x_write <: pixel_writer.bitmap_x_write,
+        bitmap_y_write <: pixel_writer.bitmap_y_write,
+        bitmap_colour_write <: pixel_writer.bitmap_colour_write,
+        bitmap_colour_write_alt <: pixel_writer.bitmap_colour_write_alt,
+        bitmap_write <: pixel_writer.bitmap_write,
+        bitmap_crop_left <: pixel_writer.bitmap_crop_left,
+        bitmap_crop_right <: pixel_writer.bitmap_crop_right,
+        bitmap_crop_top <: pixel_writer.bitmap_crop_top,
+        bitmap_crop_bottom <: pixel_writer.bitmap_crop_bottom,
+        gpu_active_dithermode <: pixel_writer.gpu_active_dithermode,
+        static8bit <: static8bit
     );
 
     // 32 vector blocks each of 16 vertices
@@ -534,21 +555,14 @@ unit bitmap_memmap(
     // 256 colour remapper
     simple_dualport_bram uint8 pb_colourmap <@video_clock,@clock> [ 256 ] = uninitialized;
 
-    // BITMAP WRITER AND GPU
+    // GPU
+    uint1   byteaccess <:: ~|accesssize;
     bitmapwriter pixel_writer <@gpu_clock,!video_reset> (
-        memoryAddressDirect <: memoryAddressDirect,
-        byteaccess <: byteaccess,
-        memoryWriteDirect <: memoryWriteDirect,
-        writeDataDirect <: writeDataDirect,
-
-        bitmap_0h <:> bitmap_0h, bitmap_0l <:> bitmap_0l,
-        bitmap_1h <:> bitmap_1h, bitmap_1l <:> bitmap_1l,
         blit1tilemap <:> blit1tilemap,
         characterGenerator8x8 <:> characterGenerator8x8,
         colourblittilemap <:> colourblittilemap,
         pb_colourmap <:> pb_colourmap,
         vertex <:> vertex,
-        static8bit <: static8bit,
         vector_block_active :> vector_block_active,
         gpu_queue_full :> gpu_queue_full,
         gpu_queue_complete :> gpu_queue_complete,
@@ -564,7 +578,8 @@ unit bitmap_memmap(
     uint6   CBTWtile = uninitialized;               uint8   CBTWpixel = uninitialised;                  uint8   CBTWnext <:: CBTWpixel + 1;
 
     // ADJUST FOR 11bit underflow/overflow for pixel coordinates
-    uint11  minmax <:: ( __signed(writeData) < __signed(16b1111110000000000) ) ? 11b10000000000 : ( __signed(writeData) > __signed(16b0000001111111111) ) ? 11b01111111111 : writeData;
+    uint11  minmaxLOW <:: ( __signed(writeData[0,16]) < __signed(16b1111110000000000) ) ? 11b10000000000 : ( __signed(writeData[0,16]) > __signed(16b0000001111111111) ) ? 11b01111111111 : writeData[0,11];
+    uint11  minmaxHIGH <:: ( __signed(writeData[16,16]) < __signed(16b1111110000000000) ) ? 11b10000000000 : ( __signed(writeData[16,16]) > __signed(16b0000001111111111) ) ? 11b01111111111 : writeData[16,11];
 
     blit1tilemap.wdata1 := writeData; blit1tilemap.wenable1 := 0;
     characterGenerator8x8.wdata1 := writeData; characterGenerator8x8.wenable1 := 0;
@@ -573,7 +588,7 @@ unit bitmap_memmap(
 
     always_before {
         // RESET THE CROPPING RECTANGLE
-        if( reset ) { pixel_writer.pb_mode = 0; pixel_writer.crop_left = 0; pixel_writer.crop_right = 319; pixel_writer.crop_top = 0; pixel_writer.crop_bottom = 239;  bitmap_window.display256 = 0; }
+        if( reset ) { pixel_writer.pb_mode = 0; pixel_writer.crop_left = 0; pixel_writer.crop_right = 319; pixel_writer.crop_top = 0; pixel_writer.crop_bottom = 239; framebuffer_display.display256 = 0; }
     }
 
     always_after {
@@ -582,14 +597,30 @@ unit bitmap_memmap(
                 switch( memoryAddress[4,4] ) {
                     case 4h0: {
                         switch( memoryAddress[1,3] ) {
-                            case 3h0: { pixel_writer.gpu_x = minmax; }
-                            case 3h1: { pixel_writer.gpu_y = minmax; }
-                            case 3h2: { pixel_writer.gpu_param0 = minmax; }
-                            case 3h3: { pixel_writer.gpu_param1 = minmax; }
-                            case 3h4: { pixel_writer.gpu_param2 = minmax; }
-                            case 3h5: { pixel_writer.gpu_param3 = minmax; }
-                            case 3h6: { pixel_writer.gpu_param4 = minmax; }
-                            case 3h7: { pixel_writer.gpu_param5 = minmax; }
+                            case 3h0: {                                                                                     // ALLOW PACKED WRITING OF ADJACENT ALIGNED 16 bit registers as 1 x 32 bit
+                                if( accesssize[1,1] ) {
+                                    pixel_writer.gpu_x = minmaxLOW; pixel_writer.gpu_y = minmaxHIGH;
+                                } else { pixel_writer.gpu_x = minmaxLOW; }
+                            }
+                            case 3h1: { pixel_writer.gpu_y = minmaxLOW; }
+                            case 3h2: {
+                                if( accesssize[1,1] ) {
+                                    pixel_writer.gpu_param0 = minmaxLOW; pixel_writer.gpu_param1 = minmaxHIGH;
+                                } else { pixel_writer.gpu_param0 = minmaxLOW; }
+                            }
+                            case 3h3: { pixel_writer.gpu_param1 = minmaxLOW; }
+                            case 3h4: {
+                                if( accesssize[1,1] ) {
+                                    pixel_writer.gpu_param2 = minmaxLOW; pixel_writer.gpu_param3 = minmaxHIGH;
+                                } else { pixel_writer.gpu_param2 = minmaxLOW; }
+                            }
+                            case 3h5: { pixel_writer.gpu_param3 = minmaxLOW; }
+                            case 3h6: {
+                                if( accesssize[1,1] ) {
+                                    pixel_writer.gpu_param4 = minmaxLOW; pixel_writer.gpu_param5 = minmaxHIGH;
+                                } else { pixel_writer.gpu_param4 = minmaxLOW; }
+                            }
+                            case 3h7: { pixel_writer.gpu_param5 = minmaxLOW; }
                         }
                     }
                     case 4h1: {
@@ -644,28 +675,44 @@ unit bitmap_memmap(
                         switch( memoryAddress[1,3] ) {
                             case 3h0: { pixel_writer.pb_colour = writeData; pixel_writer.pb_newpixel = 1; }
                             case 3h1: { pixel_writer.pb_colour8r = writeData; }
-                            case 3h2: { pixel_writer.pb_colour8g = writeData; }
+                            case 3h2: {
+                                if( accesssize[1,1] ) {
+                                    pixel_writer.pb_colour8g = writeData[0,8]; pixel_writer.pb_colour8b = writeData[16,8]; pixel_writer.pb_newpixel = 2;
+                                } else { pixel_writer.pb_colour8g = writeData; }
+                            }
                             case 3h3: { pixel_writer.pb_colour8b = writeData; pixel_writer.pb_newpixel = 2; }
                             case 3h4: { pixel_writer.pb_newpixel = 3; }
                             case 3h5: { pixel_writer.pb_mode = writeData; }
-                            case 3h6: { pb_colourmap.addr1 = writeData; }
+                            case 3h6: {
+                                if( accesssize[1,1] ) {
+                                    pb_colourmap.addr1 = writeData[0,8]; pb_colourmap.wdata1 = writeData[16,8];
+                                } else { pb_colourmap.addr1 = writeData; }
+                            }
                             case 3h7: { pb_colourmap.wdata1 = writeData; }
                             default: {}
                         }
                     }
                     case 4he: {
                         switch( memoryAddress[1,2] ) {
-                            case 2h0: { pixel_writer.crop_left = minmax; }
-                            case 2h1: { pixel_writer.crop_right = minmax; }
-                            case 2h2: { pixel_writer.crop_top = minmax; }
-                            case 2h3: { pixel_writer.crop_bottom = minmax; }
+                            case 2h0: {
+                                if( accesssize[1,1] ) {
+                                    pixel_writer.crop_left = minmaxLOW; pixel_writer.crop_right = minmaxHIGH;
+                                } else { pixel_writer.crop_left = minmaxLOW; }
+                            }
+                            case 2h1: { pixel_writer.crop_right = minmaxLOW; }
+                            case 2h2: {
+                                if( accesssize[1,1] ) {
+                                    pixel_writer.crop_top = minmaxLOW; pixel_writer.crop_bottom = minmaxHIGH;
+                                } else { pixel_writer.crop_top = minmaxLOW; }
+                            }
+                            case 2h3: { pixel_writer.crop_bottom = minmaxLOW; }
                         }
                     }
                     case 4hf: {
                         switch( memoryAddress[1,2] ) {
-                            default: { bitmap_window.framebuffer = writeData; }
-                            case 2h1: { pixel_writer.framebuffer = writeData; }
-                            case 2h2: { bitmap_window.display256 = writeData; }
+                            default: { framebuffer_display.framebuffer = writeData; }
+                            case 2h1: { framebuffer.framebuffer = writeData; }
+                            case 2h2: { framebuffer_display.display256 = writeData; }
                         }
                     }
                     default: {}

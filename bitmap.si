@@ -1,4 +1,4 @@
-unit bitmap(
+unit framebuffer_read(
     input   uint1   cpu_access_cycles,
     input   uint18  memoryAddressDirect,
     output  uint16  readDataDirect,
@@ -40,13 +40,64 @@ unit bitmap(
     }
 }
 
-unit bitmapwriter(
+unit framebuffer_write(
     // Memory access direct to bitmap
     input   uint18  memoryAddressDirect,
     input   uint1   byteaccess,
     input   uint1   memoryWriteDirect,
     input   uint16  writeDataDirect,
 
+    // INPUTS FROM GPU QUEUE
+    input   int11   bitmap_x_write,
+    input   int11   bitmap_y_write,
+    input   uint8   bitmap_colour_write,
+    input   uint8   bitmap_colour_write_alt,
+    input   uint1   bitmap_write,
+    input   uint9   bitmap_crop_left,
+    input   uint9   bitmap_crop_right,
+    input   uint8   bitmap_crop_top,
+    input   uint8   bitmap_crop_bottom,
+    input   uint4   gpu_active_dithermode,
+
+    // BITMAP TO WRITE
+    input   uint1   framebuffer,
+    simple_dualport_bram_port1 bitmap_0h,
+    simple_dualport_bram_port1 bitmap_1h,
+    simple_dualport_bram_port1 bitmap_0l,
+    simple_dualport_bram_port1 bitmap_1l,
+
+    input   uint8   static8bit
+) <reginputs> {
+    // DITHER PATTERN GENERATOR
+    dither DODITHER( bitmap_x_write <: bitmap_x_write, bitmap_y_write <: bitmap_y_write, dithermode <: gpu_active_dithermode, static1bit <: static8bit[0,1] );
+    uint8   pixeltowrite <:: ( gpu_active_dithermode == 14 ) ? ( static8bit == 64 ) ? 65 : static8bit :
+                             DODITHER.condition ? bitmap_colour_write : bitmap_colour_write_alt;
+
+    // Write in range?
+    uint1   write_pixel <:: ( bitmap_x_write >= bitmap_crop_left ) & ( bitmap_x_write <= bitmap_crop_right ) &
+                            ( bitmap_y_write >= bitmap_crop_top ) & ( bitmap_y_write <= bitmap_crop_bottom ) & bitmap_write;
+    uint1   write_buffer0 <:: write_pixel & ~framebuffer;
+    uint1   write_buffer1 <:: write_pixel & framebuffer;
+    uint1   write_buffer0_direct <:: memoryWriteDirect & ~memoryAddressDirect[17,1];
+    uint1   write_buffer1_direct <:: memoryWriteDirect & memoryAddressDirect[17,1];
+
+    uint17  address <:: memoryWriteDirect ? memoryAddressDirect : bitmap_y_write[0,8] * 320 + bitmap_x_write[0,9];
+
+    // LOCK BITMAP ADDRESSES, PIXEL VALUE, AND WRITE FLAGS
+    bitmap_0h.wenable1 := write_buffer0 ? address[0,1] : write_buffer0_direct ? ( byteaccess ? memoryAddressDirect[0,1] : 1 ) : 0;
+    bitmap_0l.wenable1 := write_buffer0 ? ~address[0,1] : write_buffer0_direct ? ( byteaccess ? ~memoryAddressDirect[0,1] : 1 ) : 0;
+    bitmap_1h.wenable1 := write_buffer1 ? address[0,1] : write_buffer1_direct ? ( byteaccess ? memoryAddressDirect[0,1] : 1 ) : 0;
+    bitmap_1l.wenable1 := write_buffer1 ? ~address[0,1] : write_buffer1_direct ? ( byteaccess ? ~memoryAddressDirect[0,1] : 1 ) : 0;
+
+    always_after {
+        bitmap_0h.addr1 = address[1,16]; bitmap_0h.wdata1 = memoryWriteDirect ? byteaccess ? writeDataDirect[0,8] : writeDataDirect[8,8] : pixeltowrite;
+        bitmap_0l.addr1 = address[1,16]; bitmap_0l.wdata1 = memoryWriteDirect ? byteaccess ? writeDataDirect[0,8] : writeDataDirect[0,8] : pixeltowrite;
+        bitmap_1h.addr1 = address[1,16]; bitmap_1h.wdata1 = memoryWriteDirect ? byteaccess ? writeDataDirect[0,8] : writeDataDirect[8,8] : pixeltowrite;
+        bitmap_1l.addr1 = address[1,16]; bitmap_1l.wdata1 = memoryWriteDirect ? byteaccess ? writeDataDirect[0,8] : writeDataDirect[0,8] : pixeltowrite;
+    }
+}
+
+unit bitmapwriter(
     // GPU Parameters
     input   int11   gpu_x,
     input   int11   gpu_y,
@@ -88,14 +139,17 @@ unit bitmapwriter(
     output  uint1   gpu_queue_full,
     output  uint1   gpu_queue_complete,
     output  uint1   vector_block_active,
-    input   uint8   static8bit,
 
-    // BITMAP TO WRITE
-    input   uint1   framebuffer,
-    simple_dualport_bram_port1 bitmap_0h,
-    simple_dualport_bram_port1 bitmap_1h,
-    simple_dualport_bram_port1 bitmap_0l,
-    simple_dualport_bram_port1 bitmap_1l,
+    output  int11   bitmap_x_write,
+    output  int11   bitmap_y_write,
+    output  uint8   bitmap_colour_write,
+    output  uint8   bitmap_colour_write_alt,
+    output  uint1   bitmap_write,
+    output  uint9   bitmap_crop_left,
+    output  uint9   bitmap_crop_right,
+    output  uint8   bitmap_crop_top,
+    output  uint8   bitmap_crop_bottom,
+    output  uint4   gpu_active_dithermode,
 
     simple_dualport_bram_port0 blit1tilemap,
     simple_dualport_bram_port0 characterGenerator8x8,
@@ -118,6 +172,17 @@ unit bitmapwriter(
 
     // GPU QUEUE CONTROLLER, WITH OUTPUTS FOR WRITING PIXELS
     gpu_queue QUEUE(
+        bitmap_x_write :> bitmap_x_write,
+        bitmap_y_write :> bitmap_y_write,
+        bitmap_colour_write :> bitmap_colour_write,
+        bitmap_colour_write_alt :> bitmap_colour_write_alt,
+        bitmap_write :> bitmap_write,
+        bitmap_crop_left :> bitmap_crop_left,
+        bitmap_crop_right :> bitmap_crop_right,
+        bitmap_crop_top :> bitmap_crop_top,
+        bitmap_crop_bottom :> bitmap_crop_bottom,
+        gpu_active_dithermode :> gpu_active_dithermode,
+
         crop_left <: crop_left,
         crop_right <: crop_right,
         crop_top <: crop_top,
@@ -155,34 +220,6 @@ unit bitmapwriter(
         queue_complete :> gpu_queue_complete,
         gpu_active :> gpu_active
     );
-
-    // DITHER PATTERN GENERATOR
-    dither DODITHER( bitmap_x_write <: QUEUE.bitmap_x_write, bitmap_y_write <: QUEUE.bitmap_y_write, dithermode <: QUEUE.gpu_active_dithermode, static1bit <: static8bit[0,1] );
-    uint8   pixeltowrite <:: ( QUEUE.gpu_active_dithermode == 14 ) ? ( static8bit == 64 ) ? 65 : static8bit :
-                             DODITHER.condition ? QUEUE.bitmap_colour_write : QUEUE.bitmap_colour_write_alt;
-
-    // Write in range?
-    uint1   write_pixel <:: ( QUEUE.bitmap_x_write >= QUEUE.bitmap_crop_left ) & (QUEUE. bitmap_x_write <= QUEUE.bitmap_crop_right ) &
-                            ( QUEUE.bitmap_y_write >= QUEUE.bitmap_crop_top ) & ( QUEUE.bitmap_y_write <= QUEUE.bitmap_crop_bottom ) & QUEUE.bitmap_write;
-    uint1   write_buffer0 <:: write_pixel & ~framebuffer;
-    uint1   write_buffer1 <:: write_pixel & framebuffer;
-    uint1   write_buffer0_direct <:: memoryWriteDirect & ~memoryAddressDirect[17,1];
-    uint1   write_buffer1_direct <:: memoryWriteDirect & memoryAddressDirect[17,1];
-
-    uint17  address <:: memoryWriteDirect ? memoryAddressDirect : QUEUE.bitmap_y_write[0,8] * 320 + QUEUE.bitmap_x_write[0,9];
-
-    // LOCK BITMAP ADDRESSES, PIXEL VALUE, AND WRITE FLAGS
-    bitmap_0h.wenable1 := write_buffer0 ? address[0,1] : write_buffer0_direct ? ( byteaccess ? memoryAddressDirect[0,1] : 1 ) : 0;
-    bitmap_0l.wenable1 := write_buffer0 ? ~address[0,1] : write_buffer0_direct ? ( byteaccess ? ~memoryAddressDirect[0,1] : 1 ) : 0;
-    bitmap_1h.wenable1 := write_buffer1 ? address[0,1] : write_buffer1_direct ? ( byteaccess ? memoryAddressDirect[0,1] : 1 ) : 0;
-    bitmap_1l.wenable1 := write_buffer1 ? ~address[0,1] : write_buffer1_direct ? ( byteaccess ? ~memoryAddressDirect[0,1] : 1 ) : 0;
-
-    always_after {
-        bitmap_0h.addr1 = address[1,16]; bitmap_0h.wdata1 = memoryWriteDirect ? byteaccess ? writeDataDirect[0,8] : writeDataDirect[8,8] : pixeltowrite;
-        bitmap_0l.addr1 = address[1,16]; bitmap_0l.wdata1 = memoryWriteDirect ? byteaccess ? writeDataDirect[0,8] : writeDataDirect[0,8] : pixeltowrite;
-        bitmap_1h.addr1 = address[1,16]; bitmap_1h.wdata1 = memoryWriteDirect ? byteaccess ? writeDataDirect[0,8] : writeDataDirect[8,8] : pixeltowrite;
-        bitmap_1l.addr1 = address[1,16]; bitmap_1l.wdata1 = memoryWriteDirect ? byteaccess ? writeDataDirect[0,8] : writeDataDirect[0,8] : pixeltowrite;
-    }
 }
 
 // DITHERMODE CALCULATIONS

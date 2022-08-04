@@ -28,9 +28,9 @@ $include('../common/sdcard_write.si')
 $include('../common/ps2.si')
 
 // SDRAM
-$include('../common/sdram_interfaces.ice')
-$include('../common/sdram_controller_autoprecharge_r16_w16.ice')
-$include('../common/sdram_utils.ice')
+$include('../common/sdram_interfaces.si')
+$include('../common/sdram_controller_autoprecharge_r16_w16.si')
+$include('../common/sdram_utils.si')
 
 // CLEAN RESET - WIDTH 1v
 $$ clean_reset_width = 1

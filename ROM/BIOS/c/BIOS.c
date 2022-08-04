@@ -433,6 +433,7 @@ void swapentries( short i, short j ) {
     memcpy( &directorynames[i], &directorynames[j], sizeof( DirectoryEntry ) );
     memcpy( &directorynames[j], &temporary, sizeof( DirectoryEntry ) );
 }
+
 void sortdirectoryentries( unsigned short entries ) {
     if( !entries )
         return;
@@ -519,7 +520,11 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 
         if( entries == 0xffff ) {
             // NO ENTRIES FOUND
-            beep( CHANNEL_BOTH, WAVE_SAW, 3, 1000 ); return(0);
+            gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
+            gpu_outputstringcentre( RED, 192, 1, "IN THIS DIRECTORY", 1 );
+            beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
+            sleep( 1000 );
+            return(0);
         }
 
         sortdirectoryentries( entries );
@@ -640,7 +645,7 @@ int main( void ) {
     }
 
     // ACKNOWLEDGE SELECTION AND STOP SMT TO ALLOW FASTER LOADING
-    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 125 ); SMTSTOP();
+    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 63 ); SMTSTOP();
 
     *LEDS = 255;
     gpu_outputstringcentre( WHITE, 72, 1, "PAW File", 0 );
