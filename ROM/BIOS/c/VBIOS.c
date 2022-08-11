@@ -536,7 +536,6 @@ extern int _bss_start, _bss_end;
 void main( void ) {
     unsigned int isa;
     unsigned short i,j = 0, x, y;
-    int *memword, word, error, action;
 
     // STOP SMT
     *SMTSTATUS = 0;
@@ -575,10 +574,12 @@ void main( void ) {
 
     beep( CHANNEL_LEFT, WAVE_TRIANGLE, 3, 250 );
 
-    memword = (int *)0x6000000; word = 0; error = 0; action = 0;
+#define MEMTEST char
+    MEMTEST *memword, word, error, action;
+    memword = (MEMTEST *)0x6000000; word = 0; error = 0; action = 0;
 
     while(1) {
-        if( memword < (int *)0x6000280 ) {
+        if( memword < (MEMTEST *)0x6000280 ) {
             if( action ) {
                 if( *memword != word ) {
                     error++;
@@ -588,7 +589,7 @@ void main( void ) {
             } else {
                 *memword++ = word--;
             }
-        } else { memword = (int *)0x6000000; word = 0; error = 0; action = 1 - action; }
+        } else { memword = (MEMTEST *)0x6000000; word = 0; error = 0; action = 1 - action; }
         await_vblank();
         tilemap_scrollwrapclear( 0, 3, 1 );
         tilemap_scrollwrapclear( 1, 1, 1 );

@@ -655,7 +655,7 @@ int main( void ) {
     gpu_outputstringcentre( WHITE, 104, 0, "", 0 );
     sleep( 500 );
     gpu_outputstringcentre( WHITE, 80, 1, "LOADING", 0 );
-    sdcard_readfile( starting_cluster, (unsigned char *)0x4000000 );
+    asm volatile ("fence iorw,iorw"); sdcard_readfile( starting_cluster, (unsigned char *)0x4000000 ); asm volatile ("fence.i");
     gpu_outputstringcentre( WHITE, 72, 1, "LOADED", 0 );
     gpu_outputstringcentre( WHITE, 80, 1, "LAUNCHING", 0 );
     sleep(500);
