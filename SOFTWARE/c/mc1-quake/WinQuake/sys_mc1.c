@@ -369,6 +369,7 @@ void main (int argc, char **argv)
 		else
 			oldtime += (double)time;
 
+		fprintf(stderr,"Calling Host_Frame( %f )\n",time);
 		Host_Frame (time);
 	}
 }

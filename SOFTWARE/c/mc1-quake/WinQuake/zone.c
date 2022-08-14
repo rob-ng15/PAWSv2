@@ -252,8 +252,10 @@ void Z_CheckHeap (void)
 	{
 		if (block->next == &mainzone->blocklist)
 			break;			// all blocks have been hit
-		if ( (byte *)block + block->size != (byte *)block->next)
+		if ( (byte *)block + block->size != (byte *)block->next) {
+			fprintf(stderr,"\nblock + block->size (%08x) != block->next (%08x) ",(int)(block + block->size),(int)block->next);
 			Sys_Error ("Z_CheckHeap: block size does not touch the next block\n");
+		}
 		if ( block->next->prev != block)
 			Sys_Error ("Z_CheckHeap: next block doesn't have proper back link\n");
 		if (!block->tag && !block->next->tag)

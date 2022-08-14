@@ -13,7 +13,7 @@ RANLIB=$(ARCH)--elf-ranlib
 BUILD_DIR=build-fast
 OUTPUT_DIR=../../PAWS/
 
-CFLAGS=-march=rv32imafc_zba_zbb_zbc_zbs_zbkb -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -Ofast -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib -flto
+CFLAGS=-march=rv32imafc_zba_zbb_zbc_zbs_zbkb_zifencei -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -Ofast -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib -flto
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf32lriscv -Wl,-belf32-littleriscv
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 

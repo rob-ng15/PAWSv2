@@ -1,0 +1,692 @@
+$$if ICARUS or VERILATOR then
+// PLL for simulation
+unit pll(
+  output  uint1 video_clock,
+  output! uint1 sdram_clock,
+  output! uint1 clock_decode,
+  output  uint1 compute_clock
+) {
+  uint3 counter = 0;
+  uint8 trigger = 8b11111111;
+  sdram_clock   := clock;
+  clock_decode   := clock;
+  compute_clock := ~counter[0,1]; // x2 slower
+  video_clock   := counter[1,1]; // x4 slower
+  always {
+        counter = counter + 1;
+        trigger = trigger >> 1;
+  }
+}
+$$end
+
+unit main(
+    // LEDS (8 of)
+    output  uint8   leds,
+$$if not SIMULATION then
+    input   uint$NUM_BTNS$ btns,
+
+    // UART
+    output  uint1   uart_tx,
+    input   uint1   uart_rx,
+
+    // GPIO
+    input   uint28  gn,
+    output  uint28  gp,
+
+    // USB PS/2
+    input   uint1   us2_bd_dp,
+    input   uint1   us2_bd_dn,
+
+    // AUDIO
+    output  uint4   audio_l,
+    output  uint4   audio_r,
+
+    // SDCARD
+    output  uint1   sd_clk,
+    output  uint1   sd_mosi,
+    output  uint1   sd_csn,
+    input   uint1   sd_miso,
+$$end
+
+$$if HDMI then
+    // HDMI OUTPUT
+    output! uint4   gpdi_dp,
+$$end
+$$if VGA then
+    // VGA OUTPUT
+    output! uint$color_depth$ video_r,
+    output! uint$color_depth$ video_g,
+    output! uint$color_depth$ video_b,
+    output  uint1 video_hs,
+    output  uint1 video_vs,
+$$end
+$$if VERILATOR then
+    output  uint1 video_clock,
+$$end
+    // SDRAM
+    output! uint1  sdram_cle,
+    output! uint2  sdram_dqm,
+    output! uint1  sdram_cs,
+    output! uint1  sdram_we,
+    output! uint1  sdram_cas,
+    output! uint1  sdram_ras,
+    output! uint2  sdram_ba,
+    output! uint13 sdram_a,
+$$if VERILATOR then
+    output! uint1  sdram_clock, // sdram controller clock
+    input   uint16 sdram_dq_i,
+    output! uint16 sdram_dq_o,
+    output! uint1  sdram_dq_en,
+$$else
+    output uint1  sdram_clk,  // sdram chip clock != internal sdram_clock
+    inout  uint16 sdram_dq,
+$$end
+    inout   uint1   gpdi_sda,   // i2c for rtc
+    inout   uint1   gpdi_scl
+) <@clock_system,reginputs> {
+    uint1   clock_system = uninitialized;
+    uint1   clock_io = uninitialized;
+    uint1   clock_cpu = uninitialized;
+    uint1   clock_decode = uninitialized;
+    uint1   clock_cache = uninitialized;
+    uint1   clock_ramcache = uninitialized;
+$$if VERILATOR then
+    $$clock_25mhz = 'video_clock'
+    // --- PLL
+    pll clockgen<@clock,!reset>(
+      video_clock   :> video_clock,
+      sdram_clock   :> sdram_clock,
+      clock_decode   :> clock_decode,
+      compute_clock :> clock_system,
+      compute_clock :> clock_cpu,
+      compute_clock :> clock_io,
+      clock_decode :> clock_cache,
+      clock_decode :> clock_ramcache,
+    );
+$$else
+    $$clock_25mhz = 'clock'
+    // CLOCK/RESET GENERATION
+    // CPU + MEMORY
+    uint1   sdram_clock = uninitialized;
+    uint1   pll_lock_SYSTEM = uninitialized;
+    ulx3s_clk_PAWS_SYSTEM clk_gen_SYSTEM (
+        clkin    <: $clock_25mhz$,
+        clkSYSTEM  :> clock_system,
+        clkIO :> clock_io,
+        clkSDRAM :> sdram_clock,
+        clkSDRAMcontrol :> sdram_clk,
+        locked   :> pll_lock_SYSTEM
+    );
+    uint1   pll_lock_CPU = uninitialized;
+    ulx3s_clk_PAWS_CPU clk_gen_CPU (
+        clkin    <: $clock_25mhz$,
+        clkCPU :> clock_cpu,
+        clkDECODE :> clock_decode,
+        clkRAMCACHE :> clock_ramcache,
+        clkCACHE :> clock_cache,
+        locked   :> pll_lock_CPU
+    );
+$$end
+
+    // SDRAM Reset
+    uint1   sdram_reset = uninitialized; clean_reset sdram_rstcond <@sdram_clock,!reset> ( out :> sdram_reset );
+
+    // SDRAM chip controller by @sylefeb
+    sdram_r16w16_io sio_fullrate; sdram_r16w16_io sio_halfrate;
+$$if VERILATOR then
+    sdram_half_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
+$$else
+$$if sdram_150_mhz then
+    sdram_third_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
+$$else
+    sdram_half_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
+$$end
+$$end
+    sdram_controller_autoprecharge_r16_w16 sdram32MB <@sdram_clock,!sdram_reset> (
+        sd        <:> sio_fullrate,
+        sdram_cle :>  sdram_cle,
+        sdram_dqm :>  sdram_dqm,
+        sdram_cs  :>  sdram_cs,
+        sdram_we  :>  sdram_we,
+        sdram_cas :>  sdram_cas,
+        sdram_ras :>  sdram_ras,
+        sdram_ba  :>  sdram_ba,
+        sdram_a   :>  sdram_a,
+  $$if VERILATOR then
+        dq_i       <: sdram_dq_i,
+        dq_o       :> sdram_dq_o,
+        dq_en      :> sdram_dq_en,
+  $$else
+        sdram_dq  <:> sdram_dq,
+  $$end
+    );
+
+    // SDRAM ( via CACHE )
+    cachecontroller DRAM <@clock_system,!reset> (
+        sio <:> sio_halfrate,
+        clock_cache <: clock_cache,
+        accesssize <: CPU.accesssize,
+        cacheselect <: CPU.cacheselect,
+        address <: CPU.address[0,26],
+        writedata <: CPU.writedata
+    );
+
+    // BRAM (for BIOS AND FAST BRAM ) SELECT BIOS FOR FPGA OR SIMULATION
+    bramcontroller RAM <@clock_system,!reset> (
+        accesssize <: CPU.accesssize,
+        address <: CPU.address[0,15],
+        writedata <: CPU.writedata
+    );
+
+    // MEMORY MAPPED I/O + SMT CONTROLS
+    io_memmap IO_Map <@clock_io,!reset> (
+        leds :> leds,
+$$if not SIMULATION then
+        gn <: gn,
+        gp :> gp,
+        btns <: btns,
+        uart_tx :> uart_tx,
+        uart_rx <: uart_rx,
+        us2_bd_dp <: us2_bd_dp,
+        us2_bd_dn <: us2_bd_dn,
+        sd_clk :> sd_clk,
+        sd_mosi :> sd_mosi,
+        sd_csn :> sd_csn,
+        sd_miso <: sd_miso,
+$$end
+        gpdi_sda <:> gpdi_sda,
+        gpdi_scl <:> gpdi_scl,
+
+        clock_25mhz <: $clock_25mhz$,
+
+        accesssize <: CPU.accesssize,
+        memoryAddress <: CPU.address[0,12],
+        writeData <: CPU.writedata,
+        DMAACTIVE <: CPU.DMAACTIVE
+    );
+
+$$if SIMULATION then
+    uint4 audio_l(0);
+    uint4 audio_r(0);
+$$end
+    timers_memmap TIMERS_Map <@clock_io,!reset> (
+        clock_25mhz <: $clock_25mhz$,
+        memoryAddress <: CPU.address[0,6],
+        writeData <: CPU.writedata
+    );
+
+    audio_memmap AUDIO_Map <@clock_io,!reset> (
+        clock_25mhz <: $clock_25mhz$,
+        memoryAddress <: CPU.address[0,5],
+        accesssize <: CPU.accesssize,
+        writeData <: CPU.writedata,
+        audio_l :> audio_l,
+        audio_r :> audio_r,
+        static8bit <: TIMERS_Map.static16bit[0,8]
+    );
+
+    video_memmap VIDEO_Map <@clock_io,!reset> (
+        video_clock <: $clock_25mhz$,
+        gpu_clock <: $clock_25mhz$,
+        memoryAddressDirect <: CPU.address,
+        accesssize <: CPU.accesssize,
+        memoryAddress <: CPU.address[0,12],
+        writeData <: CPU.writedata,
+$$if HDMI then
+        gpdi_dp :> gpdi_dp,
+$$end
+$$if VGA then
+        video_r  :> video_r,
+        video_g  :> video_g,
+        video_b  :> video_b,
+        video_hs :> video_hs,
+        video_vs :> video_vs,
+$$end
+        static8bit <: TIMERS_Map.static16bit[0,8],
+        blink <: TIMERS_Map.cursor
+    );
+
+    PAWSCPU CPU <@clock_cpu> (
+        clock_CPUdecoder <: clock_decode,
+        clock_cache <: clock_cache,
+        SMTRUNNING <: IO_Map.SMTRUNNING,
+        SMTSTARTPC <: IO_Map.SMTSTARTPC[0,27],
+        DMASOURCE <: IO_Map.DMASOURCE,
+        DMASOURCEADD <: IO_Map.DMASOURCEADD,
+        DMADEST <: IO_Map.DMADEST,
+        DMADESTADD <: IO_Map.DMADESTADD,
+        DMACOUNT <: IO_Map.DMACOUNT,
+        DMACYCLES <: IO_Map.DMACYCLES,
+        DMASET <: IO_Map.DMASET,
+        DMAMODE <: IO_Map.DMAMODE
+    );
+
+    // IDENTIFY ADDRESS BLOCK
+    uint1   SDRAM <:: CPU.address[26,1];                            uint1   VIDEODIRECT <:: ~SDRAM & CPU.address[25,1];
+    uint1   BRAM <:: ~SDRAM & ~VIDEODIRECT & ~CPU.address[15,1];    uint1   IOmem <:: ~SDRAM & ~VIDEODIRECT & ~BRAM;
+    uint1   TIMERS <:: IOmem & ( ~|CPU.address[12,2] );
+    uint1   VIDEO <:: IOmem & ( CPU.address[12,2] == 2h1 );
+    uint1   AUDIO <:: IOmem & ( CPU.address[12,2] == 2h2 );
+    uint1   IO <:: IOmem & ( &CPU.address[12,2] );
+
+    // READ FROM SDRAM / BRAM / IO REGISTERS
+    CPU.readdata := SDRAM ? DRAM.readdata :
+                VIDEODIRECT ? VIDEO_Map.readDataDirect :
+                BRAM ? RAM.readdata :
+                TIMERS ? TIMERS_Map.readData :
+                VIDEO ? VIDEO_Map.readData :
+                AUDIO ? AUDIO_Map.readData :
+                IO? IO_Map.readData : 0;
+
+    always_after {
+        DRAM.readflag = SDRAM & CPU.readmemory;
+        AUDIO_Map.memoryRead = AUDIO & CPU.readmemory;
+        IO_Map.memoryRead = IO & CPU.readmemory;
+        TIMERS_Map.memoryRead = TIMERS & CPU.readmemory;
+        VIDEO_Map.memoryRead = VIDEO & CPU.readmemory;
+        VIDEO_Map.memoryReadDirect = VIDEODIRECT & CPU.readmemory;
+
+        DRAM.writeflag = SDRAM & CPU.writememory;
+        RAM.writeflag = BRAM & CPU.writememory;
+        AUDIO_Map.memoryWrite = AUDIO & CPU.writememory;
+        IO_Map.memoryWrite = IO & CPU.writememory;
+        TIMERS_Map.memoryWrite = TIMERS & CPU.writememory;
+        VIDEO_Map.memoryWrite = VIDEO & CPU.writememory;
+        VIDEO_Map.memoryWriteDirect = VIDEODIRECT & CPU.writememory;
+
+        // CPU BUSY STATE
+        CPU.memorybusy = DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT ) | VIDEO_Map.busyDirect;
+    }
+}
+
+// RAM - BRAM controller
+unit bramcontroller(
+    input   uint15  address,
+    input   uint2   accesssize,
+    input   uint1   writeflag,
+    input   uint32  writedata,
+    output  uint32  readdata
+) <reginputs> {
+    // BRAM (for BIOS AND FAST BRAM ) SELECT BIOS FOR FPGA OR SIMULATION
+    $$config['dualport_bram_wmask_byte_wenable0_width'] = 'data'
+    $$config['dualport_bram_wmask_byte_wenable1_width'] = 'data'
+    $$if not SIMULATION then
+        // RISC-V FAST BRAM and BIOS
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [16384] = {file("ROM/BIOS.bin"), pad(uninitialized)};
+    $$else
+        // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
+    $$end
+
+    uint1   aligned32 <: ~|address[0,3];
+
+    // FLAGS FOR BRAM ADDRESSES - ram0 lower 16 bits, ram1 upper 16 bits
+    ram.addr0 := address[1,14]; ram.addr1 := address[1,14] + 1;
+
+    // READ AND WRITE DATA
+    readdata := { ram.rdata1, ram.rdata0 }; ram.wenable0 := 0; ram.wenable1 := 0;
+
+    always_after {
+        if( writeflag ) {
+            switch( accesssize ) {
+                default: { ram.wdata0 = { {2{writedata[0,8]}} }; ram.wenable0 = address[0,1] ? 2b10 : 2b01; }
+                case 2b01: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; }
+                case 2b10: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; ram.wdata1 = writedata[16,16]; ram.wenable1 = 2b11; }
+            }
+        }
+    }
+}
+
+// 32Mb of SDRAM using @sylefeb controller
+// Controlled by a 16bit EVICTION CACHE FOR DATA AND INSTRUCTIONS
+// Cache-coherency is maintained
+// Controller is 16bit, the natural width of the SDRAM on the ULX3s
+// An eviction cache was chosen as easy to implement as a directly mapped cache
+// Writes to SDRAM only if required when evicting a cache entry
+
+// ADDRESS WIDTH OF THE SDRAM ( 26 bits is 32Mb )
+// CHIP SELECT is done by readflag/writeflag
+$$ sdram_addr_width = 26
+
+// CACHES SIZES - L1 2 x L1Dsize for DATA, 2 x L1Isize for INSTRUCTION
+$$if VERILATOR then
+$$ L1Dsize = 128
+$$else
+$$ L1Dsize = 2048
+$$end
+$$ L1Dcacheaddrwidth = clog2(L1Dsize)
+$$ L1Dpartaddresswidth = sdram_addr_width - 2 - L1Dcacheaddrwidth
+$$ L1Dpartaddressstart = 2 + L1Dcacheaddrwidth
+bitfield L1Dcachetag{ uint1 needswrite, uint1 valid, uint$L1Dpartaddresswidth$ partaddress }
+
+$$if VERILATOR then
+$$ L1Isize = 128
+$$else
+$$ L1Isize = 2048
+$$end
+$$ L1Icacheaddrwidth = clog2(L1Isize)
+$$ L1Ipartaddresswidth = sdram_addr_width - 2 - L1Icacheaddrwidth
+$$ L1Ipartaddressstart = 2 + L1Icacheaddrwidth
+bitfield L1Icachetag{ uint1 valid, uint$L1Ipartaddresswidth$ partaddress }
+
+// 16 bit to 32 bit controller
+// CPU has a 32 bit memory bus, with 16 bit aligned read/writes
+// SDRAM is 16 bit
+// Interface the 32 bit CPU memory bus to the 16 bit SDRAM memory bus
+unit cachecontroller(
+    sdram_user      sio,
+    input   uint1   clock_cache,
+    input   uint1   cacheselect,
+    input   uint$sdram_addr_width$  address,
+    input   uint2   accesssize,
+    input   uint1   writeflag,
+    input   uint32  writedata,
+    input   uint1   readflag,
+    output  uint32  readdata,
+    output  uint1   busy(0)
+) <reginputs> {
+    // DATA CACHE
+    simple_dualport_bram uint16 Dcache0 <@clock_cache,@clock> [$L1Dsize$] = uninitialized;
+    simple_dualport_bram uint$L1Dpartaddresswidth+2$ Dtags0 <@clock_cache,@clock> [$L1Dsize$] = uninitialized;
+    simple_dualport_bram uint16 Dcache1 <@clock_cache,@clock> [$L1Dsize$] = uninitialized;
+    simple_dualport_bram uint$L1Dpartaddresswidth+2$ Dtags1 <@clock_cache,@clock> [$L1Dsize$] = uninitialized;
+    dcache_read DCACHE <@clock_cache> ( cache0 <:> Dcache0, tags0 <:> Dtags0, cache1 <:> Dcache1, tags1 <:> Dtags1, address <: address );
+    dcache_write DCACHEW( cache0 <:> Dcache0, tags0 <:> Dtags0, cache1 <:> Dcache1, tags1 <:> Dtags1, needwritetosdram <: dowrite, address <: address, writedata <: cachewritevalue );
+
+    // INSTRUCTION CACHE
+    simple_dualport_bram uint16 Icache0 <@clock_cache,@clock> [$L1Isize$] = uninitialized;
+    simple_dualport_bram uint$L1Ipartaddresswidth+1$ Itags0 <@clock_cache,@clock> [$L1Isize$] = uninitialized;
+    simple_dualport_bram uint16 Icache1 <@clock_cache,@clock> [$L1Isize$] = uninitialized;
+    simple_dualport_bram uint$L1Ipartaddresswidth+1$ Itags1 <@clock_cache,@clock> [$L1Isize$] = uninitialized;
+    icache_read ICACHE <@clock_cache> ( cache0 <:> Icache0, tags0 <:> Itags0, cache1 <:> Icache1, tags1 <:> Itags1, address <: address );
+    icache_write ICACHEW( cache0 <:> Icache0, tags0 <:> Itags0, cache1 <:> Icache1, tags1 <:> Itags1, address <: address, writedata <: cachewritevalue );
+
+    // SDRAM CONTROLLER
+    uint32  sdramreaddata = uninitialized;          sdramcontroller SDRAM( sio <:> sio );
+
+    // ACCESSMASK WHICH PARTS OF THE 2 x 16 BIT CACHE PARTS ARE USED
+    uint2   accessmask <: accesssize[1,1] ? 2b11 : 2b01;
+
+    // CACHE TAG match flags
+    uint1   Dcachematch <:: ( cacheselect & ( accesssize[1,1] ? &DCACHE.tagmatch : DCACHE.tagmatch[0,1] ) );
+    uint1   Icachematch <:: ( ~cacheselect & &( ICACHE.tagmatch | DCACHE.tagmatch ) );
+    uint2   Icacheupdate <:: ( dowrite & |ICACHE.tagmatch ) ? ( accessmask & ICACHE.tagmatch ) : 2b00;
+    uint2   Dtag = uninitialized;
+    uint2   Itag = uninitialized;
+
+    // VALUE TO WRITE THROUGH TO THE CACHE
+    uint32  cachewritevalue = uninitialized;
+
+    // MEMORY ACCESS FLAGS
+    uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
+    uint1   readflag_s = uninitialized;             uint1   writeflag_s = uninitialized;
+    uint1   doreadsdram <:: ( doread | ( dowrite & ~|accesssize ) );
+
+    // SDRAM ACCESS AND CACHE UPDATE FLAGS
+    SDRAM.readflag := 0; SDRAM.writeflag := 0; DCACHEW.update := 0; ICACHEW.update := 0;
+
+    always_before {
+        if( readflag ) { readflag_s = 1; busy = 1; }
+        if( writeflag ) { writeflag_s = 1; busy = 1; }
+    }
+
+    algorithm <autorun> {
+        while(1) {
+            doread = readflag_s; dowrite = writeflag_s; readflag_s = 0; writeflag_s = 0;
+
+            if( doread | dowrite ) {
+                Dtag = DCACHE.tagmatch; Itag = ICACHE.tagmatch;
+                if( ( doread & Icachematch ) | Dcachematch ) {                                              // READ/WRITE IN CACHE
+                    if( dowrite ) {
+                        ++:
+                        DCACHEW.update = accessmask;                                                                     // UPDATE CACHE IF WRITE
+                        ICACHEW.update = Icacheupdate;                                                          // UPDATE ICACHE IF NEEDED
+                        __display("HIT: %x -> %x",cachewritevalue,address);
+                        busy = 0;
+                    } else {
+                        __display("HIT: %x <- %x",readdata,address);
+                        busy = 0;
+                    }
+                } else {                                                                                                         // CACHE MISS
+                    if( SDRAM.busy & ( |( DCACHE.needswrite& ~DCACHE.tagmatch ) | doreadsdram ) ) { while( SDRAM.busy ) {} } else { busy = 1; }        // WAIT FOR SDRAM IF BUSY AND REQUIRED
+                    if( |( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ) ) {
+                        __display("MISS: EVICTING %b",( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ));
+                        switch( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ) {
+                            case 2b00: {}
+                            case 2b01: {
+                                SDRAM.address = DCACHE.cacheaddressL; SDRAM.writedata = DCACHE.rdata[0,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
+                                __display(".L.. %x -> %x",DCACHE.rdata[0,16],DCACHE.cacheaddressL);
+                            }
+                            case 2b10: {
+                                SDRAM.address = DCACHE.cacheaddressH; SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
+                                __display("H... %x -> %x",DCACHE.rdata[16,16],DCACHE.cacheaddressH);
+                            }
+                            case 2b11: {
+                                SDRAM.address = DCACHE.cacheaddressL; SDRAM.writedata = DCACHE.rdata[0,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
+                                SDRAM.address = DCACHE.cacheaddressH; SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
+                                __display("HL.. %x -> %x %x -> %x",DCACHE.rdata[16,16],DCACHE.cacheaddressH,DCACHE.rdata[0,16],DCACHE.cacheaddressL);
+                            }
+                        }
+                    } else {
+                        SDRAM.writeflag = 0;
+                        __display("MISS: NO EVICTING");
+                    }
+                    if( doreadsdram ) {
+                        __display("MISS: READING %b from %x",( accessmask & ( cacheselect ? ~DCACHE.tagmatch : ~ICACHE.tagmatch ) ),address);
+                        switch( accessmask & ( cacheselect ? ~DCACHE.tagmatch : ~ICACHE.tagmatch ) ) {
+                            case 2b00: {}
+                            case 2b01: {
+                                SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata = SDRAM.readdata;
+                            }
+                            case 2b10: {
+                                SDRAM.address = address + 2; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata[16,16] = { SDRAM.readdata, 16b0 };
+                            }
+                            case 2b11: {
+                                SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata = SDRAM.readdata;
+                                SDRAM.address = address + 2; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata[16,16] = SDRAM.readdata;
+                            }
+                        }
+                        __display("... READ %x",sdramreaddata);
+                        DCACHEW.update = cacheselect ? ( accessmask & ~DCACHE.tagmatch ) : 2b00;                                                                           // UPDATE THE CACHE
+                        ICACHEW.update = cacheselect ? 2b00 : ( accessmask & ~ICACHE.tagmatch );                                                                          // UPDATE ICACHE IF NEEDED
+                        busy = 0;
+                    } else {
+                        __display("MISS: WRITE %x -> %x",cachewritevalue,address);
+                        DCACHEW.update = accessmask;                                                                               // UPDATE CACHE FOR 16 BIT WRITE
+                        ICACHEW.update = Icacheupdate;                                                                          // UPDATE ICACHE IF NEEDED
+                        busy = 0;
+                    }
+                }
+            } else {
+                busy = 0;
+            }
+        }
+    }
+
+    always_after {
+        switch( accesssize ) {
+            case 2b00: {
+                cachewritevalue = dowrite ? address[0,1] ? { writedata[0,8], Dtag[0,1] ? DCACHE.rdata[0,8] : SDRAM.readdata[0,8] } :
+                                                             { Dtag[0,1] ? DCACHE.rdata[8,8] : SDRAM.readdata[8,8], writedata[0,8] } :
+                                                             { Dtag[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] };
+            }
+            case 2b01: {
+                cachewritevalue = dowrite ? writedata[0,16] : { Dtag[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] };
+            }
+            default: {
+                cachewritevalue = dowrite ? writedata : { Dtag[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16], Dtag[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] };
+            }
+        }
+
+        if( doread ) {
+            if( ( doread & Icachematch ) | Dcachematch ) {
+                readdata = accessmask[1,1] ? cacheselect ? DCACHE.rdata : ICACHE.rdata : DCACHE.rdata[0,16];                    // READ CACHE HIT
+            } else {
+                readdata = cacheselect ? cachewritevalue :                                                                      // READ CACHE MISS
+                                         { Dtag[1,1] ? DCACHE.rdata[16,16] : Itag[1,1] ? ICACHE.rdata[16,16] : sdramreaddata[16,16],
+                                           Dtag[0,1] ? DCACHE.rdata[0,16] : Itag[0,1] ? ICACHE.rdata[0,16] : sdramreaddata[0,16] };
+            }
+        }
+    }
+}
+
+// L1 DATA CACHE
+unit dcache_read(
+    simple_dualport_bram_port0 cache0,
+    simple_dualport_bram_port0 tags0,
+    simple_dualport_bram_port0 cache1,
+    simple_dualport_bram_port0 tags1,
+    input   uint$sdram_addr_width$  address,
+    output! uint$sdram_addr_width$  cacheaddressL,
+    output! uint$sdram_addr_width$  cacheaddressH,
+    output! uint2   tagmatch,
+    output! uint32  rdata,
+    output! uint2   needswrite
+) <reginputs> {
+    // DATA CACHE for SDRAM - CACHE SIZE DETERMINED BY L1Dsize DEFINED ABOVE, MUST BE A POWER OF 2
+    // 2 BLOCKS ONE FOR xxx0x ONE FOR xxx1x addresses
+    // DATA CACHE ADDRESS IS LOWER bits of the address, dropping the BYTE AND HALF WORD address bits
+    // DATA CACHE TAG IS REMAINING bits of the address + 1 bit for valid flag + 1 bit for needwritetosdram flag
+
+    cache0.addr0 := address[2,$L1Dcacheaddrwidth$] + address[1,1]; tags0.addr0 := address[2,$L1Dcacheaddrwidth$] + address[1,1];
+    cache1.addr0 := address[2,$L1Dcacheaddrwidth$]; tags1.addr0 := address[2,$L1Dcacheaddrwidth$];
+
+    tagmatch := address[1,1] ? { { L1Dcachetag(tags0.rdata0).valid, L1Dcachetag(tags0.rdata0).partaddress } == { 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] },
+                                 { L1Dcachetag(tags1.rdata0).valid, L1Dcachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] } } :
+                               { { L1Dcachetag(tags1.rdata0).valid, L1Dcachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] },
+                                 { L1Dcachetag(tags0.rdata0).valid, L1Dcachetag(tags0.rdata0).partaddress } == { 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] } };
+
+    needswrite := address[1,1] ? { L1Dcachetag(tags0.rdata0).needswrite, L1Dcachetag(tags1.rdata0).needswrite } : { L1Dcachetag(tags1.rdata0).needswrite, L1Dcachetag(tags0.rdata0).needswrite };
+
+    rdata := address[1,1] ? { cache0.rdata0, cache1.rdata0 } : { cache1.rdata0, cache0.rdata0 };
+
+    cacheaddressL := address[1,1] ? { L1Dcachetag(tags1.rdata0).partaddress, address[2,$L1Dcacheaddrwidth$], 2b10 } : { L1Dcachetag(tags0.rdata0).partaddress, address[2,$L1Dcacheaddrwidth$], 2b00 };
+    cacheaddressH := address[1,1] ? { L1Dcachetag(tags0.rdata0).partaddress, address[2,$L1Dcacheaddrwidth$], 2b00 } : { L1Dcachetag(tags1.rdata0).partaddress, address[2,$L1Dcacheaddrwidth$], 2b10 };
+}
+unit dcache_write(
+    simple_dualport_bram_port1 cache0,
+    simple_dualport_bram_port1 tags0,
+    simple_dualport_bram_port1 cache1,
+    simple_dualport_bram_port1 tags1,
+    input   uint$sdram_addr_width$  address,
+    input   uint1   needwritetosdram,
+    input!  uint32  writedata,
+    input   uint2   update
+) <reginputs> {
+    cache0.addr1 := address[2,$L1Dcacheaddrwidth$] + address[1,1]; tags0.addr1 := address[2,$L1Dcacheaddrwidth$] + address[1,1];
+    cache1.addr1 := address[2,$L1Dcacheaddrwidth$]; tags1.addr1 := address[2,$L1Dcacheaddrwidth$];
+    cache0.wenable1 := 0; cache1.wenable1 := 0; tags0.wenable1 := 0; tags1.wenable1 := 0;
+
+    always_after {
+        switch( address[1,1] ) {
+            case 0: {
+                if( update[0,1] ) {
+                    cache0.wdata1 = writedata[0,16]; tags0.wdata1 = { needwritetosdram, 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] };
+                    cache0.wenable1 = 1; tags0.wenable1 = 1;
+                    __display(".... CACHE0 UPDATE: %x -> [%x]",writedata[0,16],cache0.addr1);
+                }
+                if( update[1,1] ) {
+                    cache1.wdata1 = writedata[16,16]; tags1.wdata1 = { needwritetosdram, 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] };
+                    cache1.wenable1 = 1; tags1.wenable1 = 1;
+                    __display(".... CACHE1 UPDATE: %x -> [%x]",writedata[16,16],cache1.addr1);
+                }
+            }
+            case 1: {
+                if( update[0,1] ) {
+                    cache1.wdata1 = writedata[0,16]; tags1.wdata1 = { needwritetosdram, 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] };
+                    cache1.wenable1 = 1; tags1.wenable1 = 1;
+                    __display(".... CACHE1 UPDATE: %x -> [%x]",writedata[0,16],cache1.addr1);
+                }
+                if( update[1,1] ) {
+                    cache0.wdata1 = writedata[16,16]; tags0.wdata1 = { needwritetosdram, 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] };
+                    cache0.wenable1 = 1; tags0.wenable1 = 1;
+                    __display(".... CACHE UPDATE: %x -> [%x]",writedata[16,16],cache0.addr1);
+                }
+            }
+        }
+    }
+}
+
+// L1 INSTRUCTION CACHE
+unit icache_read(
+    simple_dualport_bram_port0 cache0,
+    simple_dualport_bram_port0 tags0,
+    simple_dualport_bram_port0 cache1,
+    simple_dualport_bram_port0 tags1,
+    input   uint$sdram_addr_width$  address,
+    output! uint2   tagmatch,
+    output! uint32  rdata
+) <reginputs> {
+    cache0.addr0 := address[2,$L1Icacheaddrwidth$] + address[1,1]; tags0.addr0 := address[2,$L1Icacheaddrwidth$] + address[1,1];
+    cache1.addr0 := address[2,$L1Icacheaddrwidth$]; tags1.addr0 := address[2,$L1Icacheaddrwidth$];
+
+    tagmatch := address[1,1] ? { { L1Icachetag(tags0.rdata0).valid, L1Icachetag(tags0.rdata0).partaddress } == { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] },
+                                 { L1Icachetag(tags1.rdata0).valid, L1Icachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] } } :
+                               { { L1Icachetag(tags1.rdata0).valid, L1Icachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] },
+                                 { L1Icachetag(tags0.rdata0).valid, L1Icachetag(tags0.rdata0).partaddress } == { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] } };
+
+    rdata := address[1,1] ? { cache0.rdata0, cache1.rdata0 } : { cache1.rdata0, cache0.rdata0 };
+}
+
+unit icache_write(
+    simple_dualport_bram_port1 cache0,
+    simple_dualport_bram_port1 tags0,
+    simple_dualport_bram_port1 cache1,
+    simple_dualport_bram_port1 tags1,
+    input   uint$sdram_addr_width$  address,
+    input!  uint32  writedata,
+    input   uint2   update
+) <reginputs> {
+    cache0.addr1 := address[2,$L1Icacheaddrwidth$] + address[1,1]; tags0.addr1 := address[2,$L1Icacheaddrwidth$] + address[1,1];
+    cache1.addr1 := address[2,$L1Icacheaddrwidth$]; tags1.addr1 := address[2,$L1Icacheaddrwidth$];
+    cache0.wenable1 := 0; cache1.wenable1 := 0; tags0.wenable1 := 0; tags1.wenable1 := 0;
+
+    always_after {
+        switch( address[1,1] ) {
+            case 0: {
+                if( update[0,1] ) {
+                    cache0.wdata1 = writedata[0,16]; tags0.wdata1 = { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] };
+                    cache0.wenable1 = 1; tags0.wenable1 = 1;
+                }
+                if( update[1,1] ) {
+                    cache1.wdata1 = writedata[16,16]; tags1.wdata1 = { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] };
+                    cache1.wenable1 = 1; tags1.wenable1 = 1;
+                }
+            }
+            case 1: {
+                if( update[0,1] ) {
+                    cache1.wdata1 = writedata[0,16]; tags1.wdata1 = { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] };
+                    cache1.wenable1 = 1; tags1.wenable1 = 1;
+                }
+                if( update[1,1] ) {
+                    cache0.wdata1 = writedata[16,16]; tags0.wdata1 = { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] };
+                    cache0.wenable1 = 1; tags0.wenable1 = 1;
+                }
+            }
+        }
+    }
+}
+
+// START READ/WRITE FROM SDRAM, 16BIT
+unit sdramcontroller(
+    sdram_user      sio,
+    input   uint$sdram_addr_width$  address,
+    input   uint1   writeflag,
+    input   uint16  writedata,
+    input   uint1   readflag,
+    output  uint16  readdata,
+    output  uint1   busy(0)
+) <reginputs> {
+    sio.in_valid := 0; sio.rw := 0;
+
+    always_after {
+        if( readflag | writeflag ) {
+            sio.addr = { address[1,$sdram_addr_width-1$], 1b0 };
+            if( writeflag ) { sio.data_in = writedata; sio.rw = 1; }
+            sio.in_valid = 1;
+            busy = 1;
+        }
+        readdata = sio.data_out;
+        if( sio.done ) { busy = 0; }
+    }
+}

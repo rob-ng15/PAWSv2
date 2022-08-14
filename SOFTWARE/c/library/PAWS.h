@@ -174,6 +174,7 @@ unsigned short volatile *SLEEPTIMER1 = (unsigned short volatile *) 0xc01a;
 unsigned int volatile *SYSTEMSECONDS = (unsigned int volatile *) 0xc020;
 unsigned int volatile *SYSTEMMILLISECONDS = (unsigned int volatile *)0xc028;
 unsigned int volatile *RTC = (unsigned int volatile *) 0xf600;
+int volatile *PAWSMAGIC = (int volatile *) 0xf7000;
 
 // HANDLE SMT - RUNNING STATUS AND POINTER TO CODE TO RUN
 unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;

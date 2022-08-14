@@ -199,6 +199,8 @@ unsigned char volatile *FIXED_STATUS = (unsigned char volatile *)0xf808;
 
 int volatile *AUDIO_REGS = (int volatile *) 0xe000;
 
+int volatile *PAWSMAGIC = (int volatile *) 0xf7000;
+
 // TYPES AND STRUCTURES
 typedef unsigned int size_t;
 typedef unsigned short bool;

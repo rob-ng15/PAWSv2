@@ -62,7 +62,8 @@ $include('../ALU.si')
 $include('../FPU.si')
 $include('../CPU.si')
 
-// MAIN
+// MAIN PAWS-32.si cache is 32 bits, PAWS.si cache is 16 bits with an aggregator in front of the cache
+//$include('../PAWS-32.si')
 $include('../PAWS.si')
 
 // I2C (EMARD FOR RTC)

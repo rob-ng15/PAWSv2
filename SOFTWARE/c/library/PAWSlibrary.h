@@ -65,7 +65,7 @@ extern void bitmap_256( unsigned char );
 extern void set_background( unsigned char, unsigned char, unsigned char );
 extern void copper_startstop( unsigned char ) ;
 extern void copper_program( unsigned char, unsigned char, unsigned char, unsigned short, unsigned char, unsigned char, unsigned char );
- void set_copper_cpuinput( unsigned short );
+void set_copper_cpuinput( unsigned short );
 
 // TILEMAP
 extern void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action );

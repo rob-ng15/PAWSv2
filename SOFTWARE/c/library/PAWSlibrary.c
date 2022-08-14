@@ -18,6 +18,11 @@ extern int errno;
 #include "PAWSdefinitions.h"
 #include "PAWSintrinsics.h"
 
+#define FENCEIO asm volatile ("fence io, io");
+#define FENCEMEM asm volatile ("fence rw, rw");
+#define FENCEALL asm volatile ("fence iorw, iorw");
+#define NOFENCE asm volatile ("fence.i")
+
 // TOP OF SDRAM MEMORY
 unsigned char *MEMORYTOP = (unsigned char *)0x8000000;;
 
