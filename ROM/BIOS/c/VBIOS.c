@@ -326,6 +326,26 @@ void tpu_cs( void ) {
     while( *TPU_COMMIT );
     *TPU_COMMIT = 3;
 }
+// POSITION THE CURSOR to (x,y) and set background and foreground colours
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
+    while( *TPU_COMMIT );
+    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
+}
+// OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
+void tpu_output_character( short c ) {
+    while( *TPU_COMMIT );
+    *TPU_CHARACTER = c; *TPU_COMMIT = 2;
+}
+void tpu_outputstring( char *s ) {
+    while( *s ) {
+        tpu_output_character( *s );
+        s++;
+    }
+}
+void tpu_outputbinary( int number, int length ) {
+    for( int i = length - 1; i != -1; i-- )
+        tpu_output_character( '0' +  _rv32_bext( number, i ) );
+}
 
 // SET THE TILEMAP TILE at (x,y) to tile
 void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
@@ -549,6 +569,11 @@ void main( void ) {
     // SETUP INITIAL WELCOME MESSAGE
     draw_paws_logo();
     draw_sdcard();
+
+     // OUTPUT SOC & ISA CAPABILITIES
+    tpu_set( 1, 59, TRANSPARENT, WHITE ); tpu_outputbinary( *PAWSMAGIC, 32 );
+    tpu_set( 47,59, TRANSPARENT, WHITE ); tpu_outputbinary( CSRisa(), 32 );
+
     gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 66, 34, "Risc-V RV32IMAFCB CPU", 0 );
 
@@ -560,9 +585,9 @@ void main( void ) {
         set_tilemap_tile( 1, i, 29, i+1, 0 );
     }
 
-    gpu_outputstringcentre( 60, 72, "VERILATOR - SMT + FPU TEST", 0 );
-    gpu_outputstringcentre( 60, 80, "THREAD 0 - PACMAN SPRITES", 0 );
-    gpu_outputstringcentre( 60, 88, "THREAD 1 - FPU MANDELBROT", 0 );
+    gpu_outputstringcentre( 60, 74, "VERILATOR - SMT + FPU TEST", 0 );
+    gpu_outputstringcentre( 60, 82, "THREAD 0 - PACMAN SPRITES", 0 );
+    gpu_outputstringcentre( 60, 90, "THREAD 1 - FPU MANDELBROT", 0 );
 
     SMTSTART( (unsigned int )smtthread );
 

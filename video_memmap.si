@@ -54,7 +54,6 @@ unit video_memmap(
     input   uint1   memoryWriteDirect,
     input   uint1   memoryReadDirect,
     output! uint32  readDataDirect,
-    output  uint1   busyDirect(0),
 
 $$if HDMI then
     // HDMI OUTPUT
@@ -235,8 +234,12 @@ $$end
         writeData <: writeData
     );
 
-    // Combine the display layers for display
-    multiplex_display display <@video_clock,!video_reset> (
+    // Combine the display layers for display, output the select RGBM/palette/grey pixel
+    simple_dualport_bram uint24 palette[256] = uninitialized;
+    multiplex_display display(
+        video_clock <: video_clock,
+        video_reset <: video_reset,
+        palette <:> palette,
         pix_red    :> video_r,
         pix_green  :> video_g,
         pix_blue   :> video_b,
@@ -257,25 +260,21 @@ $$end
         terminal_display <: TERMINAL.pixel_display
     );
 
-    // DIRECT CPU ACCESS TO THE BITMAP MEMORY
-    uint2  readCycles = 0;                          uint2   readCyclesNext <:: readCycles - 1;
+    // I/O TO VIDEO CLOCK WRITE 2 CYCLE FLAG
     uint2   writeDirectDo = 0;
-
-    busyDirect := memoryReadDirect | memoryWriteDirect | writeDirectDo[1,1] | |readCycles;
 
     BACKGROUND.memoryWrite := 0; BITMAP.memoryWrite := 0; CHARACTER_MAP.memoryWrite := 0; LOWER_SPRITE.memoryWrite := 0; UPPER_SPRITE.memoryWrite := 0; TERMINAL.memoryWrite := 0;
     LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0;
 
+    palette.wenable1 := 0;
+
     always_before {
         // SET DEFAULT DISPLAY ORDER, COLOUR MODE AND DIMMER
-        if( reset ) {  display.display_order = 0; display.colour = 0; display.dimmer = 0; }
+        if( reset ) {  display.display_order = 0; display.colour = 0; display.dimmer = 0; display.usepalette = 0; }
     }
 
     algorithm <autorun> {
         while(1) {
-            // READ BITMAP MEMORY DIRECTLY
-            if( |readCycles ) { readCycles = readCyclesNext; } if( memoryReadDirect ) { readCycles = 2; }
-
             // READ IO Memory
             if( memoryRead ) {
                 switch( memoryAddress[8,4] ) {
@@ -345,11 +344,19 @@ $$end
                 case 4h8: { LOWER_SPRITE.memoryWrite = 1; LOWER_SPRITE.bitmapwriter = 1; }
                 case 4h9: { UPPER_SPRITE.memoryWrite = 1; UPPER_SPRITE.bitmapwriter = 1; }
                 case 4hf: {
-                    switch( memoryAddress[0,2] ) {
-                        case 0: { display.display_order = writeData; }
-                        case 1: { display.colour = writeData; }
-                        case 2: { hilorez = writeData;}
-                        case 3: { display.dimmer = writeData; }
+                    if( memoryAddress[4,1] ) {
+                        if( memoryAddress[2,1] ) {
+                            if( memoryAddress[0,1] ) { display.usepalette = writeData; } else { palette.addr1 = writeData; }
+                        } else {
+                            palette.wdata1 = writeData; palette.wenable1 = 1;
+                        }
+                    } else {
+                        switch( memoryAddress[0,2] ) {
+                            case 0: { display.display_order = writeData; }
+                            case 1: { display.colour = writeData; }
+                            case 2: { hilorez = writeData;}
+                            case 3: { display.dimmer = writeData; }
+                        }
                     }
                 }
                 default: {}

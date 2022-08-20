@@ -51,7 +51,10 @@ $$end
     output  uint8   DMACYCLES(0),
     output  uint4   DMAMODE(0),
     output  uint8   DMASET,
-    input   uint2   DMAACTIVE
+    input   uint2   DMAACTIVE,
+
+    // System Capabilities Flag
+    input   uint32  SOC
 ) <reginputs> {
 $$if not SIMULATION then
     // UART CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
@@ -82,17 +85,17 @@ $$end
     rtc RTC( clk <: clock_25mhz, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );              // EMARD verilog version
     //mcp7940n RTC <@clock_25mhz> ( sda <:> gpdi_sda, scl <:> gpdi_scl );                             // Silice translation (not yet working)
 
-    // ACCELERATOR FOR DOOM FIXED POINT 16.16 DIVISION
-    fixed_t_divide FIXED_DIVIDE();
+    // ACCELERATORS FOR DOOM FIXED POINT 16.16 DIVISION
+    fixed_t_divide FIXED_DIVIDE_1(); fixed_t_divide FIXED_DIVIDE_2();
 
     // UNLOCK VALUE ( write to sector 0 )
-    uint32 MAGICVALUE(0);
+    uint1 MAGICVALUE(0);
 
 $$if not SIMULATION then
     // I/O FLAGS
     SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0;
 $$end
-    RTC.wr := 0; RTC.addr := 7; FIXED_DIVIDE.start := 0;
+    RTC.wr := 0; RTC.addr := 7; FIXED_DIVIDE_1.start := 0; FIXED_DIVIDE_2.start := 0;
 
     always_before {
         // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE, RTC to read mode
@@ -147,10 +150,18 @@ $$end
                             case 1: { readData = LATCHrtc[32,32]; }
                         }
                     }
+                    case 4h7: { readData = SOC; __display("SOC : %b",SOC); }
                     case 4h8: {
-                        switch( memoryAddress[3,1] ) {
-                            case 0: { readData = FIXED_DIVIDE.result; }
-                            case 1: { readData = FIXED_DIVIDE.busy; }
+                        if( memoryAddress[4,1] ) {
+                            switch( memoryAddress[3,1] ) {
+                                case 0: { readData = FIXED_DIVIDE_2.result; }
+                                case 1: { readData = FIXED_DIVIDE_2.busy; }
+                            }
+                        } else {
+                            switch( memoryAddress[3,1] ) {
+                                case 0: { readData = FIXED_DIVIDE_1.result; }
+                                case 1: { readData = FIXED_DIVIDE_1.busy; }
+                            }
                         }
                     }
                     case 4he: { readData = DMASET; }
@@ -170,7 +181,7 @@ $$end
                 case 4h4: {
                     switch( memoryAddress[1,2] ) {
                         case 2h0: { SDCARD.readsector = 1; }
-                        case 2h1: { SDCARD.writesector = |SDCARD.sectoraddress | ( MAGICVALUE == 32h50415357); }
+                        case 2h1: { SDCARD.writesector = |SDCARD.sectoraddress | MAGICVALUE; }
                         default: { SDCARD.sectoraddress = writeData; }
                     }
                 }
@@ -182,12 +193,20 @@ $$end
                 }
                 $$end
                 case 4h3: { leds = writeData; }
-                case 4h7: { MAGICVALUE = writeData; } // SPECIAL VALUE TO ALLOW WRITING TO SDCARD SECTOR 0 { 'P', 'A', 'W', 'S' }
+                case 4h7: { MAGICVALUE = ( writeData == 32h50415357 ); } // SPECIAL VALUE TO ALLOW WRITING TO SDCARD SECTOR 0 { 'P', 'A', 'W', 'S' }
                 case 4h8: {
-                    switch( memoryAddress[2,2] ) {
-                        case 2b00: { FIXED_DIVIDE.fixed_t_a = writeData; }
-                        case 2b01: { FIXED_DIVIDE.fixed_t_b = writeData; }
-                        default: { FIXED_DIVIDE.start = 1; }
+                    if( memoryAddress[4,1] ) {
+                        switch( memoryAddress[2,2] ) {
+                            case 2b00: { FIXED_DIVIDE_2.fixed_t_a = writeData; }
+                            case 2b01: { FIXED_DIVIDE_2.fixed_t_b = writeData; }
+                            default: { FIXED_DIVIDE_2.start = 1; }
+                        }
+                    } else {
+                        switch( memoryAddress[2,2] ) {
+                            case 2b00: { FIXED_DIVIDE_1.fixed_t_a = writeData; }
+                            case 2b01: { FIXED_DIVIDE_1.fixed_t_b = writeData; }
+                            default: { FIXED_DIVIDE_1.start = 1; }
+                        }
                     }
                 }
                 case 4hd: {

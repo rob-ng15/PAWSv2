@@ -49,5 +49,9 @@ static inline int _rv32_packh(int rs1, int rs2) { int rd; __asm__ ("packh  %0, %
 static inline int _rv32_unzip(int rs1) { int rd; __asm__ ("unzip     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
 static inline int _rv32_zip(int rs1) { int rd; __asm__ ("zip     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
 
+// SCALAR CRYPTO BIT MANIPULATION INTRINSICS (Zbkx)
+static inline int _rv32_xperm4(int rs1, int rs2) { int rd; __asm__ ("xperm4  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv32_xperm8(int rs1, int rs2) { int rd; __asm__ ("xperm8  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
 #define __PAWSINTRINSICS__
 #endif

@@ -271,7 +271,7 @@ void reset_display( void ) {
     *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
     *FRAMEBUFFER_DRAW = 1; gpu_cs(); while( !*GPU_FINISHED );
     *FRAMEBUFFER_DRAW = 0; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DISPLAY = 0; *BITMAP_DISPLAY256 = 0;
+    *FRAMEBUFFER_DISPLAY = 0; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
     *SCREENMODE = 0; *COLOUR = 0; *REZ = 0; *DIMMER = 0;
     *TPU_CURSOR = 0; tpu_cs();
     *TERMINAL_SHOW = 0; *TERMINAL_RESET = 1;
@@ -288,10 +288,20 @@ void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsign
     while( *TPU_COMMIT );
     *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
 }
-// OUTPUT CHARACTER, STRING, and PRINTF EQUIVALENT FOR THE TPU
+// OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
 void tpu_output_character( short c ) {
     while( *TPU_COMMIT );
     *TPU_CHARACTER = c; *TPU_COMMIT = 2;
+}
+void tpu_outputstring( char *s ) {
+    while( *s ) {
+        tpu_output_character( *s );
+        s++;
+    }
+}
+void tpu_outputbinary( int number, int length ) {
+    for( int i = length - 1; i != -1; i-- )
+        tpu_output_character( '0' +  _rv32_bext( number, i ) );
 }
 
 // SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
@@ -576,7 +586,7 @@ int main( void ) {
     unsigned short selectedfile = 0;
 
     // STOP SMT AND PIXELBLOCK
-    SMTSTOP(); *PB_STOP = 1; *PB_MODE = 0;
+    SMTSTOP(); *PB_STOP = *PB_MODE = 0;
 
     // CLEAR MEMORY
     memset( &_bss_start, 0, &_bss_end - &_bss_end );
@@ -590,6 +600,10 @@ int main( void ) {
 
     // DRAW LOGO AND SDCARD
      draw_paws_logo(); draw_sdcard();
+
+     // OUTPUT SOC & ISA CAPABILITIES
+    tpu_set( 1, 59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( *PAWSMAGIC, 32 );
+    tpu_set( 47,59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( CSRisa(), 32 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
@@ -605,8 +619,8 @@ int main( void ) {
     gpu_outputstringcentre( UK_BLUE, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS
-    while( *UART_STATUS & 1 ) { char temp = *UART_DATA; }
-    while( *PS2_AVAILABLE ) { short temp = *PS2_DATA; }
+    while( *UART_STATUS & 1 ) { (void)*UART_DATA; }
+    while( *PS2_AVAILABLE ) { (void)*PS2_DATA; }
 
     gpu_outputstringcentre( RED, 72, 0, "Waiting for SDCARD", 0 );
     gpu_outputstringcentre( RED, 80, 0, "Press RESET if not detected", 0 );

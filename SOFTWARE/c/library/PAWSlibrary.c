@@ -326,6 +326,14 @@ void bitmap_256( unsigned char mode ) {
     *BITMAP_DISPLAY256 = mode;
 }
 
+void set_palette( unsigned char entry, unsigned int rgb ) {
+    *PALETTEENTRY = entry; *PALETTERGB = rgb;
+}
+
+void use_palette( unsigned char mode ) {
+    *PALETTEACTIVE = mode;
+}
+
 // BACKGROUND GENERATOR
 // backgroundmode ==
 //  0 SOLID in colour

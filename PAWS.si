@@ -89,7 +89,7 @@ $$end
     uint1   clock_cpu = uninitialized;
     uint1   clock_decode = uninitialized;
     uint1   clock_cache = uninitialized;
-    uint1   clock_ramcache = uninitialized;
+    uint1   clock_vio = uninitialized;
 $$if VERILATOR then
     $$clock_25mhz = 'video_clock'
     // --- PLL
@@ -101,7 +101,7 @@ $$if VERILATOR then
       compute_clock :> clock_cpu,
       compute_clock :> clock_io,
       clock_decode :> clock_cache,
-      clock_decode :> clock_ramcache,
+      compute_clock :> clock_vio,
     );
 $$else
     $$clock_25mhz = 'clock'
@@ -122,7 +122,7 @@ $$else
         clkin    <: $clock_25mhz$,
         clkCPU :> clock_cpu,
         clkDECODE :> clock_decode,
-        clkRAMCACHE :> clock_ramcache,
+        clkVIO :> clock_vio,
         clkCACHE :> clock_cache,
         locked   :> pll_lock_CPU
     );
@@ -179,6 +179,8 @@ $$end
     );
 
     // MEMORY MAPPED I/O + SMT CONTROLS
+    // 16 bit cache memory bus, 8192 I cache, 8192 D cache
+    uint32  SOC = 32b00100001000;
     io_memmap IO_Map <@clock_io,!reset> (
         leds :> leds,
 $$if not SIMULATION then
@@ -202,7 +204,8 @@ $$end
         accesssize <: CPU.accesssize,
         memoryAddress <: CPU.address[0,12],
         writeData <: CPU.writedata,
-        DMAACTIVE <: CPU.DMAACTIVE
+        DMAACTIVE <: CPU.DMAACTIVE,
+        SOC <: SOC
     );
 
 $$if SIMULATION then
@@ -225,7 +228,7 @@ $$end
         static8bit <: TIMERS_Map.static16bit[0,8]
     );
 
-    video_memmap VIDEO_Map <@clock_io,!reset> (
+    video_memmap VIDEO_Map <@clock_vio,!reset> (
         video_clock <: $clock_25mhz$,
         gpu_clock <: $clock_25mhz$,
         memoryAddressDirect <: CPU.address,
@@ -295,7 +298,7 @@ $$end
         VIDEO_Map.memoryWriteDirect = VIDEODIRECT & CPU.writememory;
 
         // CPU BUSY STATE
-        CPU.memorybusy = DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT ) | VIDEO_Map.busyDirect;
+        CPU.memorybusy = DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT );
     }
 }
 
@@ -464,8 +467,8 @@ unit evictioncache(
     uint1   Icachematch <:: ( ~cacheselect & ( ICACHE.tagmatch | DCACHE.tagmatch ) );
     uint1   Icacheupdate <:: dowrite & ICACHE.tagmatch;
 
-    uint16  cachewritevalue <:: dowrite ? ( byteaccess ) ? ( address[0,1] ? { writedata[0,8], DCACHE.tagmatch ? DCACHE.rdata[0,8] : SDRAM.readdata[0,8] } :
-                                                                { DCACHE.tagmatch ? DCACHE.rdata[8,8] : SDRAM.readdata[8,8], writedata[0,8] } ) : writedata : SDRAM.readdata;
+    uint16  cachewritevalue <:: dowrite ? ( byteaccess ) ? ( address[0,1] ? { writedata[0,8], DCACHE.tagmatch ? DCACHE.rdata[0,8] : sio.data_out[0,8] } :
+                                                                { DCACHE.tagmatch ? DCACHE.rdata[8,8] : sio.data_out[8,8], writedata[0,8] } ) : writedata : sio.data_out;
 
     // MEMORY ACCESS FLAGS
     uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
@@ -495,8 +498,8 @@ unit evictioncache(
                     }
                 } else {
                     busy = 1;                                                                                                   // CACHE MISS
-                    if( SDRAM.busy & ( DCACHE.needswrite | doreadsdram ) ) { while( SDRAM.busy ) {} } else { busy = 1; }         // WAIT FOR SDRAM IF BUSY AND REQUIRED
-                    if( DCACHE.needswrite ) {                                                                                   // CHECK IF CACHE LINE IS OCCUPIED
+                    if( SDRAM.busy & ( ( cacheselect & DCACHE.needswrite ) | doreadsdram ) ) { while( SDRAM.busy ) {} } else { busy = 1; }         // WAIT FOR SDRAM IF BUSY AND REQUIRED
+                    if( cacheselect & DCACHE.needswrite ) {                                                                                   // CHECK IF CACHE LINE IS OCCUPIED
                         if( doreadsdram ) {                                                                                         // EVICT FROM CACHE TO SDRAM
                             SDRAM.address = DCACHE.cacheaddress; SDRAM.writedata = DCACHE.rdata;
                             SDRAM.writeflag = 1; while( ~sio.done ) {}
@@ -545,7 +548,7 @@ unit evictioncache(
 unit dcache_read(
     simple_dualport_bram_port0 cache,
     simple_dualport_bram_port0 tags,
-    input   uint$sdram_addr_width$  address,
+    input!  uint$sdram_addr_width$  address,
     output! uint$sdram_addr_width$  cacheaddress,
     output! uint1   tagmatch,
     output! uint16  rdata,
@@ -583,7 +586,7 @@ unit dcache_write(
 unit icache_read(
     simple_dualport_bram_port0 cache,
     simple_dualport_bram_port0 tags,
-    input   uint$sdram_addr_width$  address,
+    input!  uint$sdram_addr_width$  address,
     output! uint1   tagmatch,
     output! uint16  rdata
 ) <reginputs> {
@@ -615,19 +618,18 @@ unit sdramcontroller(
     input   uint1   writeflag,
     input   uint16  writedata,
     input   uint1   readflag,
-    output  uint16  readdata,
     output  uint1   busy(0)
 ) <reginputs> {
-    sio.in_valid := 0; sio.rw := 0;
+    sio.in_valid := 0;
 
     always_after {
         if( readflag | writeflag ) {
             sio.addr = { address[1,$sdram_addr_width-1$], 1b0 };
-            if( writeflag ) { sio.data_in = writedata; sio.rw = 1; }
+            if( writeflag ) { sio.data_in = writedata; sio.rw = 1; } else { sio.rw = 0; }
             sio.in_valid = 1;
             busy = 1;
         }
-        readdata = sio.data_out;
+
         if( sio.done ) { busy = 0; }
     }
 }

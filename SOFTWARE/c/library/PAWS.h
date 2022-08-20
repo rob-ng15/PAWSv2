@@ -18,6 +18,9 @@ unsigned char volatile *SCREENMODE = (unsigned char volatile *) 0xdf00;
 unsigned char volatile *COLOUR = (unsigned char volatile *) 0xdf01;
 unsigned char volatile *REZ = (unsigned char volatile *) 0xdf02;
 unsigned char volatile *DIMMER = (unsigned char volatile *) 0xdf03;
+unsigned int volatile *PALETTERGB = (unsigned int volatile *) 0xdf10;
+unsigned char volatile *PALETTEENTRY = (unsigned char volatile *) 0xdf14;
+unsigned char volatile *PALETTEACTIVE = (unsigned char volatile *) 0xdf15;
 
 // BACKGROUND AND COPPER - BASE 0xd000
 unsigned char volatile *BACKGROUND_COLOUR = (unsigned char volatile *) 0xd000;
@@ -174,7 +177,7 @@ unsigned short volatile *SLEEPTIMER1 = (unsigned short volatile *) 0xc01a;
 unsigned int volatile *SYSTEMSECONDS = (unsigned int volatile *) 0xc020;
 unsigned int volatile *SYSTEMMILLISECONDS = (unsigned int volatile *)0xc028;
 unsigned int volatile *RTC = (unsigned int volatile *) 0xf600;
-int volatile *PAWSMAGIC = (int volatile *) 0xf7000;
+int volatile *PAWSMAGIC = (int volatile *) 0xf700;
 
 // HANDLE SMT - RUNNING STATUS AND POINTER TO CODE TO RUN
 unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;
@@ -196,6 +199,7 @@ int volatile *FIXED_REGS = (int volatile *)0xf800;                              
 // HARDWARE REGISTER BASES
 int volatile *TIMER_REGS = (int volatile *) 0xc000;
 int volatile *GPU_REGS = (int volatile *) 0xd600;
+int volatile *DISPLAY_REGS = (int volatile *) 0xdf00;
 int volatile *AUDIO_REGS = (int volatile *) 0xe000;
 int volatile *IO_REGS = (int volatile *) 0xf000;
 int volatile *DMA_REGS = (int volatile *) 0xfe00; int volatile *DMA_REGS_ALT = (int volatile *) 0xfd00;

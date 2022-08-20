@@ -416,43 +416,27 @@ unit cachecontroller(
             doread = readflag_s; dowrite = writeflag_s; readflag_s = 0; writeflag_s = 0;
 
             if( doread | dowrite ) {
-                if( Dcachematch ) {                                              // READ/WRITE IN CACHE
-                    if( dowrite ) {
-                        ++:
-                        DCACHEW.update = accessmask;                                                                     // UPDATE CACHE IF WRITE
-                        __display("HIT: %x -> %x (%b)",cachewritevalue,address,accesssize);
-//                        busy = 0;
-                    } else {
-                        __display("HIT: %x <- %x (%b)",readdata,address,accesssize);
-//                        busy = 0;
-                        doread = 1;
-                    }
-                } else {                                                                                                         // CACHE MISS
-//                    busy = 1;
-                    if( |( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ) ) {
-                        __display("MISS: EVICTING %b",( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ));
+                if( Dcachematch ) {                                                                                             // READ/WRITE IN CACHE
+                    if( dowrite ) { ++: DCACHEW.update = accessmask; } else {  doread = 1; }                                    // UPDATE CACHE ON WRITE
+                } else {                                                                                                        // CACHE MISS
+                    if( |( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ) ) {                                              // EVICT IF ENTRY TO BE OVERWRITTEN BY NEW
                         switch( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ) {
                             case 2b00: {}
                             case 2b01: {
                                 SDRAM.address = DCACHE.cacheaddressL; SDRAM.writedata = DCACHE.rdata[0,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
-                                __display(".L.. %x -> %x",DCACHE.rdata[0,16],DCACHE.cacheaddressL);
                             }
                             case 2b10: {
                                 SDRAM.address = DCACHE.cacheaddressH; SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
-                                __display("H... %x -> %x",DCACHE.rdata[16,16],DCACHE.cacheaddressH);
                             }
                             case 2b11: {
                                 SDRAM.address = DCACHE.cacheaddressL; SDRAM.writedata = DCACHE.rdata[0,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
                                 SDRAM.address = DCACHE.cacheaddressH; SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
-                                __display("HL.. %x -> %x %x -> %x",DCACHE.rdata[16,16],DCACHE.cacheaddressH,DCACHE.rdata[0,16],DCACHE.cacheaddressL);
                             }
                         }
                     } else {
                         SDRAM.writeflag = 0;
-                        __display("MISS: NO EVICTING");
                     }
-                    if( doreadsdram ) {
-                        __display("MISS: READING %b from %x",( accessmask & ~DCACHE.tagmatch ),address);
+                    if( doreadsdram ) {                                                                                         // READ MISSING FROM SDRAM
                         switch( accessmask & ~DCACHE.tagmatch ) {
                             case 2b00: {}
                             case 2b01: {
@@ -466,13 +450,9 @@ unit cachecontroller(
                                 SDRAM.address = address + 2; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata[16,16] = sio.data_out;
                             }
                         }
-                        __display("... READ %x",sdramreaddata);
-                        DCACHEW.update = ( accessmask & ~DCACHE.tagmatch );                                                                           // UPDATE THE CACHE
-//                        busy = 0;
+                        DCACHEW.update = ( accessmask & ~DCACHE.tagmatch );                                                     // UPDATE THE CACHE
                     } else {
-                        __display("MISS: WRITE %x -> %x (%b)",cachewritevalue,address,accesssize);
-                        DCACHEW.update = accessmask;                                                                               // UPDATE CACHE FOR 16 BIT WRITE
-//                        busy = 0;
+                        DCACHEW.update = accessmask;                                                                            // UPDATE CACHE FOR 16 BIT WRITE
                     }
                 }
             } else {
@@ -495,7 +475,7 @@ unit cachecontroller(
             }
         }
         readdata = { accessmask[1,1] ? DCACHE.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16] : 16b0,
-                     DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] };
+                     accessmask[0,1] ? DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] : 16b0 };
     }
 }
 
@@ -555,24 +535,20 @@ unit cache_write(
                 if( update[0,1] ) {
                     cache0.wdata1 = writedata[0,16]; tags0.wdata1 = { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
                     cache0.wenable1 = 1; tags0.wenable1 = 1;
-                    __display(".... CACHE0 UPDATE: %x -> [%x]",writedata[0,16],cache0.addr1);
                 }
                 if( update[1,1] ) {
                     cache1.wdata1 = writedata[16,16]; tags1.wdata1 = { needwritetosdram, 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
                     cache1.wenable1 = 1; tags1.wenable1 = 1;
-                    __display(".... CACHE1 UPDATE: %x -> [%x]",writedata[16,16],cache1.addr1);
                 }
             }
             case 1: {
                 if( update[0,1] ) {
                     cache1.wdata1 = writedata[0,16]; tags1.wdata1 = { needwritetosdram, 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
                     cache1.wenable1 = 1; tags1.wenable1 = 1;
-                    __display(".... CACHE1 UPDATE: %x -> [%x]",writedata[0,16],cache1.addr1);
                 }
                 if( update[1,1] ) {
                     cache0.wdata1 = writedata[16,16]; tags0.wdata1 = { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
                     cache0.wenable1 = 1; tags0.wenable1 = 1;
-                    __display(".... CACHE UPDATE: %x -> [%x]",writedata[16,16],cache0.addr1);
                 }
             }
         }

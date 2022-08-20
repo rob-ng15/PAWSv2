@@ -180,7 +180,7 @@ $$end
 
     // MEMORY MAPPED I/O + SMT CONTROLS
     // 32 bit cache memory bus, 0 I cache, 16384 D cache
-    uint32  SOC = 32b10000010000;
+    uint32  SOC = 32b10100001000;
     io_memmap IO_Map <@clock_io,!reset> (
         leds :> leds,
 $$if not SIMULATION then
@@ -355,7 +355,7 @@ $$ sdram_addr_width = 26
 $$if VERILATOR then
 $$ L1size = 128
 $$else
-$$ L1size = 4096
+$$ L1size = 2048
 $$end
 $$ L1cacheaddrwidth = clog2(L1size)
 $$ L1partaddresswidth = sdram_addr_width - 2 - L1cacheaddrwidth
@@ -386,6 +386,14 @@ unit cachecontroller(
     cache_read DCACHE <@clock_cache> ( cache0 <:> Dcache0, tags0 <:> Dtags0, cache1 <:> Dcache1, tags1 <:> Dtags1, address <: address );
     cache_write DCACHEW( cache0 <:> Dcache0, tags0 <:> Dtags0, cache1 <:> Dcache1, tags1 <:> Dtags1, needwritetosdram <: dowrite, address <: address, writedata <: cachewritevalue );
 
+    // INSTRUCTION CACHE
+    simple_dualport_bram uint16 Icache0 <@clock_cache,@clock> [$L1size$] = uninitialized;
+    simple_dualport_bram uint$L1partaddresswidth+2$ Itags0 <@clock_cache,@clock> [$L1size$] = uninitialized;
+    simple_dualport_bram uint16 Icache1 <@clock_cache,@clock> [$L1size$] = uninitialized;
+    simple_dualport_bram uint$L1partaddresswidth+2$ Itags1 <@clock_cache,@clock> [$L1size$] = uninitialized;
+    cache_read ICACHE <@clock_cache> ( cache0 <:> Icache0, tags0 <:> Itags0, cache1 <:> Icache1, tags1 <:> Itags1, address <: address );
+    cache_write ICACHEW( cache0 <:> Icache0, tags0 <:> Itags0, cache1 <:> Icache1, tags1 <:> Itags1, address <: address, writedata <: cachewritevalue );
+
     // SDRAM CONTROLLER
     uint32  sdramreaddata = uninitialized;          sdramcontroller SDRAM( sio <:> sio );
 
@@ -393,7 +401,8 @@ unit cachecontroller(
     uint2   accessmask <: accesssize[1,1] ? 2b11 : 2b01;
 
     // CACHE TAG match flags
-    uint1   Dcachematch <:: ( accesssize[1,1] ? &DCACHE.tagmatch : DCACHE.tagmatch[0,1] );
+    uint1   Dcachematch <:: cacheselect & ( accesssize[1,1] ? &DCACHE.tagmatch : DCACHE.tagmatch[0,1] );
+    uint1   Icachematch <:: ~cacheselect & &( DCACHE.tagmatch | ICACHE.tagmatch );
 
     // VALUE TO WRITE THROUGH TO THE CACHE
     uint32  cachewritevalue = uninitialized;
@@ -416,44 +425,28 @@ unit cachecontroller(
             doread = readflag_s; dowrite = writeflag_s; readflag_s = 0; writeflag_s = 0;
 
             if( doread | dowrite ) {
-                if( Dcachematch ) {                                              // READ/WRITE IN CACHE
-                    if( dowrite ) {
-                        ++:
-                        DCACHEW.update = accessmask;                                                                     // UPDATE CACHE IF WRITE
-                        __display("HIT: %x -> %x (%b)",cachewritevalue,address,accesssize);
-//                        busy = 0;
-                    } else {
-                        __display("HIT: %x <- %x (%b)",readdata,address,accesssize);
-//                        busy = 0;
-                        doread = 1;
-                    }
-                } else {                                                                                                         // CACHE MISS
-//                    busy = 1;
-                    if( |( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ) ) {
-                        __display("MISS: EVICTING %b",( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ));
+                if( Dcachematch | Icachematch ) {                                                                                             // READ/WRITE IN CACHE
+                    if( dowrite ) { ++: DCACHEW.update = accessmask; ICACHEW.update = accessmask & ICACHE.tagmatch; } else { doread = 1; }                                    // UPDATE CACHE ON WRITE
+                } else {                                                                                                        // CACHE MISS
+                    if( cacheselect & |( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ) ) {                                              // EVICT IF ENTRY TO BE OVERWRITTEN BY NEW
                         switch( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ) {
                             case 2b00: {}
                             case 2b01: {
                                 SDRAM.address = DCACHE.cacheaddressL; SDRAM.writedata = DCACHE.rdata[0,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
-                                __display(".L.. %x -> %x",DCACHE.rdata[0,16],DCACHE.cacheaddressL);
                             }
                             case 2b10: {
                                 SDRAM.address = DCACHE.cacheaddressH; SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
-                                __display("H... %x -> %x",DCACHE.rdata[16,16],DCACHE.cacheaddressH);
                             }
                             case 2b11: {
                                 SDRAM.address = DCACHE.cacheaddressL; SDRAM.writedata = DCACHE.rdata[0,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
                                 SDRAM.address = DCACHE.cacheaddressH; SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
-                                __display("HL.. %x -> %x %x -> %x",DCACHE.rdata[16,16],DCACHE.cacheaddressH,DCACHE.rdata[0,16],DCACHE.cacheaddressL);
                             }
                         }
                     } else {
                         SDRAM.writeflag = 0;
-                        __display("MISS: NO EVICTING");
                     }
-                    if( doreadsdram ) {
-                        __display("MISS: READING %b from %x",( accessmask & ~DCACHE.tagmatch ),address);
-                        switch( accessmask & ~DCACHE.tagmatch ) {
+                    if( doreadsdram ) {                                                                                         // READ MISSING FROM SDRAM
+                        switch( accessmask & ( cacheselect ? ~DCACHE.tagmatch : ~( DCACHE.tagmatch | ICACHE.tagmatch ) ) ) {
                             case 2b00: {}
                             case 2b01: {
                                 SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata = sio.data_out;
@@ -466,13 +459,11 @@ unit cachecontroller(
                                 SDRAM.address = address + 2; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata[16,16] = sio.data_out;
                             }
                         }
-                        __display("... READ %x",sdramreaddata);
-                        DCACHEW.update = ( accessmask & ~DCACHE.tagmatch );                                                                           // UPDATE THE CACHE
-//                        busy = 0;
+                        DCACHEW.update = cacheselect ? ( accessmask & ~DCACHE.tagmatch ) : 2b00;                                                     // UPDATE THE CACHE
+                        ICACHEW.update = cacheselect ? 2b00 : ~( DCACHE.tagmatch | ICACHE.tagmatch );
                     } else {
-                        __display("MISS: WRITE %x -> %x (%b)",cachewritevalue,address,accesssize);
-                        DCACHEW.update = accessmask;                                                                               // UPDATE CACHE FOR 16 BIT WRITE
-//                        busy = 0;
+                        DCACHEW.update = accessmask;                                                                            // UPDATE CACHE FOR 16 BIT WRITE
+                        ICACHEW.update = accessmask & ICACHE.tagmatch;
                     }
                 }
             } else {
@@ -494,8 +485,10 @@ unit cachecontroller(
                 cachewritevalue = dowrite ? writedata : { DCACHE.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16], DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] };
             }
         }
-        readdata = { accessmask[1,1] ? DCACHE.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16] : 16b0,
-                     DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] };
+        readdata = cacheselect ? { accessmask[1,1] ? DCACHE.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16] : 16b0,
+                                   accessmask[0,1] ? DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] : 16b0 } :
+                                 { DCACHE.tagmatch[1,1] ? DCACHE.rdata[16,16] : ICACHE.tagmatch[1,1] ? ICACHE.rdata[16,16] : sdramreaddata[16,16],
+                                   DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : ICACHE.tagmatch[0,1] ? ICACHE.rdata[0,16] : sdramreaddata[0,16] };
     }
 }
 
@@ -555,24 +548,20 @@ unit cache_write(
                 if( update[0,1] ) {
                     cache0.wdata1 = writedata[0,16]; tags0.wdata1 = { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
                     cache0.wenable1 = 1; tags0.wenable1 = 1;
-                    __display(".... CACHE0 UPDATE: %x -> [%x]",writedata[0,16],cache0.addr1);
                 }
                 if( update[1,1] ) {
                     cache1.wdata1 = writedata[16,16]; tags1.wdata1 = { needwritetosdram, 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
                     cache1.wenable1 = 1; tags1.wenable1 = 1;
-                    __display(".... CACHE1 UPDATE: %x -> [%x]",writedata[16,16],cache1.addr1);
                 }
             }
             case 1: {
                 if( update[0,1] ) {
                     cache1.wdata1 = writedata[0,16]; tags1.wdata1 = { needwritetosdram, 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
                     cache1.wenable1 = 1; tags1.wenable1 = 1;
-                    __display(".... CACHE1 UPDATE: %x -> [%x]",writedata[0,16],cache1.addr1);
                 }
                 if( update[1,1] ) {
                     cache0.wdata1 = writedata[16,16]; tags0.wdata1 = { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
                     cache0.wenable1 = 1; tags0.wenable1 = 1;
-                    __display(".... CACHE UPDATE: %x -> [%x]",writedata[16,16],cache0.addr1);
                 }
             }
         }

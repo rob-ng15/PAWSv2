@@ -392,9 +392,10 @@ void AM_findMinMaxBoundaries(void)
     min_w = 2*PLAYERRADIUS; // const? never changed?
     min_h = 2*PLAYERRADIUS;
 
-    a = FixedDiv(f_w<<FRACBITS, max_w);
-    b = FixedDiv(f_h<<FRACBITS, max_h);
-
+    // Use PAWSv2 Multi Fixed Division Dividers
+    //a = FixedDiv(f_w<<FRACBITS, max_w);
+    //b = FixedDiv(f_h<<FRACBITS, max_h);
+    P_FixedDiv(f_w<<FRACBITS, max_w, &a, f_h<<FRACBITS, max_h, &b );
     min_scale_mtof = a < b ? a : b;
     max_scale_mtof = FixedDiv(f_h<<FRACBITS, 2*PLAYERRADIUS);
 

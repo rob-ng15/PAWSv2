@@ -56,14 +56,14 @@ $include('../io_memmap.si')
 $include('../timers_random.si')
 
 // CPU SPECIFICATION
-$$CPUISA = 0x40001027
+$$CPUISA = 0x40011027
 $include('../cpu_functionblocks.si')
 $include('../ALU.si')
 $include('../FPU.si')
 $include('../CPU.si')
 
 // MAIN PAWS-32.si cache is 32 bits, PAWS.si cache is 16 bits with an aggregator in front of the cache
-//$include('../PAWS-32.si')
+//$include('../PAWS-32DI.si')
 $include('../PAWS.si')
 
 // I2C (EMARD FOR RTC)
