@@ -224,6 +224,9 @@ void sample_upload( unsigned char channel_number, unsigned short length, unsigne
 void await_vblank( void ) {
     while( !*VBLANK );
 }
+void await_vblank_finish( void ) {
+    while( *VBLANK );
+}
 
 // BACKGROUND GENERATOR
 void set_background( unsigned char colour, unsigned char altcolour, unsigned char backgroundmode ) {
@@ -475,7 +478,7 @@ void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, uns
 
 void draw_paws_logo( void ) {
     set_blitter_bitmap( 3, &PAWSLOGO[0] );
-    gpu_blit( 60, 2, 2, 3, 2 );
+    gpu_blit( UK_GOLD, 2, 2, 3, 2 );
 }
 
 void set_sdcard_bitmap( void ) {
@@ -486,7 +489,7 @@ void set_sdcard_bitmap( void ) {
 
 void draw_sdcard( void  ) {
     set_sdcard_bitmap();
-    gpu_blit( 60, 256, 2, 1, 2 );
+    gpu_blit( UK_GOLD, 256, 2, 1, 2 );
     gpu_blit( 6, 256, 2, 0, 2 );
 }
 
@@ -571,23 +574,23 @@ void main( void ) {
     draw_sdcard();
 
      // OUTPUT SOC & ISA CAPABILITIES
-    tpu_set( 1, 59, TRANSPARENT, WHITE ); tpu_outputbinary( *PAWSMAGIC, 32 );
-    tpu_set( 47,59, TRANSPARENT, WHITE ); tpu_outputbinary( CSRisa(), 32 );
+    tpu_set( 1, 59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( *PAWSMAGIC, 32 );
+    tpu_set( 47,59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( CSRisa(), 32 );
 
     gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 66, 34, "Risc-V RV32IMAFCB CPU", 0 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
-        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
-        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 63 - i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
+        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
+        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
         set_tilemap_tile( 0, i, 15, i+1, 0 );
         set_tilemap_tile( 1, i, 29, i+1, 0 );
     }
 
-    gpu_outputstringcentre( 60, 74, "VERILATOR - SMT + FPU TEST", 0 );
-    gpu_outputstringcentre( 60, 82, "THREAD 0 - PACMAN SPRITES", 0 );
-    gpu_outputstringcentre( 60, 90, "THREAD 1 - FPU MANDELBROT", 0 );
+    gpu_outputstringcentre( UK_GOLD, 74, "VERILATOR - SMT + FPU TEST", 0 );
+    gpu_outputstringcentre( UK_GOLD, 82, "THREAD 0 - PACMAN SPRITES", 0 );
+    gpu_outputstringcentre( UK_GOLD, 90, "THREAD 1 - FPU MANDELBROT", 0 );
 
     SMTSTART( (unsigned int )smtthread );
 
@@ -604,7 +607,7 @@ void main( void ) {
     memword = (MEMTEST *)0x6000000; word = 0; error = 0; action = 0;
 
     while(1) {
-        if( memword < (MEMTEST *)0x6000280 ) {
+        if( memword < (MEMTEST *)0x8000080 ) {
             if( action ) {
                 if( *memword != word ) {
                     error++;
@@ -622,5 +625,6 @@ void main( void ) {
         set_sprite_attribute( 1, 1, 1, ( j & 128 ) >> 7 );
         set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
         j++;
+        await_vblank_finish();
     }
 }

@@ -60,10 +60,10 @@ unit PAWSCPU(
     uint8  resetCounter = 8hff;                     uint8   resetNEXT <:: resetCounter - 1;
 
     // CPU REGISTERS AND THREAD SELECTION
-    uint1   COMMIT = uninitialized;                 uint1   SMT = 0;                                    uint1   COMMIT_SMT = uninitialised;
+    uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
     uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
-    uint27  pc = 0;                                 uint27  pc_next <:: SMT ? pc :  AGU.newPC;                                      // HART 0 pc + UPDATE
-    uint27  pcSMT = uninitialized;                  uint27  pcSMT_next <:: SMT ? AGU.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;       // HART 1 pc + update
+    uint27  pc = 0;                                 uint27  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;                                      // HART 0 pc + UPDATE
+    uint27  pcSMT = uninitialized;                  uint27  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;       // HART 1 pc + update
     uint27  PC <:: SMT ? pcSMT : pc;                                                                                                // SELECT PC FOR THIS CYCLE
 
     // MEMORY CONTROL UNITS
@@ -78,25 +78,15 @@ unit PAWSCPU(
         DMAACTIVE <: DMA.DMAACTIVE,
         DMAACCESSSIZE <: DMA.DMAACCESSSIZE,
         SMT <:: SMT,
-        COMMIT_SMT <:: COMMIT_SMT,
         frd <: frd,
         write <: write,
         result <: result,
+        PC <: PC,
         instruction <: instruction,
+        compressed <: compressed,
         accesssize :> accesssize
     );
 
-    // RISC-V ADDRESS GENERATOR
-    addressgenerator AGU <@clock_CPUdecoder> (
-        instruction <: instruction,
-        immediateValue <: RV32CONTROL.immediateValue,
-        PC <: PC,
-        sourceReg1 <: RV32CONTROL.sourceReg1,
-        AMO <: RV32CONTROL.IS_ATOMIC,
-        compressed <: compressed,
-        incPC <: RV32CONTROL.incPC,
-        takeBranch <: takeBranch
-    );
 
     // MINI DMA CONTROLLER
     dma DMA(
@@ -124,7 +114,7 @@ unit PAWSCPU(
     load LOAD(
         clock_CPUdecoder <: clock_CPUdecoder,
         accesssize <: accesssize,
-        byteaccess <: AGU.loadAddress[0,1],
+        byteaccess <: RV32CONTROL.loadAddress[0,1],
         dounsigned <: RV32CONTROL.function3[2,1],
         readdata <: readdata,
         memorybusy <: memorybusy
@@ -132,7 +122,7 @@ unit PAWSCPU(
 
     // STORE VALUE SELECTION
     uint32  storeValue <:: RV32CONTROL.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
-    uint1   faststore <:: ~AGU.storeAddress[26,1] & ~AGU.storeAddress[25,1];
+    uint1   faststore <:: ~RV32CONTROL.storeAddress[26,1] & ~RV32CONTROL.storeAddress[25,1];
     store STORE(
         faststore <: faststore,
         memorybusy <: memorybusy
@@ -161,11 +151,10 @@ unit PAWSCPU(
         isCSR <: RV32CONTROL.IS_CSR,
         isATOMIC <: RV32CONTROL.IS_ATOMIC,
         isFPU <: RV32CONTROL.IS_FPU,
-        FASTPATHFPU <: RV32CONTROL.FASTPATHFPU
+        FASTPATHFPU <: RV32CONTROL.IS_FASTFPU
     );
 
     // EXECUTE SINGLE CYLE INSTRUCTIONS, MOST OF BASE PLUS INTEGER MULTIPLICATION
-    uint1   takeBranch <:: RV32CONTROL.FASTPATH & EXECUTEFAST.takeBranch;
     cpuexecuteFASTPATH EXECUTEFAST(
         opCode <: RV32CONTROL.opCode,
         function3 <: RV32CONTROL.function3,
@@ -178,14 +167,15 @@ unit PAWSCPU(
         sourceReg2F <: RV32CONTROL.sourceReg2F,
         immediateValue <: RV32CONTROL.immediateValue,
         memoryinput <: LOAD.memoryinput,
-        AUIPCLUI <: AGU.AUIPCLUI,
-        nextPC <: AGU.nextPC,
+        AUIPCLUI <: RV32CONTROL.AUIPCLUI,
+        nextPC <: RV32CONTROL.nextPC,
         isALUMM <: RV32CONTROL.IS_ALUM,
         isLOAD <: RV32CONTROL.IS_LOAD,
-        isBRANCH <: RV32CONTROL.IS_BRANCH,
         isAUIPCLUI <: RV32CONTROL.IS_AUIPCLUI,
         isJAL <: RV32CONTROL.IS_JAL,
-        isFENCE <: RV32CONTROL.IS_FENCE
+        isFENCE <: RV32CONTROL.IS_FENCE,
+        LT <: RV32CONTROL.LT,
+        LTU <: RV32CONTROL.LTU
     );
 
     // SMALL ON CPU L0 CACHE - 1 per HART - RESET when pc == 0 @ START OF BIOS
@@ -246,7 +236,7 @@ unit PAWSCPU(
         while(1) {
             // CPU LOOP, CONTINUE UNTIL DMA REQUEST, THEN RESTART AT FETCH
             while( ~|DMAMODE ) {
-                COMMIT_SMT = SMT;
+                RV32CONTROL.COMMIT_SMT = SMT;
                 if( L0match ) {                                                                                                     // COMPLETE FETCH INSTRUCTION
                     instruction =  L0instruction; compressed = L0compressed;                                                            // FROM CACHE
                 } else {
@@ -260,12 +250,12 @@ unit PAWSCPU(
                     case 3b000: { ++: EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                         // DIVISION, CLMUL, FLOATING POINT, CSR
                     case 3b010: { ++: }                                                                                             // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
                     case 3b011: { STORE.start = 1; while( STORE.busy ) {} }                                                         // INTEGER + FLOAT STORE
+                    case 3b110: { LOAD.start = 1; while( LOAD.busy ) {} }                                                           // INTEGER + FLOAT LOAD
                     default: {                                                                                                      // ATOMIC LOAD - MODIFY - STORE
                         LOAD.start = RV32CONTROL.IS_LOAD; while( LOAD.busy ) {}                                                     // + EMULATION OF LR.W AND SC.W
                         EXECUTESLOW.start = ~RV32CONTROL.FASTPATH; while( EXECUTESLOW.busy ) {}
                         STORE.start = RV32CONTROL.IS_STORE; while( STORE.busy ) {}
                     }
-                    case 3b110: { LOAD.start = 1; while( LOAD.busy ) {} }                                                           // INTEGER + FLOAT LOAD
                 }
                 COMMIT = 1; ++:                                                                                                     // COMMIT REGISTERS< AND UPDATE PC AND SWITCH THREADS IF SMT ENABLED
 
@@ -281,8 +271,8 @@ unit PAWSCPU(
         if( |memorycontrols ) {
             onehot( memorycontrols ) {
                 case 0: { address = DMA.address; writedata = DMA.writedata; }                                                           // COPY MEMORY REQUESTS FROM DMA ENGINE
-                case 1: { address = AGU.storeAddress; writedata = storeValue; }                                                         // COPY MEMORY REQUESTS FROM THE STORE UNIT
-                case 2: { address = AGU.loadAddress; }                                                                                  // COPY MEMORY REQUESTS FROM THE LOAD UNIT
+                case 1: { address = RV32CONTROL.storeAddress; writedata = storeValue; }                                                         // COPY MEMORY REQUESTS FROM THE STORE UNIT
+                case 2: { address = RV32CONTROL.loadAddress; }                                                                                  // COPY MEMORY REQUESTS FROM THE LOAD UNIT
                 case 3: { address = PC; }                                                                                               // COPY MEMORY REQUESTS FROM INSTRUCTION FETCH
             }
         }
@@ -582,20 +572,17 @@ unit cpuexecuteFASTPATH(
     input   uint32  nextPC,
     input   uint1   isALUMM,
     input   uint1   isLOAD,
-    input   uint1   isBRANCH,
     input   uint1   isAUIPCLUI,
     input   uint1   isJAL,
     input   uint1   isFENCE,
-    output  uint1   takeBranch,
     output  int32   memoryoutput,
     output  int32   result,
+    input   uint1   LT,
+    input   uint1   LTU,
     output  uint2   fenceACTIVE(0)
 ) <reginputs> {
     // COMPARISON UNIT
-    compare COMPARE( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, immediateValue <: immediateValue, regimm <: opCode[3,1] );
-
-    // BRANCH COMPARISON UNIT
-    branchcomparison BRANCHUNIT( function3 <: function3, sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, LT <: COMPARE.LT, LTU <: COMPARE.LTU, EQ <: COMPARE.EQ );
+    compare COMPARE( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, immediateValue <: immediateValue, regreg <: opCode[3,1] );
 
     // ALU
     alu ALU(
@@ -603,14 +590,13 @@ unit cpuexecuteFASTPATH(
         rs1 <: rs1, rs2 <: rs2,
         sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, negSourceReg2 <: negSourceReg2,
         immediateValue <: immediateValue,
-        LT <: COMPARE.LT, LTU <: COMPARE.LTU
+        LT <: LT, LTU <: LTU
     );
 
     // M EXTENSION - MULTIPLICATION
     aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
     always_after {
-        takeBranch = isBRANCH & BRANCHUNIT.takeBranch;                  // BRANCH
         memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2;          // FLOAT STORE OR STORE
         result = isAUIPCLUI ? AUIPCLUI :                                // LUI AUIPC
                             isJAL ? nextPC :                            // JAL[R]
@@ -659,6 +645,19 @@ unit fetch(
 }
 
 // LOAD UNIT - INCLUDING SIGN EXTENSION FOR 8/16 BIT SIGNED LOADS
+unit signextend(
+    input   uint16  readdata,
+    input   uint1   is16or8,
+    input   uint1   byteaccess,
+    input   uint1   dounsigned,
+    output  uint32  memory168
+) <reginputs> {
+    uint1   sign <:: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
+
+    always_after {
+        memory168 = is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };
+    }
+}
 unit load(
     input   uint1   clock_CPUdecoder,
     input   uint1   start,

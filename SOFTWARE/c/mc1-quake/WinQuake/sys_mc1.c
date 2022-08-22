@@ -347,13 +347,13 @@ void main (int argc, char **argv)
 	parms.memsize = 8 * 1024 * 1024;
 	parms.membase = malloc (parms.memsize);
 	parms.basedir = "/DEMO";
+	fprintf (stderr,"Host_Init, membase = 0x%08x\n",(int)parms.membase);
 
 	COM_InitArgv (argc, argv);
 
 	parms.argc = com_argc;
 	parms.argv = com_argv;
 
-	fprintf (stderr,"Host_Init\n");
 	Host_Init (&parms);
 
 	s_keyptr = GET_MMIO (KEYPTR);

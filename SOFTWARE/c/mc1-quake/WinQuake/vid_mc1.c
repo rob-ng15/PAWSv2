@@ -80,6 +80,7 @@ void VID_Init (unsigned char *palette)
 		BASEHEIGHT,
 		(unsigned)s_framebuffer,
 		(unsigned)s_framebuffer);
+    fprintf(stderr,"MEM: s_vbuffer = 0x%08x, s_zbuffer = 0x%08x, s_surfcache = 0x%08x\n",(int)s_vbuffer,(int)s_zbuffer,(int)s_surfcache);
 
 	// Set up the vid structure that is used by the Quake rendering engine.
 	vid.maxwarpwidth = vid.width = vid.conwidth = BASEWIDTH;

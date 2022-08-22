@@ -1,11 +1,17 @@
 // RISC V INSTRUCTION DECODER + REGISTER BLOCK
 unit control(
+    // THREAD, DMA AND MEMORY ACCESS SIZE
     input   uint1   cacheselect,
+    output  uint2   accesssize,
     input   uint2   DMAACTIVE,
     input   uint2   DMAACCESSSIZE,
     input   uint1   SMT,
     input   uint1   COMMIT_SMT,
+
+    // PC and instruction decoding
+    input   uint27  PC,
     input   uint32  instruction,
+    input   uint1   compressed,
     output  uint5   opCode,
     output  uint3   function3,
     output  uint7   function7,
@@ -14,6 +20,20 @@ unit control(
     output  uint5   rs3,
     output  uint5   rd,
     output  int32   immediateValue,
+    output  uint1   IS_AUIPCLUI,
+    output  uint1   IS_JAL,
+    output  uint1   IS_ALUM,
+    output  uint1   IS_ALUCLM,
+    output  uint1   IS_CSR,
+    output  uint1   IS_ATOMIC,
+    output  uint1   IS_FPU,
+    output  uint1   IS_FASTFPU,
+    output  uint1   IS_LOAD,
+    output  uint1   IS_STORE,
+    output  uint1   IS_FENCE,
+    output  uint1   FASTPATH,
+
+    // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
     input   uint1   frd,
     input   uint1   write,
     input   int32   result,
@@ -25,24 +45,42 @@ unit control(
     output  int32   sourceReg1abs,
     output  int32   sourceReg2abs,
     output  int32   sourceReg2neg,
-    output  uint1   IS_AUIPCLUI,
-    output  uint1   IS_JAL,
-    output  uint1   IS_BRANCH,
-    output  uint1   IS_ALUM,
-    output  uint1   IS_ALUCLM,
-    output  uint1   IS_CSR,
-    output  uint1   IS_ATOMIC,
-    output  uint1   IS_FPU,
     output  uint1   writeRegisterF,
     output  uint1   writeRegister,
-    output  uint1   incPC,
-    output  uint1   FASTPATH,
-    output  uint1   FASTPATHFPU,
-    output  uint1   IS_LOAD,
-    output  uint1   IS_STORE,
-    output  uint1   IS_FENCE,
-    output  uint2   accesssize
+
+    // REGISTER COMPARISONS
+    output  uint1   LT,
+    output  uint1   LTU,
+    output  uint1   EQ,
+
+    // ADDRESS GENERATION
+    output  uint32  AUIPCLUI,
+    output  uint27  loadAddress,
+    output  uint27  storeAddress,
+    output  uint27  nextPC,
+    output  uint27  newPC
 ) <reginputs> {
+    // INSTRUCTION CLASSIFICATION AND CPU CONTROL FLAGS
+    controlflags FLAGS(
+        opCode <: opCode,
+        function3 <: function3,
+        function7 <: function7,
+        IS_AUIPCLUI :> IS_AUIPCLUI,
+        IS_JAL :> IS_JAL,
+        IS_ALUM :> IS_ALUM,
+        IS_ALUCLM :> IS_ALUCLM,
+        IS_CSR :> IS_CSR,
+        IS_ATOMIC :> IS_ATOMIC,
+        IS_FPU :> IS_FPU,
+        IS_FASTFPU :> IS_FASTFPU,
+        IS_LOAD :> IS_LOAD,
+        IS_STORE :> IS_STORE,
+        IS_FENCE :> IS_FENCE,
+        writeRegister :> writeRegister,
+        writeRegisterF :> writeRegisterF,
+        FASTPATH :> FASTPATH
+    );
+
     // REGISTERS I integer x 2, F float x 3, 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
     $$for i=0,1 do
@@ -57,15 +95,17 @@ unit control(
     uint1   I0write <:: ~COMMIT_SMT & write & ~frd & |rd;  uint1   F0write <:: ~COMMIT_SMT & write & frd;
     uint1   I1write <:: COMMIT_SMT & write & ~frd & |rd;   uint1   F1write <:: COMMIT_SMT & write & frd;
 
-    // CHECK FOR FLOAT LOAD/STORE ( 32 bit memory access )
-    uint1   FLOAD <:: opCode == 5b00001;             uint1   FSTORE <:: opCode == 5b01001;
+    // ADDRESS GENRATION
+    uint27  jumpAddress <:: { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
+    uint27  branchAddress <:: { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
+
+    // COMPARISON / BRANCH UNIT
+    compare COMPARE( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, immediateValue <: immediateValue, regreg <: opCode[3,1], LT :> LT, LTU :> LTU );
+    branchcomparison BRANCH( function3 <: function3, LT <: COMPARE.LT, LTU <: COMPARE.LTU, EQ <: COMPARE.EQ );
 
     $$for i=0,1 do
         I1_$i$.wenable1 := 0; I2_$i$.wenable1 := 0; F1_$i$.wenable1 := 0; F2_$i$.wenable1 := 0; F3_$i$.wenable1 := 0;
     $$end
-
-    // INSTRUCTION ACTION FLAGS
-    writeRegisterF := 0; writeRegister := 1; incPC := 1; FASTPATH := 1;
 
     always_before {
         // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
@@ -106,85 +146,68 @@ unit control(
         sourceReg1abs = sourceReg1[31,1] ? -sourceReg1 : sourceReg1;
         sourceReg2neg = -sourceReg2; sourceReg2abs = sourceReg2[31,1] ? sourceReg2neg : sourceReg2;
 
-        // CLASSIFY THE INSTRUCTION TYPE
-        IS_AUIPCLUI = ( opCode[0,3] == 3b101 );
-        IS_JAL = ( opCode[2,3] == 3b110 ) & opCode[0,1];
-        IS_BRANCH = ( opCode == 5b11000 );
-        IS_ALUM = ( opCode == 5b01100 ) & ( function7 == 7b0000001 );
-        IS_ALUCLM = ( opCode == 5b01100 ) & ~function3[2,1] & ( function7 == 7b0000101 );
-        IS_CSR = ( opCode == 5b11100 );
-        IS_ATOMIC =  ( opCode == 5b01011 );
-        IS_FPU = ( opCode[3,2] == 2b10 );
-        IS_LOAD = ( ~|opCode ) | FLOAD | ( IS_ATOMIC & ( function7 != 5b00011 ) );
-        IS_STORE = ( opCode == 5b01000 ) | FSTORE | ( IS_ATOMIC & ( function7 != 5b00010 ) );
-        IS_FENCE = ( opCode == 5b00011 );
 
-        // DETERMINE CPU CONTROL FLAGS
-        switch( opCode ) {
-            case 5b01101: {}                        // LUI
-            case 5b00101: {}                        // AUIPC
-            case 5b11011: { incPC = 0; }            // JAL
-            case 5b11001: { incPC = 0; }            // JALR
-            case 5b11000: { writeRegister = 0; }    // BRANCH
-            case 5b00000: {}                        // LOAD
-            case 5b01000: { writeRegister = 0; }    // STORE
-            case 5b00001: { writeRegisterF = 1; }   // FLOAT LOAD
-            case 5b01001: { writeRegister = 0; }    // FLOAT STORE
-            case 5b00011: { writeRegister = 0;}     // FENCE[I]
-            case 5b11100: { FASTPATH = 0; }         // CSR
-            case 5b01011: { FASTPATH = 0; }         // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
-            default: { FASTPATH = ~( opCode[4,1] | IS_ALUCLM | ( IS_ALUM & function3[2,1]) ); }    // FPU, CARRYLESS MULTIPLY OR INTEGER DIVIDE -> SLOWPATH ALL ELSE TO FASTPATH
-        }
+        // DETERMINE MEMORY ACCESS SIZE - DMA 16 or 8, INSTRUCTION 16, ATOMIC/FLOAD/FSTORE, 32, ELSE BY function3
+        accesssize = |DMAACTIVE ? DMAACCESSSIZE : cacheselect ? ( FLAGS.IS_ATOMIC ? 2b10 : function3[0,2] ) : 2b10;
 
-        // DETERMINE MEMORY ACCESS SIZE - DMA 16 or 8, INSTRUCTION 16, ATOMIC, 32, ELSE BY function3
-        accesssize = |DMAACTIVE ? DMAACCESSSIZE : cacheselect ? ( IS_ATOMIC ? 2b10 : function3[0,2] ) : 2b10;
-
-        FASTPATHFPU = opCode[2,1] & function7[4,1];
-    }
-}
-
-// RISC-V ADDRESS GENERATOR
-unit addressgenerator(
-    input   uint32  instruction,
-    input   int32   immediateValue,
-    input   uint27  PC,
-    input   int32   sourceReg1,
-    output  uint32  AUIPCLUI,
-    output  uint27  branchAddress,
-    output  uint27  jumpAddress,
-    output  uint27  loadAddress,
-    output  uint27  storeAddress,
-    output  uint27  nextPC,
-    output  uint27  newPC,
-    input   uint1   AMO,
-    input   uint1   compressed,
-    input   uint1   incPC,
-    input   uint1   takeBranch
-) <reginputs> {
-    always_after {
+        // ADDRESS GENERATOR
         AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
-        branchAddress = { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
-        jumpAddress = { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
-        loadAddress = ( AMO ? 0 : immediateValue ) + sourceReg1;
-        storeAddress = ( AMO ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1;
-
+        loadAddress = ( FLAGS.IS_ATOMIC ? 0 : immediateValue ) + sourceReg1;
+        storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1;
         nextPC = PC + ( compressed ? 2 : 4 );
-        newPC = ( incPC ) ? ( takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress );
+        newPC = ( FLAGS.incPC ) ? ( FLAGS.IS_BRANCH & BRANCH.takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress );
     }
 }
 
-// PERFORM SIGN EXTENSION FOR 8 AND 16 BIT LOADS
-unit signextend(
-    input   uint16  readdata,
-    input   uint1   is16or8,
-    input   uint1   byteaccess,
-    input   uint1   dounsigned,
-    output  uint32  memory168
+// CLASSIFY INSTRUCTION TYPE AND DETIMINE CPU CONTROL FLAGS
+unit controlflags(
+    input   uint5   opCode,
+    input   uint3   function3,
+    input   uint7   function7,
+    output  uint1   IS_AUIPCLUI,
+    output  uint1   IS_JAL,
+    output  uint1   IS_BRANCH,
+    output  uint1   IS_ALUM,
+    output  uint1   IS_ALUCLM,
+    output  uint1   IS_CSR,
+    output  uint1   IS_ATOMIC,
+    output  uint1   IS_FPU,
+    output  uint1   IS_FASTFPU,
+    output  uint1   IS_LOAD,
+    output  uint1   IS_STORE,
+    output  uint1   IS_FENCE,
+    output  uint1   writeRegister,
+    output  uint1   writeRegisterF,
+    output  uint1   incPC,
+    output  uint1   FASTPATH
 ) <reginputs> {
-    uint1   sign <:: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
+    // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
+    uint1   REGREG <:: ( opCode == 5b01100 );
+
+    writeRegisterF := 0; writeRegister := 1; incPC := 1; FASTPATH := 1;
+    IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;
 
     always_after {
-        memory168 = is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };
+        // DETERMINE CPU CONTROL FLAGS
+        IS_ALUM = REGREG & ( function7 == 7b0000001 );
+        IS_ALUCLM = REGREG & ~function3[2,1] & ( function7 == 7b0000101 );
+        IS_FPU = ( opCode[3,2] == 2b10 );
+        IS_FASTFPU = ( opCode[2,1] & function7[4,1] );
+        switch( opCode ) {
+            case 5b01101: { IS_AUIPCLUI = 1; }                        // LUI
+            case 5b00101: { IS_AUIPCLUI = 1; }                        // AUIPC
+            case 5b11011: { IS_JAL = 1; incPC = 0; }            // JAL
+            case 5b11001: { IS_JAL = 1; incPC = 0; }            // JALR
+            case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }    // BRANCH
+            case 5b00000: { IS_LOAD = 1; }                        // LOAD
+            case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }   // FLOAT LOAD
+            case 5b01000: { IS_STORE = 1; writeRegister = 0; }    // STORE
+            case 5b01001: { IS_STORE = 1; writeRegister = 0; }    // FLOAT STORE
+            case 5b00011: { IS_FENCE = 1; writeRegister = 0;}     // FENCE[I]
+            case 5b11100: { IS_CSR = 1; FASTPATH = 0; }         // CSR
+            case 5b01011: { IS_ATOMIC = 1; FASTPATH = 0; }         // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
+            default: { FASTPATH = ~( IS_FPU | IS_ALUCLM | ( IS_ALUM & function3[2,1]) ); }    // FPU, CARRYLESS MULTIPLY OR INTEGER DIVIDE -> SLOWPATH ALL ELSE TO FASTPATH
+        }
     }
 }
 
@@ -193,12 +216,12 @@ unit compare(
     input   int32   sourceReg1,
     input   int32   sourceReg2,
     input   int32   immediateValue,
-    input   uint1   regimm,
+    input   uint1   regreg,
     output  uint1   LT,
     output  uint1   LTU,
     output  uint1   EQ
 ) <reginputs> {
-    int32   operand2 <:: regimm ? sourceReg2 : immediateValue;
+    int32   operand2 <:: regreg ? sourceReg2 : immediateValue;
 
     always_after {
         LT = __signed(sourceReg1) < __signed( operand2 );
@@ -210,8 +233,6 @@ unit compare(
 // BRANCH COMPARISIONS
 unit branchcomparison(
     input   uint3   function3,
-    input   int32   sourceReg1,
-    input   int32   sourceReg2,
     input   uint1   LT,
     input   uint1   LTU,
     input   uint1   EQ,
