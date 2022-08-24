@@ -707,9 +707,9 @@ int main( int argc, char **argv ) {
     // PREPARE ROAD
     init();
 
-    unsigned char framebuffer = 0;
+    unsigned char framebuffer = 1;
     while( !( get_buttons() & 4 ) ) {
-        bitmap_draw( !framebuffer );
+        bitmap_draw( 3 - framebuffer );
         draw();
         update(); move_sprites();
         if( !(systemclock()&15) ) {
@@ -718,7 +718,7 @@ int main( int argc, char **argv ) {
         } else {
             if( systemclock()&3 ) tpu_cs();
         }
-        framebuffer = !framebuffer;
+        framebuffer = 3 - framebuffer;
         bitmap_display( framebuffer );
         if( dimmerlevel ) {
             if( !--counter ) { screen_dimmer( --dimmerlevel ); counter = 3; }

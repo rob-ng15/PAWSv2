@@ -53,7 +53,7 @@ void I_InitGraphics (void) {
     DMA_REGS[0] = (int)_PAWSKEYlookup; DMA_REGS[1] = (int)PAWSKEYlookup; DMA_REGS[2] = 256; DMA_REGS_B[0x0c] = 3;      // Copy keyboard table to BRAM
 
     DISPLAY_REGS_B[0x00] = 0; DISPLAY_REGS_B[0x01] = MODE_RGBM; DISPLAY_REGS_B[0x02] = 0; DISPLAY_REGS_B[0x15] = TRUE;         // Setup video hardware, RGBM, 256 colours with palette
-    GPU_REGS_B[0x7a] = PB_WRITEALL; GPU_REGS_B[0xf4] = TRUE;  GPU_REGS_B[0xf2] = 1; GPU_REGS_B[0xf0] = 0;                      // DRAW TO FB 1 , DISPLAY FB 0, BITMAP DISPLAY 256, PIXELBLOCK WRITE 256
+    GPU_REGS_B[0x7a] = PB_WRITEALL; GPU_REGS_B[0xf4] = TRUE;  GPU_REGS_B[0xf2] = 2; GPU_REGS_B[0xf0] = 1;                      // DRAW TO FB 1 , DISPLAY FB 0, BITMAP DISPLAY 256, PIXELBLOCK WRITE 256
 
     DMA_REGS_B[0x0e] = 0; DMA_REGS[0] = (int)DMASET;                                                                             // CLEAR THE FRAMEBUFFERS USING MEMSET
     DMA_REGS[1] = 0x2000000; DMA_REGS[2] = 320*240; DMA_REGS_B[0x0c] = 4;

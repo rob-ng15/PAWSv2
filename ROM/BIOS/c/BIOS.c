@@ -267,19 +267,15 @@ void reset_display( void ) {
     gpu_pixelblock_stop();
     while( !*GPU_FINISHED );
 
-    *GPU_DITHERMODE = 0;
-    *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
-    *FRAMEBUFFER_DRAW = 1; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DRAW = 0; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DISPLAY = 0; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
+    *GPU_DITHERMODE = 0; *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
+    *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
+    *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
     *SCREENMODE = 0; *COLOUR = 0; *REZ = 0; *DIMMER = 0;
     *TPU_CURSOR = 0; tpu_cs();
     *TERMINAL_SHOW = 0; *TERMINAL_RESET = 1;
-    *LOWER_TM_SCROLLWRAPCLEAR = 5;
-    *UPPER_TM_SCROLLWRAPCLEAR = 5;
+    *LOWER_TM_SCROLLWRAPCLEAR = 5; *UPPER_TM_SCROLLWRAPCLEAR = 5;
     for( unsigned short i = 0; i < 16; i++ ) {
-        LOWER_SPRITE_ACTIVE[i] = 0;
-        UPPER_SPRITE_ACTIVE[i] = 0;
+        LOWER_SPRITE_ACTIVE[i] = UPPER_SPRITE_ACTIVE[i] = 0;
     }
 }
 

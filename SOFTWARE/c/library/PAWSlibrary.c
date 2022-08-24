@@ -21,7 +21,7 @@ extern int errno;
 #define FENCEIO asm volatile ("fence io, io");
 #define FENCEMEM asm volatile ("fence rw, rw");
 #define FENCEALL asm volatile ("fence iorw, iorw");
-#define NOFENCE asm volatile ("fence.i")
+#define NOFENCE asm volatile ("fence.i");
 
 // TOP OF SDRAM MEMORY
 unsigned char *MEMORYTOP = (unsigned char *)0x8000000;;
@@ -2157,11 +2157,14 @@ struct sFL_FILE *__filehandles[ MAXOPENFILES + 3 ]; // stdin, stdout, stderr
 
 // FIND AN UNUSED FILE HANDLE FROM 3, 0 = stdin, 1 = stdout, 2 = stderr
 int __find_filehandlespace( void ) {
+    FENCEIO
     for( int i = 3; i < MAXOPENFILES+3; i++ ) {
         if( __filehandles[ i ] == NULL ) {
+            NOFENCE
             return i;
         }
     }
+    NOFENCE
     return -1;
 }
 
@@ -2520,3 +2523,6 @@ int paws_strcmp ( const char *string1, const char *string2 ) {
 
 size_t paws_strlen ( const char *string ) {
 }
+
+#include "akavel_gostdc/vfscanf.c"
+#include "akavel_gostdc/fscanf.c"

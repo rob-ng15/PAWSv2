@@ -12,7 +12,7 @@ unit framebuffer_read(
     simple_dualport_bram_port0 bitmap_110,
     simple_dualport_bram_port0 bitmap_111,
 
-    input   uint1   framebuffer,
+    input   uint2   framebuffer,
     input   uint10  pix_x,
     input   uint9   pix_y,
     input   uint1   pix_active,
@@ -21,11 +21,13 @@ unit framebuffer_read(
     output! uint1   bitmap_display,
     input   uint1   display256
 ) <reginputs> {
+    uint8   pixel0 = uninitialised;                 uint8   pixel1 = uninitialised;
+
     // Pixel x and y fetching ( 1 in advance due to bram latency for first pixel in the block }
-    uint17  address00 <: framebuffer ? memoryAddressDirect + { memoryAddressDirect[1,1], 1b0 } : ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? ( pix_x[1,9] + pix_x[0,1] ) : 0 );
-    uint17  address0 <: framebuffer ? memoryAddressDirect + { memoryAddressDirect[1,1], 1b0 } : ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? ( pix_x[1,9] ) : 0 );
-    uint17  address10 <: framebuffer ? ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? ( pix_x[1,9] + pix_x[0,1] ) : 0 ) : memoryAddressDirect;
-    uint17  address1 <: framebuffer ? ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? ( pix_x[1,9] ) : 0 ) : memoryAddressDirect;
+    uint17  address00 <: framebuffer[0,1] ? ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? ( pix_x[1,9] + pix_x[0,1] ) : 0 ) : memoryAddressDirect + { memoryAddressDirect[1,1], 1b0 };
+    uint17  address0 <: framebuffer[0,1] ? ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? ( pix_x[1,9] ) : 0 ) : memoryAddressDirect + { memoryAddressDirect[1,1], 1b0 };
+    uint17  address10 <: framebuffer[1,1] ? ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? ( pix_x[1,9] + pix_x[0,1] ) : 0 ) : memoryAddressDirect;
+    uint17  address1 <: framebuffer[1,1] ? ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? ( pix_x[1,9] ) : 0 ) : memoryAddressDirect;
 
     // Setup the address in the bitmap for the pixel being rendered
     // Use pre-fetching of the next pixel ready for the next cycle
@@ -35,29 +37,29 @@ unit framebuffer_read(
 
     // RENDER - Default to transparent
     always_after {
-        switch( framebuffer ) {
-            case 0: {
-                switch( address0[0,2] ) {
-                    case 2b00: { pixel = bitmap_000.rdata0; }
-                    case 2b01: { pixel = bitmap_001.rdata0; }
-                    case 2b10: { pixel = bitmap_010.rdata0; }
-                    case 2b11: { pixel = bitmap_011.rdata0; }
-                }
-                readDataDirect = memoryAddressDirect[1,1] ? { bitmap_101.rdata0, bitmap_100.rdata0, bitmap_111.rdata0, bitmap_110.rdata0 } :
-                                                            { bitmap_111.rdata0, bitmap_110.rdata0, bitmap_101.rdata0, bitmap_100.rdata0 };
+        if( framebuffer[0,1] ) {
+            switch( address0[0,2] ) {
+                case 2b00: { pixel0 = bitmap_000.rdata0; }
+                case 2b01: { pixel0 = bitmap_001.rdata0; }
+                case 2b10: { pixel0 = bitmap_010.rdata0; }
+                case 2b11: { pixel0 = bitmap_011.rdata0; }
             }
-            case 1: {
-                switch( address1[0,2] ) {
-                    case 2b00: { pixel = bitmap_100.rdata0; }
-                    case 2b01: { pixel = bitmap_101.rdata0; }
-                    case 2b10: { pixel = bitmap_110.rdata0; }
-                    case 2b11: { pixel = bitmap_111.rdata0; }
-                }
-                readDataDirect = memoryAddressDirect[1,1] ? { bitmap_001.rdata0, bitmap_000.rdata0, bitmap_011.rdata0, bitmap_010.rdata0 } :
-                                                            { bitmap_011.rdata0, bitmap_010.rdata0, bitmap_001.rdata0, bitmap_000.rdata0 };
-            }
+            readDataDirect = memoryAddressDirect[1,1] ? { bitmap_101.rdata0, bitmap_100.rdata0, bitmap_111.rdata0, bitmap_110.rdata0 } :
+                                                        { bitmap_111.rdata0, bitmap_110.rdata0, bitmap_101.rdata0, bitmap_100.rdata0 };
         }
-        bitmap_display = pix_active & ( ( pixel != 64 ) | display256 );
+        if( framebuffer[1,1] ) {
+            switch( address1[0,2] ) {
+                case 2b00: { pixel1 = bitmap_100.rdata0; }
+                case 2b01: { pixel1 = bitmap_101.rdata0; }
+                case 2b10: { pixel1 = bitmap_110.rdata0; }
+                case 2b11: { pixel1 = bitmap_111.rdata0; }
+            }
+            readDataDirect = memoryAddressDirect[1,1] ? { bitmap_001.rdata0, bitmap_000.rdata0, bitmap_011.rdata0, bitmap_010.rdata0 } :
+                                                        { bitmap_011.rdata0, bitmap_010.rdata0, bitmap_001.rdata0, bitmap_000.rdata0 };
+        }
+        pixel = display256 ? framebuffer[1,1] ? pixel1 : framebuffer[0,1] ? pixel0 : 0 :
+                             framebuffer[1,1] & ( pixel1 != 64 ) ? pixel1 : framebuffer[0,1] & ( pixel0 != 64 ) ? pixel0 : 64;
+        bitmap_display = pix_active & |framebuffer & ( ( pixel != 64 ) | display256 );
     }
 }
 
@@ -81,7 +83,7 @@ unit framebuffer_write(
     input   uint4   gpu_active_dithermode,
 
     // BITMAP TO WRITE
-    input   uint1   framebuffer,
+    input   uint2   framebuffer,
     simple_dualport_bram_port1 bitmap_000,
     simple_dualport_bram_port1 bitmap_001,
     simple_dualport_bram_port1 bitmap_010,
@@ -112,19 +114,20 @@ unit framebuffer_write(
     always_after {
         switch( memoryWriteDirect ) {
             case 0: {
-                if( framebuffer ) {
-                    switch( address[0,2] ) {
-                        case 2b00: { bitmap_100.addr1 = address[2,15]; bitmap_100.wdata1 = pixeltowrite; bitmap_100.wenable1 = write_pixel; }
-                        case 2b01: { bitmap_101.addr1 = address[2,15]; bitmap_101.wdata1 = pixeltowrite; bitmap_101.wenable1 = write_pixel; }
-                        case 2b10: { bitmap_110.addr1 = address[2,15]; bitmap_110.wdata1 = pixeltowrite; bitmap_110.wenable1 = write_pixel; }
-                        case 2b11: { bitmap_111.addr1 = address[2,15]; bitmap_111.wdata1 = pixeltowrite; bitmap_111.wenable1 = write_pixel; }
-                    }
-                } else {
+                if( framebuffer[0,1] ) {
                     switch( address[0,2] ) {
                         case 2b00: { bitmap_000.addr1 = address[2,15]; bitmap_000.wdata1 = pixeltowrite; bitmap_000.wenable1 = write_pixel; }
                         case 2b01: { bitmap_001.addr1 = address[2,15]; bitmap_001.wdata1 = pixeltowrite; bitmap_001.wenable1 = write_pixel; }
                         case 2b10: { bitmap_010.addr1 = address[2,15]; bitmap_010.wdata1 = pixeltowrite; bitmap_010.wenable1 = write_pixel; }
                         case 2b11: { bitmap_011.addr1 = address[2,15]; bitmap_011.wdata1 = pixeltowrite; bitmap_011.wenable1 = write_pixel; }
+                    }
+                }
+                if( framebuffer[1,1] ) {
+                    switch( address[0,2] ) {
+                        case 2b00: { bitmap_100.addr1 = address[2,15]; bitmap_100.wdata1 = pixeltowrite; bitmap_100.wenable1 = write_pixel; }
+                        case 2b01: { bitmap_101.addr1 = address[2,15]; bitmap_101.wdata1 = pixeltowrite; bitmap_101.wenable1 = write_pixel; }
+                        case 2b10: { bitmap_110.addr1 = address[2,15]; bitmap_110.wdata1 = pixeltowrite; bitmap_110.wenable1 = write_pixel; }
+                        case 2b11: { bitmap_111.addr1 = address[2,15]; bitmap_111.wdata1 = pixeltowrite; bitmap_111.wenable1 = write_pixel; }
                     }
                 }
             }

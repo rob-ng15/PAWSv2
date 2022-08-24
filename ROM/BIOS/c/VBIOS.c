@@ -495,9 +495,8 @@ void draw_sdcard( void  ) {
 
 void reset_display( void ) {
     *GPU_DITHERMODE = 0;
-    *FRAMEBUFFER_DRAW = 1; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DRAW = 0; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DISPLAY = 0;
+    *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
+    *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1;
     *SCREENMODE = 0; *COLOUR = 0;
     tpu_cs();
     *LOWER_TM_SCROLLWRAPCLEAR = 5;

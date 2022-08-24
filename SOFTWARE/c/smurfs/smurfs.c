@@ -91,7 +91,7 @@ void smt_thread( void ) {
 
 // RESET THE DISPLAY
 void displayreset( void ) {
-    screen_mode( 0, 0, 0 ); bitmap_draw( 0 ); bitmap_display( 0 ); screen_dimmer( 0 );
+    screen_mode( 0, 0, 0 ); bitmap_draw( 1 ); bitmap_display( 1 ); screen_dimmer( 0 );
     gpu_cs();
     tpu_cs();
     tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
