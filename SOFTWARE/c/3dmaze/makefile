@@ -1,4 +1,4 @@
-include ../makefile.inc
+include ../makefile-smt.inc
 
 PROJECT=3DMAZE
 PROJECTTYPE=GAMES

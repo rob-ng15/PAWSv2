@@ -1,4 +1,5 @@
 #ifndef __PAWSLIBRARY__
+#include <stddef.h>
 #include "PAWSdefinitions.h"
 
 // MEMORY
@@ -185,6 +186,10 @@ extern int volatile *DISPLAY_REGS;
 extern int volatile *AUDIO_REGS;
 extern int volatile *FIXED_REGS;
 extern int volatile *TIMER_REGS;
+
+extern void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd );
+extern void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles );
+extern void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles );
 
 #define __PAWSLIBRARY__
 #endif

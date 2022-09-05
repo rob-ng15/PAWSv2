@@ -10,11 +10,11 @@ unit apu(
     output  uint8   audio_output,
     output  uint8   point,
 ) <reginputs> {
-    waveform WAVEFORM( start <: apu_write, update <: COUNTER.updatepoint, selected_waveform <: waveform, staticGenerator <: staticGenerator, volume <: volume, point :> point );
+    waveform WAVEFORM( start <: apu_write, update <: COUNTER.updatepoint, selected_waveform <: waveform, staticGenerator <: staticGenerator, point :> point );
     audiocounter COUNTER( selected_frequency <: frequency, selected_duration <: duration, start <: apu_write, active :> audio_active );
 
     always_after {
-        if( COUNTER.updatepoint ) { audio_output = WAVEFORM.audio_output; }
+        if( COUNTER.updatepoint ) { audio_output = WAVEFORM.audio_output >> ~volume; }
     }
 }
 
@@ -23,11 +23,9 @@ unit waveform(
     input   uint1   update,
     input   uint3   selected_waveform,
     input   uint8   staticGenerator,
-    input   uint3   volume,
     output  uint8   audio_output,
     output  uint8   point,
 ) <reginputs> {
-    uint8   wave = uninitialised;
     brom uint8 sines[256] = {
         128,131,134,137,140,144,147,150,153,156,159,162,165,168,171,174,
         177,179,182,185,188,191,193,196,199,201,204,206,209,211,213,216,
@@ -47,18 +45,17 @@ unit waveform(
         82,85,88,91,94,97,100,103,106,109,112,116,119,122,125
     };
 
-    point := start ? 0 : point + update; sines.addr := point;
+    sines.addr := point;
 
     always_after {
         switch( selected_waveform ) {
-            case 0: { wave = { point[7,1], 7b1111111 }; }                                               // SQUARE
-            case 1: { wave = point; }                                                                   // SAWTOOTH
-            case 2: { wave = ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ); }             // TRIANGLE
-            case 3: { wave = sines.rdata; }                                                             // SINE
-            default: { wave = staticGenerator; }                                                        // NOISE
+            case 0: { audio_output = { point[7,1], 7b1111111 }; }                                               // SQUARE
+            case 1: { audio_output = point; }                                                                   // SAWTOOTH
+            case 2: { audio_output = ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ); }             // TRIANGLE
+            case 3: { audio_output = sines.rdata; }                                                             // SINE
+            default: { audio_output = staticGenerator; }                                                        // NOISE
         }
-
-        audio_output = wave >> ~volume;
+        point = start ? 0 : point + update;
     }
 }
 
@@ -70,10 +67,9 @@ unit audiocounter(
     output  uint1   active(0)
 ) <reginputs> {
     uint12  counter25mhz = uninitialised;           uint16  counter1khz = uninitialised;                uint16  duration = uninitialised;
-    uint12  c25mhzNEXT <:: counter25mhz - 1;        uint16  c1khzNEXT <:: counter1khz - 1;              uint16  dureationNEXT <:: duration - 1;
     uint1   updateduration <:: active & ( ~|counter1khz );
 
-    active ::= ( |duration ); updatepoint ::= active & ( ~|counter25mhz );
+    active := ( |duration ); updatepoint := active & ( ~|counter25mhz );
 
     always_after {
         if( start ) {
@@ -81,9 +77,9 @@ unit audiocounter(
             counter1khz = 25000;
             duration = selected_duration;
         } else {
-            counter25mhz = updatepoint ? selected_frequency : c25mhzNEXT;
-            counter1khz = updateduration ? 25000 : c1khzNEXT;
-            if( updateduration ) { duration = dureationNEXT; }
+            counter25mhz = updatepoint ? selected_frequency : counter25mhz - 1;
+            counter1khz = updateduration ? 25000 : counter1khz - 1;
+            if( updateduration ) { duration = duration - 1; }
         }
     }
 }

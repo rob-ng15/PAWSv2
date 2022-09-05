@@ -82,7 +82,7 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
     * 32K of RAM
         * FAST BRAM - used for BIOS
         * STACK POINTER AT TOP OF BRAM
-    * 32K ( 8K x 32 bit ) of I/O Registers with 16 bit read / write
+    * 32K ( 8K x 32 bit ) of I/O Registers with 32 bit read / write
     * 32MB of SDRAM
         * 16K Instruction and 8K Data Cache
 

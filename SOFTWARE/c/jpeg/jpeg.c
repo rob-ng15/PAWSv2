@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <nanojpeg.h>
 #include <PAWSlibrary.h>
 
 int main( int argc, char **argv ) {

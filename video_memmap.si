@@ -92,18 +92,12 @@ $$if VGA then
   );
 $$end
 $$if HDMI then
-    uint8   video_r = uninitialized;
-    uint8   video_g = uninitialized;
-    uint8   video_b = uninitialized;
     hdmi video<@video_clock,!reset> (
         vblank  :> vblank,
         active  :> pix_active,
         x       :> pix_x,
         y       :> pix_y,
-        gpdi_dp :> gpdi_dp,
-        red     <: video_r,
-        green   <: video_g,
-        blue    <: video_b
+        gpdi_dp :> gpdi_dp
     );
 $$end
     // CREATE DISPLAY LAYERS
@@ -240,9 +234,6 @@ $$end
         video_clock <: video_clock,
         video_reset <: video_reset,
         palette <:> palette,
-        pix_red    :> video_r,
-        pix_green  :> video_g,
-        pix_blue   :> video_b,
         background_p <: BACKGROUND.pixel,
         lower_tilemap_p <: LOWER_TILE.pixel,
         lower_tilemap_display <: LOWER_TILE.pixel_display,
@@ -263,14 +254,17 @@ $$end
     // I/O TO VIDEO CLOCK WRITE 2 CYCLE FLAG
     uint2   writeDirectDo = 0;
 
+    // DIMMER
+    uint4   dimmer = uninitialised;
+
     BACKGROUND.memoryWrite := 0; BITMAP.memoryWrite := 0; CHARACTER_MAP.memoryWrite := 0; LOWER_SPRITE.memoryWrite := 0; UPPER_SPRITE.memoryWrite := 0; TERMINAL.memoryWrite := 0;
     LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0;
 
-    palette.wenable1 := 0;
+    palette.wenable1 := 0; readData := 0;
 
     always_before {
         // SET DEFAULT DISPLAY ORDER, COLOUR MODE AND DIMMER
-        if( reset ) {  display.display_order = 0; display.colour = 0; display.dimmer = 0; display.usepalette = 0; }
+        if( reset ) {  display.display_order = 0; display.colour = 0; dimmer = 0; display.usepalette = 0; }
     }
 
     algorithm <autorun> {
@@ -291,7 +285,7 @@ $$end
                                 case $0x60 + i$: { readData = LOWER_SPRITE.collision_$i$; }
                                 case $0x70 + i$: { readData = LOWER_SPRITE.layer_collision_$i$; }
                             $$end
-                            default: { readData = 0; }
+                            default: {}
                         }
                     }
                     case 4h4: {
@@ -305,7 +299,7 @@ $$end
                                 case $0x60 + i$: { readData = UPPER_SPRITE.collision_$i$; }
                                 case $0x70 + i$: { readData = UPPER_SPRITE.layer_collision_$i$; }
                             $$end
-                            default: { readData = 0; }
+                            default: {}
                         }
                     }
                     case 4h5: {
@@ -314,13 +308,13 @@ $$end
                             case 3h3: { readData = memoryAddress[4,1] ? CHARACTER_MAP.tpu_cell[17,8] : CHARACTER_MAP.curses_cell[17,8]; }
                             case 3h4: { readData = memoryAddress[4,1] ? CHARACTER_MAP.tpu_cell[9,8] : CHARACTER_MAP.curses_cell[9,8]; }
                             case 3h5: { readData = CHARACTER_MAP.tpu_active; }
-                            default: { readData = 0; }
+                            default: {}
                         }
                     }
                     case 4h6: { readData = memoryAddress[5,1] ? BITMAP.vector_block_active : memoryAddress[1,1] ? BITMAP.gpu_queue_full : BITMAP.gpu_queue_complete; }
                     case 4h7: { readData = TERMINAL.terminal_active; }
                     case 4hf: { readData = vblank; }
-                    default: { readData = 0; }
+                    default: {}
                 }
             }
         }
@@ -355,13 +349,19 @@ $$end
                             case 0: { display.display_order = writeData; }
                             case 1: { display.colour = writeData; }
                             case 2: { hilorez = writeData;}
-                            case 3: { display.dimmer = writeData; }
+                            case 3: { dimmer = writeData; }
                         }
                     }
                 }
                 default: {}
             }
         }
+        $$if VGA then
+            video_r = display.pix_red >> dimmer; video_g = display.pix_green >> dimmer; video_b = display.pix_blue >> dimmer;
+        $$end
+        $$if HDMI then
+            video.red = display.pix_red >> dimmer; video.green = display.pix_green >> dimmer; video.blue = display.pix_blue >> dimmer;
+        $$end
     }
 }
 
@@ -454,7 +454,7 @@ unit background_memmap(
                 case 4h2: { BACKGROUND_WRITER.backgroundcolour_mode = writeData; BACKGROUND_WRITER.background_update = 3; }
                 case 4h3: { BACKGROUND_COPPER.copper_status = writeData; }
                 case 4h4: { BACKGROUND_COPPER.copper_cpu_input = writeData; }
-                case 4h5: { BACKGROUND_WRITER.copper_program = writeData; }
+                case 4h5: { BACKGROUND_WRITER.copper_program = 1; }
                 case 4h6: { BACKGROUND_WRITER.copper_address = writeData; }
                 case 4h7: { BACKGROUND_WRITER.copper_command = writeData; }
                 case 4h8: { BACKGROUND_WRITER.copper_condition = writeData; }
@@ -644,18 +644,16 @@ unit bitmap_memmap(
                             case 3h3: { pixel_writer.vector_block_yc = writeData; }
                             case 3h4: { pixel_writer.vector_block_scale = writeData; }
                             case 3h5: { pixel_writer.vector_block_action = writeData; }
-                            case 3h6: { pixel_writer.draw_vector = 1; }
-                            default: {}
+                            default: { pixel_writer.draw_vector = 1; }
                         }
                     }
                     case 4h3: {
                         switch( memoryAddress[1,3] ) {
-                            case 3h0: { vertex.addr1[4,6] = writeData; }
+                            default: { vertex.addr1[4,6] = writeData; }
                             case 3h1: { vertex.addr1[0,4] = writeData; }
                             case 3h2: { vertex.wdata1[6,6] = writeData; }
                             case 3h3: { vertex.wdata1[0,6] = writeData; }
                             case 3h4: { vertex.wdata1[12,1] = writeData; }
-                            default: {}
                         }
                     }
                     case 4h4: {
@@ -694,7 +692,6 @@ unit bitmap_memmap(
                                 } else { pb_colourmap.addr1 = writeData; }
                             }
                             case 3h7: { pb_colourmap.wdata1 = writeData; }
-                            default: {}
                         }
                     }
                     case 4he: {
@@ -963,8 +960,7 @@ unit terminal_memmap(
             switch( memoryAddress[1,2] ) {
                 case 2h0: { TW.terminal_character = writeData; TW.terminal_write = 1; }
                 case 2h1: { terminal_window.showterminal = writeData; }
-                case 2h2: { TW.terminal_write = 2; }
-                default: {}
+                default: { TW.terminal_write = 2; }
             }
         }
     }

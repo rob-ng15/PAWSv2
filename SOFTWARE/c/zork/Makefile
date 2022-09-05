@@ -1,5 +1,5 @@
 # Makefile for dungeon
-include ../makefile-lto.inc
+include ../makefile.inc
 PROJECT=ZORK
 PROJECTTYPE=GAMES
 

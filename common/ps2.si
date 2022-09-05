@@ -103,22 +103,20 @@ unit ps2(
     output  uint1   error,
     output  uint8   data
 ) < reginputs> {
-    uint4 clk_filter = 4b1111;                      uint1 ps2_clk_in = 1;                               uint1 clk_edge = 0;
+    uint1 ps2_clk_in = 1;                           uint1 clk_edge = 0;
     uint4 bit_count = 0;                            uint9 shift_reg = 0;                                uint1 parity = 0;
     uint4 bitP1 <:: bit_count + 1;
+
+    // FILTER THE PS2 CLK to cross the clock boundary
+    ps2clkfilter PS2CLK( ps2clk_ext <: ps2clk_ext );
 
     valid := 0;                                     error := 0;                                         clk_edge := 0;
 
     algorithm <autorun> {
         while(1) {
-            // Filter the PS/2 clock
-            clk_filter = { ps2clk_ext, clk_filter[1,3] };
-            switch( clk_filter ) {
+            switch( PS2CLK.clk ) {
                 case 4b1100: { ps2_clk_in = 1; }
-                case 4b0011: {
-                    if( ps2_clk_in ) { clk_edge = 1; }
-                    ps2_clk_in = 0;
-                }
+                case 4b0011: { if( ps2_clk_in ) { clk_edge = 1; } ps2_clk_in = 0; }
                 default: {}
             }
         }
@@ -129,29 +127,25 @@ unit ps2(
         if( clk_edge ) {
             switch( bit_count ) {
                 case 0: {
-                    parity = 0;
-                    if( ~ps2data_ext ) {
-                        // Start bit
-                        bit_count = bitP1;
-                    }
+                    parity = 0; if( ~ps2data_ext ) { bit_count = bitP1; }                                           // Start bit
                 }
                 default: {
-                    bit_count = bitP1;
-                    shift_reg = { ps2data_ext, shift_reg[1,8] };
-                    parity = parity ^ ps2data_ext;
+                    shift_reg = { ps2data_ext, shift_reg[1,8] }; parity = parity ^ ps2data_ext; bit_count = bitP1;  // Data bit;
                 }
                 case 10: {
-                    if( ps2data_ext ) {
-                        if( parity ) {
-                            data = shift_reg[0,8];
-                            valid = 1;
-                        } else {
-                            error = 1;
-                        }
+                    if( ps2data_ext ) {                                                                             // Data complete
+                        if( parity ) { data = shift_reg[0,8]; valid = 1; } else { error = 1; }
                         bit_count = 0;
                     }
                 }
             }
         }
     }
+}
+
+unit ps2clkfilter(
+    input   uint1   ps2clk_ext,
+    output  uint4   clk
+) < reginputs> {
+    uint4 clk_filter = 4b1111; always_after { clk = { ps2clk_ext, clk[1,3] }; }
 }

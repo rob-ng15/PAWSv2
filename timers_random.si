@@ -6,10 +6,7 @@ unit timesinceboot(
     input   uint64  newtime,
     input   uint1   resettime
 ) <reginputs> {
-    uint5   counter25mhz = uninitialised;
-    uint5   c25NEXT <:: counter25mhz - 1;
-    uint1   MIN <:: ( ~|counter25mhz );
-    uint1   MAX <:: ( counter1mhz == 1000000 );
+    uint5   counter25mhz = uninitialised;           uint1   MIN <:: ( ~|counter25mhz );                 uint1   MAX <:: ( counter1mhz == 1000000 );
 
     always_after {
         if( resettime ) {
@@ -19,7 +16,7 @@ unit timesinceboot(
         } else {
             counter1hz = counter1hz + MAX;
             counter1mhz = MAX ? 0 : counter1mhz + MIN;
-            counter25mhz = MIN ? 25 : c25NEXT;
+            counter25mhz = MIN ? 25 : counter25mhz - 1;
         }
     }
 }
@@ -29,13 +26,11 @@ unit pulse1hz(
     output  uint16  counter1hz,
     input   uint1   resetCounter
 ) <reginputs> {
-    uint25  counter25mhz = uninitialised;
-    uint25  c25NEXT <:: counter25mhz - 1;
-    uint1   MIN <:: ( ~|counter25mhz );
+    uint25  counter25mhz = uninitialised;           uint1   MIN <:: ( ~|counter25mhz );
 
     always_after {
         counter1hz = resetCounter ? 0 : counter1hz + MIN;
-        counter25mhz = resetCounter | MIN ? 25000000 : c25NEXT;
+        counter25mhz = resetCounter | MIN ? 25000000 : counter25mhz - 1;
     }
 }
 
@@ -44,14 +39,11 @@ unit pulse1khz(
     output  uint16  counter1khz,
     input   uint16  resetCounter
 ) <reginputs> {
-    uint15  counter25mhz = uninitialised;
-    uint15  c25NEXT <:: counter25mhz - 1;
-    uint1   MIN <:: ( ~|counter25mhz );
-    uint1   RESET <: ( |resetCounter );
+    uint15  counter25mhz = uninitialised;           uint1   MIN <:: ( ~|counter25mhz );                 uint1   RESET <: ( |resetCounter );
 
     always_after {
         counter1khz = RESET ? resetCounter : ( ~|counter1khz ) ? 0 : counter1khz - MIN;
-        counter25mhz = RESET | MIN ? 25000 : c25NEXT;
+        counter25mhz = RESET | MIN ? 25000 : counter25mhz - 1;
     }
 }
 
@@ -61,20 +53,24 @@ unit random(
     output  uint16  g_noise_out,
     output  uint16  u_noise_out,
 ) <reginputs> {
-    uint16  rand_out <:: rand_ff;
-    uint16  rand_ff = 24b011000110111011010011101;
-    uint18  rand_en_ff = 24b001100010011011101100101;
-    uint16  temp_u_noise3 <:: { rand_out[15,1], rand_out[15,1], rand_out[2,13] };
-    uint16  temp_u_noise2 <:: temp_u_noise3;
-    uint16  temp_u_noise1 <:: temp_u_noise2;
-    uint16  temp_u_noise0 <:: temp_u_noise1;
-    uint16  g_noise_NEXT <:: ( __signed(temp_u_noise3) + __signed(temp_u_noise2) + __signed(temp_u_noise1) + __signed(temp_u_noise0) + ( rand_en_ff[9,1] ? __signed(g_noise_out) : 0 ) );
+    uint16  rand_ff = 24b011000110111011010011101;                                  uint16 rand_ff_NEXT <:: { ( rand_ff[5,1] ^ rand_ff[3,1] ^ rand_ff[2,1] ^ rand_ff[0,1] ), rand_ff[1,15] };
+    uint18  rand_en_ff = 24b001100010011011101100101;                               uint18 rand_en_ff_NEXT <:: { ( rand_en_ff[7,1] ^ rand_en_ff[0,1] ), rand_en_ff[1,17]};
+    uint16  temp_u_noise3 = uninitialised;                                          uint16  temp_u_noise2 = uninitialised;
+    uint16  temp_u_noise1 = uninitialised;                                          uint16  temp_u_noise0 = uninitialised;
+    uint16  g_noise_NEXT <:: ( rand_en_ff[17,1] ) ? ( temp_u_noise3 + temp_u_noise2 + temp_u_noise1 + temp_u_noise0 + ( rand_en_ff[9,1] ? g_noise_out : 0 ) ) :
+                             ( rand_en_ff[10,1] ) ? rand_ff : g_noise_out;
+    uint16  u_noise_NEXT <:: ( rand_en_ff[17,1] ) ? rand_ff : u_noise_out;
+
+    algorithm <autorun> {
+        while(1) {
+            temp_u_noise0 = temp_u_noise1; temp_u_noise1 = temp_u_noise2; temp_u_noise2 = temp_u_noise3;
+            temp_u_noise3 = { rand_ff[15,1], rand_ff[15,1], rand_ff[2,13] };
+        }
+    }
 
     always_after {
-        g_noise_out = ( rand_en_ff[17,1] ) ?  g_noise_NEXT : ( rand_en_ff[10,1] ) ? rand_out : g_noise_out;
-        u_noise_out = ( rand_en_ff[17,1] ) ? rand_out : u_noise_out;
-        rand_en_ff = { ( rand_en_ff[7,1] ^ rand_en_ff[0,1] ), rand_en_ff[1,17]};
-        rand_ff = { ( rand_ff[5,1] ^ rand_ff[3,1] ^ rand_ff[2,1] ^ rand_ff[0,1] ), rand_ff[1,15] };
+        g_noise_out = g_noise_NEXT;                 u_noise_out = u_noise_NEXT;
+        rand_en_ff = rand_en_ff_NEXT;               rand_ff = rand_ff_NEXT;
     }
 }
 
@@ -86,10 +82,7 @@ unit do_fixed_t_divide(
     input   uint48  divisor,
     output  uint48  quotient
 ) <reginputs> {
-    uint48  remainder = uninitialised;
-    uint6   bit(63);
-    uint6   bitNEXT <:: bit - 1;
-    uint48  temporary <:: { remainder[0,47], dividend[bit,1] };
+    uint6   bit(63);                                uint48  remainder = uninitialised;                  uint48  temporary <:: { remainder[0,47], dividend[bit,1] };
     uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
 
     busy := start | ( ~&bit );
@@ -98,12 +91,11 @@ unit do_fixed_t_divide(
         if( &bit ) {
             if( start ) {
                 bit = 47; quotient = 0; remainder = 0;
-                __display("%b / %b",dividend,divisor);
             }
         } else {
             quotient[bit,1] = bitresult;
             remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
-            bit = bitNEXT;
+            bit = bit - 1;
         }
     }
 }
@@ -126,7 +118,7 @@ unit fixed_t_divide(
     // START DIVIDER AND EXTRACT RESULT
     always_after {
         if( busy ) {
-            result = ( ~|fixed_t_b ) ? 32hffffffff : fixed_t_a[31,1] ^ fixed_t_b[31,1] ? -DOFIXEDDIVIDE.quotient : DOFIXEDDIVIDE.quotient;
+            result = ( |fixed_t_b ) ?  fixed_t_a[31,1] ^ fixed_t_b[31,1] ? -DOFIXEDDIVIDE.quotient : DOFIXEDDIVIDE.quotient : 32hffffffff;
         }
     }
 }

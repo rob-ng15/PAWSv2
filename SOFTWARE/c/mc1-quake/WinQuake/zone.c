@@ -253,7 +253,6 @@ void Z_CheckHeap (void)
 		if (block->next == &mainzone->blocklist)
 			break;			// all blocks have been hit
 		if ( (byte *)block + block->size != (byte *)block->next) {
-			fprintf(stderr,"\nblock + block->size (%08x) != block->next (%08x) ",(int)(block + block->size),(int)block->next);
 			Sys_Error ("Z_CheckHeap: block size does not touch the next block\n");
 		}
 		if ( block->next->prev != block)
@@ -933,6 +932,7 @@ void Memory_Init (void *buf, int size)
 			Sys_Error ("Memory_Init: you must specify a size in KB after -zone");
 	}
 	mainzone = Hunk_AllocName (zonesize, "zone" );
+	fprintf(stderr,"mainzone = %08x\n",(int)mainzone);
 	Z_ClearZone (mainzone, zonesize);
 }
 

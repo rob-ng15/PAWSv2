@@ -33,7 +33,7 @@ unit PAWSCPU(
     input   uint1   clock_CPUdecoder,
     input   uint1   clock_cache,
     output  uint2   accesssize,
-    output  uint27  address(0),
+    output  uint$addr_width$  address(0),
     output  uint1   cacheselect(0),
     output  uint32  writedata,
     output  uint1   writememory,
@@ -43,14 +43,14 @@ unit PAWSCPU(
 
     // SMT
     input   uint1   SMTRUNNING,
-    input   uint27  SMTSTARTPC,
+    input   uint$addr_width$  SMTSTARTPC,
 
     // MINI DMA CONTROLLER
-    input   uint27  DMASOURCE,
-    input   uint27  DMASOURCEADD,
-    input   uint27  DMADEST,
-    input   uint27  DMADESTADD,
-    input   uint27  DMACOUNT,
+    input   uint$addr_width$  DMASOURCE,
+    input   uint$addr_width$  DMASOURCEADD,
+    input   uint$addr_width$  DMADEST,
+    input   uint$addr_width$  DMADESTADD,
+    input   uint$addr_width$  DMACOUNT,
     input   uint8   DMACYCLES,
     input   uint4   DMAMODE,
     input   uint8   DMASET,
@@ -62,16 +62,16 @@ unit PAWSCPU(
     // CPU REGISTERS AND THREAD SELECTION
     uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
     uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
-    uint27  pc = 0;                                 uint27  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;                                      // HART 0 pc + UPDATE
-    uint27  pcSMT = uninitialized;                  uint27  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;       // HART 1 pc + update
-    uint27  PC <:: SMT ? pcSMT : pc;                                                                                                // SELECT PC FOR THIS CYCLE
+    uint$addr_width$  pc = 0;                       uint$addr_width$  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;                                      // HART 0 pc + UPDATE
+    uint$addr_width$  pcSMT = uninitialized;        uint$addr_width$  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;       // HART 1 pc + update
+    uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                                // SELECT PC FOR THIS CYCLE
 
     // MEMORY CONTROL UNITS
     uint4 memorycontrols <: { FETCH.busy, LOAD.busy, STORE.busy, |DMAACTIVE };
 
     // RISC-V 32 BIT CONTROLLER
-    uint32  result <:: RV32CONTROL.FASTPATH ? EXECUTEFAST.result : EXECUTESLOW.result;
-    uint1   frd <:: RV32CONTROL.FASTPATH ? RV32CONTROL.writeRegisterF : EXECUTESLOW.frd;
+    uint32  result <:: RV32CONTROL.IS_FASTALU ? EXECUTEFAST.result : EXECUTESLOW.result;
+    uint1   frd <:: RV32CONTROL.IS_FASTALU ? RV32CONTROL.writeRegisterF : EXECUTESLOW.frd;
     uint1   write <:: COMMIT & RV32CONTROL.writeRegister;
     control RV32CONTROL <@clock_CPUdecoder> (
         cacheselect <: cacheselect,
@@ -86,7 +86,6 @@ unit PAWSCPU(
         compressed <: compressed,
         accesssize :> accesssize
     );
-
 
     // MINI DMA CONTROLLER
     dma DMA(
@@ -121,7 +120,7 @@ unit PAWSCPU(
     );
 
     // STORE VALUE SELECTION
-    uint32  storeValue <:: RV32CONTROL.FASTPATH ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
+    uint32  storeValue <:: RV32CONTROL.IS_FASTALU ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
     uint1   faststore <:: ~RV32CONTROL.storeAddress[26,1] & ~RV32CONTROL.storeAddress[25,1];
     store STORE(
         faststore <: faststore,
@@ -219,7 +218,7 @@ unit PAWSCPU(
         address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed,
         invalidate <: EXECUTEFAST.fenceACTIVE[0,1]
     );
-    uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );
+    uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch & |ICACHE_0.instruction ) | ( SMT & ICACHE_1.tagmatch & |ICACHE_1.instruction );
     uint32  L0instruction <:: { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
     uint1   L0compressed <:: SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
     uint1   ICACHEUPDATE = uninitialised;
@@ -246,16 +245,14 @@ unit PAWSCPU(
                 // DECODE, REGISTER FETCH, ADDRESS GENERATION AUTOMATICALLY TAKES PLACE AS SOON AS THE INSTRUCTION IS LOADED
                 ICACHEUPDATE = 1; cacheselect = 1; ++:                                                                              // SWITCH TO DATA CACHE, UPDATE ICACHE
 
-                switch( { RV32CONTROL.IS_LOAD, RV32CONTROL.FASTPATH, RV32CONTROL.IS_STORE } ) {
-//                    case 3b000: { ++: EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                         // DIVISION, CLMUL, FLOATING POINT, CSR
-//                    case 3b010: { ++: }                                                                                             // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
+                switch( { RV32CONTROL.IS_LOAD, RV32CONTROL.IS_FASTALU, RV32CONTROL.IS_STORE } ) {
                     case 3b000: { ++: EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                         // DIVISION, CLMUL, FLOATING POINT, CSR
                     case 3b010: {}                                                                                             // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
                     case 3b011: { STORE.start = 1; while( STORE.busy ) {} }                                                         // INTEGER + FLOAT STORE
                     case 3b110: { LOAD.start = 1; while( LOAD.busy ) {} }                                                           // INTEGER + FLOAT LOAD
                     default: {                                                                                                      // ATOMIC LOAD - MODIFY - STORE
                         LOAD.start = RV32CONTROL.IS_LOAD; while( LOAD.busy ) {}                                                     // + EMULATION OF LR.W AND SC.W
-                        EXECUTESLOW.start = ~RV32CONTROL.FASTPATH; while( EXECUTESLOW.busy ) {}
+                        EXECUTESLOW.start = ~RV32CONTROL.IS_FASTALU; while( EXECUTESLOW.busy ) {}
                         STORE.start = RV32CONTROL.IS_STORE; while( STORE.busy ) {}
                     }
                 }
@@ -295,19 +292,21 @@ $$end
     output  uint1   compressed,
     output  uint1   tagmatch
 ) <reginputs> {
-    uint$L00Ipartaddresswidth$ tag = uninitialised;
-
     $$for i=0,(L00Iblocks-1) do
-        L0cache_$i$.addr0 := address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 := address[$1+L00Icount$,$L0Icacheaddrwidth$];
+        L0cache_$i$.addr0 := address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 := L0cache_$i$.addr0;
     $$end
 
     always_after {
-        switch( address[1,$L00Icount$] ) {
-            $$for i=0,(L00Iblocks-1) do
-                case $i$: { tag = L0tags_$i$.rdata0; instruction = L00cacheI ( L0cache_$i$.rdata0 ).instruction; compressed =  L00cacheI( L0cache_$i$.rdata0 ).compressed; }
-            $$end
+        if( invalidate | CLS  ) {
+            tagmatch = 0;
+        } else {
+            switch( address[1,$L00Icount$] ) {
+                $$for i=0,(L00Iblocks-1) do
+                    case $i$: { tagmatch = L0tags_$i$.rdata0 == address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$];
+                                instruction = L00cacheI ( L0cache_$i$.rdata0 ).instruction; compressed =  L00cacheI( L0cache_$i$.rdata0 ).compressed; }
+                $$end
+            }
         }
-        tagmatch = ~( invalidate | CLS ) & |instruction & ( tag == address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$] );
     }
 }
 
@@ -323,7 +322,7 @@ $$end
     input   uint1   invalidate,
     output  uint1   CLS
 ) <reginputs> {
-    uint$L0Icacheaddrwidth+1$ count = $L0Isize$; uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1;
+    uint$L0Icacheaddrwidth+1$ count = $L0Isize$;    uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1;
 
     $$for i=0,(L00Iblocks-1) do
         L0cache_$i$.wenable1 := 1; L0tags_$i$.wenable1 := 1;
@@ -336,8 +335,8 @@ $$end
                     switch( address[1,$L00Icount$] ) {
                         $$for i=0,(L00Iblocks-1) do
                             case $i$: {
-                                L0cache_$i$.addr1 = address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0cache_$i$.wdata1 = { newinstruction, newcompressed };
-                                L0tags_$i$.addr1 = address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.wdata1 = address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$];
+                                L0cache_$i$.addr1 = address[$1+L00Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr1 = L0cache_$i$.addr1;
+                                L0cache_$i$.wdata1 = { newinstruction, newcompressed }; L0tags_$i$.wdata1 = address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$];
                             }
                         $$end
                     }
@@ -368,19 +367,21 @@ $$end
     output  uint1   compressed,
     output  uint1   tagmatch
 ) <reginputs> {
-    uint$L01Ipartaddresswidth$ tag = uninitialised;
-
     $$for i=0,(L01Iblocks-1) do
-        L0cache_$i$.addr0 := address[$1+L01Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 := address[$1+L01Icount$,$L0Icacheaddrwidth$];
+        L0cache_$i$.addr0 := address[$1+L01Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr0 := L0cache_$i$.addr0;
     $$end
 
     always_after {
-        switch( address[1,$L01Icount$] ) {
-            $$for i=0,(L01Iblocks-1) do
-                case $i$: { tag = L0tags_$i$.rdata0; instruction = L01cacheI ( L0cache_$i$.rdata0 ).instruction; compressed =  L01cacheI( L0cache_$i$.rdata0 ).compressed; }
-            $$end
+        if( invalidate | CLS ) {
+            tagmatch = 0;
+        } else {
+            switch( address[1,$L01Icount$] ) {
+                $$for i=0,(L01Iblocks-1) do
+                    case $i$: { tagmatch = L0tags_$i$.rdata0 == address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$];
+                                instruction = L01cacheI ( L0cache_$i$.rdata0 ).instruction; compressed =  L01cacheI( L0cache_$i$.rdata0 ).compressed; }
+                $$end
+            }
         }
-        tagmatch = ~( invalidate | CLS ) & |instruction & ( tag == address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$] );
     }
 }
 
@@ -396,7 +397,7 @@ $$end
     input   uint1   invalidate,
     output  uint1   CLS
 ) <reginputs> {
-    uint$L0Icacheaddrwidth+1$ count = $L0Isize$; uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1;
+    uint$L0Icacheaddrwidth+1$ count = $L0Isize$;    uint$L0Icacheaddrwidth+1$ countP1 <:: count + 1;
 
     $$for i=0,(L01Iblocks-1) do
         L0cache_$i$.wenable1 := 1; L0tags_$i$.wenable1 := 1;
@@ -409,7 +410,7 @@ $$end
                     switch( address[1,$L01Icount$] ) {
                         $$for i=0,(L01Iblocks-1) do
                             case $i$: {
-                                L0cache_$i$.addr1 = address[$1+L01Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr1 = address[$1+L01Icount$,$L0Icacheaddrwidth$];
+                                L0cache_$i$.addr1 = address[$1+L01Icount$,$L0Icacheaddrwidth$]; L0tags_$i$.addr1 = L0cache_$i$.addr1;
                                 L0cache_$i$.wdata1 = { newinstruction, newcompressed }; L0tags_$i$.wdata1 = address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$];
                             }
                         $$end
@@ -582,9 +583,6 @@ unit cpuexecuteFASTPATH(
     input   uint1   LTU,
     output  uint2   fenceACTIVE(0)
 ) <reginputs> {
-    // COMPARISON UNIT
-    compare COMPARE( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, immediateValue <: immediateValue, regreg <: opCode[3,1] );
-
     // ALU
     alu ALU(
         opCode <: opCode, function3 <: function3, function7 <: function7,
@@ -716,11 +714,11 @@ unit store(
 
 // MINI DMA CONTROLLER
 unit dma(
-    input   uint27  DMASOURCE,
-    input   uint27  DMASOURCEADD,
-    input   uint27  DMADEST,
-    input   uint27  DMADESTADD,
-    input   uint27  DMACOUNT,
+    input   uint$addr_width$  DMASOURCE,
+    input   uint$addr_width$  DMASOURCEADD,
+    input   uint$addr_width$  DMADEST,
+    input   uint$addr_width$  DMADESTADD,
+    input   uint$addr_width$  DMACOUNT,
     input   uint8   DMACYCLES,
     input   uint4   DMAMODE,
     input   uint8   DMASET,
@@ -728,7 +726,7 @@ unit dma(
     output! uint2   DMAACTIVE(0),
 
     input   uint1   start,
-    output! uint27  address,
+    output! uint$addr_width$  address,
     output! uint32  writedata,
     output! uint1   writememory,
     output! uint1   readmemory,
@@ -745,12 +743,13 @@ unit dma(
     uint1   DMA16BIT = uninitialised;               uint1   DMA32BIT = uninitialised;
     uint1   PB4pixel = uninitialised;
 
-    uint4   dmamode = uninitialized;                uint27  dmacount = uninitialised;                   uint27  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | PB4pixel ? 2 : 1 );
+    uint4   dmamode = uninitialized;                uint$addr_width$  dmacount = uninitialised;         uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | PB4pixel ? 2 : 1 );
     uint8   dmacycles = uninitialised;              uint8   dmacyclesNEXT <:: dmacycles - 1;
-    uint27  dmasrc = uninitialised;                 uint27  dmasrc2 <:: dmasrc + 2;                     uint27  dmasrcNEXT <:: DMA32BIT ? dmasrc + 4 : DMA16BIT ? dmasrc2 : dmasrc + 1;
-    uint27  dmasrcADD <:: dmasrc + DMASOURCEADD;    uint27  dmasrcNEXTLINE <:: dmasrcADD - DMACOUNT;
-    uint27  dmadest = uninitialised;                uint27  dmadest2 <:: dmadest + 2;                   uint27  dmadestNEXT <:: DMA32BIT ? dmadest + 4 : DMA16BIT ? dmadest2 : dmadest + 1;
-    uint27  dmadestADD <:: dmadest + DMADESTADD;    uint27  dnadestNEXTLINE <:: dmadestADD - DMACOUNT;
+    uint$addr_width$  dmasrc = uninitialised;       uint$addr_width$  dmasrc2 <:: dmasrc + 2;           uint$addr_width$  dmasrc4 <:: dmasrc + 4;
+    uint$addr_width$  dmasrcNEXT <:: DMA32BIT ? dmasrc4 : DMA16BIT ? dmasrc2 : dmasrc + 1;
+    uint$addr_width$  dmasrcADD <:: dmasrc + DMASOURCEADD;    uint$addr_width$  dmasrcNEXTLINE <:: dmasrcADD - DMACOUNT;
+    uint$addr_width$  dmadest = uninitialised;      uint$addr_width$  dmadest2 <:: dmadest + 2;         uint$addr_width$  dmadestNEXT <:: DMA32BIT ? dmadest + 4 : DMA16BIT ? dmadest2 : dmadest + 1;
+    uint$addr_width$  dmadestADD <:: dmadest + DMADESTADD;    uint$addr_width$  dnadestNEXTLINE <:: dmadestADD - DMACOUNT;
     uint1   dmablue <:: ( dmadest[0,4] == 4h6 );
     uint32  memoryinput = uninitialised;
     uint1   FASTSTORE <:: ~dmadest[26,1] & ~dmadest[25,1];
@@ -782,6 +781,7 @@ unit dma(
                     }
                 }
                 DMAACCESSSIZE = DMA32BIT | PB4pixel? 2b10 : DMA16BIT | &dmamode[0,3] ? 2b01: 2b00;                                  // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
+
                 switch( dmamode[3,1] ) {
                     case 0: {
                         while( |dmacount ) {                                                                                        // SINGLE CYCLE MODE
@@ -823,7 +823,7 @@ unit dma(
                                 case 4: { dmadest = dmadestNEXT; }                                                                  // DMA single-src to multi-dest MEMSET + SDCARD READ
                                 case 5: {}                                                                                          // DMA single-src to single-dest SET TILE/CBLITTER to single value
                                 case 6: { dmasrc = dmasrcADD; dmadest = dmadestADD; }                                               // DMA increase src and dest by additions
-                                case 7: { dmasrc = PB4pixel ? dmasrc + 4 : dmasrc2; }                                               // DMA 16bit to 4/2 pixels for PIXEL BLOCK special mode
+                                case 7: { dmasrc = PB4pixel ? dmasrc4 : dmasrc2; }                                               // DMA 16bit to 4/2 pixels for PIXEL BLOCK special mode
                             }
                             dmacount = dmacountNEXT;
                         }
