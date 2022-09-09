@@ -16,14 +16,14 @@ $$ L0Isize = 32
 $$ L0Icacheaddrwidth = clog2(L0Isize)
 
 // HART 0 - MAIN
-$$ L00Iblocks = 8
+$$ L00Iblocks = 32
 $$ L00Icount = clog2(L00Iblocks)
 $$ L00Ipartaddresswidth = addr_width - 1 - L00Icount - L0Icacheaddrwidth
 $$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
 bitfield L00cacheI{ uint30 instruction, uint1 compressed }
 
 // HART 1 - SMT
-$$ L01Iblocks = 2
+$$ L01Iblocks = 4
 $$ L01Icount = clog2(L01Iblocks)
 $$ L01Ipartaddresswidth = addr_width - 1 - L01Icount - L0Icacheaddrwidth
 $$ L01Ipartaddressstart = 1 + L01Icount + L0Icacheaddrwidth
@@ -121,11 +121,7 @@ unit PAWSCPU(
 
     // STORE VALUE SELECTION
     uint32  storeValue <:: RV32CONTROL.IS_FASTALU ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput;
-    uint1   faststore <:: ~RV32CONTROL.storeAddress[26,1] & ~RV32CONTROL.storeAddress[25,1];
-    store STORE(
-        faststore <: faststore,
-        memorybusy <: memorybusy
-    );
+    store STORE( memorybusy <: memorybusy );
 
     // EXECUTE MULTICYCLE INSTRUCTIONS, INTEGER DIVIDE, FPU, CSR AND ALU-A
     cpuexecuteSLOWPATH EXECUTESLOW(
@@ -246,7 +242,7 @@ unit PAWSCPU(
                 ICACHEUPDATE = 1; cacheselect = 1; ++:                                                                              // SWITCH TO DATA CACHE, UPDATE ICACHE
 
                 switch( { RV32CONTROL.IS_LOAD, RV32CONTROL.IS_FASTALU, RV32CONTROL.IS_STORE } ) {
-                    case 3b000: { ++: EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                         // DIVISION, CLMUL, FLOATING POINT, CSR
+                    case 3b000: { EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                         // DIVISION, CLMUL, FLOATING POINT, CSR
                     case 3b010: {}                                                                                             // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
                     case 3b011: { STORE.start = 1; while( STORE.busy ) {} }                                                         // INTEGER + FLOAT STORE
                     case 3b110: { LOAD.start = 1; while( LOAD.busy ) {} }                                                           // INTEGER + FLOAT LOAD
@@ -513,10 +509,10 @@ unit cpuexecuteSLOWPATH(
 
     // START AND BUSY FLAGS
     uint1   unitbusy <:: ( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy );
-    ALUMD.start := start & isALUM;                                                                          // INTEGER DIVISION
-    ALUBCLMUL.start := start & isALUCLM;                                                                    // CARRYLESS MULTIPLY
-    FPUCALC.start := start & fpucalc;                                                                       // FPU CALCULATIONS
-    CSR.start := start & isCSR & |function3;                                                                // CSR
+    ALUMD.start := start & isALUM;                                                                                      // INTEGER DIVISION
+    ALUBCLMUL.start := start & isALUCLM;                                                                                // CARRYLESS MULTIPLY
+    FPUCALC.start := start & fpucalc;                                                                                   // FPU CALCULATIONS
+    CSR.start := start & isCSR & |function3;                                                                            // CSR
 
     // Deal with updating fpuflags and writing to fpu registers
     CSR.updateFPUflags := 0; frd := fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0;
@@ -528,7 +524,7 @@ unit cpuexecuteSLOWPATH(
                 busy = 1;
                 onehot( operation ) {
                     case 0: { ++: }                                                                                     // CSR
-                    case 1: {}                                                                                          // ATOMIC OPERATIONS
+                    case 1: { ++: }                                                                                     // ATOMIC OPERATIONS
                     case 2: { ++: }                                                                                     // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                     case 3: { while( unitbusy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
                 }
@@ -542,17 +538,17 @@ unit cpuexecuteSLOWPATH(
     always_after {
         if( busy ) {
             onehot( operation ) {
-                case 0: { result = |function3 ? CSR.result : 0; }                                                   // CSR
+                case 0: { result = |function3 ? CSR.result : 0; }                                                       // CSR
                 case 1: {
                     if( function7[3,1] ) {
-                        result = memoryinput; memoryoutput = ALUA.result;                                           // ATOMIC LOAD - MODIFY - STORE
+                        result = memoryinput; memoryoutput = ALUA.result;                                               // ATOMIC LOAD - MODIFY - STORE
                     } else {
-                        result = function7[2,1] ? 0 : memoryinput;                                                  // LR.W SC.W
+                        result = function7[2,1] ? 0 : memoryinput;                                                      // LR.W SC.W
                         memoryoutput = sourceReg2;
                     }
                 }
-                case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }                               // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                case 3: { result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result; }   // FPU CALCULATIONS AND INTEGER DIVISION
+                case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }                                   // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                case 3: { result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result; }       // FPU CALCULATIONS AND INTEGER DIVISION
             }
         }
     }
@@ -683,8 +679,10 @@ unit load(
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1; readmemory = 1; while( memorybusy ) {}                                   // START READ
-                memoryinput = accesssize[1,1] ? readdata : SIGNEXTEND.memory168;
+                busy = 1; readmemory = 1; while( memorybusy ) {}                                    // START READ
+                memoryinput = accesssize[1,1] ? readdata : SIGNEXTEND.memory168;                    // SIGN/ZERO EXTEND FOR 8 AND 16 BIT READS
+                busy = 0;
+            } else {
                 busy = 0;
             }
         }
@@ -695,7 +693,7 @@ unit load(
 unit store(
     input   uint1   start,
     output! uint1   busy(0),
-    input   uint1   faststore,
+    input   uint1   sdramstore,
 
     output! uint1   writememory,
     input!  uint1   memorybusy
@@ -704,10 +702,7 @@ unit store(
 
     algorithm <autorun> {
         while(1) {
-            if( start ) {
-                busy = 1; writememory = 1;
-                if( faststore ) { ++: } else { while( memorybusy ) {} } busy = 0;
-            }
+            if( start ) { busy = 1; writememory = 1; while( memorybusy ) {} busy = 0; } else { busy = 0; }
         }
     }
 }
@@ -752,7 +747,6 @@ unit dma(
     uint$addr_width$  dmadestADD <:: dmadest + DMADESTADD;    uint$addr_width$  dnadestNEXTLINE <:: dmadestADD - DMACOUNT;
     uint1   dmablue <:: ( dmadest[0,4] == 4h6 );
     uint32  memoryinput = uninitialised;
-    uint1   FASTSTORE <:: ~dmadest[26,1] & ~dmadest[25,1];
 
     writememory := 0; readmemory := 0;
 
@@ -790,7 +784,7 @@ unit dma(
                                 case 2b00: {
                                     while( memorybusy ) {} memoryinput = readdata;
                                     address = dmadest; writedata = DMA16BIT | DMA32BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
-                                    if( FASTSTORE ) { writememory = 1; } else { writememory = 1; while( memorybusy ) {} }
+                                    writememory = 1; while( memorybusy ) {}
                                 }
                                 case 2b01: {                                                                                        // SPECIAL MULTI-PIXEL PIXELBLOCK / TILE / SAMPLE / SDCARD WRITE
                                     while( memorybusy ) {} memoryinput = readdata;
@@ -805,7 +799,7 @@ unit dma(
                                         writedata = memoryinput[8,8]; writememory = 1;
                                     }
                                 }
-                                case 2b10: { address = dmadest; if( FASTSTORE ) { writememory = 1; } else { writememory = 1; while( memorybusy ) {} } }
+                                case 2b10: { address = dmadest; writememory = 1; while( memorybusy ) {} }
                                 case 2b11: {                                                                                    // SPECIAL MULTI-SRC SET PIXELBLOCK / TILE / SAMPLE / SDCARD WRITE
                                     address = dmadest;
                                     if( PB4pixel ) {                                                                            // 4 or 2 PIXELS/BYTES PER CYCLE
@@ -832,19 +826,13 @@ unit dma(
                         while( |dmacycles ) {
                             while( |dmacount ) {                                                                                    // MULTI-CYCLE MODE
                                 address = dmasrc; readmemory = ~srcSET;
-                                switch( { srcSET, FASTSTORE } ) {
-                                    case 2b00: {
+                                switch( srcSET ) {
+                                    case 0: {
                                         while( memorybusy ) {} memoryinput = readdata;
                                         address = dmadest; writedata = DMA16BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
                                         writememory = 1; while( memorybusy ) {}
                                     }
-                                    case 2b01: {
-                                        while( memorybusy ) {} memoryinput = readdata;
-                                        address = dmadest; writedata = DMA16BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
-                                        writememory = 1;
-                                    }
-                                    case 2b10: { address = dmadest;  writememory = 1; while( memorybusy ) {} }
-                                    case 2b11: { address = dmadest; writememory = 1; }
+                                    case 1: { address = dmadest;  writememory = 1; while( memorybusy ) {} }
                                 }
                                 if( ~dmamode[0,1] ) { dmasrc = dmasrcNEXT; }                                                        // MEMCPY_RECTANGLE
                                 dmadest = dmadestNEXT;                                                                              // MEMCPY and MEMSET RECTANGLE
