@@ -1,4 +1,4 @@
-include ../makefile-smt.inc
+include ../makefile.inc
 
 PROJECT=SMURFS
 PROJECTTYPE=GAMES

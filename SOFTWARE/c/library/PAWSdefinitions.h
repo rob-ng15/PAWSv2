@@ -156,6 +156,9 @@
 #define ROTATE180 6
 #define ROTATE270 7
 
+#define SPRITE_SHOW 1
+#define SPRITE_HIDE 0
+
 // TILEMAP DIRECTION FLAGS
 #define TM_LEFT 1
 #define TM_UP 2
@@ -179,7 +182,9 @@
 #define MODE_GREY 1
 #define LTM_LOW 1
 #define UTM_LOW 2
-#define CM_LOW 4
+#define LSL_LOW 4
+#define USL_LOW 8
+#define CM_LOW 16
 
 // PIXEL BLOCK MODES
 #define PB_REMAP 1
