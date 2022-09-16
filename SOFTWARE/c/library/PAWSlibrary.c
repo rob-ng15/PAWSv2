@@ -1106,7 +1106,7 @@ void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsi
         { 3, 2, 1, 0 }, // ROTATE 180
         { 1, 3, 0, 2 }, // ROTATE 270
     };
-    int size = (  sprite_attributes & 8 ) ? 32 : 16;
+    int size = ( sprite_attributes & 16 ) ? 64 : ( sprite_attributes & 8 ) ? 32 : 16;
 
     set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][0], active, x - size, y - size, tile, sprite_attributes );
     set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][1], active, x - size, y, tile, sprite_attributes );
