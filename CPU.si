@@ -222,7 +222,6 @@ unit PAWSCPU(
 
     // CONTROLS FOR MEMORY ACCESSES AND UNIT START FLAGS
     FETCH.start := 0; LOAD.start := 0; STORE.start := 0; DMA.start := 0; EXECUTESLOW.start := 0; COMMIT := 0; ICACHEUPDATE := 0;
-    readmemory := DMA.readmemory | LOAD.readmemory | FETCH.readmemory; writememory := DMA.writememory | STORE.writememory;
 
     algorithm <autorun> {
         while( |resetCounter | memorybusy | EXECUTESLOW.busy ) { resetCounter = resetNEXT; }                                        // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
@@ -252,12 +251,12 @@ unit PAWSCPU(
                         STORE.start = RV32CONTROL.IS_STORE; while( STORE.busy ) {}
                     }
                 }
-                COMMIT = 1; pc = pc_next; pcSMT = pcSMT_next; if( ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; } ++:                                                                                                     // COMMIT REGISTERS< AND UPDATE PC AND SWITCH THREADS IF SMT ENABLED
+                COMMIT = 1; pc = pc_next; pcSMT = pcSMT_next; if( ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; } ++:  // COMMIT REGISTERS< AND UPDATE PC AND SWITCH THREADS IF SMT ENABLED
 
-                if( ~|DMAMODE ) { cacheselect = 0; FETCH.start = ~L0match; }                                // START FETCH OF NEXT INSTRUCTION IF NO DMA REQUEST
+                if( ~|DMAMODE ) { cacheselect = 0; FETCH.start = ~L0match; }                                                        // START FETCH OF NEXT INSTRUCTION IF NO DMA REQUEST
             } // RISC-V CPU LOOP, EXIT TO PROCESS DMA REQUEST
 
-            DMA.start = 1; while( |DMAACTIVE | |DMAMODE ) {}                                                                                       // PROCESS MINI-DMA ENGINE REQUESTS
+            DMA.start = 1; while( |DMAACTIVE | |DMAMODE ) {}                                                                        // PROCESS MINI-DMA ENGINE REQUESTS
             cacheselect = 0; FETCH.start = ~L0match;                                                                                // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
         }
     }
@@ -266,12 +265,13 @@ unit PAWSCPU(
         if( |memorycontrols ) {
             onehot( memorycontrols ) {
                 case 0: { address = DMA.address; writedata = DMA.writedata; }                                                           // COPY MEMORY REQUESTS FROM DMA ENGINE
-                case 1: { address = RV32CONTROL.storeAddress; writedata = storeValue; }                                                         // COPY MEMORY REQUESTS FROM THE STORE UNIT
-                case 2: { address = RV32CONTROL.loadAddress; }                                                                                  // COPY MEMORY REQUESTS FROM THE LOAD UNIT
+                case 1: { address = RV32CONTROL.storeAddress; writedata = storeValue; }                                                 // COPY MEMORY REQUESTS FROM THE STORE UNIT
+                case 2: { address = RV32CONTROL.loadAddress; }                                                                          // COPY MEMORY REQUESTS FROM THE LOAD UNIT
                 case 3: { address = PC; }                                                                                               // COPY MEMORY REQUESTS FROM INSTRUCTION FETCH
             }
         }
         if( ICACHEUPDATE ) { ICACHE_0W.update = ~SMT; ICACHE_1W.update = SMT; }
+        readmemory = DMA.readmemory | LOAD.readmemory | FETCH.readmemory; writememory = DMA.writememory | STORE.writememory;
     }
 }
 
@@ -736,7 +736,8 @@ unit dma(
     uint1   destIO <:: ~DMADEST[26,1] & ~DMADEST[25,1] & DMADEST[15,1];                                                             // DESTINATION IS I/O REGISTER
     uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                             // DESTINATION IS 16 BIT CAPABLE
     uint1   DMA16BIT = uninitialised;               uint1   DMA32BIT = uninitialised;
-    uint1   PB4pixel = uninitialised;
+    uint1   PB4pixel = uninitialised;               uint3   PBmax <:: PB4pixel ? 4 : 2;                 uint3   PBcount = uninitialised;
+    uint3   PBcountp1 <:: PBcount + 1;              uint1   PBwritewait <:: ( PBcountp1 != PBmax );
 
     uint4   dmamode = uninitialized;                uint$addr_width$  dmacount = uninitialised;         uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | PB4pixel ? 2 : 1 );
     uint8   dmacycles = uninitialised;              uint8   dmacyclesNEXT <:: dmacycles - 1;
@@ -788,25 +789,15 @@ unit dma(
                                 }
                                 case 2b01: {                                                                                        // SPECIAL MULTI-PIXEL PIXELBLOCK / TILE / SAMPLE / SDCARD WRITE
                                     while( memorybusy ) {} memoryinput = readdata;
-                                    address = dmadest;
-                                    if( PB4pixel ) {                                                                                // 4 or 2 PIXELS/BYTES PER CYCLE
-                                        writedata = memoryinput[0,8]; writememory = 1; ++: ++:
-                                        writedata = memoryinput[8,8]; writememory = 1; ++: ++:
-                                        writedata = memoryinput[16,8]; writememory = 1; ++: ++:
-                                        writedata = memoryinput[24,8]; writememory = 1;
-                                    } else {
-                                        writedata = memoryinput[0,8]; writememory = 1; ++: ++:
-                                        writedata = memoryinput[8,8]; writememory = 1;
+                                    address = dmadest; PBcount = 0;
+                                    while( PBcount != PBmax ) {
+                                        writedata = memoryinput[ { PBcount, 3b000 }, 8]; if( PBwritewait) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1;
                                     }
                                 }
                                 case 2b10: { address = dmadest; writememory = 1; while( memorybusy ) {} }
-                                case 2b11: {                                                                                    // SPECIAL MULTI-SRC SET PIXELBLOCK / TILE / SAMPLE / SDCARD WRITE
-                                    address = dmadest;
-                                    if( PB4pixel ) {                                                                            // 4 or 2 PIXELS/BYTES PER CYCLE
-                                        writememory = 1; ++: ++: writememory = 1; ++: ++: writememory = 1; ++: ++: writememory = 1;
-                                    } else {
-                                        writememory = 1; ++: ++: writememory = 1;
-                                    }
+                                case 2b11: {                                                                                        // SPECIAL MULTI-SRC SET PIXELBLOCK / TILE / SAMPLE / SDCARD WRITE
+                                    address = dmadest; PBcount = 0;
+                                    while( PBcount != PBmax ) { if( PBwritewait) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1; }
                                 }
                             }
                             switch( dmamode[0,3] ) {
@@ -817,7 +808,7 @@ unit dma(
                                 case 4: { dmadest = dmadestNEXT; }                                                                  // DMA single-src to multi-dest MEMSET + SDCARD READ
                                 case 5: {}                                                                                          // DMA single-src to single-dest SET TILE/CBLITTER to single value
                                 case 6: { dmasrc = dmasrcADD; dmadest = dmadestADD; }                                               // DMA increase src and dest by additions
-                                case 7: { dmasrc = PB4pixel ? dmasrc4 : dmasrc2; }                                               // DMA 16bit to 4/2 pixels for PIXEL BLOCK special mode
+                                case 7: { dmasrc = PB4pixel ? dmasrc4 : dmasrc2; }                                                  // DMA 32/16bit to 4/2 pixels for PIXEL BLOCK special mode
                             }
                             dmacount = dmacountNEXT;
                         }
