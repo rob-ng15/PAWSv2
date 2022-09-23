@@ -324,6 +324,10 @@ $$end
         L0cache_$i$.wenable1 := 1; L0tags_$i$.wenable1 := 1;
     $$end
 
+    algorithm <autorun> {
+        while(1) { CLS = ( count != $L0Isize$ ); }
+    }
+
     always_after {
         switch( { CLS, invalidate } ) {
             case 2b00: {
@@ -346,7 +350,6 @@ $$end
             }
             default: { count = 0; }
         }
-        CLS = ( count != $L0Isize$ );
     }
 }
 
@@ -399,6 +402,10 @@ $$end
         L0cache_$i$.wenable1 := 1; L0tags_$i$.wenable1 := 1;
     $$end
 
+    algorithm <autorun> {
+        while(1) { CLS = ( count != $L0Isize$ ); }
+    }
+
     always_after {
         switch( { CLS, invalidate } ) {
             case 2b00: {
@@ -421,7 +428,6 @@ $$end
             }
             default: { count = 0; }
         }
-        CLS = ( count != $L0Isize$ );
     }
 }
 
@@ -522,12 +528,9 @@ unit cpuexecuteSLOWPATH(
         while(1) {
             if( start ) {
                 busy = 1;
-                onehot( operation ) {
-                    case 0: { ++: }                                                                                     // CSR
-                    case 1: { ++: }                                                                                     // ATOMIC OPERATIONS
-                    case 2: { ++: }                                                                                     // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                    case 3: { while( unitbusy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
-                }
+                if( operation[3,1] ) {
+                    while( unitbusy ) {} busy = 0;                                                                      // FPU CALCULATIONS AND INTEGER DIVISION
+                } else { ++: }                                                                                          // CSR, ATOMIC OPERATIONS, // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                 busy = 0;
                 CSR.updateFPUflags = fpuconvert | fpucalc;
             }
@@ -736,6 +739,14 @@ unit dma(
     uint1   destIO <:: ~DMADEST[26,1] & ~DMADEST[25,1] & DMADEST[15,1];                                                             // DESTINATION IS I/O REGISTER
     uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                             // DESTINATION IS 16 BIT CAPABLE
     uint1   DMA16BIT = uninitialised;               uint1   DMA32BIT = uninitialised;
+
+    // 16/32 BIT FLAGS FOR SOURCE&DEST + SET&DEST
+    uint1   SD16 <:: src16bit & dest16bit & ~DMACOUNT[0,1];
+    uint1   SSD16 <:: srcSET & dest16bit & ~DMACOUNT[0,1];
+    uint1   SD32 <:: src16bit & dest16bit & ~|DMACOUNT[0,2];
+    uint1   SSD32 <:: srcSET & dest16bit & ~|DMACOUNT[0,2];
+
+    // COUNTERS FOR PIXEL BLOCK TRANSFERS
     uint1   PB4pixel = uninitialised;               uint3   PBmax <:: PB4pixel ? 4 : 2;                 uint3   PBcount = uninitialised;
     uint3   PBcountp1 <:: PBcount + 1;              uint1   PBwritewait <:: ( PBcountp1 != PBmax );
 
@@ -768,13 +779,13 @@ unit dma(
                                     while( memorybusy ) {} memoryinput = readdata;
                                     address = dmadest; PBcount = 0;
                                     while( PBcount != PBmax ) {
-                                        writedata = memoryinput[ { PBcount, 3b000 }, 8]; if( PBwritewait) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1;
+                                        writedata = memoryinput[ { PBcount, 3b000 }, 8]; if( PBwritewait ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1;
                                     }
                                 }
                                 case 2b10: { address = dmadest; writememory = 1; while( memorybusy ) {} }
                                 case 2b11: {                                                                                        // SPECIAL MULTI-SRC SET PIXELBLOCK / TILE / SAMPLE / SDCARD WRITE
                                     address = dmadest; PBcount = 0;
-                                    while( PBcount != PBmax ) { if( PBwritewait) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1; }
+                                    while( PBcount != PBmax ) { if( PBwritewait ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1; }
                                 }
                             }
                             switch( dmamode[0,3] ) {
@@ -822,21 +833,19 @@ unit dma(
             switch( dmamode ) {
                 default: {}                                                                                                     // DEFAULT TO 8 BIT MODE
                 case 3: {                                                                                                       // MEMCPY IS 32/16 BIT CAPABLE
-                    DMA32BIT = src16bit & dest16bit & ~|DMACOUNT[0,2];
-                    DMA16BIT = src16bit & dest16bit & ~DMACOUNT[0,1];
+                    DMA32BIT = SD32; DMA16BIT = SD16;
                 }
                 case 4: {                                                                                                       // MEMSET IS 32/16 BIT CAPABLE
-                    DMA32BIT = srcSET & dest16bit & ~|DMACOUNT[0,2];
-                    DMA16BIT = srcSET & dest16bit & ~DMACOUNT[0,1];
+                    DMA32BIT = SSD32; DMA16BIT = SSD16;
                 }
                 case 7: { PB4pixel = ~|dmacount[0,2] & src16bit; }                                                              // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
                 case 8: {                                                                                                       // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
-                    DMA32BIT = src16bit & dest16bit & ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2] & ~|DMACOUNT[0,2];
-                    DMA16BIT = src16bit & dest16bit & ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1] & ~DMACOUNT[0,1];
+                    DMA32BIT = SD32 & ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2];
+                    DMA16BIT = SD16 & ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1];
                 }
                 case 9: {                                                                                                       // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
-                    DMA32BIT = srcSET & dest16bit & ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2] & ~|DMACOUNT[0,2];
-                    DMA16BIT = srcSET & dest16bit & ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1] & ~DMACOUNT[0,1];
+                    DMA32BIT = SSD32 & ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2];
+                    DMA16BIT = SSD16 & ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1];
                 }
             }
             DMAACCESSSIZE = DMA32BIT | PB4pixel? 2b10 : DMA16BIT | &dmamode[0,3] ? 2b01: 2b00;                                  // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
