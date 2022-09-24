@@ -133,6 +133,7 @@ algorithm hdmi(
   input   uint8  red,
   input   uint8  green,
   input   uint8  blue,
+  input   uint4  dimmer
 )  {
 
   uint10 cntx  = 0;
@@ -222,9 +223,9 @@ algorithm hdmi(
 
     // latch r,b,g received at this cycle, for previous coord
     // will be fed into HDMI encoders next cycle
-    latch_red   = red;
-    latch_green = green;
-    latch_blue  = blue;
+    latch_red   = red >> dimmer;
+    latch_green = green >> dimmer;
+    latch_blue  = blue >> dimmer;
 
   }
 }
