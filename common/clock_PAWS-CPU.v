@@ -7,7 +7,7 @@ module ulx3s_clk_PAWS_CPU
     input clkin,                // 25 MHz, 0 deg
     output  clkCPU,             // 50 MHz, 0 deg        // SYSTEM CLOCK cpu
     output  clkDECODE,          // 100 MHz, 0 deg       // CPU decoder and compressed instruction expander
-    output  clkVIO,             // 50 MHz, 0 deg       // VIDEO IO CLOCK
+    output  clkPAL,             // 50 MHz, 0 deg        // PALETTE LOOKUP CLOCK
     output  clkCACHE,           // 100 MHz, 0 deg       // CPU instruction cache
     output  locked
 );
@@ -51,7 +51,7 @@ EHXPLLL #(
         .CLKI(clkin),
         .CLKOP(clkCPU),
         .CLKOS(clkDECODE),
-        .CLKOS2(clkVIO),
+        .CLKOS2(clkPAL),
         .CLKOS3(clkCACHE),
         .CLKFB(clkCPU),
         .CLKINTFB(),

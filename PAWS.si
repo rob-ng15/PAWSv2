@@ -89,7 +89,7 @@ $$end
     uint1   clock_cpu = uninitialized;
     uint1   clock_decode = uninitialized;
     uint1   clock_cache = uninitialized;
-    uint1   clock_vio = uninitialized;
+    uint1   clock_palette = uninitialized;
 $$if VERILATOR then
     $$clock_25mhz = 'video_clock'
     // --- PLL
@@ -101,7 +101,7 @@ $$if VERILATOR then
       compute_clock :> clock_cpu,
       compute_clock :> clock_io,
       clock_decode :> clock_cache,
-      compute_clock :> clock_vio,
+      compute_clock :> clock_palette,
     );
 $$else
     $$clock_25mhz = 'clock'
@@ -122,7 +122,7 @@ $$else
         clkin    <: $clock_25mhz$,
         clkCPU :> clock_cpu,
         clkDECODE :> clock_decode,
-        clkVIO :> clock_vio,
+        clkPAL :> clock_palette,
         clkCACHE :> clock_cache,
         locked   :> pll_lock_CPU
     );
@@ -228,9 +228,10 @@ $$end
         static8bit <: TIMERS_Map.static16bit[0,8]
     );
 
-    video_memmap VIDEO_Map <@clock_vio,!reset> (
+    video_memmap VIDEO_Map <@clock_io,!reset> (
         video_clock <: $clock_25mhz$,
         gpu_clock <: $clock_25mhz$,
+        palette_clock <: clock_palette,
         memoryAddressDirect <: CPU.address,
         accesssize <: CPU.accesssize,
         memoryAddress <: CPU.address[0,12],
@@ -471,57 +472,52 @@ unit evictioncache(
 
     // MEMORY ACCESS FLAGS
     uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
-    uint1   readflag_s = uninitialized;             uint1   writeflag_s = uninitialized;
     uint1   doreadsdram <:: ( doread | ( dowrite & byteaccess ) );
 
     // SDRAM ACCESS AND CACHE UPDATE FLAGS
     SDRAM.readflag := 0; SDRAM.writeflag := 0; DCACHEW.update := 0; ICACHEW.update := 0;
 
-    always_before {
-        if( readflag ) { readflag_s = 1; }
-        if( writeflag ) { writeflag_s = 1; }
-    }
 
     algorithm <autorun> {
         while(1) {
-            doread = readflag_s; dowrite = writeflag_s; readflag_s = 0; writeflag_s = 0;
+            doread = readflag; dowrite = writeflag;                                                                                                 // CHECK FOR READ/WRITE
 
             if( doread | dowrite ) {
-                if( ( doread & Icachematch ) | Dcachematch ) {                                              // READ/WRITE IN CACHE
+                if( ( doread & Icachematch ) | Dcachematch ) {                                                                                      // READ/WRITE IN CACHE
                     if( dowrite ) {
                         ++:
-                        DCACHEW.update = 1;                                                                     // UPDATE CACHE IF WRITE
-                        ICACHEW.update = Icacheupdate;                                                          // UPDATE ICACHE IF NEEDED
+                        DCACHEW.update = 1;                                                                                                         // UPDATE CACHE IF WRITE
+                        ICACHEW.update = Icacheupdate;                                                                                              // UPDATE ICACHE IF NEEDED
                     } else {
                         doread = 1;
                     }
                 } else {
-                    busy = 1;                                                                                                   // CACHE MISS
-                    if( SDRAM.busy & ( ( cacheselect & DCACHE.needswrite ) | doreadsdram ) ) { while( SDRAM.busy ) {} } else { busy = 1; }         // WAIT FOR SDRAM IF BUSY AND REQUIRED
-                    if( cacheselect & DCACHE.needswrite ) {                                                                                   // CHECK IF CACHE LINE IS OCCUPIED
-                        if( doreadsdram ) {                                                                                         // EVICT FROM CACHE TO SDRAM
+                    busy = 1;                                                                                                                       // CACHE MISS
+                    if( SDRAM.busy & ( ( cacheselect & DCACHE.needswrite ) | doreadsdram ) ) { while( SDRAM.busy ) {} } else { busy = 1; }          // WAIT FOR SDRAM IF BUSY AND REQUIRED
+                    if( cacheselect & DCACHE.needswrite ) {                                                                                         // CHECK IF CACHE LINE IS OCCUPIED
+                        if( doreadsdram ) {                                                                                                         // EVICT FROM CACHE TO SDRAM
                             SDRAM.address = DCACHE.cacheaddress; SDRAM.writedata = DCACHE.rdata;
                             SDRAM.writeflag = 1; while( ~sio.done ) {}
-                            SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {}                                    // READ FOR READ OR 8 BIT WRITE
-                            DCACHEW.update = cacheselect;                                                                           // UPDATE THE CACHE { RESET VALID FLAG IF WRITTEN OUT }
-                            ICACHEW.update = ~cacheselect;                                                                          // UPDATE ICACHE IF NEEDED
+                            SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {}                                                      // READ FOR READ OR 8 BIT WRITE
+                            DCACHEW.update = cacheselect;                                                                                           // UPDATE THE CACHE { RESET VALID FLAG IF WRITTEN OUT }
+                            ICACHEW.update = ~cacheselect;                                                                                          // UPDATE ICACHE IF NEEDED
                             busy = 0;
                         } else {
                             SDRAM.address = DCACHE.cacheaddress; SDRAM.writedata = DCACHE.rdata;
                             SDRAM.writeflag = 1;
-                            DCACHEW.update = dowrite;                                                                               // UPDATE CACHE FOR 16 BIT WRITE
-                            ICACHEW.update = Icacheupdate;                                                                          // UPDATE ICACHE IF NEEDED
+                            DCACHEW.update = dowrite;                                                                                               // UPDATE CACHE FOR 16 BIT WRITE
+                            ICACHEW.update = Icacheupdate;                                                                                          // UPDATE ICACHE IF NEEDED
                             busy = 0;
                         }
                     } else {
                         if( doreadsdram ) {
-                            SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {}                                    // READ FOR READ OR 8 BIT WRITE
-                            DCACHEW.update = cacheselect;                                                                           // UPDATE THE CACHE
-                            ICACHEW.update = ~cacheselect;                                                                          // UPDATE ICACHE IF NEEDED
+                            SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {}                                                      // READ FOR READ OR 8 BIT WRITE
+                            DCACHEW.update = cacheselect;                                                                                           // UPDATE THE CACHE
+                            ICACHEW.update = ~cacheselect;                                                                                          // UPDATE ICACHE IF NEEDED
                             busy = 0;
                         } else {
-                            DCACHEW.update = dowrite;                                                                               // UPDATE CACHE FOR 16 BIT WRITE
-                            ICACHEW.update = Icacheupdate;                                                                          // UPDATE ICACHE IF NEEDED
+                            DCACHEW.update = dowrite;                                                                                               // UPDATE CACHE FOR 16 BIT WRITE
+                            ICACHEW.update = Icacheupdate;                                                                                          // UPDATE ICACHE IF NEEDED
                             busy = 0;
                         }
                     }
