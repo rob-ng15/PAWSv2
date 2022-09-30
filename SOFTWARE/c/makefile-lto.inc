@@ -10,7 +10,7 @@ LD=$(ARCH)-elf-ld.bfd
 NM=$(ARCH)--elf-nm
 RANLIB=$(ARCH)--elf-ranlib
 
-GCCVER=12.2.0
+GCCVER=12.1.0
 
 BUILD_DIR=build_lto
 OUTPUT_DIR=../../PAWS/
