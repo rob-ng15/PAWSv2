@@ -60,12 +60,15 @@ $$CPUISA = 0x40011027
 $include('../cpu_functionblocks.si')
 $include('../ALU.si')
 $include('../FPU.si')
+//$include('../FPU_PIPE.si')
+//$include('../FPU_FSM.si')
+//$include('../FPU_NEW.si')
 $include('../CPU.si')
 
 // MAIN PAWS-32D[I].si cache is 32 bits, PAWS.si cache is 16 bits with an aggregator in front of the cache
 //$include('../PAWS-32D.si')
-$include('../PAWS-Donly.si')
-//$include('../PAWS.si')
+//$include('../PAWS-Donly.si')
+$include('../PAWS.si')
 
 // I2C (EMARD FOR RTC)
 append('../common/emard/i2c_master.v')

@@ -85,16 +85,13 @@ unit floatcalc(
     classifyF classM( a <: FPUmultiply.result );
 
     // ADD/SUB/MULT have changeable inputs due to 2 input and 3 input fused operations
-    floataddsub FPUaddsub( cOF <: MAKERESULT.OF, cUF <: MAKERESULT.UF, f32 <: MAKERESULT.f32 );
-    floatmultiply FPUmultiply( a <: sourceReg1F, b <: sourceReg2F, classA <: classA, classB <: classB, cOF <: MAKERESULT.OF, cUF <: MAKERESULT.UF, f32 <: MAKERESULT.f32 );
-    floatdivide FPUdivide( a <: sourceReg1F, b <: sourceReg2F, classA <: classA, classB <: classB, cOF <: MAKERESULT.OF, cUF <: MAKERESULT.UF, f32 <: MAKERESULT.f32 );
-    floatsqrt FPUsqrt( a <: sourceReg1F, classA <: classA, cOF <: MAKERESULT.OF, cUF <: MAKERESULT.UF, f32 <: MAKERESULT.f32 );
+    floataddsub FPUaddsub( cOF <: DONORMAL.flags[2,1], cUF <: DONORMAL.flags[1,1], f32 <: DONORMAL.f32 );
+    floatmultiply FPUmultiply( a <: sourceReg1F, b <: sourceReg2F, classA <: classA, classB <: classB, cOF <: DONORMAL.flags[2,1], cUF <: DONORMAL.flags[1,1], f32 <: DONORMAL.f32 );
+    floatdivide FPUdivide( a <: sourceReg1F, b <: sourceReg2F, classA <: classA, classB <: classB, cOF <: DONORMAL.flags[2,1], cUF <: DONORMAL.flags[1,1], f32 <: DONORMAL.f32 );
+    floatsqrt FPUsqrt( a <: sourceReg1F, classA <: classA, cOF <: DONORMAL.flags[2,1], cUF <: DONORMAL.flags[1,1], f32 <: DONORMAL.f32 );
 
-    // NORMALISE RESULT OF ADD SUB DIV
-    normalise24 DONORMAL( exp <: FPUaddsub.tonormaliseexp );
-
-    // ROUNDING AND COMBINING OF FINAL RESULTS
-    doroundcombine MAKERESULT();
+    // NORMALISE RESULT, THEN DO ROUNDING AND COMBINING OF FINAL RESULT
+    normalise48to24 DONORMAL();
 
     // NEW FPU FLAGS
     uint5   flags = uninitialised;
@@ -125,15 +122,13 @@ unit floatcalc(
     }
 
     always_after {
-        DONORMAL.bitstream = opCode[2,1] & ( &function7[0,2] ) ? FPUdivide.tonormalisebitstream : FPUaddsub.tonormalisebitstream;
-
-        // CONTROL INPUTS TO ROUNDING AND COMBINING
+        // CONTROL INPUTS TO NORMALISING, ROUNDING AND COMBINING
         if( |unitbusy ) {
             onehot( unitbusy ) {
-                case 0: { MAKERESULT.exponent = DONORMAL.newexponent; MAKERESULT.bitstream = DONORMAL.normalfraction; MAKERESULT.sign = FPUaddsub.resultsign; }
-                case 1: { MAKERESULT.exponent = FPUmultiply.productexp; MAKERESULT.bitstream = FPUmultiply.normalfraction; MAKERESULT.sign = FPUmultiply.productsign; }
-                case 2: { MAKERESULT.exponent = FPUdivide.quotientexp; MAKERESULT.bitstream = DONORMAL.normalfraction; MAKERESULT.sign = FPUdivide.quotientsign; }
-                case 3: { MAKERESULT.exponent = FPUsqrt.squarerootexp; MAKERESULT.bitstream = FPUsqrt.normalfraction; MAKERESULT.sign = 0; }
+                case 0: { DONORMAL.adjustexp = 1; DONORMAL.bitstream = FPUaddsub.tonormalisebitstream; DONORMAL.exp = FPUaddsub.tonormaliseexp;  DONORMAL.sign = FPUaddsub.resultsign; }
+                case 1: { DONORMAL.adjustexp = 0; DONORMAL.bitstream = FPUmultiply.tonormalisebitstream; DONORMAL.exp = FPUmultiply.productexp; DONORMAL.sign = FPUmultiply.productsign; }
+                case 2: { DONORMAL.adjustexp = 0; DONORMAL.bitstream = FPUdivide.tonormalisebitstream; DONORMAL.exp = FPUdivide.quotientexp; DONORMAL.sign = FPUdivide.quotientsign; }
+                case 3: { DONORMAL.adjustexp = 0; DONORMAL.bitstream = FPUsqrt.tonormalisebitstream; DONORMAL.exp = FPUsqrt.squarerootexp; DONORMAL.sign = 0; }
             }
         }
 
@@ -153,8 +148,8 @@ unit floatcalc(
                 }
             }
         } else {                                                                                                    // FUSED OPERATIONS
-            FPUaddsub.a = { opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };
-            FPUaddsub.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] }; // SET INPUTS TO FADD.S FSUB.S
+            FPUaddsub.a = { opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };                         // SWITCH SIGN OF MULTIPLY RESULT IF REQUIRED
+            FPUaddsub.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] };                                       // SWITCH SIGN OF sourceReg3F IF SUB
             FPUaddsub.classA = classM.class; FPUaddsub.classB = classC;
             result = FPUaddsub.result; flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
         }
@@ -321,49 +316,31 @@ unit clz48(
         if( |bitstreamh ) { ( count ) = clz_silice_16( bitstreamh ); } else { ( clz ) = clz_silice_32( bitstreaml ); count = 16 + clz; }
     }
 }
-// NORMALISE RESULT FOR ADD SUB DIVIDE
-unit normalise24(
-    input   int10   exp,
-    input   uint48  bitstream,
-    output  int10   newexponent,
-    output  uint24  normalfraction
-) <reginputs> {
-    // COUNT LEADING ZEROS
-    clz48 CLZ48( bitstream <: bitstream );          uint48  temporary <:: ( bitstream << CLZ48.count );
 
-    always_after {
-        normalfraction = temporary[23,24]; newexponent = exp - CLZ48.count;
-    }
-}
-
-// NORMALISE RESULT FOR MULTIPLICATION AND SQUARE ROOT
-unit fastnormal24(
-    input   uint48  tonormal,
-    output  uint24  normalfraction
-) <reginputs> {
-    always_after {
-        normalfraction = tonormal[ tonormal[47,1] ? 23 : 22, 24 ];
-    }
-}
-
+// NORMALISE RESULT
 // ROUND 23 BIT FRACTION FROM NORMALISED FRACTION USING NEXT TRAILING BIT
 // ADD BIAS TO EXPONENT AND ADJUST EXPONENT IF ROUNDING FORCES
 // COMBINE COMPONENTS INTO FLOATING POINT NUMBER - USED BY CALCULATIONS
 // UNDERFLOW return 0, OVERFLOW return infinity
-unit doroundcombine(
+unit normalise48to24(
     input   uint1   sign,
-    input   uint24  bitstream,
-    input   int10   exponent,
-    output! uint1   OF,
-    output! uint1   UF,
+    input   int10   exp,
+    input   uint48  bitstream,
+    input   uint1   adjustexp,
+    output! uint3   flags,
     output! uint32  f32
 ) <reginputs> {
-    uint23  roundfraction <:: bitstream[1,23] + bitstream[0,1];
-    int10   newexponent <:: ( ( ~|roundfraction & bitstream[0,1] ) ? 128 : 127 ) + exponent;
+    // COUNT LEADING ZEROS
+    clz48 CLZ48( bitstream <: bitstream );          uint48  temporary <:: ( bitstream << CLZ48.count );
+    uint23  roundfraction <:: temporary[24,23] + temporary[23,1];
+    int10   newexponent <:: ( ( ~|roundfraction & temporary[23,1] ) ? 128 : 127 ) + ( adjustexp ? exp - CLZ48.count : exp );
+    uint1   OF <:: ( newexponent > 254 );
+    uint1   UF <:: newexponent[9,1];
 
-    always_after {
-        OF = ( newexponent > 254 ); UF = newexponent[9,1]; f32 = UF ? 0 : { sign, OF ? 31h7f800000 : { newexponent[0,8], roundfraction } };
-    }
+     always_after {
+        f32 = UF ? 0 : { sign, OF ? 31h7f800000 : { newexponent[0,8], roundfraction } };
+        flags = { OF, UF, 1b0 };
+     }
 }
 
 // CONVERT SIGNED/UNSIGNED INTEGERS TO FLOAT
@@ -483,7 +460,7 @@ unit floataddsub(
 ) <reginputs> {
     // CLASSIFY THE INPUTS AND FLAG INFINITY, NAN, ZERO AND INVALID ( INF - INF )
     uint1   IF <:: ( classA[3,1] | classB[3,1] );
-    uint1   NN <:: ( classA[2,1] | classA[1,1] | classB[2,1] | classB[1,1] );
+    uint1   NN <:: ( classA[1,2] | classB[1,2] );
     uint1   NV <:: ( classA[3,1] & classB[3,1]) & ( fp32( a ).sign ^ fp32( b).sign );
     uint1   OF = uninitialised;
     uint1   UF = uninitialised;
@@ -529,15 +506,11 @@ unit prepmul(
     input   uint32  b,
     output  uint1   productsign,
     output  int10   productexp,
-    output  uint24  normalfraction
+    output  uint48  product
 ) <reginputs> {
     // BREAK DOWN INITIAL float32 INPUTS AND FIND SIGN OF RESULT AND EXPONENT OF PRODUCT ( + 1 IF PRODUCT OVERFLOWS, MSB == 1 )
-    // NORMALISE THE RESULTING PRODUCT AND EXTRACT THE 24 BITS AFTER THE LEADING 1.xxxx
-    fastnormal24 NORMAL( tonormal <: product, normalfraction :> normalfraction );
-
-    uint48  product <:: { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction };
-
     always_after {
+        product = { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction };
         productsign = fp32( a ).sign ^ fp32( b ).sign; productexp = fp32( a ).exponent + fp32( b ).exponent - ( product[47,1] ? 253 : 254 );
     }
 }
@@ -550,7 +523,7 @@ unit floatmultiply(
     input   uint4   classB,
     output  uint1   productsign,
     output  int10   productexp,
-    output  uint24  normalfraction,
+    output  uint48  tonormalisebitstream,
     input   uint1   cOF,
     input   uint1   cUF,
     input   uint32  f32,
@@ -567,7 +540,7 @@ unit floatmultiply(
     uint1   UF = uninitialised;
 
     // PERFORM THE MULTIPLICATION AND FAST NORMALISE THE RESULT
-    prepmul PREP( a <: a, b <: b, productsign :> productsign, productexp :> productexp, normalfraction :> normalfraction );
+    prepmul PREP( a <: a, b <: b, productsign :> productsign, productexp :> productexp, product :> tonormalisebitstream );
 
     algorithm <autorun> {
         while(1) {
@@ -575,9 +548,9 @@ unit floatmultiply(
                 busy = 1; OF = 0; UF = 0;
                 if( ~|{ IF | NN, ZERO } ) {
                     // STEPS: SETUP -> DOMUL -> NORMALISE -> ROUND -> ADJUSTEXP -> COMBINE
-                    // ALLOW 3 CYCLES TO PERFORM THE MULTIPLICATION, NORMALISATION AND ROUNDING
+                    // VALID RESULT, ALLOW FOR NORMALISATION AND COMBINING OF FINAL RESULT
                     ++: ++: busy = 0;
-                } else { busy = 0; }
+               } else { busy = 0; }
             }
         }
     }
@@ -612,7 +585,7 @@ unit dofloatdivide(
     uint1   bitresult <:: __unsigned(temporary) >= __unsigned(sigB);
     uint2   normalshift <:: quotient[49,1] ? 2 : quotient[48,1];
 
-    busy := start | ( ~&bit ) | ( quotient[48,2] != 0 );
+    busy := start | ( ~&bit ) | ( |quotient[48,2] );
 
     always_after {
         // FIND QUOTIENT AND ENSURE 48 BIT FRACTION ( ie BITS 48 and 49 clear )
@@ -661,10 +634,9 @@ unit floatdivide(
     // CLASSIFY THE INPUTS AND FLAG INFINITY, NAN, ZERO AND DIVIDE ZERO
     uint1   IF <:: ( classA[3,1] | classB[3,1] );
     uint1   NN <:: ( classA[2,1] | classA[1,1] | classB[2,1] | classB[1,1] );
-    uint1   NV = uninitialised;
     uint1   OF = uninitialised;
     uint1   UF = uninitialised;
-    uint2   ACTION <:: { IF | NN,classA[0,1] | classB[0,1] };
+    uint2   ACTION <:: { IF | NN, classA[0,1] | classB[0,1] };
 
     // PREPARE THE DIVISION, DO THE DIVISION, NORMALISE THE RESULT
     prepdivide PREP( a <: a, b <: b, quotientsign :> quotientsign, quotientexp :> quotientexp );
@@ -756,7 +728,7 @@ unit floatsqrt(
     input   uint32  a,
     input   uint4   classA,
     output  int10   squarerootexp,
-    output  uint24  normalfraction,
+    output  uint48  tonormalisebitstream,
     input   uint1   cOF,
     input   uint1   cUF,
     input   uint32  f32,
@@ -772,8 +744,7 @@ unit floatsqrt(
 
     // PREPARE AND PERFORM THE SQUAREROOT, FAST NORMALISE THE RESULT
     prepsqrt PREP( a <: a, squarerootexp :> squarerootexp );
-    dofloatsqrt DOSQRT( start_ac <: PREP.start_ac, start_x <: PREP.start_x );
-    fastnormal24 NORMAL( tonormal <: DOSQRT.squareroot, normalfraction :> normalfraction );
+    dofloatsqrt DOSQRT( start_ac <: PREP.start_ac, start_x <: PREP.start_x, squareroot :> tonormalisebitstream );
 
     DOSQRT.start := start & ACTION; busy := start | DOSQRT.busy;
 
