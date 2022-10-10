@@ -59,9 +59,9 @@ $include('../timers_random.si')
 $$CPUISA = 0x40011027
 $include('../cpu_functionblocks.si')
 $include('../ALU.si')
-$include('../FPU.si')
+//$include('../FPU.si')
 //$include('../FPU_PIPE.si')
-//$include('../FPU_FSM.si')
+$include('../FPU_FSM.si')
 //$include('../FPU_NEW.si')
 $include('../CPU.si')
 

@@ -81,7 +81,6 @@ $$if not SIMULATION then
 $$end
 
     // I2C FOR RTC
-    uint64  LATCHrtc = uninitialised;
     rtc RTC( clk <: clock_25mhz, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );              // EMARD verilog version
     //mcp7940n RTC <@clock_25mhz> ( sda <:> gpdi_sda, scl <:> gpdi_scl );                             // Silice translation (not yet working)
 
@@ -97,23 +96,24 @@ $$if not SIMULATION then
 $$end
     RTC.wr := 0; RTC.addr := 7; FIXED_DIVIDE_1.start := 0; FIXED_DIVIDE_2.start := 0;
 
-    always_before {
-        // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE, RTC to read mode
-        if( reset ) {
-            SMTRUNNING = 0;
-            $$if not SIMULATION then
-                PS2.outputkeycodes = 0;
-            $$end
-            MAGICVALUE = 0; DMAMODE = 0;
+    always_after {
+        {
+            // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE, RTC to read mode
+            if( reset ) {
+                SMTRUNNING = 0;
+                $$if not SIMULATION then
+                    PS2.outputkeycodes = 0;
+                $$end
+                MAGICVALUE = 0; DMAMODE = 0;
+            }
         }
-    }
 
-    algorithm <autorun> {
-        while(1) {
-$$if not SIMULATION then
-            // UPDATE LATCHES
-            UARTinread = UARTinread[1,1]; UARToutwrite = UARToutwrite[1,1]; PS2inread = PS2inread[1,1];
-$$end
+        {
+            uint64  LATCHrtc = uninitialised;
+            $$if not SIMULATION then
+                // UPDATE LATCHES
+                UARTinread = UARTinread[1,1]; UARToutwrite = UARToutwrite[1,1]; PS2inread = PS2inread[1,1];
+            $$end
 
             // READ IO Memory
             if( memoryRead ) {
@@ -168,70 +168,71 @@ $$end
                 }
             }
         }
-    }
-    always_after {
-        // WRITE IO Memory
-        if( memoryWrite ) {
-            switch( memoryAddress[8,4] ) {
-                $$if not SIMULATION then
-                case 4h0: { UARToutwrite = 2b11; }
-                case 4h1: { PS2.outputkeycodes = writeData; }
-                case 4h4: {
-                    switch( memoryAddress[1,2] ) {
-                        case 2h0: { SDCARD.readsector = 1; }
-                        case 2h1: { SDCARD.writesector = |SDCARD.sectoraddress | MAGICVALUE; }
-                        default: { SDCARD.sectoraddress = writeData; }
-                    }
-                }
-                case 4h5: {
-                    switch( memoryAddress[1,1] ) {
-                        case 0: { buffer_in.addr0 = 0; buffer_out.addr1 = 511; }
-                        case 1: { buffer_out.addr1 = OUTPLUS1; buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
-                    }
-                }
-                $$end
-                case 4h3: { leds = writeData; }
-                case 4h7: { MAGICVALUE = ( writeData == 32h50415357 ); } // SPECIAL VALUE TO ALLOW WRITING TO SDCARD SECTOR 0 { 'P', 'A', 'W', 'S' }
-                case 4h8: {
-                    if( memoryAddress[4,1] ) {
-                        switch( memoryAddress[2,2] ) {
-                            case 2b00: { FIXED_DIVIDE_2.fixed_t_a = writeData; }
-                            case 2b01: { FIXED_DIVIDE_2.fixed_t_b = writeData; }
-                            default: { FIXED_DIVIDE_2.start = 1; }
-                        }
-                    } else {
-                        switch( memoryAddress[2,2] ) {
-                            case 2b00: { FIXED_DIVIDE_1.fixed_t_a = writeData; }
-                            case 2b01: { FIXED_DIVIDE_1.fixed_t_b = writeData; }
-                            default: { FIXED_DIVIDE_1.start = 1; }
+
+        {
+            // WRITE IO Memory
+            if( memoryWrite ) {
+                switch( memoryAddress[8,4] ) {
+                    $$if not SIMULATION then
+                    case 4h0: { UARToutwrite = 2b11; }
+                    case 4h1: { PS2.outputkeycodes = writeData; }
+                    case 4h4: {
+                        switch( memoryAddress[1,2] ) {
+                            case 2h0: { SDCARD.readsector = 1; }
+                            case 2h1: { SDCARD.writesector = |SDCARD.sectoraddress | MAGICVALUE; }
+                            default: { SDCARD.sectoraddress = writeData; }
                         }
                     }
-                }
-                case 4hd: {
-                    switch( memoryAddress[2,2] ) {
-                        case 2b00: { DMASOURCEADD = writeData; }
-                        case 2b01: { DMADESTADD = writeData; }
-                        default: { DMACYCLES = writeData; }
+                    case 4h5: {
+                        switch( memoryAddress[1,1] ) {
+                            case 0: { buffer_in.addr0 = 0; buffer_out.addr1 = 511; }
+                            case 1: { buffer_out.addr1 = OUTPLUS1; buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
+                        }
                     }
-                }
-                case 4he: {
-                    switch( memoryAddress[2,2] ) {
-                        case 2b00: { DMASOURCE = writeData; }
-                        case 2b01: { DMADEST = writeData; }
-                        case 2b10: { DMACOUNT = writeData; }
-                        case 2b11: { if( memoryAddress[1,1] ) { DMASET = writeData; } else { DMAMODE = writeData; } }
+                    $$end
+                    case 4h3: { leds = writeData; }
+                    case 4h7: { MAGICVALUE = ( writeData == 32h50415357 ); } // SPECIAL VALUE TO ALLOW WRITING TO SDCARD SECTOR 0 { 'P', 'A', 'W', 'S' }
+                    case 4h8: {
+                        if( memoryAddress[4,1] ) {
+                            switch( memoryAddress[2,2] ) {
+                                case 2b00: { FIXED_DIVIDE_2.fixed_t_a = writeData; }
+                                case 2b01: { FIXED_DIVIDE_2.fixed_t_b = writeData; }
+                                default: { FIXED_DIVIDE_2.start = 1; }
+                            }
+                        } else {
+                            switch( memoryAddress[2,2] ) {
+                                case 2b00: { FIXED_DIVIDE_1.fixed_t_a = writeData; }
+                                case 2b01: { FIXED_DIVIDE_1.fixed_t_b = writeData; }
+                                default: { FIXED_DIVIDE_1.start = 1; }
+                            }
+                        }
                     }
-                }
-                case 4hf: {
-                    switch( memoryAddress[2,1] ) {
-                        case 1b0: { SMTSTARTPC = writeData; }
-                        case 1b1: { SMTRUNNING = writeData; }
+                    case 4hd: {
+                        switch( memoryAddress[2,2] ) {
+                            case 2b00: { DMASOURCEADD = writeData; }
+                            case 2b01: { DMADESTADD = writeData; }
+                            default: { DMACYCLES = writeData; }
+                        }
                     }
+                    case 4he: {
+                        switch( memoryAddress[2,2] ) {
+                            case 2b00: { DMASOURCE = writeData; }
+                            case 2b01: { DMADEST = writeData; }
+                            case 2b10: { DMACOUNT = writeData; }
+                            case 2b11: { if( memoryAddress[1,1] ) { DMASET = writeData; } else { DMAMODE = writeData; } }
+                        }
+                    }
+                    case 4hf: {
+                        switch( memoryAddress[2,1] ) {
+                            case 1b0: { SMTSTARTPC = writeData; }
+                            case 1b1: { SMTRUNNING = writeData; }
+                        }
+                    }
+                    default: {}
                 }
-                default: {}
             }
+            if( |DMAACTIVE ) { DMAMODE = 0; }  // CANCEL DMA REQUEST ONCE DMA STARTS
         }
-        if( |DMAACTIVE ) { DMAMODE = 0; }  // CANCEL DMA REQUEST ONCE DMA STARTS
     }
 }
 
@@ -254,15 +255,12 @@ unit timers_memmap(
     timers_rng timers <@clock_25mhz> ( seconds :> cursor, g_noise_out :> static16bit );
     uint32  floatrng <:: { 1b0, 5b01111, &timers.u_noise_out[0,3] ? 3b110 : timers.u_noise_out[0,3], timers.g_noise_out[0,16], timers.u_noise_out[3,7] };
 
-    // LATCH TIME OF DAY
-    uint64  LATCHseconds = uninitialised;
-    uint25  LATCHmilliseconds = uninitialised;
+    always_after {
+        {
+            // LATCH TIME OF DAY
+            uint64  LATCHseconds = uninitialised;
+            uint25  LATCHmilliseconds = uninitialised;
 
-    // LATCH MEMORYWRITE
-    uint1   LATCHmemoryWrite = uninitialized;
-
-    algorithm <autorun> {
-        while(1) {
             // READ IO Memory
             if( memoryRead ) {
                 if( memoryAddress[5,1] ) {
@@ -289,26 +287,29 @@ unit timers_memmap(
                 }
             }
         }
-    }
 
-    always_after {
-        // WRITE IO Memory
-        switch( { memoryWrite, LATCHmemoryWrite } ) {
-            case 2b10: {
-                if( memoryAddress[5,1] ) {
-                    switch( memoryAddress[2,2] ) {
-                        case 2h0: { timers.newtime[0,32] = writeData; }
-                        case 2h1: { timers.newtime[32,32] = writeData; }
-                        default: { timers.resetcounter = 7; }
+        {
+            // LATCH MEMORYWRITE
+            uint1   LATCHmemoryWrite = uninitialized;
+
+            // WRITE IO Memory
+            switch( { memoryWrite, LATCHmemoryWrite } ) {
+                case 2b10: {
+                    if( memoryAddress[5,1] ) {
+                        switch( memoryAddress[2,2] ) {
+                            case 2h0: { timers.newtime[0,32] = writeData; }
+                            case 2h1: { timers.newtime[32,32] = writeData; }
+                            default: { timers.resetcounter = 7; }
+                        }
+                    } else {
+                        timers.counter = writeData; timers.resetcounter = memoryAddress[1,3] + 1;
                     }
-                } else {
-                    timers.counter = writeData; timers.resetcounter = memoryAddress[1,3] + 1;
                 }
+                case 2b00: { timers.resetcounter = 0; }
+                default: {}
             }
-            case 2b00: { timers.resetcounter = 0; }
-            default: {}
+            LATCHmemoryWrite = memoryWrite;
         }
-        LATCHmemoryWrite = memoryWrite;
     }
 }
 
@@ -399,54 +400,56 @@ unit audio_memmap(
         samples_MAX_R <: maxSR
     );
 
-    // LATCH MEMORYWRITE
-    uint1   LATCHmemoryWrite = uninitialized;
-
     // SAMPLE MEMORY CONTROLS
     samples_left.wenable1 := 1; samples_right.wenable1 := 1;
 
-    always_before {
-        if( reset ) { apu_processor.volume_l = 7; apu_processor.volume_r = 7; }
-    }
-
-    algorithm <autorun> {
-        while(1) { readData = memoryAddress[1,1] ? apu_processor.audio_active_r : apu_processor.audio_active_l; }
-    }
-
     always_after {
-        // WRITE IO Memory
-        switch( { memoryWrite, LATCHmemoryWrite } ) {
-            case 2b10: {
-                switch( memoryAddress[1,4] ) {
-                    case 4h0: {                                                                                                             // SET APU FROM CPU
-                        if( accesssize[1,1] ) {
-                            apu_processor.waveform = writeData[0,5]; apu_processor.frequency = writeData[16,7];
-                        } else { apu_processor.waveform = writeData; }
-                    }
-                    case 4h1: { apu_processor.frequency = writeData; }
-                    case 4h2: {
-                        if( accesssize[1,1] ) {
-                            apu_processor.duration = writeData[0,16]; apu_processor.apu_write = writeData[16,2];
-                        } else { apu_processor.duration = writeData; }
-                    }
-                    case 4h3: { apu_processor.apu_write = writeData; }
-                    case 4h4: { if( writeData[0,1] ) { maxSL = 0; }  if( writeData[1,1] ) { maxSR = 0; } }                                  // RESET SAMPLES
-                    case 4h5: { samples_left.addr1 = maxSL; samples_left.wdata1 = writeData; maxSL = nextSL; }                              // WRITE TO LEFT SAMPLE MEMORY
-                    case 4h6: { samples_right.addr1 = maxSR; samples_right.wdata1 = writeData; maxSR = nextSR; }                            // WRITE TO RIGHT SAMPLE MEMORY
-                    case 4h8: {                                                                                                             // SET VOLUME LEFT ( OR BOTH )
-                        if( accesssize[1,1] ) {
-                            apu_processor.volume_l = writeData[0,3]; apu_processor.volume_r = writeData[16,3];
-                        } else { apu_processor.volume_l = writeData; }
-
-                    }
-                    case 4h9: { apu_processor.volume_r = writeData; }                                                                       // SET VOLUME RIGHT
-                    default: {}
-                }
-            }
-            case 2b00: { apu_processor.apu_write = 0;  }
-            default: {}
+        {
+            if( reset ) { apu_processor.volume_l = 7; apu_processor.volume_r = 7; }
         }
-        LATCHmemoryWrite = memoryWrite;
+
+        {
+            readData = memoryAddress[1,1] ? apu_processor.audio_active_r : apu_processor.audio_active_l;
+        }
+
+        {
+            // LATCH MEMORYWRITE
+            uint1   LATCHmemoryWrite = uninitialized;
+
+            // WRITE IO Memory
+            switch( { memoryWrite, LATCHmemoryWrite } ) {
+                case 2b10: {
+                    switch( memoryAddress[1,4] ) {
+                        case 4h0: {                                                                                                             // SET APU FROM CPU
+                            if( accesssize[1,1] ) {
+                                apu_processor.waveform = writeData[0,5]; apu_processor.frequency = writeData[16,7];
+                            } else { apu_processor.waveform = writeData; }
+                        }
+                        case 4h1: { apu_processor.frequency = writeData; }
+                        case 4h2: {
+                            if( accesssize[1,1] ) {
+                                apu_processor.duration = writeData[0,16]; apu_processor.apu_write = writeData[16,2];
+                            } else { apu_processor.duration = writeData; }
+                        }
+                        case 4h3: { apu_processor.apu_write = writeData; }
+                        case 4h4: { if( writeData[0,1] ) { maxSL = 0; }  if( writeData[1,1] ) { maxSR = 0; } }                                  // RESET SAMPLES
+                        case 4h5: { samples_left.addr1 = maxSL; samples_left.wdata1 = writeData; maxSL = nextSL; }                              // WRITE TO LEFT SAMPLE MEMORY
+                        case 4h6: { samples_right.addr1 = maxSR; samples_right.wdata1 = writeData; maxSR = nextSR; }                            // WRITE TO RIGHT SAMPLE MEMORY
+                        case 4h8: {                                                                                                             // SET VOLUME LEFT ( OR BOTH )
+                            if( accesssize[1,1] ) {
+                                apu_processor.volume_l = writeData[0,3]; apu_processor.volume_r = writeData[16,3];
+                            } else { apu_processor.volume_l = writeData; }
+
+                        }
+                        case 4h9: { apu_processor.volume_r = writeData; }                                                                       // SET VOLUME RIGHT
+                        default: {}
+                    }
+                }
+                case 2b00: { apu_processor.apu_write = 0;  }
+                default: {}
+            }
+            LATCHmemoryWrite = memoryWrite;
+        }
     }
 }
 
@@ -488,14 +491,14 @@ unit audio(
 
     uint1   SAMPLEMODE_L = uninitialised;                   uint1   SAMPLEMODE_R = uninitialised;
     uint1   REPEAT_L = uninitialised;                       uint1   REPEAT_R = uninitialised;
-    uint8   SAMP0P1 <:: samples_left.addr0 + 1;             uint8   SAMP1P1 <:: samples_right.addr0 + 1;
-    uint1   newSL = uninitialised;                          uint1   newSR = uninitialised;
 
     apu_processor_L.apu_write := 0; apu_processor_R.apu_write := 0;
 
-    algorithm <autorun> {
-        while(1) {
-            // DISPATCH NEXT SAMPLE IF SAMPLE MODE ACTIVE LEFT/RIGHT / RESET SAMPLE POINTER IF NOT
+    always_after {
+        // DISPATCH NEXT SAMPLE IF SAMPLE MODE ACTIVE LEFT/RIGHT / RESET SAMPLE POINTER IF NOT
+        {
+            uint1   newSL = uninitialised;
+            uint8   SAMP0P1 <:: samples_left.addr0 + 1;
             if( SAMPLEMODE_L ) {
                 if( ~apu_processor_L.audio_active ) {
                     if( newSL ) {
@@ -509,6 +512,10 @@ unit audio(
             } else {
                 samples_left.addr0 = 0; newSL = 1;
             }
+        }
+        {
+            uint1   newSR = uninitialised;
+            uint8   SAMP1P1 <:: samples_right.addr0 + 1;
             if( SAMPLEMODE_R ) {
                 if( ~apu_processor_R.audio_active ) {
                     if( newSR ) {
@@ -523,27 +530,28 @@ unit audio(
                 samples_right.addr0 = 0; newSR = 1;
             }
         }
-    }
 
-    always_after {
         // IF REQUEST TO START LEFT/RIGHT CHECK IF SAMPLE MODE REQUESTED AND START, OTHERWISE DISPATCH REQUESTED NOTE
-        if( apu_write[0,1] ) {
-            apu_processor_L.duration = duration; SAMPLEMODE_L = waveform[3,1]; REPEAT_L = waveform[4,1]; apu_processor_L.waveform = waveform[0,3];
-            if( waveform[3,1] ) {
-                samples_left.addr0 = 0;
-            } else {
-                apu_processor_L.frequency = CPUfrequency;
-                apu_processor_L.apu_write = 1;
+        {
+            if( apu_write[0,1] ) {
+                apu_processor_L.duration = duration; SAMPLEMODE_L = waveform[3,1]; REPEAT_L = waveform[4,1]; apu_processor_L.waveform = waveform[0,3];
+                if( waveform[3,1] ) {
+                    samples_left.addr0 = 0;
+                } else {
+                    apu_processor_L.frequency = CPUfrequency;
+                    apu_processor_L.apu_write = 1;
+                }
             }
         }
-
-        if( apu_write[1,1] ) {
-            apu_processor_R.duration = duration; SAMPLEMODE_R = waveform[3,1]; REPEAT_R = waveform[4,1]; apu_processor_R.waveform = waveform[0,3];
-            if( waveform[3,1] ) {
-                samples_right.addr0 = 0;
-            } else {
-                apu_processor_R.frequency = CPUfrequency;
-                apu_processor_R.apu_write = 1;
+        {
+            if( apu_write[1,1] ) {
+                apu_processor_R.duration = duration; SAMPLEMODE_R = waveform[3,1]; REPEAT_R = waveform[4,1]; apu_processor_R.waveform = waveform[0,3];
+                if( waveform[3,1] ) {
+                    samples_right.addr0 = 0;
+                } else {
+                    apu_processor_R.frequency = CPUfrequency;
+                    apu_processor_R.apu_write = 1;
+                }
             }
         }
     }

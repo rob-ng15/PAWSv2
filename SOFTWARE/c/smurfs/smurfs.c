@@ -14,6 +14,9 @@ unsigned char FD_village[] = {
 // LOAD THE SPRITES
 #include "graphics/spritesheet-1.h"
 
+// LOAD THE TILEMAPS
+#include "graphics/TM-village.h"
+
 unsigned char tune_treble[] = { 32,                             // OPENING BAR
 
                                 37, 32, 34, 30,                 // REPEAT BLOCK
@@ -116,8 +119,18 @@ void displayreset( void ) {
 
     // SET THE INITIAL SPRITES FROM THE SPRITESHEET
     set_sprite_bitamps_from_spritesheet32x32( UPPER_LAYER, &spritesheet_upper_1[0] );
-}
 
+    // SET CLOUD TILEMAPS
+    for( int i = 0; i < 4; i++ ) {
+        set_tilemap_bitmap32x32( LOWER_LAYER, 1 + ( i * 4 ), &cloud_graphics[ i * 1024 ] );
+    }
+    // DRAW THE CLOUD
+    set_tilemap_tile32x32( LOWER_LAYER, 17, 4, 1 );
+    set_tilemap_tile32x32( LOWER_LAYER, 17, 6, 5 );
+    set_tilemap_tile32x32( LOWER_LAYER, 19, 4, 9 );
+    set_tilemap_tile32x32( LOWER_LAYER, 19, 6, 13 );
+
+}
 void display_village( void ) {
     int BDx = 0, BDx_last = 0, BDwidth = 1024, FDx = 0, FDx_last = 0, FDwidth = 4608, anim_number = 0;
 
@@ -126,14 +139,20 @@ void display_village( void ) {
 
     while( FDx < ( FDwidth - 320 ) ) {
         await_vblank();
-        if( BDx_last != BDx ) { BDx_last = BDx; paws_memcpy_rectangle( (const void *restrict)(0x2000000+32*320), BD_village + BDx, 320, 320, BDwidth, 208 ); }
+        if( BDx_last != BDx ) {
+            BDx_last = BDx; paws_memcpy_rectangle( (const void *restrict)(0x2000000+88*320), BD_village + BDx, 320, 320, BDwidth, 152 );
+            tilemap_scrollwrapclear( LOWER_LAYER, TM_LEFT, 1 );
+        }
         paws_memcpy_rectangle( (const void *restrict)(0x2020000+32*320), FD_village + FDx, 320, 320, FDwidth, 208 );
         set_sprite32( UPPER_LAYER, 0, SPRITE_SHOW, 320, 416, (anim_number) & 7, SPRITE_DOUBLE );
         FDx+=2; if( !(FDx & 3) ) { anim_number++; if( BDx == 510 ) { BDx = 0; } else { BDx+=2; } }
     }
     while( FDx > 0 ) {
         await_vblank();
-        if( BDx_last != BDx ) { BDx_last = BDx; paws_memcpy_rectangle( (const void *restrict)(0x2000000+32*320), BD_village + BDx, 320, 320, BDwidth, 208 ); }
+        if( BDx_last != BDx ) {
+            BDx_last = BDx; paws_memcpy_rectangle( (const void *restrict)(0x2000000+88*320), BD_village + BDx, 320, 320, BDwidth, 152 );
+            tilemap_scrollwrapclear( LOWER_LAYER, TM_RIGHT, 1 );
+        }
         paws_memcpy_rectangle( (const void *restrict)(0x2020000+32*320), FD_village + FDx, 320, 320, FDwidth, 208 );
         set_sprite32( UPPER_LAYER, 0, SPRITE_SHOW, 320, 416, (anim_number) & 7, SPRITE_DOUBLE | REFLECT_X);
         FDx-=2; if( !(FDx & 3) ) { anim_number++; if( BDx == 0 ) { BDx = 510; } else { BDx-=2; } }

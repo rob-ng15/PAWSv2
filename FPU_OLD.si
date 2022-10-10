@@ -86,7 +86,7 @@ unit floatcalc(
 
     // ADD/SUB/MULT have changeable inputs due to 2 input and 3 input fused operations
     floataddsub FPUaddsub( cOF <: MAKERESULT.OF, cUF <: MAKERESULT.UF, f32 <: MAKERESULT.f32 );
-    floatmultiply FPUmultiply( b <: sourceReg2F, classA <: classA, classB <: classB, cOF <: MAKERESULT.OF, cUF <: MAKERESULT.UF, f32 <: MAKERESULT.f32 );
+    floatmultiply FPUmultiply( a <: sourceReg1F, b <: sourceReg2F, classA <: classA, classB <: classB, cOF <: MAKERESULT.OF, cUF <: MAKERESULT.UF, f32 <: MAKERESULT.f32 );
     floatdivide FPUdivide( a <: sourceReg1F, b <: sourceReg2F, classA <: classA, classB <: classB, cOF <: MAKERESULT.OF, cUF <: MAKERESULT.UF, f32 <: MAKERESULT.f32 );
     floatsqrt FPUsqrt( a <: sourceReg1F, classA <: classA, cOF <: MAKERESULT.OF, cUF <: MAKERESULT.UF, f32 <: MAKERESULT.f32 );
 
@@ -140,7 +140,6 @@ unit floatcalc(
         if( opCode[2,1] ) {                                                                                         // SINGLE OPERATION
             FPUaddsub.a = sourceReg1F; FPUaddsub.b = { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] };     // SET INPUTS TO FADD.S FSUB.S
             FPUaddsub.classA = classA; FPUaddsub.classB = classB;
-            FPUmultiply.a = sourceReg1F;                                                                            // SET INPUTS TO FMUL.S
 
             switch( function7[0,2] ) {                                                                              // EXTRACT RESULT AND FLAGS
                 default: { result = FPUaddsub.result; flags = FPUaddsub.flags & 5b00110; }                          // FADD.S FSUB.S
@@ -154,10 +153,9 @@ unit floatcalc(
                 }
             }
         } else {                                                                                                    // FUSED OPERATIONS
-            FPUaddsub.a = FPUmultiply.result; FPUaddsub.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] }; // SET INPUTS TO FADD.S FSUB.S
+            FPUaddsub.a = { opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };
+            FPUaddsub.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] }; // SET INPUTS TO FADD.S FSUB.S
             FPUaddsub.classA = classM.class; FPUaddsub.classB = classC;
-            FPUmultiply.a = { opCode[1,1] ^ sourceReg1F[31,1], sourceReg1F[0,31] };                                 // SET INPUTS TO FMUL.S
-
             result = FPUaddsub.result; flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
         }
 
@@ -217,7 +215,7 @@ unit floatcomparison(
     output  uint5   flags,
     output  uint1   result
 ) <reginputs> {
-    uint1   NAN <:: ( classA[1,1] | classA[2,1] | classB[1,1] | classB[2,1] );
+    uint1   NAN <:: |( classA[1,2] | classB[1,2] );
     uint4   comparison <:: { 1b0, equal, less, less | equal };
 
     always_after {
@@ -300,8 +298,8 @@ bitfield floatingpointflags{
 
 // IDENTIFY infinity, signalling NAN, quiet NAN, ZERO
 unit classifyF(
-    input!  uint32  a,
-    output! uint4   class
+    input   uint32  a,
+    output  uint4   class
 ) <reginputs> {
     // CHECK FOR 8hff ( signals INF/NAN )
     uint1   expFF <:: &fp32(a).exponent;            uint1   NAN <:: expFF & a[22,1];
@@ -356,9 +354,9 @@ unit doroundcombine(
     input   uint1   sign,
     input   uint24  bitstream,
     input   int10   exponent,
-    output  uint1   OF,
-    output  uint1   UF,
-    output  uint32  f32
+    output! uint1   OF,
+    output! uint1   UF,
+    output! uint32  f32
 ) <reginputs> {
     uint23  roundfraction <:: bitstream[1,23] + bitstream[0,1];
     int10   newexponent <:: ( ( ~|roundfraction & bitstream[0,1] ) ? 128 : 127 ) + exponent;
@@ -502,7 +500,7 @@ unit floataddsub(
                 busy = 1; OF = 0; UF = 0;
                 if( ~|{ IF | NN, classA[0,1] | classB[0,1] } & |ADDSUB.resultfraction ) {
                     // VALID RESULT, ALLOW FOR NORMALISATION AND COMBINING OF FINAL RESULT
-                    ++: ++: ++: busy = 0;
+                    ++: ++: busy = 0;
                 } else { busy = 0; }
             }
         }
@@ -578,7 +576,7 @@ unit floatmultiply(
                 if( ~|{ IF | NN, ZERO } ) {
                     // STEPS: SETUP -> DOMUL -> NORMALISE -> ROUND -> ADJUSTEXP -> COMBINE
                     // ALLOW 3 CYCLES TO PERFORM THE MULTIPLICATION, NORMALISATION AND ROUNDING
-                    ++: ++: ++: busy = 0;
+                    ++: ++: busy = 0;
                 } else { busy = 0; }
             }
         }

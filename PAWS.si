@@ -358,7 +358,7 @@ $$end
 $$ L1Dcacheaddrwidth = clog2(L1Dsize)
 $$ L1Dpartaddresswidth = sdram_addr_width - 1 - L1Dcacheaddrwidth
 $$ L1Dpartaddressstart = 1 + L1Dcacheaddrwidth
-bitfield L1Dcachetag{ uint1 needswrite, uint1 valid, uint$L1Dpartaddresswidth$ partaddress }
+bitfield L1Dcache{ uint1 needswrite, uint1 valid, uint$L1Dpartaddresswidth$ partaddress, uint16 data }
 
 $$if VERILATOR then
 $$ L1Isize = 256
@@ -368,7 +368,7 @@ $$end
 $$ L1Icacheaddrwidth = clog2(L1Isize)
 $$ L1Ipartaddresswidth = sdram_addr_width - 1 - L1Icacheaddrwidth
 $$ L1Ipartaddressstart = 1 + L1Icacheaddrwidth
-bitfield Icachetag{ uint1 valid, uint$L1Ipartaddresswidth$ partaddress }
+bitfield L1Icache{ uint1 valid, uint$L1Ipartaddresswidth$ partaddress, uint16 data }
 
 // 16 bit to 32 bit controller
 // CPU has a 32 bit memory bus, with 16 bit aligned read/writes
@@ -448,16 +448,14 @@ unit evictioncache(
     output  uint1   busy(0)
 ) <reginputs> {
     // DATA CACHE
-    simple_dualport_bram uint16 Dcache <@clock_cache,@clock> [$L1Dsize$] = uninitialized;
-    simple_dualport_bram uint$L1Dpartaddresswidth+2$ Dtags <@clock_cache,@clock> [$L1Dsize$] = uninitialized;
-    dcache_read DCACHE <@clock_cache> ( cache <:> Dcache, tags <:> Dtags, address <: address );
-    dcache_write DCACHEW( cache <:> Dcache, tags <:> Dtags, needwritetosdram <: dowrite, address <: address, writedata <: cachewritevalue );
+    simple_dualport_bram uint$16+L1Dpartaddresswidth+2$ Dcache <@clock_cache,@clock> [$L1Dsize$] = uninitialized;
+    dcache_read DCACHE <@clock_cache> ( cache <:> Dcache, address <: address );
+    dcache_write DCACHEW( cache <:> Dcache, needwritetosdram <: dowrite, address <: address, writedata <: cachewritevalue );
 
     // INSTRUCTION CACHE
-    simple_dualport_bram uint16 Icache <@clock_cache,@clock> [$L1Isize$] = uninitialized;
-    simple_dualport_bram uint$L1Ipartaddresswidth+1$ Itags <@clock_cache,@clock> [$L1Isize$] = uninitialized;
-    icache_read ICACHE <@clock_cache> ( cache <:> Icache, tags <:> Itags, address <: address );
-    icache_write ICACHEW( cache <:> Icache, tags <:> Itags, address <: address, writedata <: cachewritevalue );
+    simple_dualport_bram uint$16+L1Ipartaddresswidth+1$ Icache <@clock_cache,@clock> [$L1Isize$] = uninitialized;
+    icache_read ICACHE <@clock_cache> ( cache <:> Icache, address <: address );
+    icache_write ICACHEW( cache <:> Icache, address <: address, writedata <: cachewritevalue );
 
     // SDRAM CONTROLLER
     sdramcontroller SDRAM( sio <:> sio );
@@ -476,7 +474,6 @@ unit evictioncache(
 
     // SDRAM ACCESS AND CACHE UPDATE FLAGS
     SDRAM.readflag := 0; SDRAM.writeflag := 0; DCACHEW.update := 0; ICACHEW.update := 0;
-
 
     algorithm <autorun> {
         while(1) {
@@ -536,7 +533,6 @@ unit evictioncache(
 // L1 DATA CACHE
 unit dcache_read(
     simple_dualport_bram_port0 cache,
-    simple_dualport_bram_port0 tags,
     input!  uint$sdram_addr_width$  address,
     output! uint$sdram_addr_width$  cacheaddress,
     output! uint1   tagmatch,
@@ -547,15 +543,14 @@ unit dcache_read(
     // DATA CACHE ADDRESS IS LOWER bits of the address, dropping the BYTE address bit
     // DATA CACHE TAG IS REMAINING bits of the address + 1 bit for valid flag + 1 bit for needwritetosdram flag
     always_after {
-        cache.addr0 = address[1,$L1Dcacheaddrwidth$]; tags.addr0 = cache.addr0; rdata = cache.rdata0;
-        tagmatch = ( { L1Dcachetag(tags.rdata0).valid, L1Dcachetag(tags.rdata0).partaddress } == { 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] } );
-        cacheaddress = { L1Dcachetag(tags.rdata0).partaddress, cache.addr0, 1b0 };
-        needswrite = L1Dcachetag(tags.rdata0).needswrite;
+        cache.addr0 = address[1,$L1Dcacheaddrwidth$]; rdata = L1Dcache(cache.rdata0).data;
+        tagmatch = ( { L1Dcache(cache.rdata0).valid, L1Dcache(cache.rdata0).partaddress } == { 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] } );
+        cacheaddress = { L1Dcache(cache.rdata0).partaddress, address[1,$L1Dcacheaddrwidth$], 1b0 };
+        needswrite = L1Dcache(cache.rdata0).needswrite;
     }
 }
 unit dcache_write(
     simple_dualport_bram_port1 cache,
-    simple_dualport_bram_port1 tags,
     input   uint$sdram_addr_width$  address,
     input   uint1   needwritetosdram,
     input   uint16  writedata,
@@ -565,38 +560,36 @@ unit dcache_write(
     // DATA CACHE ADDRESS IS LOWER bits of the address, dropping the BYTE address bit
     // DATA CACHE TAG IS REMAINING bits of the address + 1 bit for valid flag + 1 bit for needwritetosdram flag
     always_after {
-        cache.addr1 = address[1,$L1Dcacheaddrwidth$]; tags.addr1 = cache.addr1;
-        cache.wdata1 = writedata; tags.wdata1 = { needwritetosdram, 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$] };
-        cache.wenable1 = update; tags.wenable1 = update;
+        cache.addr1 = address[1,$L1Dcacheaddrwidth$];
+        cache.wdata1 = { needwritetosdram, 1b1, address[$L1Dpartaddressstart$,$L1Dpartaddresswidth$], writedata };
+        cache.wenable1 = update;
     }
 }
 
 // L1 INSTRUCTION CACHE
 unit icache_read(
     simple_dualport_bram_port0 cache,
-    simple_dualport_bram_port0 tags,
     input!  uint$sdram_addr_width$  address,
     output! uint1   tagmatch,
     output! uint16  rdata
 ) <reginputs> {
     // INSTRUCTION CACHE for SDRAM, DEFINED AS ABOVE EXCEPT NO NEED FOR needwritetosdram flag
     always_after {
-        cache.addr0 = address[1,$L1Icacheaddrwidth$]; tags.addr0 = cache.addr0; rdata = cache.rdata0;
-        tagmatch = ( tags.rdata0 == { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] } );
+        cache.addr0 = address[1,$L1Icacheaddrwidth$]; rdata = L1Icache(cache.rdata0).data;
+        tagmatch = ( { L1Icache(cache.rdata0).valid, L1Icache(cache.rdata0).partaddress } == { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] } );
     }
 }
 unit icache_write(
     simple_dualport_bram_port1 cache,
-    simple_dualport_bram_port1 tags,
     input   uint$sdram_addr_width$  address,
     input   uint16  writedata,
     input   uint1   update
 ) <reginputs> {
     // INSTRUCTION CACHE for SDRAM, DEFINED AS ABOVE EXCEPT NO NEED FOR needwritetosdram flag
     always_after {
-        cache.addr1 = address[1,$L1Icacheaddrwidth$]; tags.addr1 = cache.addr1;
-        cache.wdata1 = writedata; tags.wdata1 = { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$] };
-        cache.wenable1 = update; tags.wenable1 = update;
+        cache.addr1 = address[1,$L1Icacheaddrwidth$];
+        cache.wdata1 = { 1b1, address[$L1Ipartaddressstart$,$L1Ipartaddresswidth$], writedata };
+        cache.wenable1 = update;
     }
 }
 

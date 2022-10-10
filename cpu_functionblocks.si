@@ -126,24 +126,29 @@ unit control(
     sourceReg1F := SMT ? F1_1.rdata0 : F1_0.rdata0; sourceReg2F := SMT ? F2_1.rdata0 : F2_0.rdata0; sourceReg3F := SMT ? F3_1.rdata0 : F3_0.rdata0;
 
     always_after {
-        // GENERATE ABSOLUTE AND NEGATIVE OF REGISTERS FOR MULTIPLICATION, ADDITION AND INT -> FLOAT CONVERSION
-        sourceReg1abs = sourceReg1[31,1] ? -sourceReg1 : sourceReg1;
-        sourceReg2neg = -sourceReg2; sourceReg2abs = sourceReg2[31,1] ? sourceReg2neg : sourceReg2;
-
-        // DETERMINE MEMORY ACCESS SIZE - DMA 16 or 8, INSTRUCTION 16, ATOMIC/FLOAD/FSTORE, 32, ELSE BY function3
-        accesssize = |DMAACTIVE ? DMAACCESSSIZE : cacheselect ? ( FLAGS.IS_ATOMIC ? 2b10 : function3[0,2] ) : 2b10;
-
-        // ADDRESS GENERATOR
-        AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
-        loadAddress = ( FLAGS.IS_ATOMIC ? 0 : immediateValue ) + sourceReg1;
-        storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1;
-        nextPC = PC + ( compressed ? 2 : 4 );
-        newPC = ( FLAGS.incPC ) ? ( FLAGS.IS_BRANCH & BRANCH.takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress );
-
-        // COMPARISON
-        LT = __signed( sourceReg1 ) < __signed( operand2 );
-        LTU = __unsigned( sourceReg1 ) < __unsigned( operand2 );
-        EQ = sourceReg1 == ( operand2 );
+        {
+            // GENERATE ABSOLUTE AND NEGATIVE OF REGISTERS FOR MULTIPLICATION, ADDITION AND INT -> FLOAT CONVERSION
+            sourceReg1abs = sourceReg1[31,1] ? -sourceReg1 : sourceReg1;
+            sourceReg2neg = -sourceReg2; sourceReg2abs = sourceReg2[31,1] ? sourceReg2neg : sourceReg2;
+        }
+        {
+            // DETERMINE MEMORY ACCESS SIZE - DMA 16 or 8, INSTRUCTION 16, ATOMIC/FLOAD/FSTORE, 32, ELSE BY function3
+            accesssize = |DMAACTIVE ? DMAACCESSSIZE : cacheselect ? ( FLAGS.IS_ATOMIC ? 2b10 : function3[0,2] ) : 2b10;
+        }
+        {
+            // ADDRESS GENERATOR
+            AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
+            loadAddress = ( FLAGS.IS_ATOMIC ? 0 : immediateValue ) + sourceReg1;
+            storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1;
+            nextPC = PC + ( compressed ? 2 : 4 );
+            newPC = ( FLAGS.incPC ) ? ( FLAGS.IS_BRANCH & BRANCH.takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress );
+        }
+        {
+            // COMPARISON
+            LT = __signed( sourceReg1 ) < __signed( operand2 );
+            LTU = __unsigned( sourceReg1 ) < __unsigned( operand2 );
+            EQ = sourceReg1 == ( operand2 );
+        }
     }
 }
 
@@ -175,31 +180,30 @@ unit controlflags(
     writeRegisterF := 0; writeRegister := 1; incPC := 1; IS_FASTALU := 1;
     IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;
 
-    algorithm <autorun> {
-        while(1) {
+    always_after {
+        {
             IS_ALUM = REGREG & ( function7 == 7b0000001 );
             IS_ALUCLM = REGREG & ~function3[2,1] & ( function7 == 7b0000101 );
             IS_FPU = ( opCode[3,2] == 2b10 );
             IS_FASTFPU = ( opCode[2,1] & function7[4,1] );
         }
-    }
-
-    always_after {
-        // DETERMINE CPU CONTROL FLAGS
-        switch( opCode ) {
-            case 5b01101: { IS_AUIPCLUI = 1; }                                                  // LUI
-            case 5b00101: { IS_AUIPCLUI = 1; }                                                  // AUIPC
-            case 5b11011: { IS_JAL = 1; incPC = 0; }                                            // JAL
-            case 5b11001: { IS_JAL = 1; incPC = 0; }                                            // JALR
-            case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                 // BRANCH
-            case 5b00000: { IS_LOAD = 1; }                                                      // LOAD
-            case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                  // FLOAT LOAD
-            case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                  // STORE
-            case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                  // FLOAT STORE
-            case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                   // FENCE[I]
-            case 5b11100: { IS_CSR = 1; IS_FASTALU = 0; }                                       // CSR
-            case 5b01011: { IS_ATOMIC = 1; IS_FASTALU = 0; }                                    // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
-            default: { IS_FASTALU = ~( IS_FPU | IS_ALUCLM | ( IS_ALUM & function3[2,1]) ); }    // FPU, CARRYLESS MULTIPLY OR INTEGER DIVIDE -> SLOWPATH ALL ELSE TO IS_FASTALU
+        {
+            // DETERMINE CPU CONTROL FLAGS
+            switch( opCode ) {
+                case 5b01101: { IS_AUIPCLUI = 1; }                                                  // LUI
+                case 5b00101: { IS_AUIPCLUI = 1; }                                                  // AUIPC
+                case 5b11011: { IS_JAL = 1; incPC = 0; }                                            // JAL
+                case 5b11001: { IS_JAL = 1; incPC = 0; }                                            // JALR
+                case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                 // BRANCH
+                case 5b00000: { IS_LOAD = 1; }                                                      // LOAD
+                case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                  // FLOAT LOAD
+                case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                  // STORE
+                case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                  // FLOAT STORE
+                case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                   // FENCE[I]
+                case 5b11100: { IS_CSR = 1; IS_FASTALU = 0; }                                       // CSR
+                case 5b01011: { IS_ATOMIC = 1; IS_FASTALU = 0; }                                    // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
+                default: { IS_FASTALU = ~( IS_FPU | IS_ALUCLM | ( IS_ALUM & function3[2,1]) ); }    // FPU, CARRYLESS MULTIPLY OR INTEGER DIVIDE -> SLOWPATH ALL ELSE TO IS_FASTALU
+            }
         }
     }
 }
@@ -436,8 +440,8 @@ unit CSRblock(
     // PASS PRESENT FPU FLAGS TO THE FPU
     FPUflags := SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];
 
-    algorithm <autorun> {
-        while(1) {
+    always_after {
+        {
             if( start & ~|CSR(instruction).csr[4,8] ) {
                 switch( function3[0,2] ) {
                     case 2b00: {
@@ -460,36 +464,34 @@ unit CSRblock(
                 }
             }
         }
-    }
-
-    always_after {
-        if( start ) {
-            result = 0;
-            switch( CSR(instruction).csr[8,4] ) {
-                case 4h0: {
-                    switch( CSR(instruction).csr[0,2] ) {
-                        case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                        // frflags
-                        case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                         // frrm
-                        case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                   // frcsr
-                        default: {}
+        {
+            if( start ) {
+                result = 0;
+                switch( CSR(instruction).csr[8,4] ) {
+                    case 4h0: {
+                        switch( CSR(instruction).csr[0,2] ) {
+                            case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                        // frflags
+                            case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                         // frrm
+                            case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                   // frcsr
+                            default: {}
+                        }
                     }
+                    case 4h3: { result = $CPUISA$; }
+                    case 4hc: {
+                        switch( { CSR(instruction).csr[7,1], CSR(instruction).csr[0,2] } ) {
+                            case 5h00: { result = SMT ? CYCLESMT.counter[0,32] : CYCLE.counter[0,32]; }
+                            case 5h10: { result = SMT ? CYCLESMT.counter[32,8] : CYCLE.counter[32,8]; }
+                            case 5h01: { result = TIMER.counter[0,32]; }
+                            case 5h11: { result = TIMER.counter[32,8]; }
+                            case 5h02: { result = SMT ? INSTRETSMT.counter[0,32] : INSTRET.counter[0,32]; }
+                            case 5h12: { result = SMT ? INSTRETSMT.counter[32,8] : INSTRET.counter[32,8]; }
+                            default: {}
+                        }
+                        }
+                    case 4hf: { result = SMT; }                                                                     // HART ID
+                    default: {}
                 }
-                case 4h3: { result = $CPUISA$; }
-                case 4hc: {
-                    switch( { CSR(instruction).csr[7,1], CSR(instruction).csr[0,2] } ) {
-                        case 5h00: { result = SMT ? CYCLESMT.counter[0,32] : CYCLE.counter[0,32]; }
-                        case 5h10: { result = SMT ? CYCLESMT.counter[32,8] : CYCLE.counter[32,8]; }
-                        case 5h01: { result = TIMER.counter[0,32]; }
-                        case 5h11: { result = TIMER.counter[32,8]; }
-                        case 5h02: { result = SMT ? INSTRETSMT.counter[0,32] : INSTRET.counter[0,32]; }
-                        case 5h12: { result = SMT ? INSTRETSMT.counter[32,8] : INSTRET.counter[32,8]; }
-                        default: {}
-                    }
-                    }
-                case 4hf: { result = SMT; }                                                                     // HART ID
-                default: {}
             }
-
         }
     }
 }
