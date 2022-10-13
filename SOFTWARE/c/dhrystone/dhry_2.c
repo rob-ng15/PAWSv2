@@ -16,6 +16,7 @@
  */
 
 #include "dhry.h"
+#include <string.h>
 
 #ifndef REG
 #define REG

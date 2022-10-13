@@ -95,12 +95,7 @@ unit control(
     uint1   I0write <:: ~COMMIT_SMT & write & ~frd & |rd;  uint1   F0write <:: ~COMMIT_SMT & write & frd;
     uint1   I1write <:: COMMIT_SMT & write & ~frd & |rd;   uint1   F1write <:: COMMIT_SMT & write & frd;
 
-    // ADDRESS GENRATION
-    uint27  jumpAddress <:: { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
-    uint27  branchAddress <:: { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
-
-    // COMPARISON / BRANCH UNIT
-    int32   operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
+    // BRANCH UNIT
     branchcomparison BRANCH( function3 <: function3, LT <: LT, LTU <: LTU, EQ <: EQ );
 
     // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
@@ -136,7 +131,10 @@ unit control(
             accesssize = |DMAACTIVE ? DMAACCESSSIZE : cacheselect ? ( FLAGS.IS_ATOMIC ? 2b10 : function3[0,2] ) : 2b10;
         }
         {
-            // ADDRESS GENERATOR
+            // ADDRESS GENRATION
+            uint27  jumpAddress <:: { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
+            uint27  branchAddress <:: { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
+
             AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
             loadAddress = ( FLAGS.IS_ATOMIC ? 0 : immediateValue ) + sourceReg1;
             storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1;
@@ -145,6 +143,8 @@ unit control(
         }
         {
             // COMPARISON
+            int32   operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
+
             LT = __signed( sourceReg1 ) < __signed( operand2 );
             LTU = __unsigned( sourceReg1 ) < __unsigned( operand2 );
             EQ = sourceReg1 == ( operand2 );
@@ -174,14 +174,14 @@ unit controlflags(
     output  uint1   incPC,
     output  uint1   IS_FASTALU
 ) <reginputs> {
-    // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
-    uint1   REGREG <:: ( opCode == 5b01100 );
-
     writeRegisterF := 0; writeRegister := 1; incPC := 1; IS_FASTALU := 1;
     IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;
 
     always_after {
         {
+            // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
+            uint1   REGREG <:: ( opCode == 5b01100 );
+
             IS_ALUM = REGREG & ( function7 == 7b0000001 );
             IS_ALUCLM = REGREG & ~function3[2,1] & ( function7 == 7b0000101 );
             IS_FPU = ( opCode[3,2] == 2b10 );
@@ -403,6 +403,9 @@ unit csrf(
         }
     }
 }
+// BIT WIDTH FOR COUNTERS ( spec is 64 bit )
+$$ CWIDTH = 40
+$$ CREMAIN = CWIDTH - 32
 unit CSRblock(
     input   uint1   start,
     input   uint1   SMT,
@@ -416,14 +419,9 @@ unit CSRblock(
     output  uint5   FPUflags,
     output  uint32  result
 ) <reginputs> {
-    // MAIN SYSTEM TIMER
-    counter40always TIMER();
-
-    // CPU HART CYCLE TIMERS
-    counter40 CYCLE(); counter40 CYCLESMT();
-
-    // CPU HART INSTRUCTION RETIRED COUNTERS
-    counter40 INSTRET(); counter40 INSTRETSMT();
+    uint$CWIDTH$  TIMER(0);                                                                             // CYCLES SINCE BOOT
+    uint$CWIDTH$  CYCLE0(0);                        uint$CWIDTH$  CYCLE1(0);                            // CYCLES HART ACTIVE
+    uint$CWIDTH$  INSTRET0(0);                      uint$CWIDTH$  INSTRET1(0);                          // INSTRUCTIONS RETIRED PER HARY
 
     // SWITCH BETWEEN IMMEDIATE OR REGISTER VALUE TO WRITE TO CSR
     uint32  writevalue <: function3[2,1] ? rs1 : sourceReg1;
@@ -433,14 +431,19 @@ unit CSRblock(
     csrf CSRF1( csr <: instruction[20,2], writevalue <: writevalue );                                   // SMT CSRf  ( CSR(instruction).csr[0,2] )
 
     // UPDATE FLAGS FOR TIMERS, COUNTERS AND FPU-FLAGS
-    CYCLE.update := ~SMT; CYCLESMT.update := SMT;
-    INSTRET.update := incCSRinstret & ~SMT; INSTRETSMT.update := incCSRinstret & SMT;
     CSRF0.writetype := 0; CSRF1.writetype := 0; CSRF0.update := updateFPUflags & ~SMT;  CSRF1.update := updateFPUflags & SMT;
 
     // PASS PRESENT FPU FLAGS TO THE FPU
     FPUflags := SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];
 
     always_after {
+        {
+            TIMER = TIMER + 1;
+        }
+        {
+            if( SMT ) { CYCLE1 = CYCLE1 + 1; INSTRET1 = INSTRET1 + incCSRinstret; } else { CYCLE0 = CYCLE0 + 1; INSTRET0 = INSTRET0 + incCSRinstret; }
+        }
+
         {
             if( start & ~|CSR(instruction).csr[4,8] ) {
                 switch( function3[0,2] ) {
@@ -479,12 +482,12 @@ unit CSRblock(
                     case 4h3: { result = $CPUISA$; }
                     case 4hc: {
                         switch( { CSR(instruction).csr[7,1], CSR(instruction).csr[0,2] } ) {
-                            case 5h00: { result = SMT ? CYCLESMT.counter[0,32] : CYCLE.counter[0,32]; }
-                            case 5h10: { result = SMT ? CYCLESMT.counter[32,8] : CYCLE.counter[32,8]; }
-                            case 5h01: { result = TIMER.counter[0,32]; }
-                            case 5h11: { result = TIMER.counter[32,8]; }
-                            case 5h02: { result = SMT ? INSTRETSMT.counter[0,32] : INSTRET.counter[0,32]; }
-                            case 5h12: { result = SMT ? INSTRETSMT.counter[32,8] : INSTRET.counter[32,8]; }
+                            case 5h00: { result = SMT ? CYCLE1[0,32] : CYCLE0[0,32]; }
+                            case 5h10: { result = SMT ? CYCLE1[32,$CREMAIN$] : CYCLE0[32,$CREMAIN$]; }
+                            case 5h01: { result = TIMER[0,32]; }
+                            case 5h11: { result = TIMER[32,$CREMAIN$]; }
+                            case 5h02: { result = SMT ? INSTRET1[0,32] : INSTRET0[0,32]; }
+                            case 5h12: { result = SMT ? INSTRET1[32,$CREMAIN$] : INSTRET0[32,$CREMAIN$]; }
                             default: {}
                         }
                         }

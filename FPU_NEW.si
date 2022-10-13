@@ -123,6 +123,18 @@ unit floatcalc(
 
     always_after {
         {
+            // CONTROL INPUTS FOR FADD.S FSUB.S SINGLE/FUSED OPERATION
+            if( opCode[2,1] ) {                                                                                         // SINGLE OPERATION
+                FPUaddsub.a = sourceReg1F; FPUaddsub.b = { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] };         // SET INPUTS TO FADD.S FSUB.S
+                FPUaddsub.classA = classA; FPUaddsub.classB = classB;
+            } else {                                                                                                    // FUSED OPERATION
+                FPUaddsub.a = { opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };                         // SWITCH SIGN OF MULTIPLY RESULT IF REQUIRED
+                FPUaddsub.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] };                                       // SWITCH SIGN OF sourceReg3F IF SUB
+                FPUaddsub.classA = classM.class; FPUaddsub.classB = classC;                                                 // pASS CLASSIFICATIONS
+            }
+        }
+
+        {
             // CONTROL INPUTS TO NORMALISING, ROUNDING AND COMBINING
             if( |unitbusy ) {
                 DONORMAL.adjustexp = unitbusy[0,1]; DONORMAL.sign = |( { 1b0, FPUdivide.quotientsign, FPUmultiply.sign, FPUaddsub.sign } & unitbusy );
@@ -136,9 +148,6 @@ unit floatcalc(
         }
         {
             if( opCode[2,1] ) {                                                                                         // SINGLE OPERATION
-                FPUaddsub.a = sourceReg1F; FPUaddsub.b = { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] };     // SET INPUTS TO FADD.S FSUB.S
-                FPUaddsub.classA = classA; FPUaddsub.classB = classB;
-
                 switch( function7[0,2] ) {                                                                              // EXTRACT RESULT AND FLAGS
                     default: { result = FPUaddsub.result; flags = FPUaddsub.flags & 5b00110; }                          // FADD.S FSUB.S
                     case 2b10: { result = FPUmultiply.result; flags = FPUmultiply.flags & 5b00110; }                    // FMUL.S
@@ -151,9 +160,6 @@ unit floatcalc(
                     }
                 }
             } else {                                                                                                    // FUSED OPERATIONS
-                FPUaddsub.a = { opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };                         // SWITCH SIGN OF MULTIPLY RESULT IF REQUIRED
-                FPUaddsub.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] };                                       // SWITCH SIGN OF sourceReg3F IF SUB
-                FPUaddsub.classA = classM.class; FPUaddsub.classB = classC;                                                 // pASS CLASSIFICATIONS
                 result = FPUaddsub.result; flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
             }
 
@@ -566,15 +572,16 @@ unit dofloatdivide(
     output  uint50  quotient(0)
 ) <reginputs> {
     uint6   bit(63);
-    uint50  remainder = uninitialised;
-    uint50  temporary <:: { remainder[0,49], sigA[bit,1] };
-    uint1   bitresult <:: __unsigned(temporary) >= __unsigned(sigB);
-    uint2   normalshift <:: quotient[49,1] ? 2 : quotient[48,1];
 
     busy := start | ( ~&bit ) | ( |quotient[48,2] );
 
     always_after {
         // FIND QUOTIENT AND ENSURE 48 BIT FRACTION ( ie BITS 48 and 49 clear )
+        uint50  remainder = uninitialised;
+        uint50  temporary <:: { remainder[0,49], sigA[bit,1] };
+        uint1   bitresult <:: __unsigned(temporary) >= __unsigned(sigB);
+        uint2   normalshift <:: quotient[49,1] ? 2 : quotient[48,1];
+
         if( &bit ) {
             if( start ) { bit = 49; quotient = 0; remainder = 0; } else { quotient = quotient[ normalshift, 48 ]; }
         } else {
@@ -584,23 +591,7 @@ unit dofloatdivide(
         }
     }
 }
-unit prepdivide(
-    input   uint32  a,
-    input   uint32  b,
-    output  uint1   quotientsign,
-    output  int10   quotientexp,
-    output  uint50  sigA,
-    output  uint50  sigB
-) <reginputs> {
-    // BREAK DOWN INITIAL float32 INPUTS AND FIND SIGN OF RESULT AND EXPONENT OF QUOTIENT ( -1 IF DIVISOR > DIVIDEND )
-    // ALIGN DIVIDEND TO THE LEFT, DIVISOR TO THE RIGHT
-    always_after {
-        quotientsign = fp32( a ).sign ^ fp32( b ).sign;
-        quotientexp = fp32( a ).exponent - fp32( b ).exponent - ( fp32(b).fraction > fp32(a).fraction );
-        sigA = { 1b1, fp32(a).fraction, 26b0 };
-        sigB = { 27b1, fp32(b).fraction };
-    }
-}
+
 unit floatdivide(
     input   uint1   start,
     output  uint1   busy(0),
@@ -625,22 +616,32 @@ unit floatdivide(
     uint2   ACTION <:: { IF | NN, classA[0,1] | classB[0,1] };
 
     // PREPARE THE DIVISION, DO THE DIVISION, NORMALISE THE RESULT
-    prepdivide PREP( a <: a, b <: b, quotientsign :> quotientsign, quotientexp :> quotientexp );
-    dofloatdivide DODIVIDE( sigA <: PREP.sigA, sigB <: PREP.sigB, quotient :> tonormalisebitstream );
+    dofloatdivide DODIVIDE( quotient :> tonormalisebitstream );
 
     DODIVIDE.start := start & ~|ACTION; busy := start | DODIVIDE.busy;
 
     always_after {
-        if( start ) {
-            OF = 0; UF = 0;
-        } else {
-            switch( ACTION ) {
-                case 2b00: { OF = cOF; UF = cUF; result = f32; }
-                case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 32hffc00000 : { PREP.quotientsign, classB[0,1] ? 31h7f800000 : 31h0 }; }
-                default: { result = ( classA[3,1] & classB[3,1] ) | NN | classB[0,1] ? 32hffc00000 : { PREP.quotientsign, (classA[0,1] | classB[3,1] ) ? 31b0 : 31h7f800000 }; }
-            }
+        {
+            // BREAK DOWN INITIAL float32 INPUTS AND FIND SIGN OF RESULT AND EXPONENT OF QUOTIENT ( -1 IF DIVISOR > DIVIDEND )
+            // ALIGN DIVIDEND TO THE LEFT, DIVISOR TO THE RIGHT
+            quotientsign = fp32( a ).sign ^ fp32( b ).sign;
+            quotientexp = fp32( a ).exponent - fp32( b ).exponent - ( fp32(b).fraction > fp32(a).fraction );
+            DODIVIDE.sigA = { 1b1, fp32(a).fraction, 26b0 };
+            DODIVIDE.sigB = { 27b1, fp32(b).fraction };
         }
-        flags = { IF, NN, 1b0, classB[0,1], OF, UF, 1b0};
+
+        {
+            if( start ) {
+                OF = 0; UF = 0;
+            } else {
+                switch( ACTION ) {
+                    case 2b00: { OF = cOF; UF = cUF; result = f32; }
+                    case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 32hffc00000 : { quotientsign, classB[0,1] ? 31h7f800000 : 31h0 }; }
+                    default: { result = ( classA[3,1] & classB[3,1] ) | NN | classB[0,1] ? 32hffc00000 : { quotientsign, (classA[0,1] | classB[3,1] ) ? 31b0 : 31h7f800000 }; }
+                }
+            }
+            flags = { IF, NN, 1b0, classB[0,1], OF, UF, 1b0};
+        }
     }
 }
 
@@ -676,12 +677,13 @@ unit dofloatsqrt(
     output  uint48  squareroot
 ) <reginputs> {
     uint6   i(47);
-    uint50  test_res <:: ac - { squareroot, 2b01 }; uint50  ac = uninitialised;
-    uint48  x = uninitialised;
 
     busy := start | ( i != 47 );
 
     always_after {
+        uint50  test_res <:: ac - { squareroot, 2b01 }; uint50  ac = uninitialised;
+        uint48  x = uninitialised;
+
         if( i == 47) {
             if( start ) { i = 0; squareroot = 0; ac = start_ac; x = start_x; }
         } else {
@@ -690,22 +692,6 @@ unit dofloatsqrt(
             x = { x[0,46], 2b00 };
             i = i + 1;
         }
-    }
-}
-unit prepsqrt(
-    input   uint32  a,
-    output  uint50  start_ac,
-    output  uint48  start_x,
-    output  int10   squarerootexp
-) <reginputs> {
-    // EXPONENT OF INPUT ( used to determine if 1x.xxxxx or 01.xxxxx for fixed point fraction to sqrt )
-    // SQUARE ROOT EXPONENT IS HALF OF INPUT EXPONENT
-    int10   exp  <:: fp32( a ).exponent - 127;
-
-    always_after {
-        start_ac = exp[0,1] ? { 48b0, 1b1, a[22,1] } : 1;
-        start_x = exp[0,1] ? { a[0,22], 26b0 } : { fp32( a ).fraction, 25b0 };
-        squarerootexp = ( exp >>> 1 );
     }
 }
 unit floatsqrt(
@@ -729,24 +715,35 @@ unit floatsqrt(
     uint1   ACTION <:: ~|{ classA[3,1] | NN, classA[0,1] | fp32( a ).sign };
 
     // PREPARE AND PERFORM THE SQUAREROOT, FAST NORMALISE THE RESULT
-    prepsqrt PREP( a <: a, squarerootexp :> squarerootexp );
-    dofloatsqrt DOSQRT( start_ac <: PREP.start_ac, start_x <: PREP.start_x, squareroot :> tonormalisebitstream );
+    dofloatsqrt DOSQRT( squareroot :> tonormalisebitstream );
 
     DOSQRT.start := start & ACTION; busy := start | DOSQRT.busy;
 
     always_after {
-        if( start ) {
-            OF = 0; UF = 0;
-        } else {
-            if( ACTION ) {
-                // STEPS: SETUP -> DOSQRT -> NORMALISE -> ROUND -> ADJUSTEXP -> COMBINE
-                OF = cOF; UF = cUF; result = f32;
-            } else {
-                // DETECT sNAN, qNAN, -INF, -x -> qNAN AND  INF -> INF, 0 -> 0
-                result = fp32( a ).sign ? 32hffc00000 : a;
-            }
+        {
+            // EXPONENT OF INPUT ( used to determine if 1x.xxxxx or 01.xxxxx for fixed point fraction to sqrt )
+            // SQUARE ROOT EXPONENT IS HALF OF INPUT EXPONENT
+            int10   expA  <:: fp32( a ).exponent - 127;
+
+            DOSQRT.start_ac = expA[0,1] ? { 48b0, 1b1, a[22,1] } : 1;
+            DOSQRT.start_x = expA[0,1] ? { a[0,22], 26b0 } : { fp32( a ).fraction, 25b0 };
+            squarerootexp = ( expA >>> 1 );
         }
-        flags = { classA[3,1], NN, NV, 1b0, OF, UF, 1b0 };
+
+        {
+            if( start ) {
+                OF = 0; UF = 0;
+            } else {
+                if( ACTION ) {
+                    // STEPS: SETUP -> DOSQRT -> NORMALISE -> ROUND -> ADJUSTEXP -> COMBINE
+                    OF = cOF; UF = cUF; result = f32;
+                } else {
+                    // DETECT sNAN, qNAN, -INF, -x -> qNAN AND  INF -> INF, 0 -> 0
+                    result = fp32( a ).sign ? 32hffc00000 : a;
+                }
+            }
+            flags = { classA[3,1], NN, NV, 1b0, OF, UF, 1b0 };
+        }
     }
 }
 
@@ -801,11 +798,11 @@ unit floatcompare(
     output  uint1   less,
     output  uint1   equal
 ) <reginputs> {
-    uint1   NAN <:: classA[2,1] | classB[2,1] | classA[1,1] | classB[1,1];
-    uint1   aequalb <:: ( a == b );                 uint1   aorbleft1equal0 <:: ~|( ( a | b ) << 1 );
-
     // IDENTIFY NaN, RETURN 0 IF NAN, OTHERWISE RESULT OF COMPARISONS
     always_after {
+        uint1   NAN <:: classA[2,1] | classB[2,1] | classA[1,1] | classB[1,1];
+        uint1   aequalb <:: ( a == b );                 uint1   aorbleft1equal0 <:: ~|( ( a | b ) << 1 );
+
         flags = { classA[3,1] | classB[3,1], {2{NAN}}, 4b0000 };
         less = ~NAN & ( ( fp32( a ).sign ^ fp32( b ).sign ) ? fp32( a ).sign & ~aorbleft1equal0 : ~aequalb & ( fp32( a ).sign ^ ( a < b ) ) );
         equal = ~NAN & ( aequalb | aorbleft1equal0 );

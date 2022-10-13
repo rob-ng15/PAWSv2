@@ -90,7 +90,6 @@ unit floatcalc(
     uint4   operation = uninitialised;
     uint1   exception <:: |( { SQRT.X,DIV.X,MUL.X,ADD.X } & operation );
 
-
     classifyF classD( a <: result );
 
     floatadd ADD();
@@ -102,9 +101,44 @@ unit floatcalc(
     normalise48to24 TONORMAL();
 
     DIV.start := 0; SQRT.start := 0; result_ready := 0;
-    TONORMAL.sign := |( { 1b0,DIV.sign,MUL.sign,ADD.sign } & operation ); TONORMAL.adjustexp := operation[0,1];
 
     always_after {
+        {
+            if( opCode[2,1] ) {
+                ADD.a = sourceReg1F; ADD.classA = classA; ADD.classB = classB;                                                          // PASS SOURCEREG1 TO ADD/SUB
+                ADD.b = { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] };                                                      // PASS SOURCEREG2 TO ADD/SUB CHANGE SIGN IF SUB
+            } else {
+                ADD.a = { opCode[1,1] ^ result[31,1], result[0,31] }; ADD.classA = classD.class;                                        // PASS RESULT FROM FUSED MULTIPLY SWITCH SIGN IF -x
+                ADD.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] }; ADD.classB = classC;                                    // PASS sourceReg3F SWITCH SIGN IF SUB
+            }
+        }
+
+        {
+            if( |operation ) {                                                                                                          // PASS CALCULATION RESULTS TO NORMAL+COMBINE
+                onehot( operation ) {
+                    case 0: { TONORMAL.bitstream = ADD.bitstream; TONORMAL.exp = ADD.exp; }
+                    case 1: { TONORMAL.bitstream = MUL.bitstream; TONORMAL.exp = MUL.exp; }
+                    case 2: { TONORMAL.bitstream = DIV.bitstream; TONORMAL.exp = DIV.exp; }
+                    case 3: { TONORMAL.bitstream = SQRT.bitstream; TONORMAL.exp = SQRT.exp; }
+                }
+            }
+            TONORMAL.sign = |( { 1b0,DIV.sign,MUL.sign,ADD.sign } & operation ); TONORMAL.adjustexp = operation[0,1];
+
+        }
+
+        {
+            if( exception ) {                                                                                                           // BUILD THE RESULT
+                onehot( operation ) {                                                                                                   // FROM EXCEPTION
+                    case 0: { result = ADD.result; }
+                    case 1: { result = MUL.result; }
+                    case 2: { result = DIV.result; }
+                    case 3: { result = SQRT.result; }
+                }
+            } else {
+                result = ~operation[0,1] | ( operation[0,1] & |ADD.bitstream ) ? TONORMAL.f32 : 0;                                      // FROM NORMAL+COMBINE
+            }
+        }
+
         {
             switch( stage ) {
                 default: {
@@ -116,16 +150,8 @@ unit floatcalc(
                             // ASSIGN INPUTS FOR SINGLE CALCULATION OR FIRST PART OF FUSED CALCULATION
                             if( opCode[2,1] ) {
                                 // SINGLE CALCULATION
-                                ADD.a = sourceReg1F; ADD.classA = classA; ADD.classB = classB;
                                 switch( function7[0,2] ) {
-                                    case 2b00: {
-                                        operation = 4b0001;
-                                        ADD.b = sourceReg2F;
-                                    }                                                                                                               // ADD
-                                    case 2b01: {
-                                        operation = 4b0001;
-                                        ADD.b = { ~sourceReg2F[31,1], sourceReg2F[0,31] };
-                                    }                                                                                                               // SUB
+                                    default: { operation = 4b0001; }                                                                                // ADD & SUB
                                     case 2b10: { operation = 4b0010; }                                                                              // MUL
                                     case 2b11: { operation = { function7[3,1], ~function7[3,1], 2b00 }; }                                           // SQRT & DIV
                                 }
@@ -134,8 +160,6 @@ unit floatcalc(
                             }
                         } else {
                             operation = 4b0001; is_fused = 0;                                                                                       // FUSED CALCULATION ADD/SUB
-                            ADD.a = { opCode[1,1] ^ result[31,1], result[0,31] }; ADD.classA = classD.class;                                        // PASS RESULT FROM MULTIPLY SWITCH SIGN IF -x
-                            ADD.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] }; ADD.classB = classC;                                    // PASS sourceReg3F SWITCH SIGN IF SUB
                         }
                         stage = 1;
                     }
@@ -155,28 +179,12 @@ unit floatcalc(
                 case 3: {
                     // STAGE 3  NORMALISE THE RESULT FROM CALCULATION
                     //          PASS EXPONENT AND RESULT SIGN TO ALLOW COMBINE TO FLOAT 32 RESULT
-                    onehot( operation ) {
-                        case 0: { TONORMAL.bitstream = ADD.bitstream; TONORMAL.exp = ADD.exp; }
-                        case 1: { TONORMAL.bitstream = MUL.bitstream; TONORMAL.exp = MUL.exp; }
-                        case 2: { TONORMAL.bitstream = DIV.bitstream; TONORMAL.exp = DIV.exp; }
-                        case 3: { TONORMAL.bitstream = SQRT.bitstream; TONORMAL.exp = SQRT.exp; }
-                    }
                     stage = 4;
                 }
                 case 4: {
                     // STAGE 4  FORM RESULT FROM CALCULATION / EXCEPTION
                     //          CHECKING FOR 0 AS RESULT OF ADD/SUB
                     //          RETURN TO STAGE 0, STAY BUSY IF STILL NEED ADD/SUB FOR FUSED
-                    if( exception ) {
-                        onehot( operation ) {
-                            case 0: { result = ADD.result; }
-                            case 1: { result = MUL.result; }
-                            case 2: { result = DIV.result; }
-                            case 3: { result = SQRT.result; }
-                        }
-                    } else {
-                        result = ~operation[0,1] | ( operation[0,1] & |ADD.bitstream ) ? TONORMAL.f32 : 0;
-                    }
                     result_ready = 1; stage = 0; busy = is_fused;
                 }
             }
@@ -454,31 +462,6 @@ unit floattoint(
 }
 
 // ADDITION
-unit equaliseexpaddsub(
-    input   uint32  a,
-    input   uint32  b,
-    output  uint48  newsigA,
-    output  uint48  newsigB,
-    output  int10   resultexp,
-) <reginputs> {
-
-
-    always_after {
-    }
-}
-unit dofloataddsub(
-    input   uint1   signA,
-    input   uint48  sigA,
-    input   uint1   signB,
-    input   uint48  sigB,
-    output  uint1   resultsign,
-    output  uint48  resultfraction
-) <reginputs> {
-
-    always_after {
-        // PERFORM ADDITION HANDLING SIGNS
-    }
-}
 unit floatadd(
     input   uint32  a,
     input   uint32  b,
@@ -546,6 +529,12 @@ unit floatmultiply(
 ) <reginputs> {
     always_after {
         {
+            bitstream = { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction };                  // left align and multiply the fractions
+            sign = fp32( a ).sign ^ fp32( b ).sign;                                                 // SIGN is inputs same = +, different = -
+            exp = fp32( a ).exponent + fp32( b ).exponent - ( bitstream[47,1] ? 253 : 254 );        // EXPONENT is expA + expB + 1 ( if multiplication has overflowed )
+        }
+
+        {
             uint1   ZERO <:: (classA[0,1] | classB[0,1] );
             uint1   IF <:: ( classA[3,1] | classB[3,1] );
             uint1   NN <:: |( classA[1,2] | classB[1,2] );
@@ -564,11 +553,6 @@ unit floatmultiply(
                 }
             }
             flags = { IF, 6b0 };
-        }
-        {
-            bitstream = { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction };
-            sign = fp32( a ).sign ^ fp32( b ).sign;
-            exp = fp32( a ).exponent + fp32( b ).exponent - ( bitstream[47,1] ? 253 : 254 );
         }
     }
 }
@@ -614,15 +598,18 @@ unit floatdivide(
     output  uint32  result,
     output  uint7   flags
 ) <reginputs> {
-    uint50  sigA <:: { 1b1, fp32(a).fraction, 26b0 };
-    uint50  sigB <:: { 27b1, fp32(b).fraction };
-    dofloatdivide DODIVIDE( sigA <: sigA, sigB <: sigB, quotient :> bitstream );
+    dofloatdivide DODIVIDE( quotient :> bitstream );
     DODIVIDE.start := start & ~X; busy := start | DODIVIDE.busy;
 
     always_after {
         {
-            sign = fp32( a ).sign ^ fp32( b ).sign;
-            exp = fp32( a ).exponent - fp32( b ).exponent - ( fp32(b).fraction > fp32(a).fraction );
+            DODIVIDE.sigA = { 1b1, fp32(a).fraction, 26b0 };                                            // Align TOP to the LEFT
+            DODIVIDE.sigB = { 27b1, fp32(b).fraction };                                                 // Align BOTTOM to the RIGHT
+        }
+
+        {
+            sign = fp32( a ).sign ^ fp32( b ).sign;                                                     // SIGN is inputs same = +, different = -
+            exp = fp32( a ).exponent - fp32( b ).exponent - ( fp32(b).fraction > fp32(a).fraction );    // EXPONENT IS expA - expB - 1 (if fractional representation of B > A )
         }
 
         {
@@ -701,15 +688,17 @@ unit floatsqrt(
     output  uint1   X,
     output  uint32  result
 ) <reginputs> {
-    int10   expA  <:: fp32( a ).exponent - 127;
-    uint50  start_ac <:: expA[0,1] ? { 48b0, 1b1, a[22,1] } : 1;
-    uint48  start_x <:: expA[0,1] ? { a[0,22], 26b0 } : { fp32( a ).fraction, 25b0 };
-    dofloatsqrt DOSQRT( start_ac <: start_ac, start_x <: start_x, squareroot :> bitstream );
+    dofloatsqrt DOSQRT( squareroot :> bitstream );
+
     DOSQRT.start := start & ~X; busy := start | DOSQRT.busy;
 
     always_after {
         {
-            exp = ( expA >>> 1 );
+            int10   expA  <:: fp32( a ).exponent - 127;                                         // exponent of the input
+
+            DOSQRT.start_ac = expA[0,1] ? { 48b0, 1b1, a[22,1] } : 1;                           // determine alignment of the fraction according to odd/even exponent
+            DOSQRT.start_x = expA[0,1] ? { a[0,22], 26b0 } : { fp32( a ).fraction, 25b0 };
+            exp = ( expA >>> 1 );                                                               // result exponent is 1/2 of input exponent
         }
 
         {
