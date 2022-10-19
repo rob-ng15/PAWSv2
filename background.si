@@ -88,14 +88,6 @@ unit background_copper(
     uint1   copper_execute = uninitialised;         uint8   PC = 0;                                 uint8   PCplus1 <:: PC + 1;
     uint10  copper_variable = 0;
 
-    // COPPER PROGRAM ENTRY
-    uint10  value <:: copper_coordinates.rdata0[10,1]? copper_cpu_input : copper_coordinates.rdata0[0,10];
-
-    // COMPARISON
-    uint1   lessthan <:: ( ( copper_conditions.rdata0 == 3b101 ) ? copper_variable : copper_conditions.rdata0[2,1] ? pix_x : pix_y ) < value;
-    uint1   equal <:: ( ( copper_commands.rdata0 == 3b101 ) ? copper_variable : copper_conditions.rdata0[2,1] ? pix_x : pix_y ) ==
-                      ( ( copper_commands.rdata0 == 3b101 ) ? ( value[0,1] ? pix_x : pix_y ) : value );
-
     // COPPER FLAGS
     copper_commands.addr0 := PC;                    copper_conditions.addr0 := PC;                      copper_coordinates.addr0 := PC;
     copper_modes.addr0 := PC;                       copper_alts.addr0 := PC;                            copper_colours.addr0 := PC;
@@ -103,6 +95,14 @@ unit background_copper(
 
     always_after {
         {
+            // COPPER PROGRAM ENTRY
+            uint10  value <:: copper_coordinates.rdata0[10,1]? copper_cpu_input : copper_coordinates.rdata0[0,10];
+
+            // COMPARISON
+            uint1   lessthan <:: ( ( copper_conditions.rdata0 == 3b101 ) ? copper_variable : copper_conditions.rdata0[2,1] ? pix_x : pix_y ) < value;
+            uint1   equal <:: ( ( copper_commands.rdata0 == 3b101 ) ? copper_variable : copper_conditions.rdata0[2,1] ? pix_x : pix_y ) ==
+                            ( ( copper_commands.rdata0 == 3b101 ) ? ( value[0,1] ? pix_x : pix_y ) : value );
+
             if( copper_status ) {
                 switch( copper_commands.rdata0 ) {
                     case 3b000: {                                                                                                                                               // JUMP ON CONDITION
@@ -127,11 +127,13 @@ unit background_copper(
                         if( copper_conditions.rdata0[2,1] ) { BACKGROUNDmode = copper_variable;}
                     }
                 }
+            } else{
+                BACKGROUNDcolour = backgroundcolour; BACKGROUNDalt = backgroundcolour_alt; BACKGROUNDmode = backgroundcolour_mode;              // UPDATE THE BACKGROUND GENERATOR FROM THE CPU
+                PC = 0;
             }
         }
-
         {
-            if( copper_status ) {                                                                                                               // UPDATE THE BACKGROUND GENERATOR FROM THE COPPER
+            if( copper_status ) {
                 if( copper_execute & |copper_commands.rdata0 ) {                                                                                // CHANGE BACKGROUND PROGRAM
                     if( copper_conditions.rdata0[0,1] ) { BACKGROUNDcolour = copper_colours.rdata0; }
                     if( copper_conditions.rdata0[1,1] ) { BACKGROUNDalt = copper_alts.rdata0; }
@@ -140,9 +142,6 @@ unit background_copper(
                 if( ~|copper_commands.rdata0 | &copper_commands.rdata0[1,2] | copper_execute ) {                                                // MOVE TO NEXT INSTRUCTION
                     PC = ( ~|copper_commands.rdata0 & copper_execute ) ? copper_colours.rdata0 : PCplus1;
                 }
-            } else{
-                BACKGROUNDcolour = backgroundcolour; BACKGROUNDalt = backgroundcolour_alt; BACKGROUNDmode = backgroundcolour_mode;              // UPDATE THE BACKGROUND GENERATOR FROM THE CPU
-                PC = 0;
             }
         }
     }
@@ -161,25 +160,15 @@ unit background_display(
     input   uint4   b_mode,
     input   uint1   colourmode
 ) <reginputs> {
-    starfield STARS( pix_x <: pix_x, pix_y <: pix_y );
+    uint2   condition = uninitialised;
 
-    uint8   rainbow_colour = uninitialised;
-    uint1   condition = uninitialised;
+    starfield STARS( pix_x <: pix_x, pix_y <: pix_y );
 
     always_after {
         {
-            // 8 COLOUR RAINDOW IN DIFFERENT SCREEN COLOUR MODES
-            // DKRED RED ORANGE YELLOW GREEN BLUE DKPURPLE VIOLET
-            uint8   rainbow[] = {
-                8h80, 8hc1, 8he1, 8hf9, 8h38, 8h0f, 8h45, 8ha7                              // RGBM
-            };
-
-            if( colourmode ) { rainbow_colour = { pix_y[7,2], {2{pix_y[6,3]}} }; } else { rainbow_colour = rainbow[ pix_y[6,3] ]; }
-        }
-
-        {
-            uint1   tophalf <:: ( pix_y < 240 );            uint1   lefthalf <:: ( pix_x < 320 );               uint2   checkmode <:: b_mode - 7;
             // DETERMINE BACKGROUND PATTERN
+            uint1   tophalf <:: ( pix_y < 240 );            uint1   lefthalf <:: ( pix_x < 320 );               uint2   checkmode <:: b_mode - 7;
+
             switch( b_mode ) {
                 case 0: { condition = 1; }                                              // SOLID
                 case 1: { condition = tophalf; }                                        // 50:50 HORIZONTAL SPLIT
@@ -195,14 +184,17 @@ unit background_display(
                 default: { condition = ( pix_x[checkmode,1] ^ pix_y[checkmode,1] ); }   // CHECKERBOARDS (7,8,9,10)
             }
         }
-
         {
+            // 8 COLOUR RAINDOW IN DIFFERENT SCREEN COLOUR MODES
+            // DKRED RED ORANGE YELLOW GREEN BLUE DKPURPLE VIOLET
+            uint8   rainbow[] = { 8h80, 8hc1, 8he1, 8hf9, 8h38, 8h0f, 8h45, 8ha7 };
+
             // SWITCH TO THE APPROPRIATE COLOUR
             switch( condition ) {
-                case 0: { pixel = b_alt; }                                                  // EVERYTHING ELSE
+                case 0: { pixel = b_alt; }                                                                  // EVERYTHING ELSE
                 case 1: { pixel = b_colour; }
-                case 2: { pixel = rainbow_colour; }                                         // RAINBOW
-                case 3: { pixel = {4{staticGenerator}}; }                                   // STATIC
+                case 2: { pixel = colourmode ? { pix_y[7,2], {2{pix_y[6,3]}} } : rainbow[ pix_y[6,3] ]; }   // RAINBOW
+                case 3: { pixel = {4{staticGenerator}}; }                                                   // STATIC
             }
         }
     }
