@@ -34,48 +34,21 @@ unsigned int CSRisa() {
 }
 
 unsigned long CSRcycles() {
-    unsigned long cycles;
-    unsigned int *cycles_r = (unsigned int *)&cycles, cycles_hi0;
-    asm volatile(
-        "rdcycleh %0\n"
-        "rdcycle %1\n"
-        "rdcycleh %2\n"
-        "sub %0, %0, %2\n"
-        "seqz %0, %0\n"
-        "sub %0, zero, %0\n"
-        "and %1, %1, %0\n"
-        : "=r"(cycles_hi0), "=r"(cycles_r[0]), "=r"(cycles_r[1]));
-    return cycles;
+   unsigned long cycles;
+   asm volatile ("rdcycle %0" : "=r"(cycles));
+   return cycles;
 }
 
 unsigned long CSRinstructions() {
-    unsigned long insns;
-    unsigned int *insns_r = (unsigned int *)&insns, insns_hi0;
-    asm volatile(
-        "rdinstreth %0\n"
-        "rdinstret %1\n"
-        "rdinstreth %2\n"
-        "sub %0, %0, %2\n"
-        "seqz %0, %0\n"
-        "sub %0, zero, %0\n"
-        "and %1, %1, %0\n"
-        : "=r"(insns_hi0), "=r"(insns_r[0]), "=r"(insns_r[1]));
-    return insns;
+   unsigned long insns;
+   asm volatile ("rdinstret %0" : "=r"(insns));
+   return insns;
 }
 
 unsigned long CSRtime() {
-    unsigned long timer;
-    unsigned int *timer_r = (unsigned int *)&timer, timer_hi0;
-    asm volatile(
-        "rdtimeh %0\n"
-        "rdtime %1\n"
-        "rdtimeh %2\n"
-        "sub %0, %0, %2\n"
-        "seqz %0, %0\n"
-        "sub %0, zero, %0\n"
-        "and %1, %1, %0\n"
-        : "=r"(timer_hi0), "=r"(timer_r[0]), "=r"(timer_r[1]));
-    return timer;
+  unsigned long time;
+  asm volatile ("rdtime %0" : "=r"(time));
+  return time;
 }
 
 // SMT START STOP AND STATUS

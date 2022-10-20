@@ -644,6 +644,19 @@ unit fetch(
 }
 
 // LOAD UNIT - INCLUDING SIGN EXTENSION FOR 8/16 BIT SIGNED LOADS
+unit signextend(
+    input   uint16  readdata,
+    input   uint1   is16or8,
+    input   uint1   byteaccess,
+    input   uint1   dounsigned,
+    output  uint32  memory168
+) <reginputs> {
+    uint1   sign <:: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
+
+    always_after {
+        memory168 = is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };
+    }
+}
 unit load(
     input   uint1   clock_CPUdecoder,
     input   uint1   start,
@@ -657,26 +670,27 @@ unit load(
     output! uint1   readmemory,
     input!  uint1   memorybusy
 ) <reginputs> {
+    // SIGN EXTENDER FOR 8 AND 16 BIT LOADS
+    signextend SIGNEXTEND <@clock_CPUdecoder> (
+        readdata <: readdata[0,16],
+        is16or8 <: accesssize[0,1],
+        byteaccess <: byteaccess,
+        dounsigned <: dounsigned
+    );
+
     readmemory := 0;
 
     algorithm <autorun> {
         while(1) {
             if( start ) {
                 busy = 1; readmemory = 1; while( memorybusy ) {}                                    // START READ
+                memoryinput = accesssize[1,1] ? readdata : SIGNEXTEND.memory168;                    // SIGN/ZERO EXTEND FOR 8 AND 16 BIT READS
                 busy = 0;
             } else {
                 busy = 0;
             }
         }
     }
-
-    always_after {
-        uint1   sign <:: ~dounsigned & ( accesssize[0,1] ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
-        memoryinput = accesssize[1,1] ? readdata :                                                  // 32 bit
-                      accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                            // 16 bit
-                                        { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };       // 8 bit
-    }
-
 }
 
 // STORE UNIT FOR NON-FAST STORES ( to BRAM/SDRAM or 32 bit )

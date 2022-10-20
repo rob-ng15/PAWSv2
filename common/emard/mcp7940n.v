@@ -10,7 +10,7 @@
 
 module mcp7940n
 #(
-  parameter c_clk_mhz   = 50, // MHz clk, i2c needs to know
+  parameter c_clk_mhz   = 25, // MHz clk, i2c needs to know
   parameter c_slow_bits = 18  // 2^n slowdown to read each register 18->95 Hz at 25 MHz
 )
 (

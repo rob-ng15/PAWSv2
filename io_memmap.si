@@ -58,11 +58,14 @@ $$end
 ) <reginputs> {
 $$if not SIMULATION then
     // UART CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
-    uart_IN UART_IN( uart_rx <: uart_rx );
-    uart_OUT UART_OUT( uart_tx :> uart_tx, outchar <: writeData[0,8] );
+    uint2   UARTinread = 0;                                                                                                         // 2 BIT LATCH ( bit 0 is the signal ) due to clock boundary change
+    uint2   UARToutwrite = 0;                                                                                                       // 2 BIT LATCH ( bit 0 is the signal )
+    uart_IN UART_IN <@clock_25mhz> ( uart_rx <: uart_rx, inread <: UARTinread[0,1] );
+    uart_OUT UART_OUT <@clock_25mhz> ( uart_tx :> uart_tx, outchar <: writeData[0,8], outwrite <: UARToutwrite[0,1] );
 
     // PS2 CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
-    ps2buffer PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn );
+    uint2   PS2inread = 0;                                                                                                          // 2 BIT LATCH ( bit 0 is the signal )
+    ps2buffer PS2 <@clock_25mhz> ( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn, inread <: PS2inread[0,1] );
 
     // SDCARD AND BUFFER
     simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                          uint9 INPLUS1 <:: buffer_in.addr0 + 1;      // READ FROM SDCARD
@@ -78,7 +81,7 @@ $$if not SIMULATION then
 $$end
 
     // I2C FOR RTC
-    rtc RTC( clk <: clock, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );              // EMARD verilog version
+    rtc RTC( clk <: clock_25mhz, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );              // EMARD verilog version
     //mcp7940n RTC <@clock_25mhz> ( sda <:> gpdi_sda, scl <:> gpdi_scl );                             // Silice translation (not yet working)
 
     // ACCELERATORS FOR DOOM FIXED POINT 16.16 DIVISION
@@ -89,7 +92,6 @@ $$end
 
 $$if not SIMULATION then
     // I/O FLAGS
-    UART_IN.inread := 0; UART_OUT.outwrite := 0; PS2.inread := 0;
     SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0;
 $$end
     RTC.wr := 0; RTC.addr := 7; FIXED_DIVIDE_1.start := 0; FIXED_DIVIDE_2.start := 0;
@@ -108,6 +110,10 @@ $$end
 
         {
             uint64  LATCHrtc = uninitialised;
+            $$if not SIMULATION then
+                // UPDATE LATCHES
+                UARTinread = UARTinread[1,1]; UARToutwrite = UARToutwrite[1,1]; PS2inread = PS2inread[1,1];
+            $$end
 
             // READ IO Memory
             if( memoryRead ) {
@@ -117,13 +123,13 @@ $$end
                         if( memoryAddress[1,1] ) {
                             readData = { 14b0, UART_OUT.outfull, UART_IN.inavailable };
                         } else {
-                            readData = { 8b0, UART_IN.inchar }; UART_IN.inread = 1;
+                            readData = { 8b0, UART_IN.inchar }; UARTinread = 2b11;
                         }
                     }
                     case 4h1: {
                         if( memoryAddress[1,1] ) {
                             if( PS2.inavailable ) {
-                                readData = PS2.inkey; PS2.inread = 1;
+                                readData = PS2.inkey; PS2inread = 2b11;
                             } else {
                                 readData = 0;
                             }
@@ -168,7 +174,7 @@ $$end
             if( memoryWrite ) {
                 switch( memoryAddress[8,4] ) {
                     $$if not SIMULATION then
-                    case 4h0: { UART_OUT.outwrite = 1; }
+                    case 4h0: { UARToutwrite = 2b11; }
                     case 4h1: { PS2.outputkeycodes = writeData; }
                     case 4h4: {
                         switch( memoryAddress[1,2] ) {
@@ -493,7 +499,6 @@ unit audio(
         {
             uint1   newSL = uninitialised;
             uint8   SAMP0P1 <:: samples_left.addr0 + 1;
-
             if( SAMPLEMODE_L ) {
                 if( ~apu_processor_L.audio_active ) {
                     if( newSL ) {
@@ -511,7 +516,6 @@ unit audio(
         {
             uint1   newSR = uninitialised;
             uint8   SAMP1P1 <:: samples_right.addr0 + 1;
-
             if( SAMPLEMODE_R ) {
                 if( ~apu_processor_R.audio_active ) {
                     if( newSR ) {
@@ -572,18 +576,14 @@ unit fifo8(
     queue.wenable1 := 1;
 
     always_after {
-        {
-            available = ( top != next ); full = ( top + 1 == next );
-            next = next + read;
-        }
+        available = ( top != next ); full = ( top + 1 == next );
 
-        {
-            if( write ) {
-                queue.addr1 = top; queue.wdata1 = last; update = 1;
-            } else {
-                if( update ) { top = top + 1; update = 0; }
-            }
+        if( write ) {
+            queue.addr1 = top; queue.wdata1 = last; update = 1;
+        } else {
+            if( update ) { top = top + 1; update = 0; }
         }
+        next = next + read;
     }
 }
 unit uart_IN(
@@ -638,18 +638,11 @@ unit fifo9(
     queue.wenable1 := 1;
 
     always_after {
-        {
-            available = ( top != next );
-        }
+        available = ( top != next );
 
-        {
-            if( write ) { queue.addr1 = top; queue.wdata1 = last; }
-        }
-
-        {
-            top = top + write;
-            next = next + read;
-        }
+        if( write ) { queue.addr1 = top; queue.wdata1 = last; }
+        top = top + write;
+        next = next + read;
     }
 }
 unit ps2buffer(

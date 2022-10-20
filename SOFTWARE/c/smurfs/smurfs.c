@@ -121,21 +121,14 @@ void displayreset( void ) {
     set_sprite_bitamps_from_spritesheet32x32( UPPER_LAYER, &spritesheet_upper_1[0] );
 
     // SET CLOUD TILEMAPS
-    for( int i = 0; i < 6; i++ ) {
+    for( int i = 0; i < 4; i++ ) {
         set_tilemap_bitmap32x32( LOWER_LAYER, 1 + ( i * 4 ), &cloud_graphics[ i * 1024 ] );
     }
-    // DRAW THE CLOUD WITH SUN
+    // DRAW THE CLOUD
     set_tilemap_tile32x32( LOWER_LAYER, 17, 4, 1 );
     set_tilemap_tile32x32( LOWER_LAYER, 17, 6, 5 );
     set_tilemap_tile32x32( LOWER_LAYER, 19, 4, 9 );
     set_tilemap_tile32x32( LOWER_LAYER, 19, 6, 13 );
-
-    // DRAW THE OTHER CLOUDS
-    set_tilemap_tile32x32( LOWER_LAYER, 1, 12, 17 );
-    set_tilemap_tile32x32( LOWER_LAYER, 3, 12, 21 );
-
-    set_tilemap_tile32x32( LOWER_LAYER, 27, 8, 17 );
-    set_tilemap_tile32x32( LOWER_LAYER, 29, 8, 21 );
 
 }
 void display_village( void ) {

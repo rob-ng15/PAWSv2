@@ -71,12 +71,9 @@ unit gpu_queue(
     uint4   queue_write = 0;
 
     GPU.gpu_write := 0; queue_full := vector_block_active | queue_busy ; queue_complete := ~( gpu_active | queue_full );
+    bitmap_crop_left := GPU.crop_left; bitmap_crop_right := GPU.crop_right; bitmap_crop_top := GPU.crop_top; bitmap_crop_bottom := GPU.crop_bottom;
 
     always_after {
-        {
-            bitmap_crop_left = GPU.crop_left; bitmap_crop_right = GPU.crop_right; bitmap_crop_top = GPU.crop_top; bitmap_crop_bottom = GPU.crop_bottom;
-        }
-
         {
             // PASS VECTOR BLOCK REQUEST
             if( vector_drawer_gpu_write ) {
@@ -206,14 +203,14 @@ unit gpu(
     uint6   gpu_busy_flags <:: { GPUpixelblock.busy, |GPUblit.busy, GPUtriangle.busy, GPUcircle.busy, GPUrectangle.busy, GPUline.busy };
     uint1   gpu_busy <:: ( |gpu_busy_flags );
 
+    // CONTROLS FOR BITMAP PIXEL WRITER AND GPU SUBUNITS
+    bitmap_write := GPUline.bitmap_write | GPUrectangle.bitmap_write | GPUcircle.bitmap_write |
+                                    GPUtriangle.bitmap_write | GPUblit.bitmap_write | GPUpixelblock.bitmap_write;
+
     GPUrectangle.start := 0; GPUline.start := 0; GPUcircle.start := 0; GPUtriangle.start := 0; GPUblit.start := 0; GPUpixelblock.start := 0;
     gpu_active := ( |gpu_write[1,3] ) | gpu_busy;
 
     always_after {
-        {
-            bitmap_write = GPUline.bitmap_write | GPUrectangle.bitmap_write | GPUcircle.bitmap_write | GPUtriangle.bitmap_write | GPUblit.bitmap_write | GPUpixelblock.bitmap_write;
-        }
-
         {
             if( |gpu_write ) {
                 // START THE GPU DRAWING UNIT - RESET TO THE COMMON DEFAULTS
@@ -293,8 +290,8 @@ unit applycrop(
     output  int11   max_y
 ) <reginputs> {
     always_after {
-        { min_x = ( x1 < crop_left ) ? crop_left : x1; }   { max_x = ( ( x2 > crop_right ) ? crop_right : x2 ); }
-        { min_y = ( y1 < crop_top ) ? crop_top : y1; }     { max_y = 1 + ( ( y2 > crop_bottom ) ? crop_bottom : y2 ); }
+        min_x = ( x1 < crop_left ) ? crop_left : x1;   max_x = ( ( x2 > crop_right ) ? crop_right : x2 );
+        min_y = ( y1 < crop_top ) ? crop_top : y1;     max_y = 1 + ( ( y2 > crop_bottom ) ? crop_bottom : y2 );
     }
 }
 
@@ -532,28 +529,24 @@ unit arccoords(
     output  int11   bitmap_y_write,
     output  uint1   centrepixel
 ) <reginputs> {
-    always_after {
-        {
-            // PLUS OR MINUS OFFSETS
-            int11   xcpax <:: xc + active_x;                int11   xcpc <:: xc + count;
-            int11   xcmax <:: xc - active_x;                int11   xcmc <:: xc - count;
-            int11   ycpax <:: yc + active_x;                int11   ycpc <:: yc + count;
-            int11   ycmax <:: yc - active_x;                int11   ycmc <:: yc - count;
+    // PLUS OR MINUS OFFSETS
+    int11   xcpax <:: xc + active_x;                int11   xcpc <:: xc + count;
+    int11   xcmax <:: xc - active_x;                int11   xcmc <:: xc - count;
+    int11   ycpax <:: yc + active_x;                int11   ycpc <:: yc + count;
+    int11   ycmax <:: yc - active_x;                int11   ycmc <:: yc - count;
 
-            switch( arc ) {
-                case 0: { bitmap_x_write = xcpax; bitmap_y_write = ycpc; }
-                case 1: { bitmap_y_write = ycmc; }
-                case 2: { bitmap_x_write = xcmax; }
-                case 3: { bitmap_y_write = ycpc; }
-                case 4: { bitmap_x_write = xcpc; bitmap_y_write = ycpax; }
-                case 5: { bitmap_y_write = ycmax; }
-                case 6: { bitmap_x_write = xcmc; }
-                case 7: { bitmap_y_write = ycpax; }
-            }
+    always_after {
+        switch( arc ) {
+            case 0: { bitmap_x_write = xcpax; bitmap_y_write = ycpc; }
+            case 1: { bitmap_y_write = ycmc; }
+            case 2: { bitmap_x_write = xcmax; }
+            case 3: { bitmap_y_write = ycpc; }
+            case 4: { bitmap_x_write = xcpc; bitmap_y_write = ycpax; }
+            case 5: { bitmap_y_write = ycmax; }
+            case 6: { bitmap_x_write = xcmc; }
+            case 7: { bitmap_y_write = ycpax; }
         }
-        {
-            centrepixel = ( ~|count & ~|active_x );
-        }
+        centrepixel = ( ~|count & ~|active_x );
     }
 }
 unit drawcircle(
@@ -664,16 +657,24 @@ unit swaponcondition(
         }
     }
 }
-unit minmax3(
+unit min3(
     input   int11   n1,
     input   int11   n2,
     input   int11   n3,
-    output  int11   min,
+    output  int11   min
+) <reginputs> {
+    always_after {
+        min = ( n1 < n2 ) ? ( ( n1 < n3 ) ? n1 : n3 ) : ( ( n2 < n3 ) ? n2 : n3 );
+    }
+}
+unit max3(
+    input   int11   n1,
+    input   int11   n2,
+    input   int11   n3,
     output  int11   max
 ) <reginputs> {
     always_after {
-        { min = ( n1 < n2 ) ? ( ( n1 < n3 ) ? n1 : n3 ) : ( ( n2 < n3 ) ? n2 : n3 ); }
-        { max = ( n1 > n2 ) ? ( ( n1 > n3 ) ? n1 : n3 ) : ( ( n2 > n3 ) ? n2 : n3 ); }
+        max = ( n1 > n2 ) ? ( ( n1 > n3 ) ? n1 : n3 ) : ( ( n2 > n3 ) ? n2 : n3 );
     }
 }
 unit preptriangle(
@@ -709,10 +710,11 @@ unit preptriangle(
     swaponcondition SWAP6( x1 <: SWAP5.nx2, y1 <: SWAP5.ny2, x2 <: SWAP4.nx2, y2 <: SWAP4.ny2, nx1 :> x2, ny1 :> y2, nx2 :> x3, ny2 :> y3 );    // -> ( x2, y2 ) and ( x3, y3 )
 
     // Find minimum and maximum of x, x1, x2, y, y1 and y2 for the bounding box
-    minmax3 X( n1 <: x1, n2 <: x2, n3 <: x3 );      minmax3 Y( n1 <: y1, n2 <: y2, n3 <: y3 );
+    min3 Xmin( n1 <: x1, n2 <: x2, n3 <: x3 );      min3 Ymin( n1 <: y1, n2 <: y2, n3 <: y3 );
+    max3 Xmax( n1 <: x1, n2 <: x2, n3 <: x3 );      max3 Ymax( n1 <: y1, n2 <: y2, n3 <: y3 );
 
     applycrop CROP( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
-                    x1 <: X.min, y1 <: Y.min, x2 <: X.max, y2 <: Y.max, min_x :> min_x, min_y :> min_y, max_x :> max_x, max_y :> max_y );
+                    x1 <: Xmin.min, y1 <: Ymin.min, x2 <: Xmax.max, y2 <: Ymax.max, min_x :> min_x, min_y :> min_y, max_x :> max_x, max_y :> max_y );
 
     istodraw TODRAW( crop_left <: crop_left, crop_right <: crop_right, crop_top <: crop_top, crop_bottom <: crop_bottom,
                 min_x <: CROP.min_x, min_y <: CROP.min_y, max_x <: CROP.max_x, max_y <: CROP.max_y );
@@ -735,12 +737,12 @@ unit preptriangle(
     }
 
     always_after {
-        { SWAP1.condition = ( param3 < param1 ); }                                                                                                  // ( y3 < y2 )
-        { SWAP2.condition = ( SWAP1.ny1 < y ); }                                                                                                    // ( y2 < y1 )
-        { SWAP3.condition = ( SWAP1.ny2 < SWAP2.ny1 ); }                                                                                            // ( y3 < y1 )
-        { SWAP4.condition = ( SWAP3.ny2 < SWAP2.ny2 ); }                                                                                            // ( y3 < y2 )
-        { SWAP5.condition = ( SWAP4.ny1 == SWAP3.ny1 ) & ( SWAP4.nx1 < SWAP3.nx1 ) ; }                                                              // ( y2 == y1 ) & ( x2 < x1 )
-        { SWAP6.condition = ( ( SWAP5.ny2 != SWAP5.ny1 ) & ( SWAP4.ny2 >= SWAP5.ny2 ) & ( SWAP5.nx2 < SWAP4.nx2 ) ); }                              // ( y2 != y1 ) & ( y3 >= y2 ) & ( x2 < x3 )
+        SWAP1.condition = ( param3 < param1 );                                                                                                  // ( y3 < y2 )
+        SWAP2.condition = ( SWAP1.ny1 < y );                                                                                                    // ( y2 < y1 )
+        SWAP3.condition = ( SWAP1.ny2 < SWAP2.ny1 );                                                                                            // ( y3 < y1 )
+        SWAP4.condition = ( SWAP3.ny2 < SWAP2.ny2 );                                                                                            // ( y3 < y2 )
+        SWAP5.condition = ( SWAP4.ny1 == SWAP3.ny1 ) & ( SWAP4.nx1 < SWAP3.nx1 ) ;                                                              // ( y2 == y1 ) & ( x2 < x1 )
+        SWAP6.condition = ( ( SWAP5.ny2 != SWAP5.ny1 ) & ( SWAP4.ny2 >= SWAP5.ny2 ) & ( SWAP5.nx2 < SWAP4.nx2 ) );                              // ( y2 != y1 ) & ( y3 >= y2 ) & ( x2 < x3 )
     }
 }
 unit intriangle(
@@ -788,8 +790,13 @@ unit drawtriangle(
     uint1   leftright <:: ( px - min_x ) < ( max_x - px );
 
     // WORK COORDINATES AND DIRECTION
-    uint9   px = uninitialized;                     uint8   py = uninitialized;                         uint8   pyNEXT <:: py + 1;
+    uint9   px = uninitialized;                         uint9   pxNEXT <:: px + ( dx ? 1 : (-1) );
+    uint8   py = uninitialized;                         uint8   pyNEXT <:: py + 1;
     uint1   dx = uninitialized;
+
+    // DETECT IF AT LEFT/RIGHT/BOTTOM OF THE BOUNDING BOX
+    uint1   stillinline <:: ( dx & ( px != max_x ) ) | ( ~dx & ( px != min_x ));
+    uint1   working <:: ( py != max_y );
 
     bitmap_x_write := px; bitmap_y_write := py; bitmap_write := busy & IS.IN;
 
@@ -797,14 +804,14 @@ unit drawtriangle(
         if( start ) {
             busy = 1; dx = 1; px = min_x; py = min_y;
         } else {
-            if( py != max_y ) {
+            if( working ) {
                 beenInTriangle = IS.IN | beenInTriangle;
                 if( beenInTriangle ^ IS.IN ) {
                     // Exited the triangle, move to the next line
                     beenInTriangle = 0; py = pyNEXT; px = leftright ? min_x : max_x; dx = leftright;
                 } else {
                     // MOVE TO THE NEXT PIXEL ON THE LINE LEFT/RIGHT OR DOWN AND SWITCH DIRECTION IF AT END
-                    if( ( dx & ( px != max_x ) ) | ( ~dx & ( px != min_x )) ) { px = px + ( dx ? 1 : (-1) ); } else { dx = ~dx; beenInTriangle = 0; py = pyNEXT; }
+                    if( stillinline ) { px = pxNEXT; } else { dx = ~dx; beenInTriangle = 0; py = pyNEXT; }
                 }
             } else {
                 busy = 0;
@@ -856,8 +863,7 @@ unit blitscale(
     output  int11   scaled
 ) <reginputs> {
     always_after {
-        { base = offset; }
-        { scaled = offset << scale; }
+        base = offset; scaled = offset << scale;
     }
 }
 unit blittilexy(
@@ -875,10 +881,10 @@ unit blittilexy(
 
     // find y and x positions within the tile/character bitmap handling rotation or reflection
     always_after {
-        { xinblittile = ( action[2,1] ?  action00 ? revx4 : action01 ? py[0,4] : action10 ? px[0,4] : revy4 : action[0,1] ? px[0,4] : revx4 ); }
-        { yinblittile = action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy4 : revx4 : action[1,1] ? revy4 :  py[0,4]; }
-        { xinchartile = ( action[2,1] ? action00 ? revx3 : action01 ? py[0,3] : action10 ? px[0,3] : revy3 : action[0,1] ?  px[0,3] : revx3 ); }
-        { yinchartile = action[2,1] ? action00 ? py[0,3] : action01 ? px[0,3] : action10 ? revy3 : revx3 : action[1,1] ? revy3 :  py[0,3]; }
+        xinblittile = ( action[2,1] ?  action00 ? revx4 : action01 ? py[0,4] : action10 ? px[0,4] : revy4 : action[0,1] ? px[0,4] : revx4 );
+        yinblittile = action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy4 : revx4 : action[1,1] ? revy4 :  py[0,4];
+        xinchartile = ( action[2,1] ? action00 ? revx3 : action01 ? py[0,3] : action10 ? px[0,3] : revy3 : action[0,1] ?  px[0,3] : revx3 );
+        yinchartile = action[2,1] ? action00 ? py[0,3] : action01 ? px[0,3] : action10 ? revy3 : revx3 : action[1,1] ? revy3 :  py[0,3];
     }
 }
 unit cololurblittilexy(
@@ -893,8 +899,8 @@ unit cololurblittilexy(
 
     // find y and x positions within the tile bitmap handling rotation or reflection
     always_after {
-        { xintile = action[2,1] ? action00 ? px[0,4] : action01 ? revy : action10 ? revx : py[0,4] : action[0,1] ? revx :  px[0,4]; }
-        { yintile = action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy : revx : action[1,1] ? revy :  py[0,4]; }
+        xintile = action[2,1] ? action00 ? px[0,4] : action01 ? revy : action10 ? revx : py[0,4] : action[0,1] ? revx :  px[0,4];
+        yintile = action[2,1] ? action00 ? py[0,4] : action01 ? px[0,4] : action10 ? revy : revx : action[1,1] ? revy :  py[0,4];
     }
 }
 unit blit(
@@ -1004,7 +1010,13 @@ unit pixelblock(
     // LOOKUP THE COLOUR FROM THE REMAPPER
     colourmap.addr0 := colour;
 
+    bitmap_colour_write := ( toprocess == 1 ) ? ( mode[0,1] ? colourmap.rdata0 : colour ) :                                                 // USE THE REMAPPER
+                           mode[0,1] ? ( grey == 64 ) & ~mode[1,1] ? 65 : grey : ( rrgggbbm == 64 ) & ~mode[1,1] ? 128 : rrgggbbm;          // RGB / GREYSCALE CONVERTER
     bitmap_write := 0; dooutput := 0;
+
+    always_before {
+        if( reset ) { busy = 0; }
+    }
 
     algorithm <autorun> {
         while(1) {
@@ -1016,12 +1028,12 @@ unit pixelblock(
         }
     }
     always_after {
-        {     bitmap_colour_write = ( toprocess == 1 ) ? ( mode[0,1] ? colourmap.rdata0 : colour ) :                                                 // USE THE REMAPPER
-                                    mode[0,1] ? ( grey == 64 ) & ~mode[1,1] ? 65 : grey : ( rrgggbbm == 64 ) & ~mode[1,1] ? 128 : rrgggbbm; }        // RGB / GREYSCALE CONVERTER
-        { if( reset ) { busy = 0; } }
-        { if( update ) { if( lineend ) { bitmap_x_write = x; bitmap_y_write = yNEXT; } else { bitmap_x_write = xNEXT; } update = 0; } }
-        { if( dooutput ) { bitmap_write = ( ( toprocess[0,1] ) & ( mode[1,1] | ( colour != ignorecolour ) ) ) | ( toprocess[1,1] ); } }     // WRITE IF 8 BIT AND !ignore OR WRITEALL OR RGB
-        { if( busy ) { toprocess = newpixel; } }
+        if( update ) {
+            if( lineend ) { bitmap_x_write = x; bitmap_y_write = yNEXT; } else { bitmap_x_write = xNEXT; }
+            update = 0;
+        }
+        if( dooutput ) { bitmap_write = ( ( toprocess[0,1] ) & ( mode[1,1] | ( colour != ignorecolour ) ) ) | ( toprocess[1,1] ); }     // WRITE IF 8 BIT AND !ignore OR WRITEALL OR RGB
+        if( busy ) { toprocess = newpixel; }
     }
 }
 
@@ -1038,10 +1050,10 @@ unit scaledetla(
     input   uint6   delta,
     output  int11   scaled
 ) <reginputs> {
-    always_after {
-        // SIGN EXTEND THE DELTA, THEN SCALE
-        int11   extdelta <:: { {11{delta[5,1]}}, delta };
+    // SIGN EXTEND THE DELTA, THEN SCALE
+    int11   extdelta <:: { {11{delta[5,1]}}, delta };
 
+    always_after {
         scaled = ( scale[2,1] ? ( __signed(extdelta) >>> scale[0,2] ) : ( extdelta << scale[0,2] ) );
     }
 }
@@ -1065,10 +1077,10 @@ unit cpm(
 
     // PLUS OR MINUS SCALE
     always_after {
-        { xcpdx = xc + SDX.scaled; }                { xcndx = xc - SDX.scaled; }
-        { ycpdy = yc + SDY.scaled; }                { ycndy = yc - SDY.scaled; }
-        { xcpdy = xc + SDY.scaled; }                { xcndy = xc - SDY.scaled; }
-        { ycpdx = yc + SDX.scaled; }                { ycndx = yc - SDX.scaled; }
+        xcpdx = xc + SDX.scaled;                       xcndx = xc - SDX.scaled;
+        ycpdy = yc + SDY.scaled;                       ycndy = yc - SDY.scaled;
+        xcpdy = xc + SDY.scaled;                       xcndy = xc - SDY.scaled;
+        ycpdx = yc + SDX.scaled;                       ycndx = yc - SDX.scaled;
     }
 }
 // ADJUST COORDINATES BY DELTAS AND SCALE
@@ -1153,8 +1165,8 @@ unit vectors(
     }
 
     always_after {
-        { vector_block_active = draw_vector | working; }
-        { if( copycoords ) { ( gpu_x, gpu_y ) = copycoordinates( gpu_param0, gpu_param1 ); } } // Copy coordinates to the GPU
-        { if( increment ) { vertex = vertexNEXT; } }                                           // Move to the next vector
+        vector_block_active = draw_vector | working;
+        if( copycoords ) { ( gpu_x, gpu_y ) = copycoordinates( gpu_param0, gpu_param1 ); }  // Copy coordinates to the GPU
+        if( increment ) { vertex = vertexNEXT; }                                            // Move to the next vector
     }
 }

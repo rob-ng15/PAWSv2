@@ -281,7 +281,11 @@ int main ()
   printf("Number_Of_Runs: %d\n", Number_Of_Runs);
   printf("User_Time: %d cycles, %d CSRinstructions\n", User_Time, User_Insn);
 
-  printf("Cycles_Per_Instruction: %2.3f\n",(float)User_Time/(float)User_Insn);
+  int Cycles_Per_Instruction_x1000 = (1000 * User_Time) / User_Insn;
+  printf("Cycles_Per_Instruction: %d.%d%d%d\n", Cycles_Per_Instruction_x1000 / 1000,
+		(Cycles_Per_Instruction_x1000 / 100) % 10,
+		(Cycles_Per_Instruction_x1000 / 10) % 10,
+		(Cycles_Per_Instruction_x1000 / 1) % 10);
 
   int Dhrystones_Per_Second_Per_MHz = (Number_Of_Runs * 1000000) / User_Time;
   printf("Dhrystones_Per_Second_Per_MHz: %d\n", Dhrystones_Per_Second_Per_MHz);
