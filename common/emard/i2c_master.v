@@ -7,7 +7,7 @@
 
 module i2c_master
 #(
-  parameter freq = 25 // MHz
+  parameter freq = 50 // MHz
 )
 (
   input wire        sys_clock,  // System clock, wr_ctrl should be synchronous to this

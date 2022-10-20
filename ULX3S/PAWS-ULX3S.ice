@@ -1,15 +1,8 @@
-$$ uart_in_clock_freq_mhz = 25
-
-// CLOCK SELECTION FLAGS
-//$$ sdram_150_mhz = 1
+$$ uart_in_clock_freq_mhz = 50
 
 $$if not SIMULATION then
 // CLOCKS
-$$if sdram_150_mhz then
-import('../common/clock_PAWS-sdram150.v')
-$$else
 import('../common/clock_PAWS-sdram100.v')
-$$end
 import('../common/clock_PAWS-CPU.v')
 $$end
 
