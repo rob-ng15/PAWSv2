@@ -111,7 +111,6 @@ unit PAWSCPU(
 
     // LOAD UNIT
     load LOAD(
-        clock_CPUdecoder <: clock_CPUdecoder,
         accesssize <: accesssize,
         byteaccess <: RV32CONTROL.loadAddress[0,1],
         dounsigned <: RV32CONTROL.function3[2,1],
@@ -163,7 +162,6 @@ unit PAWSCPU(
         memoryinput <: LOAD.memoryinput,
         AUIPCLUI <: RV32CONTROL.AUIPCLUI,
         nextPC <: RV32CONTROL.nextPC,
-        isALUMM <: RV32CONTROL.IS_ALUM,
         isLOAD <: RV32CONTROL.IS_LOAD,
         isAUIPCLUI <: RV32CONTROL.IS_AUIPCLUI,
         isJAL <: RV32CONTROL.IS_JAL,
@@ -238,8 +236,8 @@ unit PAWSCPU(
                 ICACHEUPDATE = 1; cacheselect = 1; ++:                                                                              // SWITCH TO DATA CACHE, UPDATE ICACHE
 
                 switch( { RV32CONTROL.IS_LOAD, RV32CONTROL.IS_FASTALU, RV32CONTROL.IS_STORE } ) {
-                    case 3b000: { EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                         // DIVISION, CLMUL, FLOATING POINT, CSR
-                    case 3b010: {}                                                                                              // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
+                    case 3b000: { EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                             // DIVISION, CLMUL, FLOATING POINT, CSR
+                    case 3b010: {}                                                                                                  // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
                     case 3b011: { STORE.start = 1; while( STORE.busy ) {} }                                                         // INTEGER + FLOAT STORE
                     case 3b110: { LOAD.start = 1; while( LOAD.busy ) {} }                                                           // INTEGER + FLOAT LOAD
                     default: {                                                                                                      // ATOMIC LOAD - MODIFY - STORE
@@ -573,7 +571,6 @@ unit cpuexecuteFASTPATH(
     input   int32   memoryinput,
     input   uint32  AUIPCLUI,
     input   uint32  nextPC,
-    input   uint1   isALUMM,
     input   uint1   isLOAD,
     input   uint1   isAUIPCLUI,
     input   uint1   isJAL,
@@ -593,17 +590,13 @@ unit cpuexecuteFASTPATH(
         LT <: LT, LTU <: LTU
     );
 
-    // M EXTENSION - MULTIPLICATION
-    aluMM ALUMM( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
-
     always_after {
-        { memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2; }          // FLOAT STORE OR STORE
-        { result = isAUIPCLUI ? AUIPCLUI :                                // LUI AUIPC
-                            isJAL ? nextPC :                            // JAL[R]
-                            isLOAD ? memoryinput :                      // [FLOAT]LOAD
-                            isALUMM ? ALUMM.result : ALU.result; }        // INTEGER ALU AND MULTIPLICATION
-        { if( isFENCE ) { fenceACTIVE = { |function7[1,2], ~function3[0,1] }; }         // SET FENCE ACTIVE, { IO, MEM }, IO STOPS THREAD SWITCHING, MEM RESETS L0CACHE (after load)
-        }
+        { memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2; }                      // FLOAT STORE OR STORE
+        { result = isAUIPCLUI ? AUIPCLUI :                                              // LUI AUIPC
+                            isJAL ? nextPC :                                            // JAL[R]
+                            isLOAD ? memoryinput :                                      // [FLOAT]LOAD
+                            ALU.result; }                                               // INTEGER ALU AND MULTIPLICATION
+        { if( isFENCE ) { fenceACTIVE = { |function7[1,2], ~function3[0,1] }; } }       // SET FENCE ACTIVE, { IO, MEM }, IO STOPS THREAD SWITCHING, MEM RESETS L0CACHE (after load)
     }
 }
 
@@ -644,21 +637,7 @@ unit fetch(
 }
 
 // LOAD UNIT - INCLUDING SIGN EXTENSION FOR 8/16 BIT SIGNED LOADS
-unit signextend(
-    input   uint16  readdata,
-    input   uint1   is16or8,
-    input   uint1   byteaccess,
-    input   uint1   dounsigned,
-    output  uint32  memory168
-) <reginputs> {
-    uint1   sign <:: ~dounsigned & ( is16or8 ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
-
-    always_after {
-        memory168 = is16or8 ? { {16{sign}}, readdata[0,16] } : { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };
-    }
-}
 unit load(
-    input   uint1   clock_CPUdecoder,
     input   uint1   start,
     output! uint1   busy(0),
     input   uint1   byteaccess,
@@ -670,21 +649,18 @@ unit load(
     output! uint1   readmemory,
     input!  uint1   memorybusy
 ) <reginputs> {
-    // SIGN EXTENDER FOR 8 AND 16 BIT LOADS
-    signextend SIGNEXTEND <@clock_CPUdecoder> (
-        readdata <: readdata[0,16],
-        is16or8 <: accesssize[0,1],
-        byteaccess <: byteaccess,
-        dounsigned <: dounsigned
-    );
+    // SIGN FOR 8 AND 16 BIT LOADS
+    uint1   sign <:: ~dounsigned & ( accesssize[0,1] ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
 
     readmemory := 0;
 
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1; readmemory = 1; while( memorybusy ) {}                                    // START READ
-                memoryinput = accesssize[1,1] ? readdata : SIGNEXTEND.memory168;                    // SIGN/ZERO EXTEND FOR 8 AND 16 BIT READS
+                busy = 1; readmemory = 1; while( memorybusy ) {}                                        // START READ
+                memoryinput = accesssize[1,1] ? readdata :                                              // 32 BIT
+                              accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                        // 16 BIT
+                                                { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };   // 8 BIT
                 busy = 0;
             } else {
                 busy = 0;

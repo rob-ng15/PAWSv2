@@ -1,19 +1,6 @@
 // ALU - ALU for immediate-register operations and register-register operations
 
 // CALCULATES SLL SLLI SRL SRLI SRA SRAI + ROL ROR RORI
-unit alurotate(
-    input   uint32  sourceReg1,
-    input   uint32  SLL,
-    input   uint32  SRL,
-    input   uint5   shiftcount,
-    input   uint1   reverse,
-    output  uint32  ROTATE
-) <reginputs> {
-    uint6   shiftother <:: 32 - shiftcount;
-    always_after {
-         ROTATE = reverse ? ( ( sourceReg1 << shiftother ) | SRL ) : ( SLL | ( sourceReg1 >> shiftother ) );
-    }
-}
 unit alushift(
     input   uint32  sourceReg1,
     input   uint5   shiftcount,
@@ -23,10 +10,11 @@ unit alushift(
     output  uint32  SRA,
     output  uint32  ROTATE
 ) <reginputs> {
-    alurotate ALUR( sourceReg1 <: sourceReg1, SLL <: SLL, SRL <: SRL, shiftcount <: shiftcount, reverse <: reverse, ROTATE :> ROTATE );
     always_after {
-        SLL = sourceReg1 << shiftcount;             SRL = sourceReg1 >> shiftcount;
-        SRA = __signed(sourceReg1) >>> shiftcount;
+        { SLL = sourceReg1 << shiftcount; }
+        { SRL = sourceReg1 >> shiftcount; }
+        { SRA = __signed(sourceReg1) >>> shiftcount; }
+        { uint6 shiftother <:: 32 - shiftcount; ROTATE = reverse ? ( ( sourceReg1 << shiftother ) | SRL ) : ( SLL | ( sourceReg1 >> shiftother ) ); }
     }
 }
 // CALCULATES BCLR BCLRI BEXT BEXTI BIN BINI BSET BSETI
@@ -38,11 +26,11 @@ unit alubits(
     output  uint32  SET,
     output  uint1   EXT
 ) <reginputs> {
-    uint32  mask <:: ( 1 << shiftcount );
-
     always_after {
-        CLR = sourceReg1 & ~mask;                      INV = sourceReg1 ^ mask;
-        SET = sourceReg1 | mask;                       EXT = sourceReg1[ shiftcount, 1 ];
+        uint32  mask <:: ( 1 << shiftcount );
+
+        { CLR = sourceReg1 & ~mask; }               { INV = sourceReg1 ^ mask; }
+        { SET = sourceReg1 | mask; }                { EXT = sourceReg1[ shiftcount, 1 ]; }
     }
 }
 // CALCULATES ADD ADDI SUB
@@ -51,10 +39,10 @@ unit aluaddsub(
     input   int32   sourceReg1,
     input   int32   operand2,
     input   int32   negoperand2,
-    output  int32   AS
+    output  int32   addsub
 ) <reginputs> {
     always_after {
-        AS = sourceReg1 + ( dosub ? negoperand2 : operand2 );
+        addsub = sourceReg1 + ( dosub ? negoperand2 : operand2 );
     }
 }
 // CALCULATES AND/ANDN OR/ORN XOR/XNOR
@@ -66,11 +54,11 @@ unit alulogic(
     output  uint32  OR,
     output  uint32  XOR
 ) <reginputs> {
-    uint32  operand <:: doinv ? ~operand2 : operand2;
-
     always_after {
-        AND = sourceReg1 & operand;                    OR = sourceReg1 | operand;
-        XOR = sourceReg1 ^ operand;
+        uint32  operand <:: doinv ? ~operand2 : operand2;
+
+        { AND = sourceReg1 & operand; }             { OR = sourceReg1 | operand; }
+        { XOR = sourceReg1 ^ operand; }
     }
 }
 // CALCULATES SH1ADD, SH2ADD, SH3ADD
@@ -153,8 +141,8 @@ unit alupack(
     output  uint32  packh
 ) <reginputs> {
     always_after {
-        pack = { sourceReg2[0,16], sourceReg1[0,16] };
-        packh = { 16b0, sourceReg2[0,8], sourceReg1[0,8] };
+        { pack = { sourceReg2[0,16], sourceReg1[0,16] }; }
+        { packh = { 16b0, sourceReg2[0,8], sourceReg1[0,8] }; }
     }
 }
 // CALCULATES SEXT.B SEXT.H
@@ -223,6 +211,24 @@ unit aluxperm(
         }
     }
 }
+// ALU FOR MULTIPLICATION
+// UNSIGNED / SIGNED 33 by 33 bit multiplication giving 66 bit product using DSP blocks
+unit alumultiply(
+    input   uint2   function3,
+    input   int32   sourceReg1,
+    input   int32   sourceReg2,
+    output  int32   mult
+) <reginputs> {
+    always_after {
+        // SIGN EXTEND IF SIGNED MULTIPLY
+        uint2   dosigned <:: function3[1,1] ? function3[0,1] ? 2b00 : 2b01 : 2b11;
+        int33   factor_1 <:: { dosigned[0,1] & sourceReg1[ 31, 1 ], sourceReg1 }; // SIGN EXTEND IF SIGNED MULTIPLY
+        int33   factor_2 <:: { dosigned[1,1] & sourceReg2[ 31, 1 ], sourceReg2 }; // SIGN EXTEND IF SIGNED MULTIPLY
+        int66   product <:: factor_1 * factor_2;
+
+        mult = product[ { |function3, 5b0 }, 32 ];
+    }
+}
 
 // DECODE ALU INSTRUCTIONS
 unit aludecode(
@@ -231,6 +237,7 @@ unit aludecode(
     input   uint3   function3,
     input   uint5   rs2,
 
+    output  uint1   domul,
     output  uint1   doalt,
     output  uint1   dosra,
     output  uint1   dorotate,
@@ -247,13 +254,14 @@ unit aludecode(
     output  uint1   dorev,
     output  uint1   dozip
 ) <reginputs> {
-    uint1   f70100000 <:: ( function7 == 7b0100000 );
-    uint1   f70110000 <:: ( function7 == 7b0110000 );
-    uint1   f70110100 <:: ( function7 == 7b0110100 );
-    uint1   f70010100 <:: ( function7 == 7b0010100 );
-    uint1   f70000100 <:: ( function7 == 7b0000100 );
-
     always_after {
+        uint1   f70100000 <:: ( function7 == 7b0100000 );
+        uint1   f70110000 <:: ( function7 == 7b0110000 );
+        uint1   f70110100 <:: ( function7 == 7b0110100 );
+        uint1   f70010100 <:: ( function7 == 7b0010100 );
+        uint1   f70000100 <:: ( function7 == 7b0000100 );
+
+        domul = regreg & ( function7 == 7b0000001 );                        // MULTIPLICATION
         doalt = regreg & f70100000;                                         // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
         dosra = f70100000;                                                  // SRA SRAI
         dorotate = f70110000;                                               // ROL ROR RORI
@@ -266,9 +274,9 @@ unit aludecode(
         dosignx = ~regreg & f70110000 & rs2[2,1];                           // SEXT.B SEXT.H
         dopack = regreg & f70000100;                                        // ZEXT.H PACK PACKH ( ZEXT.H when rs2 == 0 )
         dozip = ~regreg & f70000100;                                        // UNZIP ZIP
-        doorc = ~regreg & f70010100;                                   // ( F3 = 101 ) ORC.B
+        doorc = ~regreg & f70010100;                                        // ( F3 = 101 ) ORC.B
         dorev = ~regreg & f70110100;                                        // REV8
-        doxperm = regreg & f70010100;                                   // ( F3 == 010 ) XPERM4 ( F3 = 100 ) XPERM8
+        doxperm = regreg & f70010100;                                       // ( F3 == 010 ) XPERM4 ( F3 = 100 ) XPERM8
     }
 }
 
@@ -287,12 +295,14 @@ unit alu(
 
     output  int32   result
 ) <reginputs> {
-    aludecode AD( regreg <: opCode[3,1], function7 <: function7, function3 <: function3, rs2 <: rs2 );
-
     uint5   shiftcount <:: opCode[3,1] ? sourceReg2[0,5] : rs2;
     uint32  operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
 
+    // DECODE THE ALU OPERATION
+    aludecode AD( regreg <: opCode[3,1], function7 <: function7, function3 <: function3, rs2 <: rs2 );
+
     aluaddsub ADDSUB( dosub <: AD.doalt, sourceReg1 <: sourceReg1, operand2 <: operand2, negoperand2 <: negSourceReg2 );
+    alumultiply MULT( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
     alushift SHIFTS( sourceReg1 <: sourceReg1, shiftcount <: shiftcount, reverse <: function3[2,1] );
     alubits BITS( sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
     alulogic LOGIC( sourceReg1 <: sourceReg1, operand2 <: operand2, doinv <: AD.doalt );
@@ -307,10 +317,10 @@ unit alu(
 
     always_after {
         switch( function3 ) {
-            case 3b000: { result = ADDSUB.AS; }
-            case 3b001: { result = AD.dosignx ? EXTEND.result : AD.docount ? COUNT.result : AD.dobclrext ? BITS.CLR : AD.dobinv ? BITS.INV : AD.dobset ? BITS.SET : AD.dozip ? ZIP.zip : AD.dorotate ? SHIFTS.ROTATE : SHIFTS.SLL; }
-            case 3b010: { result = AD.doshxadd ? SHXADD.result : AD.doxperm ? XPERM.xperm4 : LT; }
-            case 3b011: { result = opCode[3,1] ? ( ~|rs1 ) ? ( |operand2 ) : LTU : ( operand2 == 1 ) ? ( ~|sourceReg1 ) : LTU; }
+            case 3b000: { result = AD.domul ? MULT.mult : ADDSUB.addsub; }
+            case 3b001: { result = AD.domul ? MULT.mult : AD.dosignx ? EXTEND.result : AD.docount ? COUNT.result : AD.dobclrext ? BITS.CLR : AD.dobinv ? BITS.INV : AD.dobset ? BITS.SET : AD.dozip ? ZIP.zip : AD.dorotate ? SHIFTS.ROTATE : SHIFTS.SLL; }
+            case 3b010: { result = AD.domul ? MULT.mult : AD.doshxadd ? SHXADD.result : AD.doxperm ? XPERM.xperm4 : LT; }
+            case 3b011: { result = AD.domul ? MULT.mult : opCode[3,1] ? ( ~|rs1 ) ? ( |operand2 ) : LTU : ( operand2 == 1 ) ? ( ~|sourceReg1 ) : LTU; }
             case 3b100: { result = AD.dominmax ? MINMAX.result : AD.doshxadd ? SHXADD.result : AD.dopack ? PACK.pack : AD.doxperm ? XPERM.xperm8 : LOGIC.XOR; }
             case 3b101: { result = AD.doorc ? ORCREV.ORC : AD.dorev ? ORCREV.REV8 : AD.dominmax ? MINMAX.result : AD.dobclrext ? BITS.EXT : AD.dozip ? ZIP.zip : AD.dorotate ? SHIFTS.ROTATE : AD.dosra ? SHIFTS.SRA : SHIFTS.SRL; }
             case 3b110: { result = AD.dominmax ? MINMAX.result : AD.doshxadd ? SHXADD.result : LOGIC.OR; }
@@ -368,24 +378,6 @@ unit aluMD(
             result = ( |sourceReg2 ) ? function3[1,1] ? DODIVIDE.remainder : ( ( ~function3[0,1] & ( sourceReg1[31,1] ^ sourceReg2[31,1] ) ) ? -DODIVIDE.quotient : DODIVIDE.quotient ) :
             function3[1,1] ? sourceReg1 : 32hffffffff;
         }
-    }
-}
-
-// ALU FOR MULTIPLICATION
-// UNSIGNED / SIGNED 33 by 33 bit multiplication giving 66 bit product using DSP blocks
-unit aluMM(
-    input   uint2   function3,
-    input   int32   sourceReg1,
-    input   int32   sourceReg2,
-    output!  int32   result
-) <reginputs> {
-    uint2   dosigned <:: function3[1,1] ? function3[0,1] ? 2b00 : 2b01 : 2b11;
-    int33   factor_1 <:: { dosigned[0,1] & sourceReg1[ 31, 1 ], sourceReg1 }; // SIGN EXTEND IF SIGNED MULTIPLY
-    int33   factor_2 <:: { dosigned[1,1] & sourceReg2[ 31, 1 ], sourceReg2 }; // SIGN EXTEND IF SIGNED MULTIPLY
-    int66   product <:: factor_1 * factor_2;
-
-    always_after {
-        result = product[ { |function3, 5b0 }, 32 ];
     }
 }
 
