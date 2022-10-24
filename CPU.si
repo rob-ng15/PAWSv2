@@ -137,6 +137,9 @@ unit PAWSCPU(
         sourceReg1F <: RV32CONTROL.sourceReg1F,
         sourceReg2F <: RV32CONTROL.sourceReg2F,
         sourceReg3F <: RV32CONTROL.sourceReg3F,
+        classA <: RV32CONTROL.classA,
+        classB<: RV32CONTROL.classB,
+        classC <: RV32CONTROL.classC,
         memoryinput <: LOAD.memoryinput,
         incCSRinstret <: COMMIT,
         isALUM <: RV32CONTROL.IS_ALUM,
@@ -448,6 +451,9 @@ unit cpuexecuteSLOWPATH(
     input   uint32  sourceReg1F,
     input   uint32  sourceReg2F,
     input   uint32  sourceReg3F,
+    input   uint4   classA,
+    input   uint4   classB,
+    input   uint4   classC,
     input   int32   memoryinput,
     output  uint1   frd,
     output  int32   memoryoutput,
@@ -469,30 +475,26 @@ unit cpuexecuteSLOWPATH(
     // B EXTENSION - CLMUL
     aluCLMUL ALUBCLMUL( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
-    // FLOATING POINT REGISTERS CLASSIFICATION
-    classifyF class1F( a <: sourceReg1F ); classifyF class2F( a <: sourceReg2F ); classifyF class3F( a <: sourceReg3F );
-
-    // FLOATING POINT SLOW OPERATIONS - CALCULATIONS AND CONVERSIONS
-    floatconvert FPUCONVERT(
-        FPUflags <: CSR.FPUflags,
-        function7 <: function7[2,5], rs2 <: rs2[0,1],
-        sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1, sourceReg1F <: sourceReg1F,
-        classA <: class1F.class
-    );
-
+    // FLOATING POINT CALCULATIONS
     floatcalc FPUCALC(
         FPUflags <: CSR.FPUflags,
         opCode <: opCode, function7 <: function7[2,5],
         sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, sourceReg3F <: sourceReg3F,
-        classA <: class1F.class, classB <: class2F.class, classC <: class3F.class
+        classA <: classA, classB <: classB, classC <: classC
     );
 
     // FLOATING POINT FAST OPERATIONS
+    floatconvert FPUCONVERT(
+        FPUflags <: CSR.FPUflags,
+        function7 <: function7[2,5], rs2 <: rs2[0,1],
+        sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1, sourceReg1F <: sourceReg1F,
+        classA <: classA
+    );
     fpufast FPUFAST(
         FPUflags <: CSR.FPUflags,
         function3 <: function3[0,2], function7 <: function7[2,5],
         sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
-        classA <: class1F.class, classB <: class2F.class
+        classA <: classA, classB <: classB
     );
 
     // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
@@ -521,17 +523,14 @@ unit cpuexecuteSLOWPATH(
     CSR.start := start & isCSR & |function3;                                                                            // CSR
 
     // Deal with updating fpuflags and writing to fpu registers
-    CSR.updateFPUflags := 0; frd := fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0;
+    CSR.updateFPUflags := 0;
 
     algorithm <autorun> {
         // PROVIDE WAIT STATE FOR APPROPRIATE OPERATION
         while(1) {
             if( start ) {
-                busy = 1;
-                if( operation[3,1] ) {
-                    while( unitbusy ) {} busy = 0;                                                                      // FPU CALCULATIONS AND INTEGER DIVISION
-                } else { ++: }                                                                                          // CSR, ATOMIC OPERATIONS, FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                busy = 0;
+                busy = 1; while( unitbusy ) {} busy = 0;                                                  // FPU CALCULATIONS AND INTEGER DIVISION
+                                                                                                          // CSR, ATOMIC OPERATIONS, FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                 CSR.updateFPUflags = fpuconvert | fpucalc;
             } else { busy = 0; }
         }
@@ -539,20 +538,25 @@ unit cpuexecuteSLOWPATH(
 
     // COLLECT THE APPROPRIATE RESULT
     always_after {
-        if( busy ) {
-            onehot( operation ) {
-                case 0: { result = |function3 ? CSR.result : 0; }                                                       // CSR
-                case 1: {
-                    if( function7[3,1] ) {
-                        result = memoryinput; memoryoutput = ALUA.result;                                               // ATOMIC LOAD - MODIFY - STORE
-                    } else {
-                        result = function7[2,1] ? 0 : memoryinput;                                                      // LR.W SC.W
-                        memoryoutput = sourceReg2;
+        {
+            if( busy ) {
+                onehot( operation ) {
+                    case 0: { result = |function3 ? CSR.result : 0; }                                                       // CSR
+                    case 1: {
+                        if( function7[3,1] ) {
+                            result = memoryinput; memoryoutput = ALUA.result;                                               // ATOMIC LOAD - MODIFY - STORE
+                        } else {
+                            result = function7[2,1] ? 0 : memoryinput;                                                      // LR.W SC.W
+                            memoryoutput = sourceReg2;
+                        }
                     }
+                    case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }                                   // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                    case 3: { result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result; }       // FPU CALCULATIONS AND INTEGER DIVISION
                 }
-                case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }                                   // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                case 3: { result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result; }       // FPU CALCULATIONS AND INTEGER DIVISION
             }
+        }
+        {
+            frd = fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0;
         }
     }
 }

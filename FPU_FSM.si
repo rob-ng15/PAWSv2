@@ -17,7 +17,7 @@ unit fpufast(
     floatminmax FPUminmax( sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, classA <: classA, classB <: classB, less <: FPUlteq.less, function3 <: function3[0,1] );
     floatcomparison FPUcompare( sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, classA <: classA, classB <: classB, less <: FPUlteq.less, equal <: FPUlteq.equal, function3 <: function3[0,2], );
     floatclassify FPUclass( sourceReg1F <: sourceReg1F, classA <: classA );
-    floatsign FPUsign( function3 <: function3[0,2], sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F );
+    floatsign FPUsign( function3 <: function3[0,2], sourceReg1F <: sourceReg1F, sourceReg2Fsign <: fp32( sourceReg2F ).sign );
 
     always_after {
         {
@@ -62,9 +62,9 @@ unit floatconvert(
     floattoint FPUint( a <: sourceReg1F, classA <: classA, dounsigned <: rs2 );
 
     always_after {
-        frd = function7[1,1];
-        result = function7[1,1] ? FPUfloat.result : FPUint.result;
-        FPUnewflags = FPUflags | ( function7[1,1] ?  FPUfloat.flags : FPUint.flags );
+        { frd = function7[1,1]; }
+        { result = function7[1,1] ? FPUfloat.result : FPUint.result; }
+        { FPUnewflags = FPUflags | ( function7[1,1] ?  FPUfloat.flags : FPUint.flags ); }
     }
 }
 
@@ -244,10 +244,11 @@ unit floatminmax(
     output  uint5   flags,
     output  uint32  result
 ) <reginputs> {
-    uint1   NAN <:: ( classA[2,1] | classB[2,1] ) | ( classA[1,1] & classB[1,1] );
-
     always_after {
-        flags = { NAN, 4b0000 }; result = NAN ? 32h7fc00000 : classA[1,1] ? ( classB[1,1] ? 32h7fc00000 : sourceReg2F ) : classB[1,1] | ( function3 ^ less ) ? sourceReg1F : sourceReg2F;
+        uint1   NAN <:: ( classA[2,1] | classB[2,1] ) | ( classA[1,1] & classB[1,1] );
+
+        { flags = { NAN, 4b0000 };  }
+        { result = NAN ? 32h7fc00000 : classA[1,1] ? ( classB[1,1] ? 32h7fc00000 : sourceReg2F ) : classB[1,1] | ( function3 ^ less ) ? sourceReg1F : sourceReg2F; }
     }
 }
 
@@ -263,22 +264,23 @@ unit floatcomparison(
     output  uint5   flags,
     output  uint1   result
 ) <reginputs> {
-    uint1   NAN <:: ( classA[1,1] | classA[2,1] | classB[1,1] | classB[2,1] );
-    uint4   comparison <:: { 1b0, equal, less, less | equal };
-
     always_after {
-        flags = { function3[1,1] ? ( classA[2,1] | classB[2,1] ) : NAN, 4b0000 }; result = ~NAN & comparison[ function3, 1 ];
+        uint1   NAN <:: ( classA[1,1] | classA[2,1] | classB[1,1] | classB[2,1] );
+        uint4   comparison <:: { 1b0, equal, less, less | equal };
+
+        { flags = { function3[1,1] ? ( classA[2,1] | classB[2,1] ) : NAN, 4b0000 }; }
+        { result = ~NAN & comparison[ function3, 1 ]; }
     }
 }
 
 unit floatsign(
     input   uint2   function3,
     input   uint32  sourceReg1F,
-    input   uint32  sourceReg2F,
+    input   uint1   sourceReg2Fsign,
     output  uint32  result,
 ) <reginputs> {
     always_after {
-        result = { function3[1,1] ? sourceReg1F[31,1] ^ sourceReg2F[31,1] : function3[0,1] ^ sourceReg2F[31,1], sourceReg1F[0,31] };
+        result = { function3[1,1] ? sourceReg1F[31,1] ^ sourceReg2Fsign : function3[0,1] ^ sourceReg2Fsign, sourceReg1F[0,31] };
     }
 }
 
@@ -349,10 +351,10 @@ unit classifyF(
     input   uint32  a,
     output  uint4   class
 ) <reginputs> {
-    // CHECK FOR 8hff ( signals INF/NAN )
-    uint1   expFF <:: &fp32(a).exponent;            uint1   NAN <:: expFF & a[22,1];
-
     always_after {
+        // CHECK FOR 8hff ( signals INF/NAN )
+        uint1   expFF <:: &fp32(a).exponent;            uint1   NAN <:: expFF & a[22,1];
+
         class = { expFF & ~a[22,1], NAN & a[21,1], NAN & ~a[21,1], ~|( fp32(a).exponent ) };
     }
 }
@@ -363,10 +365,13 @@ unit clz48(
     input   uint48  bitstream,
     output! uint6   count
 ) <reginputs> {
-    uint16  bitstreamh <:: bitstream[32,16];        uint32  bitstreaml <:: bitstream[0,32];               uint6   clz = uninitialised;
+    uint16  bitstreamh <:: bitstream[32,16];        uint32  bitstreaml <:: bitstream[0,32];
+    uint6   clz_l = uninitialised;                  uint6   clz_h = uninitialised;
 
     always_after {
-        if( |bitstreamh ) { ( count ) = clz_silice_16( bitstreamh ); } else { ( clz ) = clz_silice_32( bitstreaml ); count = 16 + clz; }
+        { ( clz_h ) = clz_silice_16( bitstreamh ); }
+        { ( clz_l ) = clz_silice_32( bitstreaml ); }
+        { count = |bitstreamh ? clz_h : 16 + clz_l; }
     }
 }
 
@@ -384,15 +389,16 @@ unit normalise48to24(
     output  uint32  f32
 ) <reginputs> {
     // COUNT LEADING ZEROS
-    clz48 CLZ48( bitstream <: bitstream );          uint48  temporary <:: ( bitstream << CLZ48.count );
-    uint23  roundfraction <:: temporary[24,23] + temporary[23,1];
-    int10   newexponent <:: ( ( ~|roundfraction & temporary[23,1] ) ? 128 : 127 ) + ( adjustexp ? exp - CLZ48.count : exp );
-    uint1   OF <:: ( newexponent > 254 );
-    uint1   UF <:: newexponent[9,1];
-
+    clz48 CLZ48( bitstream <: bitstream );
      always_after {
-        f32 = UF ? 0 : { sign, OF ? 31h7f800000 : { newexponent[0,8], roundfraction } };
-        flags = { OF, UF, 1b0 };
+        uint48  temporary <:: ( bitstream << CLZ48.count );
+        uint23  roundfraction <:: temporary[24,23] + temporary[23,1];
+        int10   newexponent <:: ( ( ~|roundfraction & temporary[23,1] ) ? 128 : 127 ) + ( adjustexp ? exp - CLZ48.count : exp );
+        uint1   OF <:: ( newexponent > 254 );
+        uint1   UF <:: newexponent[9,1];
+
+        { f32 = UF ? 0 : { sign, OF ? 31h7f800000 : { newexponent[0,8], roundfraction } }; }
+        { flags = { OF, UF, 1b0 }; }
      }
 }
 
@@ -414,14 +420,15 @@ unit inttofloat(
     output  uint32  result
 ) <reginputs> {
     // COUNT LEADING ZEROS - RETURNS NX IF NUMBER IS TOO LARGE, LESS THAN 8 LEADING ZEROS
+    uint1   sign <:: ~dounsigned & a[31,1];         uint32  number <:: sign ? absa : a;
     clz32 CLZ( number <: number );
 
-    uint32  number <:: sign ? absa : a;
-    uint1   sign <:: ~dounsigned & a[31,1];        uint1   NX <:: ( ~|CLZ.zeros[3,2] );
-    int10   exponent <:: 158 - CLZ.zeros;          int23  fraction <:: NX ? number >> ( 8 - CLZ.zeros ) : number << ( CLZ.zeros - 8 );
-
     always_after {
-        flags = { 6b0, NX }; result = ( |a ) ? { sign, exponent[0,8], fraction } : 0;
+        uint1   NX <:: ( ~|CLZ.zeros[3,2] );
+        int10   exponent <:: 158 - CLZ.zeros;           int23  fraction <:: NX ? number >> ( 8 - CLZ.zeros ) : number << ( CLZ.zeros - 8 );
+
+        { flags = { 6b0, NX };  }
+        { result = ( |a ) ? { sign, exponent[0,8], fraction } : 0; }
     }
 }
 
@@ -433,31 +440,35 @@ unit floattoint(
     output  uint7   flags,
     output  uint32  result
 ) <reginputs> {
-    uint1   NN <:: classA[2,1] | classA[1,1];       uint1   NV <:: ( exp > ( dounsigned ? 31 : 30 ) ) | ( dounsigned & fp32( a ).sign ) | classA[3,1] | NN;
-
-    uint33  sig <:: ( exp < 24 ) ? { 9b1, fp32( a ).fraction, 1b0 } >> ( 23 - exp ) : { 9b1, fp32( a ).fraction, 1b0 } << ( exp - 24);
-    int10   exp <:: fp32( a ).exponent - 127;
-    uint32  unsignedfraction <:: ( sig[1,32] + sig[0,1] );
-
     always_after {
-        if( classA[0,1] ) {
-            result = 0;
-        } else {
-            if( dounsigned ) {
-                if( classA[3,1] | NN ) {
-                    result = NN ? 32hffffffff : { {32{~fp32( a ).sign}} };
-                } else {
-                    result = ( fp32( a ).sign ) ? 0 : NV ? 32hffffffff : unsignedfraction;
-                }
+        uint1   NN <:: classA[2,1] | classA[1,1];       uint1   NV <:: ( exp > ( dounsigned ? 31 : 30 ) ) | ( dounsigned & fp32( a ).sign ) | classA[3,1] | NN;
+
+        int10   exp <:: fp32( a ).exponent - 127;
+        uint33  sig <:: ( exp < 24 ) ? { 9b1, fp32( a ).fraction, 1b0 } >> ( 23 - exp ) : { 9b1, fp32( a ).fraction, 1b0 } << ( exp - 24);
+        uint32  unsignedfraction <:: ( sig[1,32] + sig[0,1] );
+
+        {
+            if( classA[0,1] ) {
+                result = 0;
             } else {
-                if( classA[3,1] | NN ) {
-                    result = { ~NN & fp32( a ).sign, {31{~fp32( a ).sign}} };
+                if( dounsigned ) {
+                    if( classA[3,1] | NN ) {
+                        result = NN ? 32hffffffff : { {32{~fp32( a ).sign}} };
+                    } else {
+                        result = ( fp32( a ).sign ) ? 0 : NV ? 32hffffffff : unsignedfraction;
+                    }
                 } else {
-                    result = { fp32( a ).sign, NV ? {31{~fp32( a ).sign}} : fp32( a ).sign ? -unsignedfraction : unsignedfraction };
+                    if( classA[3,1] | NN ) {
+                        result = { ~NN & fp32( a ).sign, {31{~fp32( a ).sign}} };
+                    } else {
+                        result = { fp32( a ).sign, NV ? {31{~fp32( a ).sign}} : fp32( a ).sign ? -unsignedfraction : unsignedfraction };
+                    }
                 }
             }
         }
-        flags = { classA[3,1], NN, NV, 4b0000 };
+        {
+            flags = { classA[3,1], NN, NV, 4b0000 };
+        }
     }
 }
 
@@ -474,32 +485,53 @@ unit floatadd(
     output  uint32  result
 ) <reginputs> {
     always_after {
+        // DETERMINE IF RESULT IS FROM AN EXCEPTION OR CALCULATION
+        uint1   ZERO <:: (classA[0,1] | classB[0,1] );
+        uint1   IF <:: ( classA[3,1] | classB[3,1] );
+        uint1   NN <:: |( classA[1,2] | classB[1,2] );
+
+        // SSTORAGE FOR ALIGNED FRACTIONS
         uint48  newsigA = uninitialised;
         uint48  newsigB = uninitialised;
 
+        // COMPARISON OF INPUT EXPONENTS FOR ALIGNMENT
+        uint1   AvB <:: ( fp32(a).exponent < fp32(b).exponent );
+
         {
-            // ALIGN THE FRACTIONS AND EQUALISE THE EXPONENTS ( GIVES THE EXPONENT OF THE RESULT +1 IN CASE OF OVERFLOW )
-            int10   expA <:: fp32(a).exponent;              uint48  sigA <:: { 2b01, fp32(a).fraction, 23b0 };
-            int10   expB <:: fp32(b).exponent;              uint48  sigB <:: { 2b01, fp32(b).fraction, 23b0 };
-            uint1   AvB <:: ( expA < expB );                uint48  aligned <:: ( AvB ? sigA : sigB ) >> ( ( AvB ? expB : expA ) - ( AvB ? expA : expB ) );
-            newsigA = AvB ? aligned : sigA; newsigB = AvB ? sigB : aligned; exp = ( AvB ? expB : expA ) - 126;
+            // ALIGN THE FRACTIONS
+            uint48  sigA <:: { 2b01, fp32(a).fraction, 23b0 };
+            uint48  sigB <:: { 2b01, fp32(b).fraction, 23b0 };
+            uint48  aligned <:: ( AvB ? sigA : sigB ) >> ( ( AvB ? fp32(b).exponent : fp32(a).exponent ) - ( AvB ? fp32(a).exponent : fp32(b).exponent ) );
+
+            newsigA = AvB ? aligned : sigA;
+            newsigB = AvB ? sigB : aligned;
         }
 
         {
-            // PERFORM THE ADDITION, TAKING INTO ACCOUNT SIGNS OF INPUTS
-            uint48  minus <:: ( fp32( a ).sign ^ sign ? newsigB : newsigA ) - ( fp32( a ).sign ^ sign ? newsigA : newsigB );
-            uint48  plus <:: newsigA + newsigB;
-            uint1   AvB <:: ( newsigA > newsigB );
-            if( ^{ fp32( a ).sign, fp32( b ).sign } ) { sign = fp32( a ).sign ? AvB : ~AvB; bitstream = minus; } else { sign = fp32( a ).sign; bitstream = plus; }
+            // EQUALISE THE EXPONENTS ( GIVES THE EXPONENT OF THE RESULT +1 IN CASE OF OVERFLOW )
+            exp = ( AvB ? fp32(b).exponent : fp32(a).exponent ) - 126;
         }
 
         {
-            // DETERMINE IF RESULT IS FROM AN EXCEPTION OR CALCULATION
-            uint1   ZERO <:: (classA[0,1] | classB[0,1] );
-            uint1   IF <:: ( classA[3,1] | classB[3,1] );
-            uint1   NN <:: |( classA[1,2] | classB[1,2] );
+            // PERFORM THE ADDITION, TAKING INTO ACCOUNT SIGNS AND SIZES OF INPUTS
+            uint1   newAvB <:: ( newsigA > newsigB );
+
+            if( fp32( a ).sign ^ fp32( b ).sign ) {
+                sign = fp32( a ).sign ? newAvB : ~newAvB;
+                bitstream = ( fp32( a ).sign ^ sign ? newsigB : newsigA ) - ( fp32( a ).sign ^ sign ? newsigA : newsigB );
+            } else {
+                sign = fp32( a ).sign;
+                bitstream = newsigA + newsigB;
+            }
+        }
+
+        {
+            X = IF | NN | ZERO;
+        }
+
+        {
             uint1   NV <:: ( classA[3,1] & classB[3,1]) & ( fp32( a ).sign ^ fp32( b).sign );
-            X = |{ IF | NN, ZERO };
+
             switch( { IF | NN, ZERO } ) {
                 case 2b00: {}
                 case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 0 : ( classB[0,1] ) ? a : b; }
@@ -528,6 +560,10 @@ unit floatmultiply(
     output  uint7   flags
 ) <reginputs> {
     always_after {
+        uint1   ZERO <:: (classA[0,1] | classB[0,1] );
+        uint1   IF <:: ( classA[3,1] | classB[3,1] );
+        uint1   NN <:: |( classA[1,2] | classB[1,2] );
+
         {
             bitstream = { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction };                  // left align and multiply the fractions
             sign = fp32( a ).sign ^ fp32( b ).sign;                                                 // SIGN is inputs same = +, different = -
@@ -535,12 +571,10 @@ unit floatmultiply(
         }
 
         {
-            uint1   ZERO <:: (classA[0,1] | classB[0,1] );
-            uint1   IF <:: ( classA[3,1] | classB[3,1] );
-            uint1   NN <:: |( classA[1,2] | classB[1,2] );
-            uint1   NV <:: IF & ZERO;
+            X = IF | NN | ZERO;
+        }
 
-            X = |{ IF | NN, ZERO };
+        {
             switch( { IF | NN, ZERO } ) {
                 case 2b00: {}
                 case 2b01: { result = { sign, 31b0 }; }
@@ -552,6 +586,8 @@ unit floatmultiply(
                     }
                 }
             }
+        }
+        {
             flags = { IF, 6b0 };
         }
     }
@@ -602,6 +638,10 @@ unit floatdivide(
     DODIVIDE.start := start & ~X; busy := start | DODIVIDE.busy;
 
     always_after {
+        uint1   ZERO <:: (classA[0,1] | classB[0,1] );
+        uint1   IF <:: ( classA[3,1] | classB[3,1] );
+        uint1   NN <:: |( classA[1,2] | classB[1,2] );
+
         {
             DODIVIDE.sigA = { 1b1, fp32(a).fraction, 26b0 };                                            // Align TOP to the LEFT
             DODIVIDE.sigB = { 27b1, fp32(b).fraction };                                                 // Align BOTTOM to the RIGHT
@@ -613,16 +653,18 @@ unit floatdivide(
         }
 
         {
-            uint1   ZERO <:: (classA[0,1] | classB[0,1] );
-            uint1   IF <:: ( classA[3,1] | classB[3,1] );
-            uint1   NN <:: |( classA[1,2] | classB[1,2] );
+            X = IF | NN | ZERO;
+        }
 
-            X = |{ IF | NN, ZERO };
+        {
             switch( { IF | NN, ZERO } ) {
                 case 2b00: {}
                 case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 32hffc00000 : { sign, classB[0,1] ? 31h7f800000 : 31h0 }; }
                 default: { result = ( classA[3,1] & classB[3,1] ) | NN | classB[0,1] ? 32hffc00000 : { sign, (classA[0,1] | classB[3,1] ) ? 31b0 : 31h7f800000 }; }
             }
+        }
+
+        {
             flags = { 3b0, classB[0,1], 3b0};
         }
     }
@@ -693,6 +735,10 @@ unit floatsqrt(
     DOSQRT.start := start & ~X; busy := start | DOSQRT.busy;
 
     always_after {
+        uint1   ZERO <:: classA[0,1];
+        uint1   IF <:: classA[3,1];
+        uint1   NN <:: classA[2,1] | classA[1,1];
+
         {
             int10   expA  <:: fp32( a ).exponent - 127;                                         // exponent of the input
 
@@ -702,13 +748,11 @@ unit floatsqrt(
         }
 
         {
-            uint1   ZERO <:: classA[0,1];
-            uint1   IF <:: classA[3,1];
-            uint1   NN <:: classA[2,1] | classA[1,1];
-            uint1   NV <:: IF | NN | fp32( a ).sign;
+            X = IF | NN | ZERO | fp32( a ).sign;
+        }
 
-            X = |{ IF | NN, ZERO | fp32( a ).sign };
-            if( |{ IF | NN, ZERO | fp32( a ).sign } ) { result = fp32( a ).sign ? 32hffc00000 : a; }
+        {
+            if( X ) { result = fp32( a ).sign ? 32hffc00000 : a; }
         }
     }
 }
@@ -764,13 +808,13 @@ unit floatcompare(
     output  uint1   less,
     output  uint1   equal
 ) <reginputs> {
-    uint1   NAN <:: classA[2,1] | classB[2,1] | classA[1,1] | classB[1,1];
-    uint1   aequalb <:: ( a == b );                 uint1   aorbleft1equal0 <:: ~|( ( a | b ) << 1 );
-
     // IDENTIFY NaN, RETURN 0 IF NAN, OTHERWISE RESULT OF COMPARISONS
     always_after {
-        flags = { classA[3,1] | classB[3,1], {2{NAN}}, 4b0000 };
-        less = ~NAN & ( ( fp32( a ).sign ^ fp32( b ).sign ) ? fp32( a ).sign & ~aorbleft1equal0 : ~aequalb & ( fp32( a ).sign ^ ( a < b ) ) );
-        equal = ~NAN & ( aequalb | aorbleft1equal0 );
+        uint1   NAN <:: classA[2,1] | classB[2,1] | classA[1,1] | classB[1,1];
+        uint1   aequalb <:: ( a == b );                 uint1   aorbleft1equal0 <:: ~|( ( a | b ) << 1 );
+
+        { flags = { classA[3,1] | classB[3,1], {2{NAN}}, 4b0000 }; }
+        { less = ~NAN & ( ( fp32( a ).sign ^ fp32( b ).sign ) ? fp32( a ).sign & ~aorbleft1equal0 : ~aequalb & ( fp32( a ).sign ^ ( a < b ) ) ); }
+        { equal = ~NAN & ( aequalb | aorbleft1equal0 ); }
     }
 }

@@ -128,51 +128,67 @@ unit floatcalc(
     }
 
     always_after {
+        // PASS ADDSUB DIVIDE BITSTREAM TO NORMALISATION UNIT
         {
             DONORMAL.bitstream = opCode[2,1] & ( &function7[0,2] ) ? FPUdivide.tonormalisebitstream : FPUaddsub.tonormalisebitstream;
         }
 
+        // CONTROL INPUTS TO ROUNDING AND COMBINING
         {
-            // CONTROL INPUTS TO ROUNDING AND COMBINING
             if( |unitbusy ) {
                 onehot( unitbusy ) {
-                    case 0: { MAKERESULT.exponent = DONORMAL.newexponent; MAKERESULT.bitstream = DONORMAL.normalfraction; MAKERESULT.sign = FPUaddsub.resultsign; }
-                    case 1: { MAKERESULT.exponent = FPUmultiply.productexp; MAKERESULT.bitstream = FPUmultiply.normalfraction; MAKERESULT.sign = FPUmultiply.productsign; }
-                    case 2: { MAKERESULT.exponent = FPUdivide.quotientexp; MAKERESULT.bitstream = DONORMAL.normalfraction; MAKERESULT.sign = FPUdivide.quotientsign; }
-                    case 3: { MAKERESULT.exponent = FPUsqrt.squarerootexp; MAKERESULT.bitstream = FPUsqrt.normalfraction; MAKERESULT.sign = 0; }
+                    case 0: { MAKERESULT.exponent = DONORMAL.newexponent; }
+                    case 1: { MAKERESULT.exponent = FPUmultiply.productexp; }
+                    case 2: { MAKERESULT.exponent = FPUdivide.quotientexp; }
+                    case 3: { MAKERESULT.exponent = FPUsqrt.squarerootexp; }
                 }
             }
         }
-
         {
-            if( opCode[2,1] ) {                                                                                         // SINGLE OPERATION
-                FPUaddsub.a = sourceReg1F; FPUaddsub.b = { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] };     // SET INPUTS TO FADD.S FSUB.S
-                FPUaddsub.classA = classA; FPUaddsub.classB = classB;
-            } else {                                                                                                    // FUSED OPERATIONS
-                FPUaddsub.a = { opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };                     // SET INPUTS TO FADD.S FSUB.S FROM FMUL.S SOURCEREG3F
-                FPUaddsub.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] };
-                FPUaddsub.classA = classM.class; FPUaddsub.classB = classC;
+            if( |unitbusy ) {
+                onehot( unitbusy ) {
+                    case 0: { MAKERESULT.bitstream = DONORMAL.normalfraction; }
+                    case 1: { MAKERESULT.bitstream = FPUmultiply.normalfraction; }
+                    case 2: { MAKERESULT.bitstream = DONORMAL.normalfraction; }
+                    case 3: { MAKERESULT.bitstream = FPUsqrt.normalfraction; }
+                }
             }
-
+        }
+        {
+            if( |unitbusy ) { MAKERESULT.sign = |( { 1b0, FPUdivide.quotientsign, FPUmultiply.productsign, FPUaddsub.resultsign } & unitbusy ); }
         }
 
+        // SET INPUTS TO ADDSUB FOR SINGLE AND FUSED OPERATIONS
+        { FPUaddsub.a = opCode[2,1] ? sourceReg1F : { opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] }; }
+        { FPUaddsub.b = opCode[2,1] ? { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] } : { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] }; }
+        { FPUaddsub.classA = opCode[2,1] ? classA : classM.class; }
+        { FPUaddsub.classB = opCode[2,1] ? classB : classC; }
+
+        // SELECT RESULT
         {
             if( opCode[2,1] ) {                                                                                         // SINGLE OPERATION
-                switch( function7[0,2] ) {                                                                              // EXTRACT RESULT AND FLAGS
-                    default: { result = FPUaddsub.result; flags = FPUaddsub.flags & 5b00110; }                          // FADD.S FSUB.S
-                    case 2b10: { result = FPUmultiply.result; flags = FPUmultiply.flags & 5b00110; }                    // FMUL.S
-                    case 2b11: {
-                        if( function7[3,1] ) {
-                            result = FPUsqrt.result; flags = FPUsqrt.flags & 5b00110;                                   // FSQRT.S
-                        } else {
-                            result = FPUdivide.result; flags = FPUdivide.flags & 5b01110;                               // FDIV.S
-                        }
-                    }
+                switch( function7[0,2] ) {
+                    default: { result = FPUaddsub.result; }                                                             // FADD.S FSUB.S
+                    case 2b10: { result = FPUmultiply.result; }                                                         // FMUL.S
+                    case 2b11: { result = function7[3,1] ? FPUsqrt.result : FPUdivide.result; }                         // FSQRT.S FDIV.S
                 }
             } else {                                                                                                    // FUSED OPERATIONS
-                result = FPUaddsub.result; flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
+                result = FPUaddsub.result;
             }
         }
+        // SELECT FLAGS
+        {
+            if( opCode[2,1] ) {                                                                                         // SINGLE OPERATION
+                switch( function7[0,2] ) {
+                    default: { flags = FPUaddsub.flags & 5b00110; }                                                     // FADD.S FSUB.S
+                    case 2b10: { flags = FPUmultiply.flags & 5b00110; }                                                 // FMUL.S
+                    case 2b11: { flags = function7[3,1] ? FPUsqrt.flags & 5b00110 : FPUdivide.flags & 5b01110; }        // FSQRT.S FDIV.S
+                }
+            } else {                                                                                                    // FUSED OPERATIONS
+                flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
+            }
+        }
+        // RETURN NEW FLAGS
         {
             FPUnewflags = FPUflags | flags;
         }
@@ -338,7 +354,7 @@ unit clz48(
     always_after {
         { ( clz_l ) = clz_silice_32( bitstreaml ); }
         { ( clz_h ) = clz_silice_16( bitstreamh ); }
-        { if( |bitstreamh ) { count = clz_h; } else {  count = 16 + clz_l; } }
+        { count = |bitstreamh ? clz_h : 16 + clz_l; }
     }
 }
 // NORMALISE RESULT FOR ADD SUB DIVIDE
@@ -349,10 +365,10 @@ unit normalise24(
     output  uint24  normalfraction
 ) <reginputs> {
     // COUNT LEADING ZEROS
-    clz48 CLZ48( bitstream <: bitstream );          uint48  temporary <:: ( bitstream << CLZ48.count );
+    clz48 CLZ48( bitstream <: bitstream );
 
     always_after {
-        { normalfraction = temporary[23,24]; }
+        { uint48 temporary <:: ( bitstream << CLZ48.count ); normalfraction = temporary[23,24]; }
         { newexponent = exp - CLZ48.count; }
     }
 }
@@ -468,14 +484,15 @@ unit equaliseexpaddsub(
     output  int10   resultexp,
 ) <reginputs> {
     // BREAK DOWN INITIAL float32 INPUTS - SWITCH SIGN OF B IF SUBTRACTION
-    int10   expA <:: fp32(a).exponent;              uint48  sigA <:: { 2b01, fp32(a).fraction, 23b0 };
-    int10   expB <:: fp32(b).exponent;              uint48  sigB <:: { 2b01, fp32(b).fraction, 23b0 };
-    uint1   AvB <:: ( expA < expB );                uint48  aligned <:: ( AvB ? sigA : sigB ) >> ( ( AvB ? expB : expA ) - ( AvB ? expA : expB ) );
+    uint48  sigA <:: { 2b01, fp32(a).fraction, 23b0 };
+    uint48  sigB <:: { 2b01, fp32(b).fraction, 23b0 };
+    uint1   AvB <:: ( fp32(a).exponent < fp32(b).exponent );
+    uint48  aligned <:: ( AvB ? sigA : sigB ) >> ( ( AvB ? fp32(b).exponent : fp32(a).exponent ) - ( AvB ? fp32(a).exponent : fp32(b).exponent ) );
 
     always_after {
         { newsigA = AvB ? aligned : sigA; }
         { newsigB = AvB ? sigB : aligned;  }
-        { resultexp = ( AvB ? expB : expA ) - 126; }
+        { resultexp = ( AvB ? fp32(b).exponent : fp32(a).exponent ) - 126; }
     }
 }
 unit dofloataddsub(
@@ -487,12 +504,16 @@ unit dofloataddsub(
     output  uint48  resultfraction
 ) <reginputs> {
     always_after {
-        uint48  minus <:: ( signA ^ resultsign ? sigB : sigA ) - ( signA ^ resultsign ? sigA : sigB );
-        uint48  plus <:: sigA + sigB;
         uint1   AvB <:: ( sigA > sigB );
 
         // PERFORM ADDITION HANDLING SIGNS
-        if( ^{ signA, signB } ) { resultsign = signA ? AvB : ~AvB; resultfraction = minus; } else { resultsign = signA; resultfraction = plus; }
+        if( signA ^ signB ) {
+            resultsign = signA ? AvB : ~AvB;
+            resultfraction = ( signA ^ resultsign ? sigB : sigA ) - ( signA ^ resultsign ? sigA : sigB );
+        } else {
+            resultsign = signA;
+            resultfraction = sigA + sigB;
+        }
     }
 }
 unit floataddsub(
