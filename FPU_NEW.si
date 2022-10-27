@@ -20,20 +20,21 @@ unit fpufast(
     floatsign FPUsign( function3 <: function3[0,2], sourceReg1F <: sourceReg1F, sourceReg2Fsign <: sourceReg2F[31,1] );
 
     always_after {
+        // RESULT
         {
             switch( function7[3,2] ) {
-                case 2b00: {
-                    // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
-                    result = function7[0,1] ? FPUminmax.result : FPUsign.result; FPUnewflags = FPUflags | ( function7[0,1] ? FPUminmax.flags : 0 );
-                }
-                case 2b10: {
-                    // FEQ.S FLT.S FLE.S
-                    result = FPUcompare.result; FPUnewflags = FPUflags | FPUcompare.flags;
-                }
-                default: {
-                    // FCLASS.S FMV.X.W
-                    result = function7[1,1] ? sourceReg1 : function3[0,1] ? FPUclass.classification : sourceReg1F; FPUnewflags = FPUflags;
-                }
+                case 2b00: { result = function7[0,1] ? FPUminmax.result : FPUsign.result; }                                     // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
+                case 2b10: { result = FPUcompare.result; }                                                                      // FEQ.S FLT.S FLE.S
+                default: { result = function7[1,1] ? sourceReg1 : function3[0,1] ? FPUclass.classification : sourceReg1F; }     // FCLASS.S FMV.X.W
+            }
+        }
+        // FLAGS
+        {
+            switch( function7[3,2] ) {
+                case 2b00: { FPUnewflags = FPUflags | ( function7[0,1] ? FPUminmax.flags : 0 ); }                               // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
+                case 2b10: { FPUnewflags = FPUflags | FPUcompare.flags; }                                                       // FEQ.S FLT.S FLE.S
+                default: { FPUnewflags = FPUflags; }                                                                            // FCLASS.S FMV.X.W
+
             }
         }
         {
@@ -98,6 +99,7 @@ unit floatcalc(
 
     // UNIT BUSY FLAG
     uint4   unitbusy <:: { FPUsqrt.busy, FPUdivide.busy, FPUmultiply.busy, FPUaddsub.busy };
+    uint1   isbusy <:: |unitbusy;
 
     FPUaddsub.start := 0; FPUmultiply.start := 0; FPUdivide.start := 0; FPUsqrt.start := 0;
 
@@ -111,10 +113,10 @@ unit floatcalc(
                         case 2b10: { FPUmultiply.start = 1; }                                                           // FMUL.S
                         case 2b11: { FPUsqrt.start = function7[3,1]; FPUdivide.start = ~function7[3,1]; }               // FSQRT.S // FDIV.S
                     }
-                    while( |unitbusy ) {}                                                                               // WAIT FOR FINISH
+                    while( isbusy ) {}                                                                               // WAIT FOR FINISH
                 } else {
-                    FPUmultiply.start = 1; while( |unitbusy ) {}                                                        // START 3 REGISTER FUSED FPU OPERATION - MULTIPLY
-                    FPUaddsub.start = 1; while( |unitbusy ) {}                                                          //                                        ADD / SUBTRACT
+                    FPUmultiply.start = 1; while( isbusy ) {}                                                        // START 3 REGISTER FUSED FPU OPERATION - MULTIPLY
+                    FPUaddsub.start = 1; while( isbusy ) {}                                                          //                                        ADD / SUBTRACT
                 }
                 busy = 0;
             }
@@ -122,22 +124,15 @@ unit floatcalc(
     }
 
     always_after {
-        {
-            // CONTROL INPUTS FOR FADD.S FSUB.S SINGLE/FUSED OPERATION
-            if( opCode[2,1] ) {                                                                                         // SINGLE OPERATION
-                FPUaddsub.a = sourceReg1F; FPUaddsub.b = { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] };         // SET INPUTS TO FADD.S FSUB.S
-                FPUaddsub.classA = classA; FPUaddsub.classB = classB;
-            } else {                                                                                                    // FUSED OPERATION
-                FPUaddsub.a = { opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };                         // SWITCH SIGN OF MULTIPLY RESULT IF REQUIRED
-                FPUaddsub.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] };                                       // SWITCH SIGN OF sourceReg3F IF SUB
-                FPUaddsub.classA = classM.class; FPUaddsub.classB = classC;                                                 // pASS CLASSIFICATIONS
-            }
-        }
+        // CONTROL INPUTS FOR FADD.S FSUB.S SINGLE/FUSED OPERATION
+        { FPUaddsub.a = opCode[2,1] ? sourceReg1F : { opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] }; }
+        { FPUaddsub.b = opCode[2,1] ? { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] } : { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] }; }
+        { FPUaddsub.classA = opCode[2,1] ? classA : classM.class; }
+        { FPUaddsub.classB = opCode[2,1] ? classB : classC; }
 
+        // CONTROL INPUTS TO NORMALISING, ROUNDING AND COMBINING
         {
-            // CONTROL INPUTS TO NORMALISING, ROUNDING AND COMBINING
-            if( |unitbusy ) {
-                DONORMAL.adjustexp = unitbusy[0,1]; DONORMAL.sign = |( { 1b0, FPUdivide.quotientsign, FPUmultiply.sign, FPUaddsub.sign } & unitbusy );
+            if( isbusy ) {
                 onehot( unitbusy ) {
                     case 0: { DONORMAL.bitstream = FPUaddsub.bitstream; DONORMAL.exp = FPUaddsub.exp; }
                     case 1: { DONORMAL.bitstream = FPUmultiply.bitstream; DONORMAL.exp = FPUmultiply.exp; }
@@ -146,24 +141,33 @@ unit floatcalc(
                 }
             }
         }
+        { if( isbusy ) { DONORMAL.adjustexp = unitbusy[0,1]; } }
+        { if( isbusy ) { DONORMAL.sign = |( { 1b0, FPUdivide.quotientsign, FPUmultiply.sign, FPUaddsub.sign } & unitbusy ); } }
+
+        // RESULT
         {
-            // NEW FPU FLAGS
+            if( opCode[2,1] ) {                                                                                         // SINGLE OPERATION
+                switch( function7[0,2] ) {                                                                              // EXTRACT RESULT AND FLAGS
+                    default: { result = FPUaddsub.result; }                                                             // FADD.S FSUB.S
+                    case 2b10: { result = FPUmultiply.result; }                                                         // FMUL.S
+                    case 2b11: { result = function7[3,1] ? FPUsqrt.result : FPUdivide.result; }                         // FSQRT.S FDIV.S
+                }
+            } else {                                                                                                    // FUSED OPERATIONS
+                result = FPUaddsub.result;
+            }
+        }
+        // NEW FPU FLAGS
+        {
             uint5   flags = uninitialised;
 
             if( opCode[2,1] ) {                                                                                         // SINGLE OPERATION
                 switch( function7[0,2] ) {                                                                              // EXTRACT RESULT AND FLAGS
-                    default: { result = FPUaddsub.result; flags = FPUaddsub.flags & 5b00110; }                          // FADD.S FSUB.S
-                    case 2b10: { result = FPUmultiply.result; flags = FPUmultiply.flags & 5b00110; }                    // FMUL.S
-                    case 2b11: {
-                        if( function7[3,1] ) {
-                            result = FPUsqrt.result; flags = FPUsqrt.flags & 5b00110;                                   // FSQRT.S
-                        } else {
-                            result = FPUdivide.result; flags = FPUdivide.flags & 5b01110;                               // FDIV.S
-                        }
-                    }
+                    default: { flags = FPUaddsub.flags & 5b00110; }                                                     // FADD.S FSUB.S
+                    case 2b10: { flags = FPUmultiply.flags & 5b00110; }                                                 // FMUL.S
+                    case 2b11: { flags = ( function7[3,1] ? FPUsqrt.flags : FPUdivide.flags ) & 5b01110; }              // FSQRT.S FDIV.S
                 }
             } else {                                                                                                    // FUSED OPERATIONS
-                result = FPUaddsub.result; flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
+                flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
             }
 
             FPUnewflags = FPUflags | flags;
@@ -204,9 +208,9 @@ unit floatminmax(
     output  uint5   flags,
     output  uint32  result
 ) <reginputs> {
-    uint1   NAN <:: ( classA[2,1] | classB[2,1] ) | ( classA[1,1] & classB[1,1] );
-
     always_after {
+        uint1   NAN <:: ( classA[2,1] | classB[2,1] ) | ( classA[1,1] & classB[1,1] );
+
         { flags = { NAN, 4b0000 }; }
         { result = NAN ? 32h7fc00000 : classA[1,1] ? ( classB[1,1] ? 32h7fc00000 : sourceReg2F ) : classB[1,1] | ( function3 ^ less ) ? sourceReg1F : sourceReg2F; }
     }
@@ -400,10 +404,10 @@ unit floattoint(
     output  uint7   flags,
     output  uint32  result
 ) <reginputs> {
-    uint1   NN <:: classA[2,1] | classA[1,1];       uint1   NV <:: ( exp > ( dounsigned ? 31 : 30 ) ) | ( dounsigned & fp32( a ).sign ) | classA[3,1] | NN;
-
     int10   exp <:: fp32( a ).exponent - 127;
     uint33  sig <:: ( exp < 24 ) ? { 9b1, fp32( a ).fraction, 1b0 } >> ( 23 - exp ) : { 9b1, fp32( a ).fraction, 1b0 } << ( exp - 24);
+
+    uint1   NN <:: classA[2,1] | classA[1,1];       uint1   NV <:: ( exp > ( dounsigned ? 31 : 30 ) ) | ( dounsigned & fp32( a ).sign ) | classA[3,1] | NN;
 
     always_after {
         {
@@ -469,24 +473,29 @@ unit floataddsub(
             // EQUALISE THE EXPONENTS
 
             // BREAK DOWN INITIAL float32 INPUTS - SWITCH SIGN OF B IF SUBTRACTION
-            int10   expA <:: fp32(a).exponent;              uint48  sigA <:: { 2b01, fp32(a).fraction, 23b0 };
-            int10   expB <:: fp32(b).exponent;              uint48  sigB <:: { 2b01, fp32(b).fraction, 23b0 };
-            uint1   AvB <:: ( expA < expB );                uint48  aligned <:: ( AvB ? sigA : sigB ) >> ( ( AvB ? expB : expA ) - ( AvB ? expA : expB ) );
+            uint48  sigA <:: { 2b01, fp32(a).fraction, 23b0 };
+            uint48  sigB <:: { 2b01, fp32(b).fraction, 23b0 };
+            uint1   AvB <:: ( fp32( a ).exponent < fp32( b ).exponent );
+            uint48  aligned <:: ( AvB ? sigA : sigB ) >> ( ( AvB ? fp32( b ).exponent : fp32( a ).exponent ) - ( AvB ? fp32( a ).exponent : fp32( b ).exponent ) );
 
-            newsigA = AvB ? aligned : sigA; newsigB = AvB ? sigB : aligned; exp = ( AvB ? expB : expA ) - 126;
+            newsigA = AvB ? aligned : sigA;
+            newsigB = AvB ? sigB : aligned;
+            exp = ( AvB ? fp32( b ).exponent : fp32( a ).exponent ) - 126;
         }
 
         {
             // PERFORM THE ADDITION/SUBTRACION USING THE EQUALISED FRACTIONS
             // 1 IS ADDED TO THE EXPONENT IN CASE OF OVERFLOW - NORMALISING WILL ADJUST WHEN SHIFTING
-            uint1   signA <:: fp32( a ).sign;
-            uint1   signB <:: fp32( b ).sign;
-            uint48  minus <:: ( signA ^ sign ? newsigB : newsigA ) - ( signA ^ sign ? newsigA : newsigB );
-            uint48  plus <:: newsigA + newsigB;
-            uint1   AvB <:: ( newsigA > newsigB );
+            uint1   newAvB <:: ( newsigA > newsigB );
 
             // PERFORM ADDITION HANDLING SIGNS
-            if( ^{ signA, signB } ) { sign = signA ? AvB : ~AvB; bitstream = minus; } else { sign = signA; bitstream = plus; }
+            if( fp32( a ).sign ^ fp32( b ).sign ) {
+                sign = fp32( a ).sign ? newAvB : ~newAvB;
+                bitstream = ( fp32( a ).sign ^ sign ? newsigB : newsigA ) - ( fp32( a ).sign ^ sign ? newsigA : newsigB );
+            } else {
+                sign = fp32( a ).sign;
+                bitstream = newsigA + newsigB;
+            }
         }
 
         {
@@ -502,25 +511,14 @@ unit floataddsub(
                     }
                 }
             }
+        }
+        {
             flags = { IF, NN, NV, 1b0, OF, UF, 1b0 };
         }
     }
 }
 
 // MULTIPLY TWO FLOATING POINT NUMBERS
-unit prepmul(
-    input   uint32  a,
-    input   uint32  b,
-    output  uint1   productsign,
-    output  int10   productexp,
-    output  uint48  product
-) <reginputs> {
-    // BREAK DOWN INITIAL float32 INPUTS AND FIND SIGN OF RESULT AND EXPONENT OF PRODUCT ( + 1 IF PRODUCT OVERFLOWS, MSB == 1 )
-    always_after {
-        { product = { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction }; }
-        { productsign = fp32( a ).sign ^ fp32( b ).sign; productexp = fp32( a ).exponent + fp32( b ).exponent - ( product[47,1] ? 253 : 254 ); }
-    }
-}
 unit floatmultiply(
     input   uint1   start,
     output  uint1   busy(0),
@@ -546,14 +544,11 @@ unit floatmultiply(
     uint1   OF = uninitialised;
     uint1   UF = uninitialised;
 
-    // PERFORM THE MULTIPLICATION AND FAST NORMALISE THE RESULT
-    prepmul PREP( a <: a, b <: b, productsign :> sign, productexp :> exp, product :> bitstream );
-
     algorithm <autorun> {
         while(1) {
             if( start ) {
                 busy = 1; OF = 0; UF = 0;
-                if( ~|{ IF | NN, ZERO } ) {
+                if( ~{ IF | NN | ZERO } ) {
                     // STEPS: SETUP -> DOMUL -> NORMALISE -> ROUND -> ADJUSTEXP -> COMBINE
                     // VALID RESULT, ALLOW FOR NORMALISATION AND COMBINING OF FINAL RESULT
                     ++: ++: busy = 0;
@@ -564,13 +559,23 @@ unit floatmultiply(
 
     always_after {
         {
+            if( start ) { busy = 1; OF = 0; UF = 0; } else { busy = 0; }
+        }
+
+        // FIND SIGN OF RESULT AND EXPONENT OF PRODUCT ( + 1 IF PRODUCT OVERFLOWS, MSB == 1 )
+        // PERFORM THE MULTIPLICATION
+        { bitstream = { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction }; }
+        { sign = fp32( a ).sign ^ fp32( b ).sign; }
+        { exp = fp32( a ).exponent + fp32( b ).exponent - ( bitstream[47,1] ? 253 : 254 ); }
+
+        {
             switch( { IF | NN, ZERO } ) {
                 case 2b00: { OF = cOF; UF = cUF; result = f32; }
-                case 2b01: { result = { PREP.productsign, 31b0 }; }
+                case 2b01: { result = { sign, 31b0 }; }
                 default: {
                     switch( { IF, ZERO } ) {
                         case 2b11: { result = 32hffc00000; }
-                        case 2b10: { result = NN ? 32hffc00000 : { PREP.productsign, 31h7f800000 }; }
+                        case 2b10: { result = NN ? 32hffc00000 : { sign, 31h7f800000 }; }
                         default: { result = 32hffc00000; }
                     }
                 }

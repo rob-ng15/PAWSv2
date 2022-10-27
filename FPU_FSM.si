@@ -20,27 +20,25 @@ unit fpufast(
     floatsign FPUsign( function3 <: function3[0,2], sourceReg1F <: sourceReg1F, sourceReg2Fsign <: fp32( sourceReg2F ).sign );
 
     always_after {
+        // COLLECT RESULT
         {
             switch( function7[3,2] ) {
-                case 2b00: {
-                    // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
-                    result = function7[0,1] ? FPUminmax.result : FPUsign.result; FPUnewflags = FPUflags | ( function7[0,1] ? FPUminmax.flags : 0 );
-                }
-                case 2b10: {
-                    // FEQ.S FLT.S FLE.S
-                    result = FPUcompare.result; FPUnewflags = FPUflags | FPUcompare.flags;
-                }
-                default: {
-                    // FCLASS.S FMV.X.W
-                    result = function7[1,1] ? sourceReg1 : function3[0,1] ? FPUclass.classification : sourceReg1F; FPUnewflags = FPUflags;
-                }
+                case 2b00: { result = function7[0,1] ? FPUminmax.result : FPUsign.result; }                                     // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
+                case 2b10: { result = FPUcompare.result; }                                                                      // FEQ.S FLT.S FLE.S
+                default: { result = function7[1,1] ? sourceReg1 : function3[0,1] ? FPUclass.classification : sourceReg1F; }     // FCLASS.S FMV.X.W
+            }
+        }
+        // COLLECT FLAGS
+        {
+            switch( function7[3,2] ) {
+                case 2b00: { FPUnewflags = FPUflags | ( function7[0,1] ? FPUminmax.flags : 0 ); }                               // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
+                case 2b10: { FPUnewflags = FPUflags | FPUcompare.flags; }                                                       // FEQ.S FLT.S FLE.S
+                default: { FPUnewflags = FPUflags; }                                                                            // FCLASS.S FMV.X.W
             }
         }
 
-        {
-            // SET WRITE TO FLOATING POINT REGISTER FLAG - FOR FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S AND FMV.W.X
-            frd = function7[3,1] ? function7[1,1] : ~|function7[3,2];
-        }
+        // SET WRITE TO FLOATING POINT REGISTER FLAG - FOR FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S AND FMV.W.X
+        { frd = function7[3,1] ? function7[1,1] : ~|function7[3,2]; }
     }
 }
 
@@ -98,33 +96,37 @@ unit floatcalc(
     floatsqrt SQRT( a <: sourceReg1F, classA <: classA );
 
     // NORMALISE THE RESULT, COMBINE TO FINAL FLOAT 32
-    normalise48to24 TONORMAL();
+    normalise48to24 TONORMAL( adjustexp <: operation[0,1] );
 
     DIV.start := 0; SQRT.start := 0; result_ready := 0;
 
     always_after {
+        // PASS SOURCEREG1F OR [signswitched]MULTIPLY RESULT AND [signswitched]SOURCEREG2F OR [signswitched]SOURCEREG3F TO ADD FOR SINGLE/FUSED OPERATIONS
+        { ADD.a = opCode[2,1] ? sourceReg1F : { opCode[1,1] ^ result[31,1], result[0,31] }; }
+        { ADD.b = opCode[2,1] ? { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] } : { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] }; }
+
+        // PASS INPUT CLASSIFICATIONS TO ADD FOR SINGLE/FUSED OPERATIONS
+        { ADD.classA = opCode[2,1] ? classA : classD.class; }
+        { ADD.classB = opCode[2,1] ? classB : classC; }
+
+        // PASS CALCULATION RESULTS TO NORMAL+COMBINE
         {
-            if( opCode[2,1] ) {
-                ADD.a = sourceReg1F; ADD.classA = classA; ADD.classB = classB;                                                          // PASS SOURCEREG1 TO ADD/SUB
-                ADD.b = { function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] };                                                      // PASS SOURCEREG2 TO ADD/SUB CHANGE SIGN IF SUB
-            } else {
-                ADD.a = { opCode[1,1] ^ result[31,1], result[0,31] }; ADD.classA = classD.class;                                        // PASS RESULT FROM FUSED MULTIPLY SWITCH SIGN IF -x
-                ADD.b = { opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] }; ADD.classB = classC;                                    // PASS sourceReg3F SWITCH SIGN IF SUB
+            onehot( operation ) {
+                case 0: { TONORMAL.bitstream = ADD.bitstream; }
+                case 1: { TONORMAL.bitstream = MUL.bitstream; }
+                case 2: { TONORMAL.bitstream = DIV.bitstream; }
+                case 3: { TONORMAL.bitstream = SQRT.bitstream; }
             }
         }
-
         {
-            if( |operation ) {                                                                                                          // PASS CALCULATION RESULTS TO NORMAL+COMBINE
-                onehot( operation ) {
-                    case 0: { TONORMAL.bitstream = ADD.bitstream; TONORMAL.exp = ADD.exp; }
-                    case 1: { TONORMAL.bitstream = MUL.bitstream; TONORMAL.exp = MUL.exp; }
-                    case 2: { TONORMAL.bitstream = DIV.bitstream; TONORMAL.exp = DIV.exp; }
-                    case 3: { TONORMAL.bitstream = SQRT.bitstream; TONORMAL.exp = SQRT.exp; }
-                }
+            onehot( operation ) {
+                case 0: { TONORMAL.exp = ADD.exp; }
+                case 1: { TONORMAL.exp = MUL.exp; }
+                case 2: { TONORMAL.exp = DIV.exp; }
+                case 3: { TONORMAL.exp = SQRT.exp; }
             }
-            TONORMAL.sign = |( { 1b0,DIV.sign,MUL.sign,ADD.sign } & operation ); TONORMAL.adjustexp = operation[0,1];
-
         }
+        { TONORMAL.sign = |( { 1b0,DIV.sign,MUL.sign,ADD.sign } & operation ); }
 
         {
             if( exception ) {                                                                                                           // BUILD THE RESULT
@@ -166,7 +168,7 @@ unit floatcalc(
                 }
                 case 1: {
                     // STAGE 1  CHECK INPUTS FOR SPECIAL CASES ( INF, NAN or ZEROs + NEG FOR SQRT
-                    //          SIGNAL STAGE 2 TO START AND START UNITS IF NO EXCEPTION, ELSE JUMP TO STAGE 5
+                    //          SIGNAL STAGE 2 TO START AND START UNITS IF NO EXCEPTION, ELSE JUMP TO STAGE 4
                     DIV.start = operation[2,1] & ~DIV.X;
                     SQRT.start = operation[3,1] & ~SQRT.X;
                     stage = exception ? 4 : 2;
@@ -203,7 +205,6 @@ unit floatcalc(
                         } else {
                             FPUnewflags = FPUnewflags | TONORMAL.flags;
                         }
-                        busy = 0;
                     }
                 }
             }
@@ -219,7 +220,7 @@ unit floatclassify(
 ) <reginputs> {
     always_after{
         if( |classA ) {
-            // INFINITY, NAN OR ZERO
+            // INFINITY, NAN, ZERO or SUBNORMAL
             onehot( classA ) {
                 case 0: { classification = ~|sourceReg1F[0,23] ? fp32( sourceReg1F ).sign ? 8 : 16 : fp32( sourceReg1F ).sign ? 4 : 32; }       // +/- 0 or subnormal
                 case 1: { classification = 512; }                                                                                               // qNAN
@@ -441,13 +442,13 @@ unit floattoint(
     output  uint32  result
 ) <reginputs> {
     always_after {
-        uint1   NN <:: classA[2,1] | classA[1,1];       uint1   NV <:: ( exp > ( dounsigned ? 31 : 30 ) ) | ( dounsigned & fp32( a ).sign ) | classA[3,1] | NN;
-
-        int10   exp <:: fp32( a ).exponent - 127;
-        uint33  sig <:: ( exp < 24 ) ? { 9b1, fp32( a ).fraction, 1b0 } >> ( 23 - exp ) : { 9b1, fp32( a ).fraction, 1b0 } << ( exp - 24);
-        uint32  unsignedfraction <:: ( sig[1,32] + sig[0,1] );
-
         {
+            int10   exp <:: fp32( a ).exponent - 127;
+            uint33  sig <:: ( exp < 24 ) ? { 9b1, fp32( a ).fraction, 1b0 } >> ( 23 - exp ) : { 9b1, fp32( a ).fraction, 1b0 } << ( exp - 24);
+            uint32  unsignedfraction <:: ( sig[1,32] + sig[0,1] );
+            uint1   NN <:: classA[2,1] | classA[1,1];
+            uint1   NV <:: ( exp > ( dounsigned ? 31 : 30 ) ) | ( dounsigned & fp32( a ).sign ) | classA[3,1] | NN;
+
             if( classA[0,1] ) {
                 result = 0;
             } else {
@@ -466,9 +467,7 @@ unit floattoint(
                 }
             }
         }
-        {
-            flags = { classA[3,1], NN, NV, 4b0000 };
-        }
+        { flags = { classA[3,1], NN, NV, 4b0000 }; }
     }
 }
 
@@ -490,12 +489,13 @@ unit floatadd(
         uint1   IF <:: ( classA[3,1] | classB[3,1] );
         uint1   NN <:: |( classA[1,2] | classB[1,2] );
 
-        // SSTORAGE FOR ALIGNED FRACTIONS
-        uint48  newsigA = uninitialised;
-        uint48  newsigB = uninitialised;
-
         // COMPARISON OF INPUT EXPONENTS FOR ALIGNMENT
         uint1   AvB <:: ( fp32(a).exponent < fp32(b).exponent );
+
+        // STORAGE FOR ALIGNED FRACTIONS
+        uint48  newsigA = uninitialised;
+        uint48  newsigB = uninitialised;
+        uint1   newAvB <:: ( newsigA > newsigB );
 
         {
             // ALIGN THE FRACTIONS
@@ -507,36 +507,24 @@ unit floatadd(
             newsigB = AvB ? sigB : aligned;
         }
 
-        {
-            // EQUALISE THE EXPONENTS ( GIVES THE EXPONENT OF THE RESULT +1 IN CASE OF OVERFLOW )
-            exp = ( AvB ? fp32(b).exponent : fp32(a).exponent ) - 126;
-        }
+        // EQUALISE THE EXPONENTS ( GIVES THE EXPONENT OF THE RESULT +1 IN CASE OF OVERFLOW )
+        { exp = ( AvB ? fp32(b).exponent : fp32(a).exponent ) - 126; }
 
-        {
-            // PERFORM THE ADDITION, TAKING INTO ACCOUNT SIGNS AND SIZES OF INPUTS
-            uint1   newAvB <:: ( newsigA > newsigB );
+        // PERFORM THE ADDITION, TAKING INTO ACCOUNT SIGNS AND SIZES OF INPUTS
+        { if( fp32( a ).sign ^ fp32( b ).sign ) { sign = fp32( a ).sign ? newAvB : ~newAvB; } else { sign = fp32( a ).sign; } }
+        { if( fp32( a ).sign ^ fp32( b ).sign ) { bitstream = ( fp32( a ).sign ^ sign ? newsigB : newsigA ) - ( fp32( a ).sign ^ sign ? newsigA : newsigB ); } else { bitstream = newsigA + newsigB; } }
 
-            if( fp32( a ).sign ^ fp32( b ).sign ) {
-                sign = fp32( a ).sign ? newAvB : ~newAvB;
-                bitstream = ( fp32( a ).sign ^ sign ? newsigB : newsigA ) - ( fp32( a ).sign ^ sign ? newsigA : newsigB );
-            } else {
-                sign = fp32( a ).sign;
-                bitstream = newsigA + newsigB;
-            }
-        }
-
-        {
-            X = IF | NN | ZERO;
-        }
+        // GENERATE EXCEPTION FLAG
+        { X = IF | NN | ZERO; }
 
         {
             uint1   NV <:: ( classA[3,1] & classB[3,1]) & ( fp32( a ).sign ^ fp32( b).sign );
 
-            switch( { IF | NN, ZERO } ) {
+            switch( { IF | NN, ZERO } ) {                                                               // EXCEPTION RESULTS
                 case 2b00: {}
-                case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 0 : ( classB[0,1] ) ? a : b; }
+                case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 0 : ( classB[0,1] ) ? a : b; }     // ZERO INPUT
                 default: {
-                    switch( { IF, NN } ) {
+                    switch( { IF, NN } ) {                                                              // INF OR NAN
                         case 2b10: { result = NV ? 32hffc00000 : classA[3,1] ? a : b; }
                         default: { result = 32hffc00000; }
                     }
@@ -564,21 +552,18 @@ unit floatmultiply(
         uint1   IF <:: ( classA[3,1] | classB[3,1] );
         uint1   NN <:: |( classA[1,2] | classB[1,2] );
 
-        {
-            bitstream = { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction };                  // left align and multiply the fractions
-            sign = fp32( a ).sign ^ fp32( b ).sign;                                                 // SIGN is inputs same = +, different = -
-            exp = fp32( a ).exponent + fp32( b ).exponent - ( bitstream[47,1] ? 253 : 254 );        // EXPONENT is expA + expB + 1 ( if multiplication has overflowed )
-        }
+        { bitstream = { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction }; }                      // left align and multiply the fractions
+        { sign = fp32( a ).sign ^ fp32( b ).sign; }                                                     // SIGN is inputs same = +, different = -
+        { exp = fp32( a ).exponent + fp32( b ).exponent - ( bitstream[47,1] ? 253 : 254 ); }            // EXPONENT is expA + expB + 1 ( if multiplication has overflowed )
+
+        // GENERATE EXCEPTION FLAG
+        { X = IF | NN | ZERO; }
 
         {
-            X = IF | NN | ZERO;
-        }
-
-        {
-            switch( { IF | NN, ZERO } ) {
+            switch( { IF | NN, ZERO } ) {                                                               // EXCEPTION RESULTS
                 case 2b00: {}
-                case 2b01: { result = { sign, 31b0 }; }
-                default: {
+                case 2b01: { result = { sign, 31b0 }; }                                                 // ZERO INPUT
+                default: {                                                                              // INF OR NAN, OR INF x ZERO
                     switch( { IF, ZERO } ) {
                         case 2b11: { result = 32hffc00000; }
                         case 2b10: { result = NN ? 32hffc00000 : { sign, 31h7f800000 }; }
@@ -587,9 +572,7 @@ unit floatmultiply(
                 }
             }
         }
-        {
-            flags = { IF, 6b0 };
-        }
+        { flags = { IF, 6b0 }; }
     }
 }
 
@@ -642,19 +625,13 @@ unit floatdivide(
         uint1   IF <:: ( classA[3,1] | classB[3,1] );
         uint1   NN <:: |( classA[1,2] | classB[1,2] );
 
-        {
-            DODIVIDE.sigA = { 1b1, fp32(a).fraction, 26b0 };                                            // Align TOP to the LEFT
-            DODIVIDE.sigB = { 27b1, fp32(b).fraction };                                                 // Align BOTTOM to the RIGHT
-        }
+        { DODIVIDE.sigA = { 1b1, fp32(a).fraction, 26b0 }; }                                            // Align TOP to the LEFT
+        { DODIVIDE.sigB = { 27b1, fp32(b).fraction }; }                                                 // Align BOTTOM to the RIGHT
+        { sign = fp32( a ).sign ^ fp32( b ).sign; }                                                     // SIGN is inputs same = +, different = -
+        { exp = fp32( a ).exponent - fp32( b ).exponent - ( fp32(b).fraction > fp32(a).fraction ); }    // EXPONENT IS expA - expB - 1 (if fractional representation of B > A )
 
-        {
-            sign = fp32( a ).sign ^ fp32( b ).sign;                                                     // SIGN is inputs same = +, different = -
-            exp = fp32( a ).exponent - fp32( b ).exponent - ( fp32(b).fraction > fp32(a).fraction );    // EXPONENT IS expA - expB - 1 (if fractional representation of B > A )
-        }
-
-        {
-            X = IF | NN | ZERO;
-        }
+        // GENERATE EXCEPTION FLAG
+        { X = IF | NN | ZERO; }
 
         {
             switch( { IF | NN, ZERO } ) {
@@ -664,9 +641,7 @@ unit floatdivide(
             }
         }
 
-        {
-            flags = { 3b0, classB[0,1], 3b0};
-        }
+        { flags = { 3b0, classB[0,1], 3b0}; }
     }
 }
 
@@ -739,21 +714,16 @@ unit floatsqrt(
         uint1   IF <:: classA[3,1];
         uint1   NN <:: classA[2,1] | classA[1,1];
 
-        {
-            int10   expA  <:: fp32( a ).exponent - 127;                                         // exponent of the input
+        int10   expA  <:: fp32( a ).exponent - 127;                                                     // exponent of the input
 
-            DOSQRT.start_ac = expA[0,1] ? { 48b0, 1b1, a[22,1] } : 1;                           // determine alignment of the fraction according to odd/even exponent
-            DOSQRT.start_x = expA[0,1] ? { a[0,22], 26b0 } : { fp32( a ).fraction, 25b0 };
-            exp = ( expA >>> 1 );                                                               // result exponent is 1/2 of input exponent
-        }
+        { DOSQRT.start_ac = expA[0,1] ? { 48b0, 1b1, a[22,1] } : 1; }                                   // determine alignment of the fraction according to odd/even exponent
+        { DOSQRT.start_x = expA[0,1] ? { a[0,22], 26b0 } : { fp32( a ).fraction, 25b0 }; }
+        { exp = ( expA >>> 1 ); }                                                                       // result exponent is 1/2 of input exponent
 
-        {
-            X = IF | NN | ZERO | fp32( a ).sign;
-        }
+        // GENERATE EXCEPTION FLAG
+        { X = IF | NN | ZERO | fp32( a ).sign; }
 
-        {
-            if( X ) { result = fp32( a ).sign ? 32hffc00000 : a; }
-        }
+        { if( X ) { result = fp32( a ).sign ? 32hffc00000 : a; } }                                      // INF, NAN, ZERO or NEGATIVE
     }
 }
 

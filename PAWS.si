@@ -472,8 +472,11 @@ unit evictioncache(
     uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
     uint1   doreadsdram <:: ( doread | ( dowrite & byteaccess ) );
 
+    // CACHE UPDATE FLAG
+    uint1   update = uninitialized;
+
     // SDRAM ACCESS AND CACHE UPDATE FLAGS
-    SDRAM.readflag := 0; SDRAM.writeflag := 0; DCACHEW.update := 0; ICACHEW.update := 0;
+    SDRAM.readflag := 0; SDRAM.writeflag := 0; DCACHEW.update := 0; ICACHEW.update := 0; update := 0;
 
     algorithm <autorun> {
         while(1) {
@@ -483,8 +486,7 @@ unit evictioncache(
                 if( ( doread & Icachematch ) | Dcachematch ) {                                                                                      // READ/WRITE IN CACHE
                     if( dowrite ) {
                         ++:
-                        DCACHEW.update = 1;                                                                                                         // UPDATE CACHE IF WRITE
-                        ICACHEW.update = Icacheupdate;                                                                                              // UPDATE ICACHE IF NEEDED
+                        update = 1;                                                                                                                 // UPDATE CACHES IF WRITE
                     } else {
                         doread = 1;
                     }
@@ -496,25 +498,21 @@ unit evictioncache(
                             SDRAM.address = DCACHE.cacheaddress; SDRAM.writedata = DCACHE.rdata;
                             SDRAM.writeflag = 1; while( ~sio.done ) {}
                             SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {}                                                      // READ FOR READ OR 8 BIT WRITE
-                            DCACHEW.update = cacheselect;                                                                                           // UPDATE THE CACHE { RESET VALID FLAG IF WRITTEN OUT }
-                            ICACHEW.update = ~cacheselect;                                                                                          // UPDATE ICACHE IF NEEDED
+                            update = 1;                                                                                                             // UPDATE THE CACHES { RESET VALID FLAG IF WRITTEN OUT }
                             busy = 0;
                         } else {
                             SDRAM.address = DCACHE.cacheaddress; SDRAM.writedata = DCACHE.rdata;
                             SDRAM.writeflag = 1;
-                            DCACHEW.update = dowrite;                                                                                               // UPDATE CACHE FOR 16 BIT WRITE
-                            ICACHEW.update = Icacheupdate;                                                                                          // UPDATE ICACHE IF NEEDED
+                            update = 1;                                                                                                             // UPDATE CACHES FOR 16 BIT WRITE
                             busy = 0;
                         }
                     } else {
                         if( doreadsdram ) {
                             SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {}                                                      // READ FOR READ OR 8 BIT WRITE
-                            DCACHEW.update = cacheselect;                                                                                           // UPDATE THE CACHE
-                            ICACHEW.update = ~cacheselect;                                                                                          // UPDATE ICACHE IF NEEDED
+                            update = 1;                                                                                                             // UPDATE THE CACHES
                             busy = 0;
                         } else {
-                            DCACHEW.update = dowrite;                                                                                               // UPDATE CACHE FOR 16 BIT WRITE
-                            ICACHEW.update = Icacheupdate;                                                                                          // UPDATE ICACHE IF NEEDED
+                            update = 1;                                                                                                             // UPDATE CACHES FOR 16 BIT WRITE
                             busy = 0;
                         }
                     }
@@ -526,7 +524,18 @@ unit evictioncache(
     }
 
     always_after {
-        readdata = Dcachematch ? DCACHE.rdata : Icachematch ? ICACHE.rdata : cachewritevalue;
+        {
+            if( update ) {
+                if( ( doread & Icachematch ) | Dcachematch ) {
+                    DCACHEW.update = dowrite;                                                                                                       // UPDATE CACHE IF WRITE
+                    ICACHEW.update = dowrite & Icacheupdate;                                                                                        // UPDATE ICACHE IF NEEDED
+                } else {
+                    DCACHEW.update = ( doreadsdram & cacheselect ) | dowrite;                                                                       // UPDATE THE CACHE { RESET VALID FLAG IF WRITTEN OUT }
+                    ICACHEW.update = ( doreadsdram & ~cacheselect ) | ( dowrite & Icacheupdate );                                                   // UPDATE ICACHE IF NEEDED
+                }
+            }
+        }
+        {  readdata = Dcachematch ? DCACHE.rdata : Icachematch ? ICACHE.rdata : cachewritevalue; }
     }
 }
 
