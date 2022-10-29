@@ -701,6 +701,16 @@ unit store(
 }
 
 // MINI DMA CONTROLLER
+// MODE 0   INACTIVE
+//      1   multi-src to single-dest PIXEL BLOCK 8 bit + SDCARD WRITE
+//      2   SPECIAL PIXEL BLOCK RGB
+//      3   ulti-src to multi-dest MEMCPY
+//      4   single-src to multi-dest MEMSET + SDCARD READ
+//      5   Dsingle-src to single-dest SET TILE/CBLITTER to single value
+//      6   increase src and dest by additions
+//      7   32/16bit to 4/2 pixels for PIXEL BLOCK special mode
+//      8   MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
+//      9   MEMSET RECTANGLE IS 32/16 BIT CAPABLE
 unit dma(
     input   uint$addr_width$  DMASOURCE,
     input   uint$addr_width$  DMASOURCEADD,
@@ -746,7 +756,7 @@ unit dma(
                                     address = dmadest; writedata = DMA16BIT | DMA32BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
                                     writememory = 1; while( memorybusy ) {}
                                 }
-                                case 2b01: {                                                                                        // SPECIAL MULTI-PIXEL PIXELBLOCK / TILE / SAMPLE / SDCARD WRITE
+                                case 2b01: {
                                     while( memorybusy ) {} memoryinput = readdata;
                                     address = dmadest; PBcount = 0;
                                     while( PBcount != PBmax ) {
@@ -754,7 +764,7 @@ unit dma(
                                     }
                                 }
                                 case 2b10: { address = dmadest; writememory = 1; while( memorybusy ) {} }
-                                case 2b11: {                                                                                        // SPECIAL MULTI-SRC SET PIXELBLOCK / TILE / SAMPLE / SDCARD WRITE
+                                case 2b11: {
                                     address = dmadest; PBcount = 0;
                                     while( PBcount != PBmax ) { if( PBwritewait ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1; }
                                 }
@@ -786,35 +796,68 @@ unit dma(
     }
 
     always_after {
+        // UPDATE SOURCE ADDRESSES
         {
             uint$addr_width$  dmasrc2 <:: dmasrc + 2;           uint$addr_width$  dmasrc4 <:: dmasrc + 4;
             uint$addr_width$  dmasrcNEXT <:: DMA32BIT ? dmasrc4 : DMA16BIT ? dmasrc2 : dmasrc + 1;
             uint$addr_width$  dmasrcADD <:: dmasrc + DMASOURCEADD;    uint$addr_width$  dmasrcNEXTLINE <:: dmasrcADD - DMACOUNT;
+
+            if( update ) {
+                if( dmamode[3,1] ) {
+                    if( |dmacount ) {
+                        if( ~dmamode[0,1] ) { dmasrc = dmasrcNEXT; }
+                    } else {
+                        if( ~dmamode[0,1] ) { dmasrc = dmasrcNEXTLINE; }
+                    }
+                } else {
+                    switch( dmamode[0,3] ) {
+                        default: {}
+                        case 1: { dmasrc = dmasrcNEXT; }
+                        case 2: { dmasrc = dmasrcNEXT; }
+                        case 3: { dmasrc = dmasrcNEXT; }
+                        case 6: { dmasrc = dmasrcADD; }
+                        case 7: { dmasrc = PB4pixel ? dmasrc4 : dmasrc2; }
+                    }
+                }
+            }
+        }
+        // UPDATE DESTINATION ADDRESSES
+        {
             uint$addr_width$  dmadest2 <:: dmadest + 2;         uint$addr_width$  dmadestNEXT <:: DMA32BIT ? dmadest + 4 : DMA16BIT ? dmadest2 : dmadest + 1;
             uint$addr_width$  dmadestADD <:: dmadest + DMADESTADD;    uint$addr_width$  dnadestNEXTLINE <:: dmadestADD - DMACOUNT;
             uint1   dmablue <:: ( dmadest[0,4] == 4h6 );
+
+            if( update ) {
+                if( dmamode[3,1] ) {
+                    if( |dmacount ) {
+                        dmadest = dmadestNEXT;
+                    } else {
+                        dmadest = dnadestNEXTLINE;
+                    }
+                } else {
+                    switch( dmamode[0,3] ) {
+                        default: {}
+                        case 2: { if( dmablue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }
+                        case 3: { dmadest = dmadestNEXT; }
+                        case 4: { dmadest = dmadestNEXT; }
+                        case 6: { dmadest = dmadestADD; }
+                    }
+                }
+            }
+        }
+        // UPDATE COUNTS AND CYCLES
+        {
             uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | PB4pixel ? 2 : 1 );
             uint8   dmacyclesNEXT <:: dmacycles - 1;
 
             if( update ) {
-                if( dmamode[3,1] ) {                                                                                            // UPDATE ADDRESSES AND COUNTS AFTER EACH DMA CYCLE
+                if( dmamode[3,1] ) {
                     if( |dmacount ) {
-                        if( ~dmamode[0,1] ) { dmasrc = dmasrcNEXT; }                                                            // MEMCPY_RECTANGLE
-                        dmadest = dmadestNEXT; dmacount = dmacountNEXT;                                                         // MEMCPY and MEMSET RECTANGLE
+                        dmacount = dmacountNEXT;
                     } else {
-                        if( ~dmamode[0,1] ) { dmasrc = dmasrcNEXTLINE; }
-                        dmadest = dnadestNEXTLINE; dmacount = DMACOUNT; dmacycles = dmacyclesNEXT;
+                        dmacount = DMACOUNT; dmacycles = dmacyclesNEXT;
                     }
                 } else {
-                    switch( dmamode[0,3] ) {
-                        default: {}                                                                                             // == 0 INACTIVE, == 5 DMA single-src to single-dest SET TILE/CBLITTER to single value
-                        case 1: { dmasrc = dmasrcNEXT; }                                                                        // DMA multi-src to single-dest PIXEL BLOCK 8 bit + SDCARD WRITE
-                        case 2: { dmasrc = dmasrcNEXT; if( dmablue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }      // DMA SPECIAL PIXEL BLOCK RGB
-                        case 3: { dmasrc = dmasrcNEXT; dmadest = dmadestNEXT; }                                                 // DMA multi-src to multi-dest MEMCPY
-                        case 4: { dmadest = dmadestNEXT; }                                                                      // DMA single-src to multi-dest MEMSET + SDCARD READ
-                        case 6: { dmasrc = dmasrcADD; dmadest = dmadestADD; }                                                   // DMA increase src and dest by additions
-                        case 7: { dmasrc = PB4pixel ? dmasrc4 : dmasrc2; }                                                      // DMA 32/16bit to 4/2 pixels for PIXEL BLOCK special mode
-                    }
                     dmacount = dmacountNEXT;
                 }
             }
@@ -838,7 +881,7 @@ unit dma(
             uint1   ADD32 <:: ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2];
 
             if( start ) {
-                DMAACTIVE = 1; DMA16BIT = 0; DMA32BIT = 0; PB4pixel = 0;
+                DMA16BIT = 0; DMA32BIT = 0; PB4pixel = 0;
                 switch( dmamode ) {
                     default: {}                                                                                                 // DEFAULT TO 8 BIT MODE
                     case 3: { DMA32BIT = SD32; DMA16BIT = SD16; }                                                               // MEMCPY IS 32/16 BIT CAPABLE
@@ -850,6 +893,7 @@ unit dma(
 
             }
         }
-        { if( start ) { DMAACCESSSIZE = DMA32BIT | PB4pixel? 2b10 : DMA16BIT | &dmamode[0,3] ? 2b01: 2b00; }                    // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
+        { if( start ) { DMAACTIVE = 1; } }
+        { if( start ) { DMAACCESSSIZE = DMA32BIT | PB4pixel? 2b10 : DMA16BIT | &dmamode[0,3] ? 2b01: 2b00; } }                  // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
     }
 }

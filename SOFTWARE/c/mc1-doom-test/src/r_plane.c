@@ -190,7 +190,7 @@ void R_ClearPlanes (void)
     angle = (viewangle-ANG90)>>ANGLETOFINESHIFT;
 
     // scale will be unit scale at SCREENWIDTH/2 distance
-    P_FixedDiv(finecosine[angle],centerxfrac,&basexscale,finesine[angle],centerxfrac,&baseyscale);
+    P_FixedDiv(finecosine[angle],centerxfrac,&basexscale,-finesine[angle],centerxfrac,&baseyscale);
     //basexscale = FixedDiv (finecosine[angle],centerxfrac);
     //baseyscale = -FixedDiv (finesine[angle],centerxfrac);
 }

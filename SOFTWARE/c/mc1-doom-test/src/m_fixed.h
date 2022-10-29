@@ -49,7 +49,9 @@ static inline fixed_t FixedMul (fixed_t a, fixed_t b)
 //
 
 fixed_t FixedDiv (fixed_t a, fixed_t b);
-void P_FixedDiv (fixed_t a1, fixed_t b1, fixed_t *r1, fixed_t a2, fixed_t b2, fixed_t *r2 );
+void P_FixedDiv (fixed_t a1, fixed_t b1, fixed_t *r1, fixed_t a2, fixed_t b2, fixed_t *r2 );            // 2 parallel fixed point divisions
+void P_FixedDiv_start (fixed_t a1, fixed_t b1, fixed_t a2, fixed_t b22 );                               // 2 parallel fixed point divisions - start
+void P_FixedDiv_result (fixed_t *r1,fixed_t *r2 );                                                      // 2 parallel fixed point divisions - fetch result
 
 //
 // INT_TO_FIXED - Convert an integer to fixed point.
