@@ -84,17 +84,18 @@ $$end
     // ACCELERATORS FOR DOOM FIXED POINT 16.16 DIVISION
     fixed_t_divide FIXED_DIVIDE_1(); fixed_t_divide FIXED_DIVIDE_2();
 
-    // UNLOCK VALUE ( write to sector 0 )
-    uint1 MAGICVALUE(0);
 
 $$if not SIMULATION then
     // I/O FLAGS
     UART_IN.inread := 0; UART_OUT.outwrite := 0; PS2.inread := 0;
     SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0;
 $$end
-    RTC.wr := 0; RTC.addr := 7; FIXED_DIVIDE_1.start := 0; FIXED_DIVIDE_2.start := 0;
+    RTC.wr := 0; FIXED_DIVIDE_1.start := 0; FIXED_DIVIDE_2.start := 0;
 
     always_after {
+        // UNLOCK VALUE ( write to sector 0 )
+        uint1 MAGICVALUE(0);                                                                // WRITE 32h50415357 { 'P', 'A', 'W', 'S' } TO ALLOW WRITING TO SDCARD SECTOR 0
+
         {
             // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE, RTC to read mode
             if( reset ) {
@@ -102,7 +103,7 @@ $$end
                 $$if not SIMULATION then
                     PS2.outputkeycodes = 0;
                 $$end
-                MAGICVALUE = 0; DMAMODE = 0;
+                MAGICVALUE = 0; DMAMODE = 0; RTC.addr = 7;
             }
         }
 
@@ -247,7 +248,6 @@ unit timers_memmap(
 ) <reginputs> {
     // TIMERS and RNG
     timers_rng timers <@clock_25mhz> ( seconds :> cursor, g_noise_out :> static16bit );
-    uint32  floatrng <:: { 1b0, 5b01111, &timers.u_noise_out[0,3] ? 3b110 : timers.u_noise_out[0,3], timers.g_noise_out[0,16], timers.u_noise_out[3,7] };
 
     always_after {
         {
@@ -269,7 +269,7 @@ unit timers_memmap(
                         // RNG ( 2 interger, 1 float 0 <= fng < 1 ) and TIMERS
                         case 4h0: { readData = timers.g_noise_out; }
                         case 4h1: { readData = timers.u_noise_out; }
-                        case 4h2: { readData = floatrng; }
+                        case 4h2: { readData = { 1b0, 5b01111, &timers.u_noise_out[0,3] ? 3b110 : timers.u_noise_out[0,3], timers.g_noise_out[0,16], timers.u_noise_out[3,7] }; }
                         case 4h8: { readData = timers.timer1hz0; }
                         case 4h9: { readData = timers.timer1hz1; }
                         case 4ha: { readData = timers.timer1khz0; }
@@ -380,8 +380,7 @@ unit audio_memmap(
     simple_dualport_bram uint7 samples_right <@clock_25mhz,@clock> [256] = uninitialized;
 
     // POINTERS WITHIN THE BUFFERS
-    uint8   maxSL = uninitialised;                  uint8   nextSL <:: maxSL + 1;
-    uint8   maxSR = uninitialised;                  uint8   nextSR <:: maxSR + 1;
+    uint8   maxSL = uninitialised;                  uint8   maxSR = uninitialised;
 
     // Left and Right audio channels
     audio apu_processor <@clock_25mhz> (
@@ -398,13 +397,9 @@ unit audio_memmap(
     samples_left.wenable1 := 1; samples_right.wenable1 := 1;
 
     always_after {
-        {
-            if( reset ) { apu_processor.volume_l = 7; apu_processor.volume_r = 7; }
-        }
+        { if( reset ) { apu_processor.volume_l = 7; apu_processor.volume_r = 7; } }
 
-        {
-            readData = memoryAddress[1,1] ? apu_processor.audio_active_r : apu_processor.audio_active_l;
-        }
+        { readData = memoryAddress[1,1] ? apu_processor.audio_active_r : apu_processor.audio_active_l; }
 
         {
             // LATCH MEMORYWRITE
@@ -427,8 +422,8 @@ unit audio_memmap(
                         }
                         case 4h3: { apu_processor.apu_write = writeData; }
                         case 4h4: { if( writeData[0,1] ) { maxSL = 0; }  if( writeData[1,1] ) { maxSR = 0; } }                                  // RESET SAMPLES
-                        case 4h5: { samples_left.addr1 = maxSL; samples_left.wdata1 = writeData; maxSL = nextSL; }                              // WRITE TO LEFT SAMPLE MEMORY
-                        case 4h6: { samples_right.addr1 = maxSR; samples_right.wdata1 = writeData; maxSR = nextSR; }                            // WRITE TO RIGHT SAMPLE MEMORY
+                        case 4h5: { samples_left.addr1 = maxSL; samples_left.wdata1 = writeData; maxSL = maxSL + 1; }                           // WRITE TO LEFT SAMPLE MEMORY
+                        case 4h6: { samples_right.addr1 = maxSR; samples_right.wdata1 = writeData; maxSR = maxSR + 1; }                         // WRITE TO RIGHT SAMPLE MEMORY
                         case 4h8: {                                                                                                             // SET VOLUME LEFT ( OR BOTH )
                             if( accesssize[1,1] ) {
                                 apu_processor.volume_l = writeData[0,3]; apu_processor.volume_r = writeData[16,3];
@@ -483,12 +478,12 @@ unit audio(
     audio_pwm PWM_L( active <: apu_processor_L.audio_active, wave <: apu_processor_L.audio_output, audio :> audio_l );
     audio_pwm PWM_R( active <: apu_processor_R.audio_active, wave <: apu_processor_R.audio_output, audio :> audio_r );
 
-    uint1   SAMPLEMODE_L = uninitialised;                   uint1   SAMPLEMODE_R = uninitialised;
-    uint1   REPEAT_L = uninitialised;                       uint1   REPEAT_R = uninitialised;
-
     apu_processor_L.apu_write := 0; apu_processor_R.apu_write := 0;
 
     always_after {
+        uint1   SAMPLEMODE_L = uninitialised;                   uint1   SAMPLEMODE_R = uninitialised;
+        uint1   REPEAT_L = uninitialised;                       uint1   REPEAT_R = uninitialised;
+
         // DISPATCH NEXT SAMPLE IF SAMPLE MODE ACTIVE LEFT/RIGHT / RESET SAMPLE POINTER IF NOT
         {
             uint1   newSL = uninitialised;
