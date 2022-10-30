@@ -57,7 +57,7 @@ unit PAWSCPU(
     output! uint1   DMAACTIVE
 ) <reginputs> {
     // RESET COUNTER
-    uint8  resetCounter = 8hff;                     uint8   resetNEXT <:: resetCounter - 1;
+    uint8  resetCounter = 8hff;                     uint8   resetNEXT <:: resetCounter - ~( memorybusy | EXECUTESLOW.busy | ICACHE_0W.CLS | ICACHE_1W.CLS );
 
     // CPU REGISTERS AND THREAD SELECTION
     uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
@@ -65,9 +65,6 @@ unit PAWSCPU(
     uint$addr_width$  pc = 0;                       uint$addr_width$  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;                                        // HART 0 pc + UPDATE
     uint$addr_width$  pcSMT = uninitialized;        uint$addr_width$  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;         // HART 1 pc + update
     uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                                          // SELECT PC FOR THIS CYCLE
-
-    // MEMORY CONTROL UNITS
-    uint4 memorycontrols <: { FETCH.busy, LOAD.busy, STORE.busy, DMAACTIVE };
 
     // RISC-V 32 BIT CONTROLLER
     uint32  result <:: RV32CONTROL.IS_FASTALU ? EXECUTEFAST.result : EXECUTESLOW.result;
@@ -222,7 +219,7 @@ unit PAWSCPU(
     FETCH.start := 0; LOAD.start := 0; STORE.start := 0; DMA.start := 0; EXECUTESLOW.start := 0; COMMIT := 0; ICACHEUPDATE := 0;
 
     algorithm <autorun> {
-        while( |resetCounter | memorybusy | EXECUTESLOW.busy ) { resetCounter = resetNEXT; }                                        // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
+        while( |resetCounter ) { resetCounter = resetNEXT; }                                                                        // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
         cacheselect = 0; FETCH.start = ~L0match;                                                                                    // START FETCH FIRST INSTRUCTION
 
         while(1) {
@@ -260,16 +257,20 @@ unit PAWSCPU(
     }
 
     always_after {
+        // MEMORY CONTROL UNITS
+        uint4 memorycontrols <: { FETCH.busy, LOAD.busy, STORE.busy, DMAACTIVE };
+
         // COPY MEMORY WRITE VALUE FROM DMA ENGINE OR STORE UNIT
         { writedata = memorycontrols[0,1] ? DMA.writedata : RV32CONTROL.IS_FASTALU ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput; }
 
+        // COPY MEMORY ADDRESS FROM MEMORY CONTROL UNITS
         {
             if( |memorycontrols ) {
                 onehot( memorycontrols ) {
-                    case 0: { address = DMA.address; }                                                                                      // COPY MEMORY REQUESTS FROM DMA ENGINE
-                    case 1: { address = RV32CONTROL.storeAddress; }                                                                         // COPY MEMORY REQUESTS FROM THE STORE UNIT
-                    case 2: { address = RV32CONTROL.loadAddress; }                                                                          // COPY MEMORY REQUESTS FROM THE LOAD UNIT
-                    case 3: { address = PC; }                                                                                               // COPY MEMORY REQUESTS FROM INSTRUCTION FETCH
+                    case 0: { address = DMA.address; }
+                    case 1: { address = RV32CONTROL.storeAddress; }
+                    case 2: { address = RV32CONTROL.loadAddress; }
+                    case 3: { address = PC; }
                 }
             }
         }
@@ -527,8 +528,8 @@ unit cpuexecuteSLOWPATH(
         // PROVIDE WAIT STATE FOR APPROPRIATE OPERATION
         while(1) {
             if( start ) {
-                busy = 1; while( unitbusy ) {} busy = 0;                                                  // FPU CALCULATIONS AND INTEGER DIVISION
-                                                                                                          // CSR, ATOMIC OPERATIONS, FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                while( unitbusy ) {} busy = 0;                                                                          // FPU CALCULATIONS AND INTEGER DIVISION
+                                                                                                                        // CSR, ATOMIC OPERATIONS, FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                 CSR.updateFPUflags = fpuconvert | fpucalc;
             } else { busy = 0; }
         }
@@ -536,6 +537,7 @@ unit cpuexecuteSLOWPATH(
 
     // COLLECT THE APPROPRIATE RESULT
     always_after {
+        { if( start ) { busy = 1; } }
         {
             if( busy ) {
                 onehot( operation ) {
@@ -618,18 +620,16 @@ unit fetch(
     compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata[0,16] );
 
     uint1   complete = uninitialised;
-    readmemory := 0; complete := 0;
+    readmemory := start; complete := 0;
 
     algorithm <autorun> {
         while(1) {
-            if( start ) {
-                busy = 1; readmemory = 1; while( memorybusy ) {}                        // FETCH INSTRUCTION ( 32 bits )
-                complete = 1; busy = 0;
-            } else { busy = 0; }
+            if( start ) { while( memorybusy ) {} complete = 1; busy = 0; } else { busy = 0; }
         }
     }
 
     always_after {
+        { if( start ) { busy = 1; } }
         {
             if( complete ) {
                 switch( readdata[0,2] ) {                                               // EXPAND COMPRESSED INSTRUCTION
@@ -658,27 +658,25 @@ unit load(
     input!  uint1   memorybusy
 ) <reginputs> {
     uint1   complete = uninitialised;
-    readmemory := 0; complete := 0;
+    readmemory := start; complete := 0;
 
     algorithm <autorun> {
         while(1) {
-            if( start ) {
-                busy = 1; readmemory = 1; while( memorybusy ) {}                                        // START READ
-                complete = 1; busy = 0;
-            } else {
-                busy = 0;
-            }
+            if( start ) { while( memorybusy ) {} complete = 1; busy = 0; } else { busy = 0; }
         }
     }
 
     always_after {
-        // SIGN FOR 8 AND 16 BIT LOADS
-        uint1   sign <:: ~dounsigned & ( accesssize[0,1] ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
+        { if( start ) { busy = 1; } }
+        {
+            // SIGN FOR 8 AND 16 BIT LOADS
+            uint1   sign <:: ~dounsigned & ( accesssize[0,1] ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
 
-        if( complete ) {
-            memoryinput = accesssize[1,1] ? readdata :                                              // 32 BIT
-                            accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                        // 16 BIT
-                                            { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };   // 8 BIT
+            if( complete ) {
+                memoryinput = accesssize[1,1] ? readdata :                                              // 32 BIT
+                                accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                        // 16 BIT
+                                                { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };   // 8 BIT
+            }
         }
     }
 
@@ -691,12 +689,15 @@ unit store(
     output! uint1   writememory,
     input!  uint1   memorybusy
 ) <reginputs> {
-    writememory := 0;
+    writememory := start;
 
     algorithm <autorun> {
         while(1) {
-            if( start ) { busy = 1; writememory = 1; while( memorybusy ) {} busy = 0; } else { busy = 0; }
+            if( start ) { while( memorybusy ) {} busy = 0; } else { busy = 0; }
         }
+    }
+    always_after {
+        if( start ) { busy = 1; }
     }
 }
 
