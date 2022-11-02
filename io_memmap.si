@@ -65,8 +65,8 @@ $$if not SIMULATION then
     ps2buffer PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn );
 
     // SDCARD AND BUFFER
-    simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                          uint9 INPLUS1 <:: buffer_in.addr0 + 1;      // READ FROM SDCARD
-    simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                         uint9 OUTPLUS1 <:: buffer_out.addr1 + 1;    // WRITE TO SDCARD
+    simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                          // READ FROM SDCARD
+    simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                         // WRITE TO SDCARD
     sdcardcontroller SDCARD(
         sd_clk :> sd_clk,
         sd_mosi :> sd_mosi,
@@ -134,7 +134,7 @@ $$end
                     }
                     case 4h2: { readData = PS2.outputkeycodes ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
                     case 4h4: { readData = SDCARD.ready; }
-                    case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = INPLUS1; }
+                    case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = buffer_in.addr0 + 1; }
                     $$end
                     case 4h3: { readData = leds; }
                     case 4h6: {
@@ -181,7 +181,7 @@ $$end
                     case 4h5: {
                         switch( memoryAddress[1,1] ) {
                             case 0: { buffer_in.addr0 = 0; buffer_out.addr1 = 511; }
-                            case 1: { buffer_out.addr1 = OUTPLUS1; buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
+                            case 1: { buffer_out.addr1 = buffer_out.addr1 + 1; buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
                         }
                     }
                     $$end
@@ -226,8 +226,8 @@ $$end
                     default: {}
                 }
             }
-            if( DMAACTIVE ) { DMAMODE = 0; }  // CANCEL DMA REQUEST ONCE DMA STARTS
         }
+        { if( DMAACTIVE ) { DMAMODE = 0; } } // CANCEL DMA REQUEST ONCE DMA STARTS
     }
 }
 
@@ -269,7 +269,7 @@ unit timers_memmap(
                         // RNG ( 2 interger, 1 float 0 <= fng < 1 ) and TIMERS
                         case 4h0: { readData = timers.g_noise_out; }
                         case 4h1: { readData = timers.u_noise_out; }
-                        case 4h2: { readData = { 1b0, 5b01111, &timers.u_noise_out[0,3] ? 3b110 : timers.u_noise_out[0,3], timers.g_noise_out[0,16], timers.u_noise_out[3,7] }; }
+                        case 4h2: { readData = { 1b0, 1b0, &timers.u_noise_out[0,7] ? 7b1111110 : timers.u_noise_out[0,7], timers.g_noise_out[0,16], timers.u_noise_out[8,7] }; }
                         case 4h8: { readData = timers.timer1hz0; }
                         case 4h9: { readData = timers.timer1hz1; }
                         case 4ha: { readData = timers.timer1khz0; }
@@ -398,9 +398,7 @@ unit audio_memmap(
 
     always_after {
         { if( reset ) { apu_processor.volume_l = 7; apu_processor.volume_r = 7; } }
-
         { readData = memoryAddress[1,1] ? apu_processor.audio_active_r : apu_processor.audio_active_l; }
-
         {
             // LATCH MEMORYWRITE
             uint1   LATCHmemoryWrite = uninitialized;
@@ -567,10 +565,8 @@ unit fifo8(
     queue.wenable1 := 1;
 
     always_after {
-        {
-            available = ( top != next ); full = ( top + 1 == next );
-            next = next + read;
-        }
+        { available = ( top != next ); full = ( top + 1 == next ); }
+        { next = next + read; }
 
         {
             if( write ) {
@@ -612,8 +608,8 @@ unit uart_OUT(
         first :> uo.data_in
     );
     always_after {
-        OUT.read = OUT.available & !uo.busy;
-        uo.data_in_ready = OUT.available & ( !uo.busy );
+        { OUT.read = OUT.available & !uo.busy; }
+        { uo.data_in_ready = OUT.available & ( !uo.busy ); }
     }
 }
 
@@ -626,25 +622,18 @@ unit fifo9(
     output  uint10  first,
     input   uint10  last
 ) <reginputs> {
-    uint7   top = 0;                                uint7   next = 0;
+    uint7   top = 0;
+    uint7   next = 0;
     simple_dualport_bram uint10 queue[128] = uninitialized;
 
     queue.addr0 := next; first := queue.rdata0;
     queue.wenable1 := 1;
 
     always_after {
-        {
-            available = ( top != next );
-        }
-
-        {
-            if( write ) { queue.addr1 = top; queue.wdata1 = last; }
-        }
-
-        {
-            top = top + write;
-            next = next + read;
-        }
+        { available = ( top != next ); }
+        { if( write ) { queue.addr1 = top; queue.wdata1 = last; } }
+        { top = top + write; }
+        { next = next + read; }
     }
 }
 unit ps2buffer(
@@ -685,6 +674,9 @@ unit sdcardcontroller(
 
     // SDCARD Commands
     always_after {
-        sdcio.read_sector = readsector; sdcio.write_sector = writesector; sdcio.addr_sector = sectoraddress; ready = sdcio.ready;
+        { sdcio.read_sector = readsector; }
+        { sdcio.write_sector = writesector; }
+        { sdcio.addr_sector = sectoraddress; }
+        { ready = sdcio.ready; }
     }
 }

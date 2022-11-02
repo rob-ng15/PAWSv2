@@ -792,23 +792,22 @@ unit dma(
                     }
                 }
                 DMAACTIVE = 0;
-            } else { dmamode = DMAMODE; dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES; writedata = {4{DMASET}}; }
+            } else { dmamode = DMAMODE; writedata = {4{DMASET}}; }
         }
     }
 
     always_after {
         // UPDATE SOURCE ADDRESSES
         {
-            uint$addr_width$  dmasrc2 <:: dmasrc + 2;           uint$addr_width$  dmasrc4 <:: dmasrc + 4;
-            uint$addr_width$  dmasrcNEXT <:: DMA32BIT ? dmasrc4 : DMA16BIT ? dmasrc2 : dmasrc + 1;
-            uint$addr_width$  dmasrcADD <:: dmasrc + DMASOURCEADD;    uint$addr_width$  dmasrcNEXTLINE <:: dmasrcADD - DMACOUNT;
+            uint$addr_width$  dmasrcNEXT <:: DMA32BIT ? dmasrc + 4 : DMA16BIT ? dmasrc + 2 : dmasrc + 1;
+            uint$addr_width$  dmasrcADD <:: dmasrc + DMASOURCEADD;
 
             if( update ) {
                 if( dmamode[3,1] ) {
                     if( |dmacount ) {
                         if( ~dmamode[0,1] ) { dmasrc = dmasrcNEXT; }
                     } else {
-                        if( ~dmamode[0,1] ) { dmasrc = dmasrcNEXTLINE; }
+                        if( ~dmamode[0,1] ) { dmasrc = dmasrcADD - DMACOUNT; }
                     }
                 } else {
                     switch( dmamode[0,3] ) {
@@ -817,50 +816,54 @@ unit dma(
                         case 2: { dmasrc = dmasrcNEXT; }
                         case 3: { dmasrc = dmasrcNEXT; }
                         case 6: { dmasrc = dmasrcADD; }
-                        case 7: { dmasrc = PB4pixel ? dmasrc4 : dmasrc2; }
+                        case 7: { dmasrc = PB4pixel ? dmasrc + 4 : dmasrc + 2; }
                     }
                 }
+            } else {
+                if( ~DMAACTIVE ) { dmasrc = DMASOURCE; }
             }
         }
         // UPDATE DESTINATION ADDRESSES
         {
-            uint$addr_width$  dmadest2 <:: dmadest + 2;         uint$addr_width$  dmadestNEXT <:: DMA32BIT ? dmadest + 4 : DMA16BIT ? dmadest2 : dmadest + 1;
-            uint$addr_width$  dmadestADD <:: dmadest + DMADESTADD;    uint$addr_width$  dnadestNEXTLINE <:: dmadestADD - DMACOUNT;
-            uint1   dmablue <:: ( dmadest[0,4] == 4h6 );
+            uint$addr_width$  dmadestNEXT <:: DMA32BIT ? dmadest + 4 : DMA16BIT ? dmadest + 2 : dmadest + 1;
+            uint$addr_width$  dmadestADD <:: dmadest + DMADESTADD;
 
             if( update ) {
                 if( dmamode[3,1] ) {
                     if( |dmacount ) {
                         dmadest = dmadestNEXT;
                     } else {
-                        dmadest = dnadestNEXTLINE;
+                        dmadest = dmadestADD - DMACOUNT;
                     }
                 } else {
                     switch( dmamode[0,3] ) {
                         default: {}
-                        case 2: { if( dmablue ) { dmadest = 27hd672; } else { dmadest = dmadest2; } }
+                        case 2: { dmadest = &dmadest[1,2] ? 27hd672: dmadest + 2; }     // DETECTS BLUE PIXEL WRITTEN, MOVES BACK TO RED
                         case 3: { dmadest = dmadestNEXT; }
                         case 4: { dmadest = dmadestNEXT; }
                         case 6: { dmadest = dmadestADD; }
                     }
                 }
+            } else {
+                if( ~DMAACTIVE ) { dmadest = DMADEST; }
             }
         }
-        // UPDATE COUNTS AND CYCLES
+        // UPDATE COUNT IF != 0, reset if multi-cycle mode
         {
             uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | PB4pixel ? 2 : 1 );
-            uint8   dmacyclesNEXT <:: dmacycles - 1;
 
             if( update ) {
-                if( dmamode[3,1] ) {
-                    if( |dmacount ) {
-                        dmacount = dmacountNEXT;
-                    } else {
-                        dmacount = DMACOUNT; dmacycles = dmacyclesNEXT;
-                    }
-                } else {
-                    dmacount = dmacountNEXT;
-                }
+                dmacount = |dmacount ? dmacountNEXT : dmamode[3,1] ? DMACOUNT : 0;
+            } else {
+                if( ~DMAACTIVE ) { dmacount = DMACOUNT; }
+            }
+        }
+        // UPDATE CYCLES WHEN COUNT == 0
+        {
+            if( update ) {
+                dmacycles = dmacycles - ~|dmacount;
+            } else {
+                if( ~DMAACTIVE ) { dmacycles = DMACYCLES; }
             }
         }
 
