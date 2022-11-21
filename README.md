@@ -83,11 +83,10 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
         * FAST BRAM - used for BIOS
         * STACK POINTER AT TOP OF BRAM
     * 32K ( 8K x 32 bit ) of I/O Registers with 32 bit read / write
-    * 32MB of SDRAM
-        * 16K Instruction and 8K Data Cache
+    * 32MB of SDRAM with configurable cache ( I and D, or D only )
 
 * DISPLAY
-    * HDMI 640 x 480 ouput with 127 colours + transparency
+    * HDMI 640 x 480 ouput with 255 colours + transparency
         * Background with pattern generator
             * Co-Processor to switch pattern generator parameters mid-frame
         * 2 x Tilemap Layers ( full colour )
@@ -96,23 +95,23 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
         * 2 x Sprite Layers ( full colour )
             * 16 sprites per layer
             * Sprites can be reflected or rotated, and doubled in size
-        * Bitmap ( 320 x 240 double sized pixels ) with GPU
+        * Bitmap ( dual framebuffer ) ( 320 x 240 double sized pixels ) with GPU
             * Accelerated drawing of lines, rectangles, circles ( optional fill ), triangles, quadrilaterals
             * Single and full colour hardware blitters
             * DMA assisted software blitter
             * Vector block drawer
+            * Memory accessible bitmaps
+            * Both framebuffers can be displayed simultaneoulsy
         * Character Map
             * 80 x 60 with normal/bold font
         * Terminal
             * 80 x 8
 
 ![BIOS](documentation/Screenshots/COLOURS.jpg)
-<br>128 Colour Display
-* 4 Colour Modes
-    * Default PAWSv2 as shown
-    * GRRGGBB mode
-    * PAWSv1 with upper 63 colours as shades of grey
-    * Greayscale with 127 shades of grey
+<br>255 Colour Display
+* 2 Colour Modes
+    * RRGGGBBM mode
+    * Greayscale with 255 shades of grey
 
 ![BIOS](documentation/Screenshots/3DMAZE.jpg)
 <br>Demonstration game for the GPU and the hardware accelerated drawing of 2D Shapes
@@ -138,3 +137,4 @@ This will initialise the BIOS and allow the selection of a PAW file to load and 
         * FAT32 read only support
         * With Linux compatible file I/O plus PAWS file selector
     * MINI-DMA CONTROLLER
+    * Real Time Clock

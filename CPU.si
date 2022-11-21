@@ -23,7 +23,7 @@ $$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
 bitfield L00cacheI{ uint$L00Ipartaddresswidth$ tag, uint30 instruction, uint1 compressed, uint1 valid }
 
 // HART 1 - SMT
-$$ L01Iblocks = 2
+$$ L01Iblocks = 4
 $$ L01Icount = clog2(L01Iblocks)
 $$ L01Ipartaddresswidth = addr_width - 1 - L01Icount - L0Icacheaddrwidth
 $$ L01Ipartaddressstart = 1 + L01Icount + L0Icacheaddrwidth
@@ -59,12 +59,11 @@ unit PAWSCPU(
     // RESET COUNTER
     uint8  resetCounter = 8hff;                     uint8   resetNEXT <:: resetCounter - ~( memorybusy | EXECUTESLOW.busy | ICACHE_0W.CLS | ICACHE_1W.CLS );
 
-    // CPU REGISTERS AND THREAD SELECTION
+    // THREAD SELECTION, INSTRUCTION AND COMPRESSED FLAG, PROGRAM COUNTERS
     uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
     uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
-    uint$addr_width$  pc = 0;                       uint$addr_width$  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;                                        // HART 0 pc + UPDATE
-    uint$addr_width$  pcSMT = uninitialized;        uint$addr_width$  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;         // HART 1 pc + update
-    uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                                          // SELECT PC FOR THIS CYCLE
+    uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;
+    uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                      // SELECT PC FOR THIS CYCLE
 
     // RISC-V 32 BIT CONTROLLER
     uint32  result <:: RV32CONTROL.IS_FASTALU ? EXECUTEFAST.result : EXECUTESLOW.result;
@@ -209,9 +208,7 @@ unit PAWSCPU(
         address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed,
         invalidate <: EXECUTEFAST.fenceACTIVE[0,1]
     );
-    uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );
-    uint32  L0instruction <:: { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
-    uint1   L0compressed <:: SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
+    // UPDATE L0 cache flags
     uint1   ICACHEUPDATE = uninitialised;
     ICACHE_0W.update := ~SMT & ICACHEUPDATE; ICACHE_1W.update := SMT & ICACHEUPDATE;
 
@@ -219,6 +216,11 @@ unit PAWSCPU(
     FETCH.start := 0; LOAD.start := 0; STORE.start := 0; DMA.start := 0; EXECUTESLOW.start := 0; COMMIT := 0; ICACHEUPDATE := 0;
 
     algorithm <autorun> {
+        // SELECT L0 CACHE, MATCH AND COMPRESSED FLAGS, INSTRUCTION
+        uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );
+        uint32  L0instruction <:: { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
+        uint1   L0compressed <:: SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
+
         while( |resetCounter ) { resetCounter = resetNEXT; }                                                                        // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
         cacheselect = 0; FETCH.start = ~L0match;                                                                                    // START FETCH FIRST INSTRUCTION
 
@@ -259,6 +261,8 @@ unit PAWSCPU(
     always_after {
         uint4   memorycontrols <: { FETCH.busy, LOAD.busy, STORE.busy, DMAACTIVE };
         uint1   SMT_next <:: ~SMT & SMTRUNNING;
+        uint$addr_width$  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;
+        uint$addr_width$  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;
 
         // COPY MEMORY WRITE VALUE FROM DMA ENGINE OR STORE UNIT
         { writedata = memorycontrols[0,1] ? DMA.writedata : RV32CONTROL.IS_FASTALU ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput; }
@@ -298,13 +302,13 @@ $$end
     output  uint1   compressed,
     output  uint1   tagmatch
 ) <reginputs> {
-    uint$32+L00Ipartaddresswidth$ cacheline = uninitialised;
-
     $$for i=0,(L00Iblocks-1) do
         L0cache_$i$.addr0 := address[$1+L00Icount$,$L0Icacheaddrwidth$];
     $$end
 
     always_after {
+        uint$32+L00Ipartaddresswidth$ cacheline = uninitialised;
+
         { tagmatch = ~( invalidate | CLS ) & ( L00cacheI( cacheline ).tag == address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$] ) & L00cacheI( cacheline).valid; }
         { instruction = L00cacheI( cacheline ).instruction; }
         { compressed = L00cacheI( cacheline ).compressed; }
@@ -374,13 +378,13 @@ $$end
     output  uint1   compressed,
     output  uint1   tagmatch
 ) <reginputs> {
-    uint$32+L01Ipartaddresswidth$ cacheline = uninitialised;
-
     $$for i=0,(L01Iblocks-1) do
         L0cache_$i$.addr0 := address[$1+L01Icount$,$L0Icacheaddrwidth$];
     $$end
 
     always_after {
+        uint$32+L01Ipartaddresswidth$ cacheline = uninitialised;
+
         { tagmatch = ~( invalidate | CLS ) & ( L01cacheI( cacheline ).tag == address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$] ) & L01cacheI( cacheline ).valid; }
         { instruction = L01cacheI( cacheline ).instruction; }
         { compressed =  L01cacheI( cacheline ).compressed; }
@@ -533,10 +537,16 @@ unit cpuexecuteSLOWPATH(
         // PROVIDE WAIT STATE FOR APPROPRIATE OPERATION
         while(1) {
             if( start ) {
-                while( unitbusy ) {} busy = 0;                                                                          // FPU CALCULATIONS AND INTEGER DIVISION
-                                                                                                                        // CSR, ATOMIC OPERATIONS, FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                busy = 1;
+                onehot( operation ) {
+                    case 0: { ++: }                                                                                     // CSR
+                    case 1: {}                                                                                          // ATOMIC OPERATIONS
+                    case 2: { ++: }                                                                                     // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                    case 3: { while( unitbusy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
+                }
+                busy = 0;
                 CSR.updateFPUflags = fpuconvert | fpucalc;
-            } else { busy = 0; }
+            }
         }
     }
 
@@ -629,12 +639,13 @@ unit fetch(
 
     algorithm <autorun> {
         while(1) {
-            if( start ) { while( memorybusy ) {} complete = 1; busy = 0; } else { busy = 0; }
+            if( start ) { while( memorybusy ) {} complete = 1; } else { busy = 0; }
         }
     }
 
     always_after {
         { if( start ) { busy = 1; } }
+        { if( complete ) { busy = 0; } }
         {
             if( complete ) {
                 switch( readdata[0,2] ) {                                               // EXPAND COMPRESSED INSTRUCTION
@@ -667,19 +678,20 @@ unit load(
 
     algorithm <autorun> {
         while(1) {
-            if( start ) { while( memorybusy ) {} complete = 1; busy = 0; } else { busy = 0; }
+            if( start ) { while( memorybusy ) {} complete = 1; } else { busy = 0; }
         }
     }
 
     always_after {
         { if( start ) { busy = 1; } }
+        { if( complete ) { busy = 0; } }
         {
             // SIGN FOR 8 AND 16 BIT LOADS
             uint1   sign <:: ~dounsigned & ( accesssize[0,1] ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
 
             if( complete ) {
                 memoryinput = accesssize[1,1] ? readdata :                                              // 32 BIT
-                                accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                        // 16 BIT
+                              accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                        // 16 BIT
                                                 { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };   // 8 BIT
             }
         }

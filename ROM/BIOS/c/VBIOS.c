@@ -601,7 +601,7 @@ void main( void ) {
 
     beep( CHANNEL_LEFT, WAVE_TRIANGLE, 3, 250 );
 
-#define MEMTEST int
+#define MEMTEST unsigned char
     MEMTEST *memword, word, error, action;
     memword = (MEMTEST *)0x6000000; word = 0; error = 0; action = 0;
 

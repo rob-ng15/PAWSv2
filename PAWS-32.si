@@ -85,11 +85,11 @@ $$end
     inout   uint1   gpdi_scl
 ) <@clock_system,reginputs> {
     uint1   clock_system = uninitialized;
-    uint1   clock_io = uninitialized;
+    uint1   clock_system_alt = uninitialized;
     uint1   clock_cpu = uninitialized;
     uint1   clock_decode = uninitialized;
     uint1   clock_cache = uninitialized;
-    uint1   clock_vio = uninitialized;
+    uint1   clock_palette = uninitialized;
 $$if VERILATOR then
     $$clock_25mhz = 'video_clock'
     // --- PLL
@@ -98,10 +98,10 @@ $$if VERILATOR then
       sdram_clock   :> sdram_clock,
       clock_decode   :> clock_decode,
       compute_clock :> clock_system,
+      compute_clock :> clock_system_alt,
       compute_clock :> clock_cpu,
-      compute_clock :> clock_io,
       clock_decode :> clock_cache,
-      compute_clock :> clock_vio,
+      compute_clock :> clock_palette,
     );
 $$else
     $$clock_25mhz = 'clock'
@@ -112,8 +112,8 @@ $$else
     ulx3s_clk_PAWS_SYSTEM clk_gen_SYSTEM (
         clkin    <: $clock_25mhz$,
         clkSYSTEM  :> clock_system,
-        clkIO :> clock_io,
         clkSDRAM :> sdram_clock,
+        clkSYSTEMalt :> clock_system_alt,
         clkSDRAMcontrol :> sdram_clk,
         locked   :> pll_lock_SYSTEM
     );
@@ -122,7 +122,7 @@ $$else
         clkin    <: $clock_25mhz$,
         clkCPU :> clock_cpu,
         clkDECODE :> clock_decode,
-        clkVIO :> clock_vio,
+        clkPAL :> clock_palette,
         clkCACHE :> clock_cache,
         locked   :> pll_lock_CPU
     );
@@ -133,15 +133,7 @@ $$end
 
     // SDRAM chip controller by @sylefeb
     sdram_r16w16_io sio_fullrate; sdram_r16w16_io sio_halfrate;
-$$if VERILATOR then
     sdram_half_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
-$$else
-$$if sdram_150_mhz then
-    sdram_third_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
-$$else
-    sdram_half_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
-$$end
-$$end
     sdram_controller_autoprecharge_r16_w16 sdram32MB <@sdram_clock,!sdram_reset> (
         sd        <:> sio_fullrate,
         sdram_cle :>  sdram_cle,
@@ -167,7 +159,7 @@ $$end
         clock_cache <: clock_cache,
         accesssize <: CPU.accesssize,
         cacheselect <: CPU.cacheselect,
-        address <: CPU.address[0,26],
+        address <: CPU.address[0,$addr_width-1$],
         writedata <: CPU.writedata
     );
 
@@ -179,9 +171,9 @@ $$end
     );
 
     // MEMORY MAPPED I/O + SMT CONTROLS
-    // 32 bit cache memory bus, 0 I cache, 16384 D cache
-    uint32  SOC = 32b10000010000;
-    io_memmap IO_Map <@clock_io,!reset> (
+    // 16 bit cache memory bus, 0 I cache, 16384 D cache
+    uint32  SOC = 32b00000010000;
+    io_memmap IO_Map <@clock_system,!reset> (
         leds :> leds,
 $$if not SIMULATION then
         gn <: gn,
@@ -212,13 +204,13 @@ $$if SIMULATION then
     uint4 audio_l(0);
     uint4 audio_r(0);
 $$end
-    timers_memmap TIMERS_Map <@clock_io,!reset> (
+    timers_memmap TIMERS_Map <@clock_system,!reset> (
         clock_25mhz <: $clock_25mhz$,
         memoryAddress <: CPU.address[0,6],
         writeData <: CPU.writedata
     );
 
-    audio_memmap AUDIO_Map <@clock_io,!reset> (
+    audio_memmap AUDIO_Map <@clock_system,!reset> (
         clock_25mhz <: $clock_25mhz$,
         memoryAddress <: CPU.address[0,5],
         accesssize <: CPU.accesssize,
@@ -228,9 +220,10 @@ $$end
         static8bit <: TIMERS_Map.static16bit[0,8]
     );
 
-    video_memmap VIDEO_Map <@clock_vio,!reset> (
+    video_memmap VIDEO_Map <@clock_system,!reset> (
         video_clock <: $clock_25mhz$,
         gpu_clock <: $clock_25mhz$,
+        palette_clock <: clock_palette,
         memoryAddressDirect <: CPU.address,
         accesssize <: CPU.accesssize,
         memoryAddress <: CPU.address[0,12],
@@ -265,7 +258,7 @@ $$end
     );
 
     // IDENTIFY ADDRESS BLOCK
-    uint1   SDRAM <:: CPU.address[26,1];                            uint1   VIDEODIRECT <:: ~SDRAM & CPU.address[25,1];
+    uint1   SDRAM <:: CPU.address[$addr_width-1$,1];                uint1   VIDEODIRECT <:: ~SDRAM & CPU.address[$addr_width-2$,1];
     uint1   BRAM <:: ~SDRAM & ~VIDEODIRECT & ~CPU.address[15,1];    uint1   IOmem <:: ~SDRAM & ~VIDEODIRECT & ~BRAM;
     uint1   TIMERS <:: IOmem & ( ~|CPU.address[12,2] );
     uint1   VIDEO <:: IOmem & ( CPU.address[12,2] == 2h1 );
@@ -279,28 +272,28 @@ $$end
                 TIMERS ? TIMERS_Map.readData :
                 VIDEO ? VIDEO_Map.readData :
                 AUDIO ? AUDIO_Map.readData :
-                IO? IO_Map.readData : 0;
+                IO ? IO_Map.readData : 0;
 
     always_after {
-        DRAM.readflag = SDRAM & CPU.readmemory;
-        AUDIO_Map.memoryRead = AUDIO & CPU.readmemory;
-        IO_Map.memoryRead = IO & CPU.readmemory;
-        TIMERS_Map.memoryRead = TIMERS & CPU.readmemory;
-        VIDEO_Map.memoryRead = VIDEO & CPU.readmemory;
-        VIDEO_Map.memoryReadDirect = VIDEODIRECT & CPU.readmemory;
+        // SET READ FLAGS
+        { DRAM.readflag = SDRAM & CPU.readmemory; }
+        { IO_Map.memoryRead = IO & CPU.readmemory; }
+        { TIMERS_Map.memoryRead = TIMERS & CPU.readmemory; }
 
-        DRAM.writeflag = SDRAM & CPU.writememory;
-        RAM.writeflag = BRAM & CPU.writememory;
-        AUDIO_Map.memoryWrite = AUDIO & CPU.writememory;
-        IO_Map.memoryWrite = IO & CPU.writememory;
-        TIMERS_Map.memoryWrite = TIMERS & CPU.writememory;
-        VIDEO_Map.memoryWrite = VIDEO & CPU.writememory;
-        VIDEO_Map.memoryWriteDirect = VIDEODIRECT & CPU.writememory;
+        // SET WRITE FLAGS
+        { DRAM.writeflag = SDRAM & CPU.writememory; }
+        { RAM.writeflag = BRAM & CPU.writememory; }
+        { AUDIO_Map.memoryWrite = AUDIO & CPU.writememory; }
+        { IO_Map.memoryWrite = IO & CPU.writememory; }
+        { TIMERS_Map.memoryWrite = TIMERS & CPU.writememory; }
+        { VIDEO_Map.memoryWrite = VIDEO & CPU.writememory; }
+        { VIDEO_Map.memoryWriteDirect = VIDEODIRECT & CPU.writememory; }
 
         // CPU BUSY STATE
-        CPU.memorybusy = DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT );
+        { CPU.memorybusy = DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT ); }
     }
 }
+
 
 // RAM - BRAM controller
 unit bramcontroller(
@@ -321,20 +314,23 @@ unit bramcontroller(
         dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
     $$end
 
-    // FLAGS FOR BRAM ADDRESSES - ram0 lower 16 bits, ram1 upper 16 bits
-    ram.addr0 := address[1,14]; ram.addr1 := address[1,14] + 1;
-
-    // READ AND WRITE DATA
-    readdata := { ram.rdata1, ram.rdata0 }; ram.wenable0 := 0; ram.wenable1 := 0;
+    // WRITE ENABLE FLAGS
+    ram.wenable0 := 0; ram.wenable1 := 0;
 
     always_after {
-        if( writeflag ) {
-            switch( accesssize ) {
-                default: { ram.wdata0 = { {2{writedata[0,8]}} }; ram.wenable0 = address[0,1] ? 2b10 : 2b01; }
-                case 2b01: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; }
-                case 2b10: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; ram.wdata1 = writedata[16,16]; ram.wenable1 = 2b11; }
+        // FLAGS FOR BRAM ADDRESSES - ram0 lower 16 bits, ram1 upper 16 bits,
+        { ram.addr0 = address[1,14]; ram.addr1 = address[1,14] + 1;  }
+        {
+            if( writeflag ) {
+                switch( accesssize ) {
+                    default: { ram.wdata0 = { {2{writedata[0,8]}} }; ram.wenable0 = address[0,1] ? 2b10 : 2b01; }
+                    case 2b01: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; }
+                    case 2b10: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; ram.wdata1 = writedata[16,16]; ram.wenable1 = 2b11; }
+                }
             }
         }
+        // COMBINE ram0 AND ram1 TO 32 BIT READ
+        { readdata = { ram.rdata1, ram.rdata0 }; }
     }
 }
 
@@ -376,9 +372,7 @@ unit cachecontroller(
     output  uint32  readdata,
     output  uint1   busy(0)
 ) <reginputs> {
-    uint$sdram_addr_width$ address2 <:: address + 2;
-
-    // SINGLE DATA&INSTRUCTION CACHE
+    // COMBINED DATA&INSTRUCTION CACHE
     simple_dualport_bram uint16 Dcache0 <@clock_cache,@clock> [$L1size$] = uninitialized;
     simple_dualport_bram uint$L1partaddresswidth+2$ Dtags0 <@clock_cache,@clock> [$L1size$] = uninitialized;
     simple_dualport_bram uint16 Dcache1 <@clock_cache,@clock> [$L1size$] = uninitialized;
@@ -389,91 +383,78 @@ unit cachecontroller(
     // SDRAM CONTROLLER
     uint32  sdramreaddata = uninitialized;          sdramcontroller SDRAM( sio <:> sio );
 
-    // ACCESSMASK WHICH PARTS OF THE 2 x 16 BIT CACHE PARTS ARE USED
-    uint2   accessmask <: accesssize[1,1] ? 2b11 : 2b01;
-
-    // CACHE TAG match flags
-    uint1   Dcachematch <:: ( accesssize[1,1] ? &DCACHE.tagmatch : DCACHE.tagmatch[0,1] );
-
     // VALUE TO WRITE THROUGH TO THE CACHE
     uint32  cachewritevalue = uninitialized;
 
     // MEMORY ACCESS FLAGS
     uint1   doread = uninitialized;                 uint1   dowrite = uninitialized;
-    uint1   readflag_s = uninitialized;             uint1   writeflag_s = uninitialized;
+
+    // ADDRESS FOR FOLLOWING MEMORY ADDRESS
+    uint$sdram_addr_width$ address2 <:: address + 2;
+
+    // ACCESSMASK WHICH PARTS OF THE 2 x 16 BIT CACHE PARTS ARE USED
+    uint2   accessmask <:: { accesssize[1,1], 1b1 };
+
+    // CACHE TAG flags
+    uint1   Dmatch <:: ( accesssize[1,1] ? &DCACHE.tagmatch : DCACHE.tagmatch[0,1] );
+    uint2   Devict <:: accessmask & DCACHE.needswrite & ~DCACHE.tagmatch;
+    uint2   Dread <:: accessmask & ~DCACHE.tagmatch;
+
+    // SDRAM READ FLAG FOR CACHE MISS, READ OR 8 BIT WRITE
     uint1   doreadsdram <:: ( doread | ( dowrite & ~|accesssize ) );
 
     // SDRAM ACCESS AND CACHE UPDATE FLAGS
     SDRAM.readflag := 0; SDRAM.writeflag := 0; DCACHEW.update := 0;
 
-    always_before {
-        if( readflag ) { readflag_s = 1; busy = 1; }
-        if( writeflag ) { writeflag_s = 1; busy = 1; }
-    }
-
     algorithm <autorun> {
         while(1) {
-            doread = readflag_s; dowrite = writeflag_s; readflag_s = 0; writeflag_s = 0;
-
+            doread = readflag; dowrite = writeflag;
             if( doread | dowrite ) {
-                if( Dcachematch ) {                                              // READ/WRITE IN CACHE
+                if( Dmatch ) {                                                                                                          // CACHE HIT
                     if( dowrite ) {
                         ++:
-                        DCACHEW.update = accessmask;                                                                     // UPDATE CACHE IF WRITE
-                        __display("HIT: %x -> %x (%b)",cachewritevalue,address,accesssize);
-//                        busy = 0;
+                        DCACHEW.update = accessmask;                                                                                    // UPDATE CACHE IF WRITE
                     } else {
-                        __display("HIT: %x <- %x (%b)",readdata,address,accesssize);
-//                        busy = 0;
-                        doread = 1;
+                        DCACHEW.update = 0;
                     }
-                } else {                                                                                                         // CACHE MISS
-//                    busy = 1;
-                    if( |( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ) ) {
-                        __display("MISS: EVICTING %b",( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ));
-                        switch( accessmask & DCACHE.needswrite & ~DCACHE.tagmatch ) {
-                            case 2b00: {}
+                } else {                                                                                                                // CACHE MISS
+                    busy = 1;
+                    if( |Devict ) {
+                        switch( Devict ) {                                                                                              // EVICT AS CACHE LINE NEEDED AND OCCUPIED
+                            case 2b00: { SDRAM.writeflag = 0; }
                             case 2b01: {
                                 SDRAM.address = DCACHE.cacheaddressL; SDRAM.writedata = DCACHE.rdata[0,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
-                                __display(".L.. %x -> %x",DCACHE.rdata[0,16],DCACHE.cacheaddressL);
                             }
                             case 2b10: {
                                 SDRAM.address = DCACHE.cacheaddressH; SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
-                                __display("H... %x -> %x",DCACHE.rdata[16,16],DCACHE.cacheaddressH);
                             }
                             case 2b11: {
                                 SDRAM.address = DCACHE.cacheaddressH; SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
                                 SDRAM.address = DCACHE.cacheaddressL; SDRAM.writedata = DCACHE.rdata[0,16]; SDRAM.writeflag = 1; while( ~sio.done ) {}
-                                __display("HL.. %x -> %x %x -> %x",DCACHE.rdata[16,16],DCACHE.cacheaddressH,DCACHE.rdata[0,16],DCACHE.cacheaddressL);
                             }
                         }
                     } else {
                         SDRAM.writeflag = 0;
-                        __display("MISS: NO EVICTING");
                     }
                     if( doreadsdram ) {
-                        __display("MISS: READING %b from %x",( accessmask & ~DCACHE.tagmatch ),address);
-                        switch( accessmask & ~DCACHE.tagmatch ) {
-                            case 2b00: {}
+                        switch( Dread ) {                                                                                               // READ FROM SDRAM FOR READ / 8 BIT WRITE
+                            case 2b00: { SDRAM.readflag = 0; }
                             case 2b01: {
-                                SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata = sio.data_out;
+                                SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata = { 16b0, SDRAM.readdata };
                             }
                             case 2b10: {
-                                SDRAM.address = address2; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata = { sio.data_out, 16b0 };
+                                SDRAM.address = address2; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata = { SDRAM.readdata, 16b0 };
                             }
                             case 2b11: {
-                                SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata = sio.data_out;
-                                SDRAM.address = address2; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata[16,16] = sio.data_out;
+                                SDRAM.address = address; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata[0,16] = SDRAM.readdata;
+                                SDRAM.address = address2; SDRAM.readflag = 1; while( ~sio.done ) {} sdramreaddata[16,16] = SDRAM.readdata;
                             }
                         }
-                        __display("... READ %x",sdramreaddata);
-                        DCACHEW.update = ( accessmask & ~DCACHE.tagmatch );                                                                           // UPDATE THE CACHE
-//                        busy = 0;
+                        DCACHEW.update = Dread;                                                                                         // UPDATE THE CACHE FOR READ / 8 BIT WRITE
                     } else {
-                        __display("MISS: WRITE %x -> %x (%b)",cachewritevalue,address,accesssize);
-                        DCACHEW.update = accessmask;                                                                               // UPDATE CACHE FOR 16 BIT WRITE
-//                        busy = 0;
+                        DCACHEW.update = accessmask;                                                                                    // UPDATE CACHE FOR 32/16 BIT WRITE
                     }
+                    busy = 0;
                 }
             } else {
                 busy = 0;
@@ -482,19 +463,21 @@ unit cachecontroller(
     }
 
     always_after {
-        switch( accesssize ) {
-            case 2b00: {
-                readdata = DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16];
-                cachewritevalue = dowrite ? address[0,1] ? { writedata[0,8], DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,8] : sdramreaddata[0,8] } :
-                                                           { DCACHE.tagmatch[0,1] ? DCACHE.rdata[8,8] : sdramreaddata[8,8], writedata[0,8] } : readdata;
-            }
-            case 2b01: {
-                readdata = DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16];
-                cachewritevalue = dowrite ? writedata[0,16] : readdata;
-            }
-            default: {
-                readdata = { DCACHE.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16], DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] };
-                cachewritevalue = dowrite ? writedata : readdata;
+        {
+            switch( accesssize ) {
+                case 2b00: {
+                    readdata = DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16];
+                    cachewritevalue = dowrite ? address[0,1] ? { writedata[0,8], DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,8] : sdramreaddata[0,8] } :
+                                                               { DCACHE.tagmatch[0,1] ? DCACHE.rdata[8,8] : sdramreaddata[8,8], writedata[0,8] } : readdata;
+                }
+                case 2b01: {
+                    readdata = DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16];
+                    cachewritevalue = dowrite ? writedata[0,16] : readdata;
+                }
+                default: {
+                    readdata = { DCACHE.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16], DCACHE.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] };
+                    cachewritevalue = dowrite ? writedata : readdata;
+                }
             }
         }
     }
@@ -517,22 +500,25 @@ unit cache_read(
     // 2 BLOCKS ONE FOR xxx0x ONE FOR xxx1x addresses
     // DATA CACHE ADDRESS IS LOWER bits of the address, dropping the BYTE AND HALF WORD address bits
     // DATA CACHE TAG IS REMAINING bits of the address + 1 bit for valid flag + 1 bit for needwritetosdram flag
-    uint$sdram_addr_width$ address0 <: address + { address[1,1], 1b0 };
 
-    cache0.addr0 := address0[2,$L1cacheaddrwidth$]; tags0.addr0 := cache0.addr0;
-    cache1.addr0 := address[2,$L1cacheaddrwidth$]; tags1.addr0 := cache1.addr0;
+    always_after {
+        uint$sdram_addr_width$ address0 <:: address + { address[1,1], 1b0 };
 
-    tagmatch := address[1,1] ? { { L1cachetag(tags0.rdata0).valid, L1cachetag(tags0.rdata0).partaddress } == { 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] },
-                                 { L1cachetag(tags1.rdata0).valid, L1cachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] } } :
-                               { { L1cachetag(tags1.rdata0).valid, L1cachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] },
-                                 { L1cachetag(tags0.rdata0).valid, L1cachetag(tags0.rdata0).partaddress } == { 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] } };
+        { cache0.addr0 = address0[2,$L1cacheaddrwidth$]; } { tags0.addr0 = address0[2,$L1cacheaddrwidth$]; }
+        { cache1.addr0 = address[2,$L1cacheaddrwidth$]; } { tags1.addr0 = address[2,$L1cacheaddrwidth$]; }
 
-    needswrite := address[1,1] ? { L1cachetag(tags0.rdata0).needswrite, L1cachetag(tags1.rdata0).needswrite } : { L1cachetag(tags1.rdata0).needswrite, L1cachetag(tags0.rdata0).needswrite };
+        {
+            tagmatch = address[1,1] ? { { L1cachetag(tags0.rdata0).valid, L1cachetag(tags0.rdata0).partaddress } == { 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] },
+                                        { L1cachetag(tags1.rdata0).valid, L1cachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] } } :
+                                    { { L1cachetag(tags1.rdata0).valid, L1cachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] },
+                                        { L1cachetag(tags0.rdata0).valid, L1cachetag(tags0.rdata0).partaddress } == { 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] } };
+        }
 
-    rdata := address[1,1] ? { cache0.rdata0, cache1.rdata0 } : { cache1.rdata0, cache0.rdata0 };
-
-    cacheaddressL := address[1,1] ? { L1cachetag(tags1.rdata0).partaddress, address[2,$L1cacheaddrwidth$], 2b10 } : { L1cachetag(tags0.rdata0).partaddress, address0[2,$L1cacheaddrwidth$], 2b00 };
-    cacheaddressH := address[1,1] ? { L1cachetag(tags0.rdata0).partaddress, address0[2,$L1cacheaddrwidth$], 2b00 } : { L1cachetag(tags1.rdata0).partaddress, address[2,$L1cacheaddrwidth$], 2b10 };
+        { needswrite = address[1,1] ? { L1cachetag(tags0.rdata0).needswrite, L1cachetag(tags1.rdata0).needswrite } : { L1cachetag(tags1.rdata0).needswrite, L1cachetag(tags0.rdata0).needswrite }; }
+        { rdata = address[1,1] ? { cache0.rdata0, cache1.rdata0 } : { cache1.rdata0, cache0.rdata0 }; }
+        { cacheaddressL = address[1,1] ? { L1cachetag(tags1.rdata0).partaddress, address[2,$L1cacheaddrwidth$], 2b10 } : { L1cachetag(tags0.rdata0).partaddress, address0[2,$L1cacheaddrwidth$], 2b00 }; }
+        { cacheaddressH = address[1,1] ? { L1cachetag(tags0.rdata0).partaddress, address0[2,$L1cacheaddrwidth$], 2b00 } : { L1cachetag(tags1.rdata0).partaddress, address[2,$L1cacheaddrwidth$], 2b10 }; }
+    }
 }
 unit cache_write(
     simple_dualport_bram_port1 cache0,
@@ -544,37 +530,36 @@ unit cache_write(
     input   uint32  writedata,
     input   uint2   update
 ) <reginputs> {
-    uint$sdram_addr_width$ address0 <: address + { address[1,1], 2b0 };
-
-    cache0.addr1 := address0[2,$L1cacheaddrwidth$]; tags0.addr1 := cache0.addr1;
-    cache1.addr1 := address[2,$L1cacheaddrwidth$]; tags1.addr1 := cache1.addr1;
     cache0.wenable1 := 0; cache1.wenable1 := 0; tags0.wenable1 := 0; tags1.wenable1 := 0;
 
     always_after {
-        switch( address[1,1] ) {
-            case 0: {
-                if( update[0,1] ) {
-                    cache0.wdata1 = writedata[0,16]; tags0.wdata1 = { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
-                    cache0.wenable1 = 1; tags0.wenable1 = 1;
-                    __display(".... CACHE0 UPDATE: %x -> [%x]",writedata[0,16],cache0.addr1);
-                }
-                if( update[1,1] ) {
-                    cache1.wdata1 = writedata[16,16]; tags1.wdata1 = { needwritetosdram, 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
-                    cache1.wenable1 = 1; tags1.wenable1 = 1;
-                    __display(".... CACHE1 UPDATE: %x -> [%x]",writedata[16,16],cache1.addr1);
-                }
+        uint$sdram_addr_width$ address0 <:: address + { address[1,1], 2b0 };
+
+        { cache0.addr1 = address0[2,$L1cacheaddrwidth$]; } { tags0.addr1 = address0[2,$L1cacheaddrwidth$]; }
+        { cache1.addr1 = address[2,$L1cacheaddrwidth$]; } { tags1.addr1 = address[2,$L1cacheaddrwidth$]; }
+
+        {
+            switch( address[1,1] ) {
+                case 0: { if( update[0,1] ) { cache0.wdata1 = writedata[0,16]; cache0.wenable1 = 1; } }
+                case 1: { if( update[0,1] ) { cache1.wdata1 = writedata[0,16]; cache1.wenable1 = 1; } }
             }
-            case 1: {
-                if( update[0,1] ) {
-                    cache1.wdata1 = writedata[0,16]; tags1.wdata1 = { needwritetosdram, 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
-                    cache1.wenable1 = 1; tags1.wenable1 = 1;
-                    __display(".... CACHE1 UPDATE: %x -> [%x]",writedata[0,16],cache1.addr1);
-                }
-                if( update[1,1] ) {
-                    cache0.wdata1 = writedata[16,16]; tags0.wdata1 = { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
-                    cache0.wenable1 = 1; tags0.wenable1 = 1;
-                    __display(".... CACHE UPDATE: %x -> [%x]",writedata[16,16],cache0.addr1);
-                }
+        }
+        {
+            switch( address[1,1] ) {
+                case 0: { if( update[0,1] ) { tags0.wdata1 = { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] }; tags0.wenable1 = 1; } }
+                case 1: { if( update[0,1] ) { tags1.wdata1 = { needwritetosdram, 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] }; tags1.wenable1 = 1; } }
+            }
+        }
+        {
+            switch( address[1,1] ) {
+                case 0: { if( update[1,1] ) { cache1.wdata1 = writedata[16,16]; cache1.wenable1 = 1; } }
+                case 1: { if( update[1,1] ) { cache0.wdata1 = writedata[16,16]; cache0.wenable1 = 1; } }
+            }
+        }
+        {
+            switch( address[1,1] ) {
+                case 0: { if( update[1,1] ) { tags1.wdata1 = { needwritetosdram, 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] }; tags1.wenable1 = 1; } }
+                case 1: { if( update[1,1] ) { tags0.wdata1 = { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] }; tags0.wenable1 = 1; } }
             }
         }
     }
@@ -586,15 +571,19 @@ unit sdramcontroller(
     input   uint$sdram_addr_width$  address,
     input   uint1   writeflag,
     input   uint16  writedata,
-    input   uint1   readflag
+    input   uint1   readflag,
+    output! uint16  readdata,
+    output  uint1   busy(0)
 ) <reginputs> {
-    sio.in_valid := 0;
-
     always_after {
-        if( readflag | writeflag ) {
-            sio.addr = { address[1,$sdram_addr_width-1$], 1b0 };
-            if( writeflag ) { sio.data_in = writedata; sio.rw = 1; } else { sio.rw = 0; }
-            sio.in_valid = 1;
-        }
+        uint1   rw <:: readflag | writeflag;        uint1   dR = uninitialized;
+
+        { if( writeflag ) { sio.data_in = writedata; } }
+        { if( rw ) { sio.addr = address; } }
+        { if( rw ) { dR = readflag; } }
+        { sio.rw = writeflag; }
+        { sio.in_valid = rw; }
+        { busy = rw ? 1 : sio.done ? 0 : busy; }
+        { if( sio.done & dR ) { readdata = sio.data_out; } }
     }
 }
