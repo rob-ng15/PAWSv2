@@ -5,8 +5,8 @@
 module ulx3s_clk_PAWS_SYSTEM
 (
     input clkin,                // 25 MHz, 0 deg
-    output  clkSYSTEM,          // 50 MHz, 0 deg        // SYSTEM CLOCK - Memory
-    output  clkIO,              // 50 MHz, 0 deg        // SYSTEM CLOCK - I/O
+    output  clkSYSTEM,          // 50 MHz, 0 deg        // SYSTEM CLOCK - Memory and I/O
+    output  clkSYSTEMalt,       // 50 MHz, 0 deg        // SYSTEM CLOCK - Alternative
     output  clkSDRAM,           // 100 MHz, 0 deg       // SDRAM
     output  clkSDRAMcontrol,    // 100 MHz, 180 deg     // SDRAM controller
     output  locked
@@ -53,7 +53,7 @@ EHXPLLL #(
         .CLKOP(clkSYSTEM),
         .CLKOS(clkSDRAMcontrol),
         .CLKOS2(clkSDRAM),
-        .CLKOS3(clkIO),
+        .CLKOS3(clkSYSTEMalt),
         .CLKFB(clkSYSTEM),
         .CLKINTFB(),
         .PHASESEL0(1'b0),

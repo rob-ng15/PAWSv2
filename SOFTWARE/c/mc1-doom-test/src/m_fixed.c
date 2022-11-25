@@ -42,3 +42,29 @@ fixed_t FixedDiv (fixed_t a, fixed_t b)
     FIXED_REGS[0] = a; FIXED_REGS[1] = b; FIXED_REGS_B[0x08] = 1; while( FIXED_REGS_B[0x08] );
     return( FIXED_REGS[0] );
 }
+
+// 2 PARALLEL FIXED POINT DIVISION ACCELERATORS
+void P_FixedDiv (fixed_t a1, fixed_t b1, fixed_t *r1, fixed_t a2, fixed_t b2, fixed_t *r2 ) {
+    unsigned char volatile *FIXED_REGS_B = (unsigned char volatile *)FIXED_REGS;                 // BYTE ACCESS TO START / STATUS REGISTERS
+
+    FIXED_REGS[0] = a1; FIXED_REGS[1] = b1; FIXED_REGS_B[0x08] = 1;
+    FIXED_REGS[4] = a2; FIXED_REGS[5] = b1; FIXED_REGS_B[0x18] = 1;
+    while( FIXED_REGS_B[0x08] | FIXED_REGS_B[0x18] );
+
+    if ((abs (a1) >> 14) >= abs (b1)) { *r1 = (a1 ^ b1) < 0 ? MININT : MAXINT; } else { *r1 = FIXED_REGS[0]; }
+    if ((abs (a2) >> 14) >= abs (b2)) { *r2 = (a2 ^ b2) < 0 ? MININT : MAXINT; } else { *r1 = FIXED_REGS[4]; }
+}
+
+fixed_t p_a1,p_b1,p_a2,p_b2;
+void P_FixedDiv_start (fixed_t a1, fixed_t b1, fixed_t a2, fixed_t b2 ) {
+    unsigned char volatile *FIXED_REGS_B = (unsigned char volatile *)FIXED_REGS;                 // BYTE ACCESS TO START / STATUS REGISTERS
+    p_a1 = FIXED_REGS[0] = a1; p_b1 = FIXED_REGS[1] = b1; FIXED_REGS_B[0x08] = 1;
+    p_a2 = FIXED_REGS[4] = a2; p_b1 = FIXED_REGS[5] = b1; FIXED_REGS_B[0x18] = 1;
+}
+void P_FixedDiv_result (fixed_t *r1,fixed_t *r2 ) {
+    unsigned char volatile *FIXED_REGS_B = (unsigned char volatile *)FIXED_REGS;                 // BYTE ACCESS TO START / STATUS REGISTERS
+    while( FIXED_REGS_B[0x08] | FIXED_REGS_B[0x18] );
+
+    if ((abs (p_a1) >> 14) >= abs (p_b1)) { *r1 = (p_a1 ^ p_b1) < 0 ? MININT : MAXINT; } else { *r1 = FIXED_REGS[0]; }
+    if ((abs (p_a2) >> 14) >= abs (p_b2)) { *r2 = (p_a2 ^ p_b2) < 0 ? MININT : MAXINT; } else { *r1 = FIXED_REGS[4]; }
+}

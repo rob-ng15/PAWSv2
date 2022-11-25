@@ -91,48 +91,58 @@ unit background_copper(
     // COPPER PROGRAM ENTRY
     uint10  value <:: copper_coordinates.rdata0[10,1]? copper_cpu_input : copper_coordinates.rdata0[0,10];
 
+    // COMPARISON
+    uint1   lessthan <:: ( ( copper_conditions.rdata0 == 3b101 ) ? copper_variable : copper_conditions.rdata0[2,1] ? pix_x : pix_y ) < value;
+    uint1   equal <:: ( ( copper_commands.rdata0 == 3b101 ) ? copper_variable : copper_conditions.rdata0[2,1] ? pix_x : pix_y ) ==
+                    ( ( copper_commands.rdata0 == 3b101 ) ? ( value[0,1] ? pix_x : pix_y ) : value );
+
     // COPPER FLAGS
     copper_commands.addr0 := PC;                    copper_conditions.addr0 := PC;                      copper_coordinates.addr0 := PC;
     copper_modes.addr0 := PC;                       copper_alts.addr0 := PC;                            copper_colours.addr0 := PC;
     copper_execute := 0;
 
     always_after {
-        // UPDATE THE BACKGROUND GENERATOR FROM THE COPPER
-        if( copper_status ) {
-            switch( copper_commands.rdata0 ) {
-                case 3b000: {                                                                                                                                               // JUMP ON CONDITION
-                    switch( copper_conditions.rdata0 ) {
-                        default: { copper_execute = 1; }
-                        case 3b001: { copper_execute = ( pix_vblank == value[0,1] ); }                                                                                          // VBLANK
-                        case 3b010: { copper_execute = ( pix_active == value[0,1] ); }                                                                                          // HBLANK
-                        case 3b011: { copper_execute = ( pix_y < value ); }                                                                                                     // Y <
-                        case 3b100: { copper_execute = ( pix_x < value ); }                                                                                                     // X <
-                        case 3b101: { copper_execute = ( copper_variable < value ); }                                                                                           // VAR <
+        {
+            if( copper_status ) {
+                switch( copper_commands.rdata0 ) {
+                    case 3b000: {                                                                                                                                               // JUMP ON CONDITION
+                        switch( copper_conditions.rdata0 ) {
+                            default: { copper_execute = 1; }
+                            case 3b001: { copper_execute = ( pix_vblank == value[0,1] ); }                                                                                          // VBLANK
+                            case 3b010: { copper_execute = ( pix_active == value[0,1] ); }                                                                                          // HBLANK
+                            case 3b011: { copper_execute = |value ? lessthan : pix_vblank; }                                                                                        // Y <
+                            case 3b100: { copper_execute = |value ? lessthan : pix_active; }                                                                                        // X <
+                            case 3b101: { copper_execute = lessthan; }                                                                                                              // VAR <
+                        }
+                    }                                                                                                                                                           // WAIT
+                    case 3b001: { copper_execute = pix_vblank; }                                                                                                                    // VBLANK
+                    case 3b010: { copper_execute = ~pix_active; }                                                                                                                   // ACTIVE DISPLAY
+                    case 3b011: { copper_execute = equal; }                                                                                                                         // Y =
+                    case 3b100: { copper_execute = equal; }                                                                                                                         // X =
+                    case 3b101: { copper_execute = equal; }                                                                                                                         // VAR = X or Y
+                    case 3b110: { copper_variable = copper_conditions.rdata0[0,1] ? value : copper_variable + ( copper_conditions.rdata0[2,1] ? ( -value ) : value ); }         // SET VAR
+                    case 3b111: {                                                                                                                                               // SET FROM COPPER
+                        if( copper_conditions.rdata0[0,1] ) { BACKGROUNDcolour = copper_variable; }
+                        if( copper_conditions.rdata0[1,1] ) { BACKGROUNDalt = copper_variable; }
+                        if( copper_conditions.rdata0[2,1] ) { BACKGROUNDmode = copper_variable;}
                     }
-                }                                                                                                                                                           // WAIT
-                case 3b001: { copper_execute = pix_vblank; }                                                                                                                    // VBLANK
-                case 3b010: { copper_execute = ~pix_active; }                                                                                                                   // ACTIVE DISPLAY
-                case 3b011: { copper_execute = ( pix_y == value ); }                                                                                                            // Y =
-                case 3b100: { copper_execute = ( pix_x == value ); }                                                                                                            // X =
-                case 3b101: { copper_execute = ( copper_variable == ( value[0,1] ? pix_x : pix_y ) ); }                                                                         // VAR = X or Y
-                case 3b110: { copper_variable = copper_conditions.rdata0[0,1] ? value : copper_variable + ( copper_conditions.rdata0[2,1] ? ( -value ) : value ); }         // SET COPPER
-                case 3b111: {                                                                                                                                               // SET FROM COPPER
-                    if( copper_conditions.rdata0[0,1] ) { BACKGROUNDcolour = copper_variable; }
-                    if( copper_conditions.rdata0[1,1] ) { BACKGROUNDalt = copper_variable; }
-                    if( copper_conditions.rdata0[2,1] ) { BACKGROUNDmode = copper_variable;}
+                }
+            } else{
+                BACKGROUNDcolour = backgroundcolour; BACKGROUNDalt = backgroundcolour_alt; BACKGROUNDmode = backgroundcolour_mode;              // UPDATE THE BACKGROUND GENERATOR FROM THE CPU
+                PC = 0;
+            }
+        }
+        {
+            if( copper_status ) {
+                if( copper_execute & |copper_commands.rdata0 ) {                                                                                // CHANGE BACKGROUND PROGRAM
+                    if( copper_conditions.rdata0[0,1] ) { BACKGROUNDcolour = copper_colours.rdata0; }
+                    if( copper_conditions.rdata0[1,1] ) { BACKGROUNDalt = copper_alts.rdata0; }
+                    if( copper_conditions.rdata0[2,1] ) { BACKGROUNDmode = copper_modes.rdata0; }
+                }
+                if( ~|copper_commands.rdata0 | &copper_commands.rdata0[1,2] | copper_execute ) {                                                // MOVE TO NEXT INSTRUCTION
+                    PC = ( ~|copper_commands.rdata0 & copper_execute ) ? copper_colours.rdata0 : PCplus1;
                 }
             }
-            if( copper_execute & |copper_commands.rdata0 ) {                                                                                                                // CHANGE BACKGROUND PROGRAM
-                if( copper_conditions.rdata0[0,1] ) { BACKGROUNDcolour = copper_colours.rdata0; }
-                if( copper_conditions.rdata0[1,1] ) { BACKGROUNDalt = copper_alts.rdata0; }
-                if( copper_conditions.rdata0[2,1] ) { BACKGROUNDmode = copper_modes.rdata0; }
-            }
-            if( ~|copper_commands.rdata0 | &copper_commands.rdata0[1,2] | copper_execute ) {                                                                               // MOVE TO NEXT INSTRUCTION
-                PC = ( ~|copper_commands.rdata0 & copper_execute ) ? copper_colours.rdata0 : PCplus1;
-            }
-        } else{
-            BACKGROUNDcolour = backgroundcolour; BACKGROUNDalt = backgroundcolour_alt; BACKGROUNDmode = backgroundcolour_mode;
-            PC = 0;
         }
     }
 }
@@ -150,14 +160,14 @@ unit background_display(
     input   uint4   b_mode,
     input   uint1   colourmode
 ) <reginputs> {
-    uint1   tophalf <:: ( pix_y < 240 );            uint1   lefthalf <:: ( pix_x < 320 );               uint2   checkmode <:: b_mode - 7;
-    uint2   condition = uninitialised;              uint8   greys[4] = { 8h00, 8h5b, 8had, 8hff };
+    uint2   condition = uninitialised;
 
-    rainbow RAINBOW( colourmode <: colourmode, y <: pix_y[6,3] );
+    uint1   tophalf <:: ( pix_y < 240 );            uint1   lefthalf <:: ( pix_x < 320 );               uint2   checkmode <:: b_mode - 7;
+
     starfield STARS( pix_x <: pix_x, pix_y <: pix_y );
 
-    algorithm <autorun> {
-        while(1) {
+    always_after {
+        {
             // DETERMINE BACKGROUND PATTERN
             switch( b_mode ) {
                 case 0: { condition = 1; }                                              // SOLID
@@ -174,34 +184,19 @@ unit background_display(
                 default: { condition = ( pix_x[checkmode,1] ^ pix_y[checkmode,1] ); }   // CHECKERBOARDS (7,8,9,10)
             }
         }
-    }
+        {
+            // 8 COLOUR RAINDOW IN DIFFERENT SCREEN COLOUR MODES
+            // DKRED RED ORANGE YELLOW GREEN BLUE DKPURPLE VIOLET
+            uint8   rainbow[] = { 8h80, 8hc1, 8he1, 8hf9, 8h38, 8h0f, 8h45, 8ha7 };
 
-    always_after {
-        // SWITCH TO THE APPROPRIATE COLOUR
-        switch( condition ) {
-            case 0: { pixel = b_alt; }                                                  // EVERYTHING ELSE
-            case 1: { pixel = b_colour; }
-            case 2: { pixel = RAINBOW.colour; }                                         // RAINBOW
-            case 3: { pixel = greys[staticGenerator]; }                                 // STATIC
+            // SWITCH TO THE APPROPRIATE COLOUR
+            switch( condition ) {
+                case 0: { pixel = b_alt; }                                                                  // EVERYTHING ELSE
+                case 1: { pixel = b_colour; }
+                case 2: { pixel = colourmode ? { pix_y[7,2], {2{pix_y[6,3]}} } : rainbow[ pix_y[6,3] ]; }   // RAINBOW
+                case 3: { pixel = {4{staticGenerator}}; }                                                   // STATIC
+            }
         }
-    }
-}
-
-unit rainbow(
-    input   uint1   colourmode,
-    input   uint3   y,
-    output! uint8   colour
-) <reginputs> {
-    // 8 COLOUR RAINDOW IN DIFFERENT SCREEN COLOUR MODES
-    // DKRED RED ORANGE YELLOW GREEN BLUE DKPURPLE VIOLET
-    uint8   rainbow[] = {
-        8h80, 8hc1, 8he1, 8hf9, 8h38, 8h0f, 8h45, 8ha7,                             // RGBM
-        8hff, 8hdf, 8hbf, 8h9f, 8h7f, 8h5f, 8h3f, 8h1f                              // GREY GRADIENTS
-
-    };
-
-    always_after {
-        colour = rainbow[ { colourmode, y } ];
     }
 }
 
@@ -211,15 +206,14 @@ unit starfield(
     output! uint1   star
 ) <reginputs> {
     // Variables for SNOW (from @sylefeb)
-    int10   dotpos <:: ( frame >> rand_x[10,2] ) + rand_x;
-    int12   rand_x = 0;
-    int12   rand_xNEXT <:: rand_x * 31421 + 6927;
     int32   frame = 0;
+    int12   rand_x = 0;
+    uint10 dotpos <:: ( frame >> rand_x[10,2] ) + rand_x;
 
     always_after {
         // Increment frame number for the snow/star field
-        frame = frame + ( ( pix_x == 639 ) & ( pix_y == 479 ) );
-        rand_x = ( ~|pix_x )  ? 1 : rand_xNEXT;
-        star = ( pix_y == dotpos );
+        { frame = frame + ( ( pix_x == 639 ) & ( pix_y == 479 ) ); }
+        { rand_x = |pix_x ?  rand_x * 31421 + 6927 : 1; }
+        { star = ( pix_y == dotpos ); }
     }
 }

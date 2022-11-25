@@ -1,4 +1,5 @@
 #ifndef __PAWSLIBRARY__
+#include <stddef.h>
 #include "PAWSdefinitions.h"
 
 // MEMORY
@@ -60,12 +61,15 @@ extern void screen_dimmer( unsigned char dimmerlevel );
 extern void bitmap_display( unsigned char );
 extern void bitmap_draw( unsigned char );
 extern void bitmap_256( unsigned char );
+extern void bitmap_256( unsigned char mode );
+extern void set_palette( unsigned char entry, unsigned int rgb );
+extern void use_palette( unsigned char mode );
 
 // BACKGROUND GENERATOR
 extern void set_background( unsigned char, unsigned char, unsigned char );
 extern void copper_startstop( unsigned char ) ;
 extern void copper_program( unsigned char, unsigned char, unsigned char, unsigned short, unsigned char, unsigned char, unsigned char );
- void set_copper_cpuinput( unsigned short );
+void set_copper_cpuinput( unsigned short );
 
 // TILEMAP
 extern void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action );
@@ -102,12 +106,12 @@ extern void set_blitter_chbitmap( unsigned char, unsigned char *);
 extern void set_colourblitter_bitmap( unsigned char, unsigned char *);
 extern void gpu_pixelblock( short , short , unsigned short, unsigned short, unsigned char, unsigned char *);
 extern void gpu_pixelblock24( short , short , unsigned short, unsigned short, unsigned char *);
- void gpu_pixelblock_start( short , short , unsigned short );
- void gpu_pixelblock_mode( unsigned char mode );
- void gpu_pixelblock_pixel( unsigned char );
- void gpu_pixelblock_pixel24( unsigned char, unsigned char, unsigned char );
- void gpu_pixelblock_stop( void );
- void gpu_pixelblock_remap( unsigned char from, unsigned char to );
+void gpu_pixelblock_start( short , short , unsigned short );
+void gpu_pixelblock_mode( unsigned char mode );
+void gpu_pixelblock_pixel( unsigned char );
+void gpu_pixelblock_pixel24( unsigned char, unsigned char, unsigned char );
+void gpu_pixelblock_stop( void );
+void gpu_pixelblock_remap( unsigned char from, unsigned char to );
 
 extern void gpu_printf( unsigned char, short, short, unsigned char, unsigned char, unsigned char, const char *,...  );
 extern void gpu_printf_centre( unsigned char, short, short, unsigned char, unsigned char, unsigned char, const char *,...  );
@@ -178,9 +182,14 @@ extern int volatile *IO_REGS;
 extern int volatile *DMA_REGS;
 extern int volatile *DMA_REGS_ALT;
 extern int volatile *GPU_REGS;
+extern int volatile *DISPLAY_REGS;
 extern int volatile *AUDIO_REGS;
 extern int volatile *FIXED_REGS;
 extern int volatile *TIMER_REGS;
+
+extern void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd );
+extern void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles );
+extern void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles );
 
 #define __PAWSLIBRARY__
 #endif

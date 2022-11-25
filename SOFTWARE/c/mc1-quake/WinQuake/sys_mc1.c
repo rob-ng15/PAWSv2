@@ -268,11 +268,11 @@ void Sys_Error (char *error, ...)
 {
 	va_list argptr;
 
-	printf ("Sys_Error: ");
+	fprintf (stderr,"Sys_Error: ");
 	va_start (argptr, error);
-	vprintf (error, argptr);
+	vfprintf (stderr,error, argptr);
 	va_end (argptr);
-	printf ("\n");
+	fprintf (stderr,"\n");
 
 	exit (1);
 }
@@ -282,7 +282,7 @@ void Sys_Printf (char *fmt, ...)
 	va_list argptr;
 
 	va_start (argptr, fmt);
-	vprintf (fmt, argptr);
+	vfprintf (stderr,fmt, argptr);
 	va_end (argptr);
 }
 
@@ -346,14 +346,14 @@ void main (int argc, char **argv)
 
 	parms.memsize = 8 * 1024 * 1024;
 	parms.membase = malloc (parms.memsize);
-	parms.basedir = ".";
+	parms.basedir = "/DEMO";
+	fprintf (stderr,"Host_Init, membase = 0x%08x\n",(int)parms.membase);
 
 	COM_InitArgv (argc, argv);
 
 	parms.argc = com_argc;
 	parms.argv = com_argv;
 
-	printf ("Host_Init\n");
 	Host_Init (&parms);
 
 	s_keyptr = GET_MMIO (KEYPTR);
@@ -369,6 +369,7 @@ void main (int argc, char **argv)
 		else
 			oldtime += (double)time;
 
+		fprintf(stderr,"Calling Host_Frame( %f )\n",time);
 		Host_Frame (time);
 	}
 }

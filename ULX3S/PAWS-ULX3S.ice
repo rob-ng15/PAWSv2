@@ -1,15 +1,8 @@
-$$ uart_in_clock_freq_mhz = 25
-
-// CLOCK SELECTION FLAGS
-//$$ sdram_150_mhz = 1
+$$ uart_in_clock_freq_mhz = 50
 
 $$if not SIMULATION then
 // CLOCKS
-$$if sdram_150_mhz then
-import('../common/clock_PAWS-sdram150.v')
-$$else
 import('../common/clock_PAWS-sdram100.v')
-$$end
 import('../common/clock_PAWS-CPU.v')
 $$end
 
@@ -19,18 +12,18 @@ $include('../common/hdmi.ice')
 $$end
 
 $$if VGA then
-$include('vga.ice')
+$include('vga.si')
 $$end
 
 // IO - UART, SDCARD, I2C and PS/2 KEYBOARD
-$include('../common/uart.ice')
+$include('../common/uart.si')
 $include('../common/sdcard_write.si')
 $include('../common/ps2.si')
 
 // SDRAM
-$include('../common/sdram_interfaces.ice')
-$include('../common/sdram_controller_autoprecharge_r16_w16.ice')
-$include('../common/sdram_utils.ice')
+$include('../common/sdram_interfaces.si')
+$include('../common/sdram_controller_autoprecharge_r16_w16.si')
+$include('../common/sdram_utils.si')
 
 // CLEAN RESET - WIDTH 1v
 $$ clean_reset_width = 1
@@ -55,14 +48,17 @@ $include('../video_memmap.si')
 $include('../io_memmap.si')
 $include('../timers_random.si')
 
-// CPU SPECIFICATION
-$$CPUISA = 0x40001027
+// CPU SPECIFICATION - RV32IMAFCB
+$$CPUISA = 0x40011027
 $include('../cpu_functionblocks.si')
 $include('../ALU.si')
 $include('../FPU.si')
+//$include('../FPU_PIPE.si')
+//$include('../FPU_FSM.si')
+//$include('../FPU_NEW.si')
 $include('../CPU.si')
 
-// MAIN
+// MAIN PAWS.si cache is 32 bits
 $include('../PAWS.si')
 
 // I2C (EMARD FOR RTC)

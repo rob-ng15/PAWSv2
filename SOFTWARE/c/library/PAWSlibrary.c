@@ -18,6 +18,11 @@ extern int errno;
 #include "PAWSdefinitions.h"
 #include "PAWSintrinsics.h"
 
+#define FENCEIO asm volatile ("fence io, io");
+#define FENCEMEM asm volatile ("fence rw, rw");
+#define FENCEALL asm volatile ("fence iorw, iorw");
+#define NOFENCE asm volatile ("fence.i");
+
 // TOP OF SDRAM MEMORY
 unsigned char *MEMORYTOP = (unsigned char *)0x8000000;;
 
@@ -29,21 +34,48 @@ unsigned int CSRisa() {
 }
 
 unsigned long CSRcycles() {
-   unsigned long cycles;
-   asm volatile ("rdcycle %0" : "=r"(cycles));
-   return cycles;
+    unsigned long cycles;
+    unsigned int *cycles_r = (unsigned int *)&cycles, cycles_hi0;
+    asm volatile(
+        "rdcycleh %0\n"
+        "rdcycle %1\n"
+        "rdcycleh %2\n"
+        "sub %0, %0, %2\n"
+        "seqz %0, %0\n"
+        "sub %0, zero, %0\n"
+        "and %1, %1, %0\n"
+        : "=r"(cycles_hi0), "=r"(cycles_r[0]), "=r"(cycles_r[1]));
+    return cycles;
 }
 
 unsigned long CSRinstructions() {
-   unsigned long insns;
-   asm volatile ("rdinstret %0" : "=r"(insns));
-   return insns;
+    unsigned long insns;
+    unsigned int *insns_r = (unsigned int *)&insns, insns_hi0;
+    asm volatile(
+        "rdinstreth %0\n"
+        "rdinstret %1\n"
+        "rdinstreth %2\n"
+        "sub %0, %0, %2\n"
+        "seqz %0, %0\n"
+        "sub %0, zero, %0\n"
+        "and %1, %1, %0\n"
+        : "=r"(insns_hi0), "=r"(insns_r[0]), "=r"(insns_r[1]));
+    return insns;
 }
 
 unsigned long CSRtime() {
-  unsigned long time;
-  asm volatile ("rdtime %0" : "=r"(time));
-  return time;
+    unsigned long timer;
+    unsigned int *timer_r = (unsigned int *)&timer, timer_hi0;
+    asm volatile(
+        "rdtimeh %0\n"
+        "rdtime %1\n"
+        "rdtimeh %2\n"
+        "sub %0, %0, %2\n"
+        "seqz %0, %0\n"
+        "sub %0, zero, %0\n"
+        "and %1, %1, %0\n"
+        : "=r"(timer_hi0), "=r"(timer_r[0]), "=r"(timer_r[1]));
+    return timer;
 }
 
 // SMT START STOP AND STATUS
@@ -319,6 +351,14 @@ void bitmap_draw( unsigned char framebuffer ) {
 
 void bitmap_256( unsigned char mode ) {
     *BITMAP_DISPLAY256 = mode;
+}
+
+void set_palette( unsigned char entry, unsigned int rgb ) {
+    *PALETTEENTRY = entry; *PALETTERGB = rgb;
+}
+
+void use_palette( unsigned char mode ) {
+    *PALETTEACTIVE = mode;
 }
 
 // BACKGROUND GENERATOR
@@ -1081,7 +1121,7 @@ void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsign
     }
 }
 
-// SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
+// SET 4 SPRITES AS A 32x32 BLOCK, REFLECTING/ROTATING AS REQUIRED. POSITION IS THE CENTRE OF THE 32x32 BLOCK (CAN BE DOUBLED TO 64x64)
 void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
     static unsigned char positions[][4] = {
         { 0, 1, 2, 3 }, // NO ACTION
@@ -1093,7 +1133,7 @@ void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsi
         { 3, 2, 1, 0 }, // ROTATE 180
         { 1, 3, 0, 2 }, // ROTATE 270
     };
-    int size = (  sprite_attributes & 8 ) ? 32 : 16;
+    int size = ( sprite_attributes & 16 ) ? 64 : ( sprite_attributes & 8 ) ? 32 : 16;
 
     set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][0], active, x - size, y - size, tile, sprite_attributes );
     set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][1], active, x - size, y, tile, sprite_attributes );
@@ -2146,6 +2186,7 @@ struct sFL_FILE *__filehandles[ MAXOPENFILES + 3 ]; // stdin, stdout, stderr
 int __find_filehandlespace( void ) {
     for( int i = 3; i < MAXOPENFILES+3; i++ ) {
         if( __filehandles[ i ] == NULL ) {
+            NOFENCE
             return i;
         }
     }
@@ -2507,3 +2548,6 @@ int paws_strcmp ( const char *string1, const char *string2 ) {
 
 size_t paws_strlen ( const char *string ) {
 }
+
+#include "akavel_gostdc/vfscanf.c"
+#include "akavel_gostdc/fscanf.c"

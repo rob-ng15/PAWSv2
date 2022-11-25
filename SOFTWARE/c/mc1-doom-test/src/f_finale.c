@@ -35,6 +35,8 @@
 #include "doomstat.h"
 #include "r_state.h"
 
+#include <PAWSlibrary.h>
+
 // ?
 //#include "doomstat.h"
 //#include "r_local.h"

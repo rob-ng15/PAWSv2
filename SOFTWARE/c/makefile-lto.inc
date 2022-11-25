@@ -10,10 +10,12 @@ LD=$(ARCH)-elf-ld.bfd
 NM=$(ARCH)--elf-nm
 RANLIB=$(ARCH)--elf-ranlib
 
-BUILD_DIR=build
+GCCVER=12.1.0
+
+BUILD_DIR=build_lto
 OUTPUT_DIR=../../PAWS/
 
-CFLAGS=-march=rv32imafc_zba_zbb_zbc_zbs_zbkb -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
+CFLAGS=-march=rv32imafc_zba_zbb_zbc_zbs_zbkb_zbkx_zifencei -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf32lriscv -Wl,-belf32-littleriscv
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 
@@ -22,7 +24,7 @@ INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I/usr/riscv32-elf/
 
 LIBRARY=/usr/riscv64-elf/lib/rv32imafc/ilp32f/libc.a \
 		/usr/riscv64-elf/lib/rv32imafc/ilp32f/libm.a \
-		/usr/lib/gcc/riscv64-elf/12.1.0/rv32imafc/ilp32f/libgcc.a \
+		/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv32imafc/ilp32f/libgcc.a \
 
 CRT0SOURCE=	$(PAWSBASE)library/crt0.c
 CRT0OBJ=	$(PAWSBASE)library/$(BUILD_DIR)/crt0.o

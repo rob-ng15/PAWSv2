@@ -9,11 +9,11 @@
 #define HEIGHT 120
 #define SIZE 2
 
-unsigned char universe[HEIGHT][WIDTH], framebuffer = 0;
+unsigned char universe[HEIGHT][WIDTH], framebuffer = 1;
 int w = WIDTH, h = HEIGHT, x, y, d;
 
 void show( void ) {
-    bitmap_draw( 1 - framebuffer );
+    bitmap_draw( 3 - framebuffer );
     gpu_cs();
 
     for_y for_x
@@ -26,7 +26,7 @@ void show( void ) {
     }
 
     // SWITCH THE FRAMEBUFFER
-    framebuffer = 1 - framebuffer;
+    framebuffer = 3 - framebuffer;
     bitmap_display( framebuffer );
 }
 

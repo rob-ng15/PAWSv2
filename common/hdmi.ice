@@ -132,7 +132,7 @@ algorithm hdmi(
   output! uint4  gpdi_dp,
   input   uint8  red,
   input   uint8  green,
-  input   uint8  blue,
+  input   uint8  blue
 )  {
 
   uint10 cntx  = 0;

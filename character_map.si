@@ -6,7 +6,6 @@ bitfield  charactermap {
 
 unit character_map(
     input   uint1   clockCG,
-
     dualport_bram_port0 charactermap,
 
     input   uint10  pix_x,
@@ -27,22 +26,22 @@ unit character_map(
     characterrom512 CGROM <@clockCG> ( tile <: charactermap(charactermap.rdata0).character, y <: pix_y[0,3] );
 
     // Character position on the screen x 0-79, y 0-59 * 80 ( fetch it 1 pixel ahead of the actual x pixel, so it is always ready )
-    uint6   ycharacterpos <: ( ( pix_vblank ? 0 : pix_y ) >> 3 );
-    uint13  ycharacteraddress <: 80 * ycharacterpos;
+    uint6   ycharacterpos <:: ( ( pix_vblank ? 0 : pix_y ) >> 3 );
+    uint13  ycharacteraddress <:: 80 * ycharacterpos;
 
     // Derive the actual pixel in the current character + determine if cursor and visible/flashing
     uint1   characterpixel <:: CGROM.line[ ~pix_x[0,3], 1 ];
     uint1   is_cursor <:: tpu_showcursor & blink & ( cursor_x == ( pix_x >> 3 ) ) & ( cursor_y == ycharacterpos );
 
     // Set up reading of the charactermap
-    charactermap.addr0 := ( ( pix_active ?  pix_x + 1 : 0 ) >> 3 ) + ycharacteraddress; charactermap.addr0 := ( ( pix_active ?  pix_x + 1 : 0 ) >> 3 ) + ycharacteraddress;
+    charactermap.addr0 := ( ( pix_active ?  pix_x + 1 : 0 ) >> 3 ) + ycharacteraddress;
     charactermap.wenable0 := 0;
 
     // RENDER - Default to transparent
     always_after {
-        character_map_display = pix_active & ( characterpixel | ( charactermap(charactermap.rdata0).background != 64 ) | is_cursor );
-        pixel = is_cursor ? characterpixel ? tpu_background : tpu_foreground :
-                            characterpixel ? charactermap(charactermap.rdata0).foreground : charactermap(charactermap.rdata0).background;
+        { character_map_display = pix_active & ( characterpixel | ( charactermap(charactermap.rdata0).background != 64 ) | is_cursor ); }
+        { pixel = is_cursor ? characterpixel ? tpu_background : tpu_foreground :
+                             characterpixel ? charactermap(charactermap.rdata0).foreground : charactermap(charactermap.rdata0).background; }
     }
 }
 
@@ -52,8 +51,8 @@ unit cmcursorx(
     output  uint1   ATLAST
 ) <reginputs> {
     always_after {
-        ATLAST = ( tpu_active_x == 79 );
-        NEXT = tpu_active_x + 1;
+        { ATLAST = ( tpu_active_x == 79 ); }
+        { NEXT = tpu_active_x + 1; }
     }
 }
 unit cmcursory(
@@ -73,9 +72,9 @@ unit cmaddresses(
     output  uint13  YENDADDR
 ) <reginputs> {
     always_after {
-        WRITEADDR = tpu_active_x + tpu_active_y * 80;
-        YSTARTADDR = tpu_y * 80;
-        YENDADDR = YSTARTADDR + 80;
+        { WRITEADDR = tpu_active_x + tpu_active_y * 80; }
+        { YSTARTADDR = tpu_y * 80; }
+        { YENDADDR = YSTARTADDR + 80; }
     }
 }
 
@@ -109,16 +108,18 @@ unit character_map_writer(
     uint25  curses_wipe <:: { curses_wipe_background, curses_wipe_foreground, 9h0 };
 
     // TPU character position
-    uint7   tpu_active_x = 0;                       cmcursorx TPUX( tpu_active_x <: tpu_active_x );
-    uint6   tpu_active_y = 0;                       cmcursory TPUY( tpu_active_y <: tpu_active_y );
+    cmcursorx TPUX( tpu_active_x <: cursor_x );     cmcursory TPUY( tpu_active_y <: cursor_y );
 
     // ADDRESS CALCULATIONS AND BRAM write access for the TPU
-    cmaddresses TPUA( tpu_active_x <: tpu_active_x, tpu_active_y <: tpu_active_y, tpu_y <: tpu_y );
+    cmaddresses TPUA( tpu_active_x <: cursor_x, tpu_active_y <: cursor_y, tpu_y <: tpu_y );
     charactermap.wenable1 := 0; charactermap_copy.wenable1 := 1;
 
     // OUTPUT FROM TPU/CURSES BUFFER AND CURSOR POSITION
     curses_cell := charactermap_copy.rdata0; tpu_cell := charactermap.rdata1;
-    cursor_x := tpu_active_x; cursor_y := tpu_active_y;
+
+    // MAIN COPY WRITE ADDRESS
+    charactermap.addr1 := |tpu_write ? TPUA.WRITEADDR : tpu_cs_addr;
+    charactermap.wdata1 := |tpu_write ? { tpu_background, tpu_foreground, tpu_character } : tpu_active[0,1] ? { 8h40, 8h40, 9h0 } : charactermap_copy.rdata0;
 
     // CURSES COPY READ ADDRESS
     charactermap_copy.addr0 := ( |tpu_active[2,2] ) ? tpu_cs_addr : TPUA.WRITEADDR;
@@ -130,13 +131,9 @@ unit character_map_writer(
                 while( tpu_cs_addr != tpu_max_count ) {
                     ++:
                     onehot( tpu_active ) {
-                        case 0: {                                                                                                                           // TPU WIPE - WHOLE OR PARTIAL SCREEN (LINE)
-                            charactermap.addr1 = tpu_cs_addr; charactermap.wdata1 = { 8h40, 8h40, 9h0 }; charactermap.wenable1 = 1;
-                        }
+                        case 0: { charactermap.wenable1 = 1; }                                                                                              // TPU WIPE - WHOLE OR PARTIAL SCREEN (LINE)
                         case 1: { charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe; }                                          // CURSES WIPE
-                        case 2: {                                                                                                                           // CURSES COPY
-                            charactermap.addr1 = tpu_cs_addr; charactermap.wdata1 = charactermap_copy.rdata0; charactermap.wenable1 = 1;
-                        }
+                        case 2: { charactermap.wenable1 = 1; }                                                                                              // CURSES COPY
                         case 3: {                                                                                                                           // CURSES SCROLL UP / DELETELN
                             charactermap_copy.addr1 = tpu_cs_addr_prevline; charactermap_copy.wdata1 = charactermap_copy.rdata0;                            // MOVE CHARACTERS UP
                             if( tpu_cs_addr_lastline ) {
@@ -155,22 +152,19 @@ unit character_map_writer(
 
     always_after {
         if( |tpu_write ) { tpu_start_cs_addr = 0; tpu_max_count = 4800; }                                           // Set default start and end points
+
         switch( tpu_write ) {
             default: {}
-            case 1: {                                                                                               // Set cursor position
-                ( tpu_active_x, tpu_active_y ) = copycoordinates( tpu_x, tpu_y );
-            }
+            case 1: { ( cursor_x, cursor_y ) = copycoordinates( tpu_x, tpu_y ); }                                   // Set cursor position
             case 2: {                                                                                               // Write character,foreground, background and move
-                charactermap.addr1 = TPUA.WRITEADDR;
-                charactermap.wdata1 = { tpu_background, tpu_foreground, tpu_character };
                 charactermap.wenable1 = 1;
                 if( TPUX.ATLAST ) {
-                    tpu_active_x = 0; tpu_active_y = TPUY.NEXT;
+                    cursor_x = 0; cursor_y = TPUY.NEXT;
                 } else {
-                    tpu_active_x = TPUX.NEXT;
+                    cursor_x = TPUX.NEXT;
                 }
             }
-            case 3: { tpu_active_x = 0; tpu_active_y = 0; tpu_active = 1; }                                         // Start tpucs
+            case 3: { cursor_x = 0; cursor_y = 0; tpu_active = 1; }                                                 // Start tpucs
             case 4: { tpu_active = 1; tpu_start_cs_addr = TPUA.YSTARTADDR; tpu_max_count = TPUA.YENDADDR; }         // Start tpu_clearline
             case 5: {                                                                                               // Write character, foreground, background to curses buffer
                 charactermap_copy.addr1 = TPUA.WRITEADDR;
@@ -182,7 +176,7 @@ unit character_map_writer(
             case 9: { tpu_active = 8; tpu_start_cs_addr = TPUA.YSTARTADDR; }                                        // Start curses deleteln
             case 10: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; tpu_max_count = TPUA.YENDADDR; }        // Start curses clear to eol
             case 11: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; }                                       // Start curses clear to bot
-            case 12: { charactermap.addr1 = TPUA.WRITEADDR; charactermap.wdata1 = { tpu_background, tpu_foreground, tpu_character }; charactermap.wenable1 = 1; } // Write directly to cell
+            case 12: { charactermap.wenable1 = 1; }                                                                 // Write directly to cell
         }
     }
 }

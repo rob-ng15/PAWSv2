@@ -10,7 +10,7 @@ int main( int argc, char **argv ) {
     float jx, jy, tx, ty, wx, wy, r;
     int k;
 
-    screen_mode( 0, MODE_PAWSv2, 0 );
+    screen_mode( 0, MODE_RGBM, 0 );
 
     for( int step = 16; step > 0; step = step >> 1 ) {
         int offset = step - 1;

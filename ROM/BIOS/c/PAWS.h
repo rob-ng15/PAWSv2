@@ -23,6 +23,9 @@ unsigned char volatile *SCREENMODE = (unsigned char volatile *) 0xdf00;
 unsigned char volatile *COLOUR = (unsigned char volatile *) 0xdf01;
 unsigned char volatile *REZ = (unsigned char volatile *) 0xdf02;
 unsigned char volatile *DIMMER = (unsigned char volatile *) 0xdf03;
+unsigned int volatile *PALETTERGB = (unsigned int volatile *) 0xdf10;
+unsigned char volatile *PALETTEENTRY = (unsigned char volatile *) 0xdf14;
+unsigned char volatile *PALETTEACTIVE = (unsigned char volatile *) 0xdf15;
 
 // BACKGROUND AND COPPER - BASE 0xd000
 unsigned char volatile *BACKGROUND_COLOUR = (unsigned char volatile *) 0xd000;
@@ -198,6 +201,8 @@ int volatile *FIXED_RESULT = (int volatile*)0xf800;
 unsigned char volatile *FIXED_STATUS = (unsigned char volatile *)0xf808;
 
 int volatile *AUDIO_REGS = (int volatile *) 0xe000;
+char volatile *TPU_REGS_B = (char volatile *) 0xd500;
+int volatile *PAWSMAGIC = (int volatile *) 0xf700;
 
 // TYPES AND STRUCTURES
 typedef unsigned int size_t;

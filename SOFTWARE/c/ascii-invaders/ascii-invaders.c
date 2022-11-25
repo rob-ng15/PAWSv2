@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <curses.h>
 #include <PAWSlibrary.h>
 
 struct Bomb {
@@ -278,7 +279,6 @@ void handleTimer(int signal) {
             paintIntro();
             refresh();
             game.state = STATE_INTRO;
-            SMTSTOP();
         }
         // game over anim
         return;

@@ -33,7 +33,7 @@
 
 module i2c_master_8bit
 #(
-  parameter c_clk_mhz = 25
+  parameter c_clk_mhz = 50
 )
 (
   input  wire       clk,

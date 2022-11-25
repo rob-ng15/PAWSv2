@@ -224,6 +224,9 @@ void sample_upload( unsigned char channel_number, unsigned short length, unsigne
 void await_vblank( void ) {
     while( !*VBLANK );
 }
+void await_vblank_finish( void ) {
+    while( *VBLANK );
+}
 
 // BACKGROUND GENERATOR
 void set_background( unsigned char colour, unsigned char altcolour, unsigned char backgroundmode ) {
@@ -325,6 +328,26 @@ void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
 void tpu_cs( void ) {
     while( *TPU_COMMIT );
     *TPU_COMMIT = 3;
+}
+// POSITION THE CURSOR to (x,y) and set background and foreground colours
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
+    while( *TPU_COMMIT );
+    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
+}
+// OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
+void tpu_output_character( short c ) {
+    while( *TPU_COMMIT );
+    *TPU_CHARACTER = c; *TPU_COMMIT = 2;
+}
+void tpu_outputstring( char *s ) {
+    while( *s ) {
+        tpu_output_character( *s );
+        s++;
+    }
+}
+void tpu_outputbinary( int number, int length ) {
+    for( int i = length - 1; i != -1; i-- )
+        tpu_output_character( '0' +  _rv32_bext( number, i ) );
 }
 
 // SET THE TILEMAP TILE at (x,y) to tile
@@ -455,7 +478,7 @@ void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, uns
 
 void draw_paws_logo( void ) {
     set_blitter_bitmap( 3, &PAWSLOGO[0] );
-    gpu_blit( 60, 2, 2, 3, 2 );
+    gpu_blit( UK_GOLD, 2, 2, 3, 2 );
 }
 
 void set_sdcard_bitmap( void ) {
@@ -466,15 +489,14 @@ void set_sdcard_bitmap( void ) {
 
 void draw_sdcard( void  ) {
     set_sdcard_bitmap();
-    gpu_blit( 60, 256, 2, 1, 2 );
+    gpu_blit( UK_GOLD, 256, 2, 1, 2 );
     gpu_blit( 6, 256, 2, 0, 2 );
 }
 
 void reset_display( void ) {
     *GPU_DITHERMODE = 0;
-    *FRAMEBUFFER_DRAW = 1; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DRAW = 0; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DISPLAY = 0;
+    *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
+    *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1;
     *SCREENMODE = 0; *COLOUR = 0;
     tpu_cs();
     *LOWER_TM_SCROLLWRAPCLEAR = 5;
@@ -549,20 +571,25 @@ void main( void ) {
     // SETUP INITIAL WELCOME MESSAGE
     draw_paws_logo();
     draw_sdcard();
+
+     // OUTPUT SOC & ISA CAPABILITIES
+    tpu_set( 1, 59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( *PAWSMAGIC, 32 );
+    tpu_set( 47,59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( CSRisa(), 32 );
+
     gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 66, 34, "Risc-V RV32IMAFCB CPU", 0 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
-        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
-        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 63 - i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
+        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
+        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
         set_tilemap_tile( 0, i, 15, i+1, 0 );
         set_tilemap_tile( 1, i, 29, i+1, 0 );
     }
 
-    gpu_outputstringcentre( 60, 72, "VERILATOR - SMT + FPU TEST", 0 );
-    gpu_outputstringcentre( 60, 80, "THREAD 0 - PACMAN SPRITES", 0 );
-    gpu_outputstringcentre( 60, 88, "THREAD 1 - FPU MANDELBROT", 0 );
+    gpu_outputstringcentre( UK_GOLD, 74, "VERILATOR - SMT + FPU TEST", 0 );
+    gpu_outputstringcentre( UK_GOLD, 82, "THREAD 0 - PACMAN SPRITES", 0 );
+    gpu_outputstringcentre( UK_GOLD, 90, "THREAD 1 - FPU MANDELBROT", 0 );
 
     SMTSTART( (unsigned int )smtthread );
 
@@ -574,14 +601,29 @@ void main( void ) {
 
     beep( CHANNEL_LEFT, WAVE_TRIANGLE, 3, 250 );
 
+#define MEMTEST unsigned char
+    MEMTEST *memword, word, error, action;
+    memword = (MEMTEST *)0x6000000; word = 0; error = 0; action = 0;
+
     while(1) {
+        if( memword < (MEMTEST *)0x8000080 ) {
+            if( action ) {
+                if( *memword != word ) {
+                    error++;
+                    set_background( RED, RED, 0 );
+                }
+                memword++; word--;
+            } else {
+                *memword++ = word--;
+            }
+        } else { memword = (MEMTEST *)0x6000000; word = 0; error = 0; action = 1 - action; }
         await_vblank();
-        if( (j&0xff)==0xff ) *UART_DATA = *SYSTEMSECONDS & 0xff;
         tilemap_scrollwrapclear( 0, 3, 1 );
         tilemap_scrollwrapclear( 1, 1, 1 );
         for( i = 0; i < 2; i++ ) update_sprite( 1, i, 1 );
         set_sprite_attribute( 1, 1, 1, ( j & 128 ) >> 7 );
         set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
         j++;
+        await_vblank_finish();
     }
 }

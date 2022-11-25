@@ -1,4 +1,16 @@
+unit palette_lookup(
+    simple_dualport_bram_port0 palette,
+    input   uint8   index,
+    output! uint24  rgb
+) {
+    palette.addr0 := index; rgb := palette.rdata0;
+}
+
 unit multiplex_display(
+    input   uint1   palette_clock,
+    simple_dualport_bram_port0 palette,
+    input   uint1   usepalette,
+
     output! uint8   pix_red,
     output! uint8   pix_green,
     output! uint8   pix_blue,
@@ -6,7 +18,6 @@ unit multiplex_display(
     // DISPLAY ORDER, COLOUR/BW MODE AND DIMMER LEVEL
     input   uint2   display_order,
     input   uint1   colour,
-    input   uint4   dimmer,
 
     // BACKGROUND
     input uint8 background_p,
@@ -35,43 +46,50 @@ unit multiplex_display(
     input uint1 terminal_p,
     input uint1 terminal_display
 ) <reginputs> {
-    selectlayer LAYER(
-        display_order <: display_order,
-        terminal_display <: terminal_display,
-        terminal <: terminal_p,
-        character_map_display <: character_map_display,
-        character_map <: character_map_p,
-        upper_sprites_display <: upper_sprites_display,
-        upper_sprites <: upper_sprites_p,
-        bitmap_display <: bitmap_display,
-        bitmap <: bitmap_p,
-        lower_sprites_display <: lower_sprites_display,
-        lower_sprites <: lower_sprites_p,
-        lower_tilemap_display <: lower_tilemap_display,
+    selectlayer mpd(
+        background <: background_p,
         lower_tilemap <: lower_tilemap_p,
-        upper_tilemap_display <: upper_tilemap_display,
+        lower_tilemap_display <: lower_tilemap_display,
         upper_tilemap <: upper_tilemap_p,
-        background <: background_p
+        upper_tilemap_display <: upper_tilemap_display,
+        lower_sprites <: lower_sprites_p,
+        lower_sprites_display <: lower_sprites_display,
+        upper_sprites <: upper_sprites_p,
+        upper_sprites_display <: upper_sprites_display,
+        bitmap <: bitmap_p,
+        bitmap_display <: bitmap_display,
+        character_map <: character_map_p,
+        character_map_display <: character_map_display,
+        terminal <: terminal_p,
+        terminal_display <: terminal_display,
+        display_order <: display_order
     );
-    uint8   BIT3to8[] = { 0, 36, 73, 109, 146, 182, 219, 255 };                                         // xxx -> 255
-    uint8   red = uninitialised;                    uint8   green = uninitialised;                      uint8   blue = uninitialised;
+    palette_lookup pl <@palette_clock> (
+        palette <:> palette,
+        index <: mpd.pixel
+    );
 
     always_after {
+        uint8   BIT3to8[] = { 0, 36, 73, 109, 146, 182, 219, 255 };                                     // xxx -> xxxxxxxx
+
         switch( colour ) {
-            case 0: {                                                                                   // RGBM
-                red = BIT3to8[ { LAYER.pixel[6,2], LAYER.pixel[0,1]} ];
-                green = BIT3to8[ LAYER.pixel[3,3] ];
-                blue = BIT3to8[ { LAYER.pixel[1,2], LAYER.pixel[0,1]} ];
+            case 0: {                                                                                   // RGBM or PALETTE
+                if( usepalette ) {
+                    pix_red = pl.rgb[16,8]; pix_green = pl.rgb[8,8]; pix_blue = pl.rgb[0,8];
+                } else {
+                    pix_red = BIT3to8[ { mpd.pixel[6,2], mpd.pixel[0,1]} ];                             // DEFAULT RGBM -> R8 G8 B8 via lookup
+                    pix_green = BIT3to8[ mpd.pixel[3,3] ];
+                    pix_blue = BIT3to8[ { mpd.pixel[1,2], mpd.pixel[0,1]} ];
+                }
             }
-            case 1: { red = LAYER.pixel; green = LAYER.pixel; blue = LAYER.pixel; }                     // GREYSCALE
+            case 1: { pix_red = mpd.pixel; pix_green = mpd.pixel; pix_blue = mpd.pixel; }               // GREYSCALE
         }
-        pix_red = red >> dimmer; pix_green = green >> dimmer; pix_blue = blue >> dimmer;
     }
 }
 
 // CHOOSE LAY TO DISPLAY
 unit selectlayer(
-    input   uint2   display_order,
+    input   uint1   display_order,
     input   uint1   terminal_display,
     input   uint1   terminal,
     input   uint1   character_map_display,
@@ -93,47 +111,24 @@ unit selectlayer(
     uint8   terminalcolour <:: terminal ? 8hff : 8h06;
 
     always_after {
-        switch( display_order ) {
-            case 0: { // BACKGROUND -> LOWER TILEMAP -> UPPER TILEMAP -> LOWER_SPRITES -> BITMAP -> UPPER_SPRITES -> CHARACTER_MAP -> TERMINAL
-                pixel = ( terminal_display ) ? terminalcolour :
-                            ( character_map_display ) ? character_map :
-                            ( upper_sprites_display ) ? upper_sprites :
-                            ( bitmap_display ) ? bitmap :
-                            ( lower_sprites_display ) ? lower_sprites :
-                            ( upper_tilemap_display ) ? upper_tilemap :
-                            ( lower_tilemap_display ) ? lower_tilemap :
-                            background;
-            }
-            case 1: { // BACKGROUND -> LOWER TILEMAP -> UPPER TILEMAP -> BITMAP -> LOWER_SPRITES -> UPPER_SPRITES -> CHARACTER_MAP -> TERMINAL
-                pixel = ( terminal_display ) ? terminalcolour :
-                        ( character_map_display ) ? character_map :
-                        ( upper_sprites_display ) ? upper_sprites :
-                        ( lower_sprites_display ) ? lower_sprites :
-                        ( bitmap_display ) ? bitmap :
-                        ( upper_tilemap_display ) ? upper_tilemap :
-                        ( lower_tilemap_display ) ? lower_tilemap :
-                        background;
-            }
-            case 2: { // BACKGROUND -> BITMAP -> LOWER TILEMAP -> UPPER TILEMAP -> LOWER_SPRITES -> UPPER_SPRITES -> CHARACTER_MAP -> TERMINAL
-                pixel = ( terminal_display ) ? terminalcolour :
-                        ( character_map_display ) ? character_map :
-                        ( upper_sprites_display ) ? upper_sprites :
-                        ( lower_sprites_display ) ? lower_sprites :
-                        ( upper_tilemap_display ) ? upper_tilemap :
-                        ( lower_tilemap_display ) ? lower_tilemap :
-                        ( bitmap_display ) ? bitmap :
-                        background;
-            }
-            case 3: { // BACKGROUND -> LOWER TILEMAP -> UPPER TILEMAP -> LOWER_SPRITES -> UPPER_SPRITES -> BITMAP -> CHARACTER_MAP -> TERMINAL
-                pixel = ( terminal_display ) ? terminalcolour :
-                        ( character_map_display ) ? character_map :
-                        ( bitmap_display ) ? bitmap :
-                        ( upper_sprites_display ) ? upper_sprites :
-                        ( lower_sprites_display ) ? lower_sprites :
-                        ( upper_tilemap_display ) ? upper_tilemap :
-                        ( lower_tilemap_display ) ? lower_tilemap :
-                        background;
-            }
+        if( display_order ) {
+            pixel = ( terminal_display ) ? terminalcolour :
+                    ( character_map_display ) ? character_map :
+                    ( upper_sprites_display ) ? upper_sprites :
+                    ( lower_sprites_display ) ? lower_sprites :
+                    ( upper_tilemap_display ) ? upper_tilemap :
+                    ( lower_tilemap_display ) ? lower_tilemap :
+                    ( bitmap_display ) ? bitmap :
+                    background;
+        } else {
+            pixel = ( terminal_display ) ? terminalcolour :
+                    ( character_map_display ) ? character_map :
+                    ( upper_sprites_display ) ? upper_sprites :
+                    ( bitmap_display ) ? bitmap :
+                    ( lower_sprites_display ) ? lower_sprites :
+                    ( upper_tilemap_display ) ? upper_tilemap :
+                    ( lower_tilemap_display ) ? lower_tilemap :
+                    background;
         }
     }
 }

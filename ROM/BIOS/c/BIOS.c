@@ -267,34 +267,53 @@ void reset_display( void ) {
     gpu_pixelblock_stop();
     while( !*GPU_FINISHED );
 
-    *GPU_DITHERMODE = 0;
-    *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
-    *FRAMEBUFFER_DRAW = 1; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DRAW = 0; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DISPLAY = 0; *BITMAP_DISPLAY256 = 0;
+    *GPU_DITHERMODE = 0; *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
+    *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
+    *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
     *SCREENMODE = 0; *COLOUR = 0; *REZ = 0; *DIMMER = 0;
     *TPU_CURSOR = 0; tpu_cs();
     *TERMINAL_SHOW = 0; *TERMINAL_RESET = 1;
-    *LOWER_TM_SCROLLWRAPCLEAR = 5;
-    *UPPER_TM_SCROLLWRAPCLEAR = 5;
+    *LOWER_TM_SCROLLWRAPCLEAR = 5; *UPPER_TM_SCROLLWRAPCLEAR = 5;
     for( unsigned short i = 0; i < 16; i++ ) {
-        LOWER_SPRITE_ACTIVE[i] = 0;
-        UPPER_SPRITE_ACTIVE[i] = 0;
+        LOWER_SPRITE_ACTIVE[i] = UPPER_SPRITE_ACTIVE[i] = 0;
     }
+}
+
+// POSITION THE CURSOR to (x,y) and set background and foreground colours
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
+    while( *TPU_COMMIT );
+    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
+}
+// OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
+void tpu_output_character( short c ) {
+    while( *TPU_COMMIT );
+    *TPU_CHARACTER = c; *TPU_COMMIT = 2;
+}
+void tpu_outputstring( char *s ) {
+    while( *s ) {
+        tpu_output_character( *s );
+        s++;
+    }
+}
+void tpu_outputbinary( int number, int length ) {
+    for( int i = length - 1; i != -1; i-- )
+        tpu_output_character( '0' +  _rv32_bext( number, i ) );
 }
 
 // SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
 void scrollbars( void ) {
     unsigned char leds = 1, direction = 0, ledcount = 0;
     short count = 0;
+    int rtc_low, rtc_high;
+
     while(1) {
         await_vblank();count++;
-        if( count == 32 ) {
+        if( count == 64 ) {
             tilemap_scrollwrapclear( 0, 3, 1 );
             tilemap_scrollwrapclear( 1, 1, 1 );
             count = 0;
             ledcount++;
-            if( ledcount == 16 ) {
+            if( ledcount == 32 ) {
                 if( direction ) {
                     if( leds == 1 ) { direction = 0; } else { leds = leds >> 1; }
                 } else {
@@ -302,6 +321,19 @@ void scrollbars( void ) {
                 }
                 *LEDS = leds;
                 ledcount = 0;
+                tpu_set( 0, 17, TRANSPARENT, WHITE );
+                rtc_high = RTC[0] << 8; rtc_low = RTC[1] + 0x20000000;
+                for( int i = 0; i < 8; i++ ) {
+                    tpu_output_character( 48 + ( ( rtc_low & 0xf0000000 ) >> 28 ) );
+                    rtc_low = rtc_low << 4;
+                    if( ( i == 3 ) || ( i == 5 ) ) tpu_output_character('-');
+                }
+                tpu_output_character(' ');
+                for( int i = 0; i < 6; i++ ) {
+                    tpu_output_character( 48 + ( ( rtc_high & 0xf0000000 ) >> 28 ) );
+                    rtc_high = rtc_high << 4;
+                    if( ( i == 1 ) || ( i == 3 ) ) tpu_output_character(':');
+                }
             }
         }
     }
@@ -407,6 +439,7 @@ void swapentries( short i, short j ) {
     memcpy( &directorynames[i], &directorynames[j], sizeof( DirectoryEntry ) );
     memcpy( &directorynames[j], &temporary, sizeof( DirectoryEntry ) );
 }
+
 void sortdirectoryentries( unsigned short entries ) {
     if( !entries )
         return;
@@ -493,7 +526,11 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 
         if( entries == 0xffff ) {
             // NO ENTRIES FOUND
-            beep( CHANNEL_BOTH, WAVE_SAW, 3, 1000 ); return(0);
+            gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
+            gpu_outputstringcentre( RED, 192, 1, "IN THIS DIRECTORY", 1 );
+            beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
+            sleep( 1000 );
+            return(0);
         }
 
         sortdirectoryentries( entries );
@@ -545,7 +582,7 @@ int main( void ) {
     unsigned short selectedfile = 0;
 
     // STOP SMT AND PIXELBLOCK
-    SMTSTOP(); *PB_STOP = 1; *PB_MODE = 0;
+    SMTSTOP(); *PB_STOP = *PB_MODE = 0;
 
     // CLEAR MEMORY
     memset( &_bss_start, 0, &_bss_end - &_bss_end );
@@ -559,6 +596,10 @@ int main( void ) {
 
     // DRAW LOGO AND SDCARD
      draw_paws_logo(); draw_sdcard();
+
+     // OUTPUT SOC & ISA CAPABILITIES
+    tpu_set( 1, 59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( *PAWSMAGIC, 32 );
+    tpu_set( 47,59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( CSRisa(), 32 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
@@ -574,8 +615,8 @@ int main( void ) {
     gpu_outputstringcentre( UK_BLUE, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS
-    while( *UART_STATUS & 1 ) { char temp = *UART_DATA; }
-    while( *PS2_AVAILABLE ) { short temp = *PS2_DATA; }
+    while( *UART_STATUS & 1 ) { (void)*UART_DATA; }
+    while( *PS2_AVAILABLE ) { (void)*PS2_DATA; }
 
     gpu_outputstringcentre( RED, 72, 0, "Waiting for SDCARD", 0 );
     gpu_outputstringcentre( RED, 80, 0, "Press RESET if not detected", 0 );
@@ -614,7 +655,7 @@ int main( void ) {
     }
 
     // ACKNOWLEDGE SELECTION AND STOP SMT TO ALLOW FASTER LOADING
-    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 250 ); SMTSTOP();
+    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 63 ); SMTSTOP();
 
     *LEDS = 255;
     gpu_outputstringcentre( WHITE, 72, 1, "PAW File", 0 );
@@ -624,7 +665,7 @@ int main( void ) {
     gpu_outputstringcentre( WHITE, 104, 0, "", 0 );
     sleep( 500 );
     gpu_outputstringcentre( WHITE, 80, 1, "LOADING", 0 );
-    sdcard_readfile( starting_cluster, (unsigned char *)0x4000000 );
+    asm volatile ("fence iorw,iorw"); sdcard_readfile( starting_cluster, (unsigned char *)0x4000000 ); asm volatile ("fence.i");
     gpu_outputstringcentre( WHITE, 72, 1, "LOADED", 0 );
     gpu_outputstringcentre( WHITE, 80, 1, "LAUNCHING", 0 );
     sleep(500);

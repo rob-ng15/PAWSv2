@@ -873,9 +873,13 @@ extern void *paws_tmpfile(void);
 #define prinf paws_printf
 #define fprintf paws_fprintf
 #define vfprintf paws_vfprintf
+#define fscanf paws_fscanf
+#define vfscanf paws_vfscanf
 
 extern int paws_printf(const char *restrict format, ... );
 extern int paws_fprintf( void *fd, const char *restrict format, ... );
 extern int paws_vfprintf( void *stream, const char *format, va_list ap);
+extern int paws_fscanf( void *fd, const char *restrict format, ... );
+extern int paws_vfscanf( void *stream, const char *format, va_list ap);
 
 #endif /* _STDIO_H_ */

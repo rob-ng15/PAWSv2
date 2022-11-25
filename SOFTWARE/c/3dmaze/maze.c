@@ -24,7 +24,7 @@
 #define MAXDEPTH 12
 
 // CURRENT FRAMEBUFFER
-unsigned char framebuffer = 0, drawsector[] = { 0b11111111, 0b01111110, 0b00111100, 0b00011000, 0b00000000 };
+unsigned char framebuffer = 1, drawsector[] = { 0b11111111, 0b01111110, 0b00111100, 0b00011000, 0b00000000 };
 
 // LEVEL - DETERMINES SIZE OF MAZE
 unsigned short level = 0;
@@ -682,7 +682,7 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
         setat( currentx, currenty, ' ', 1 );
 
         // SWITCH TO ALTERNATE FRAMEBUFFER FOR DRAWING
-        bitmap_draw( 1 - framebuffer );
+        bitmap_draw( 3 - framebuffer );
         gpu_cs();
 
         // FIND NUMBER OF STEPS FORWARD TO A WALL
@@ -740,7 +740,7 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
         draw_map( width, height, currentx, currenty, direction, peekactive ? 0 : 1, mappeeks );
 
         // SWITCH THE FRAMEBUFFER
-        framebuffer = 1 - framebuffer;
+        framebuffer = 3 - framebuffer;
         bitmap_display( framebuffer );
 
         // CHECK IF PLAYER MOVE ALLOWED
@@ -875,18 +875,18 @@ int main( int argc, char **argv ) {
         if( walk_maze( levelwidths[level], levelheights[level] ) ) {
             // PACMAN WILT GRAPHICS
             for( unsigned char i = 0; i < 5; i++ ) {
-                bitmap_draw( 1 - framebuffer );
+                bitmap_draw( 3 - framebuffer );
                 gpu_cs();
                 gpu_circle( YELLOW, 160, 120, 80, drawsector[i], 1 );
-                framebuffer = 1 - framebuffer;
+                framebuffer = 3 - framebuffer;
                 bitmap_display( framebuffer );
                 sleep1khz( 250, 0 );
             }
             // DISPLAY TOMBSTONE BITMAP AND RESET TO BEGINNING
-            bitmap_draw( 1 - framebuffer );
+            bitmap_draw( 3 - framebuffer );
             gpu_cs();
             gpu_pixelblock( 37, 0, 246, 240, TRANSPARENT, tombstonebitmap );
-            framebuffer = 1 - framebuffer;
+            framebuffer = 3 - framebuffer;
             bitmap_display( framebuffer );
             level = 0;
             firstrun = 1;
