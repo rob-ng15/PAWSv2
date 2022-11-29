@@ -61,9 +61,12 @@ unit PAWSCPU(
 
     // THREAD SELECTION, INSTRUCTION AND COMPRESSED FLAG, PROGRAM COUNTERS
     uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
+    uint1   SMT_next <:: ~SMT & SMTRUNNING;
     uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
     uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;
     uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                      // SELECT PC FOR THIS CYCLE
+    uint$addr_width$  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;
+    uint$addr_width$  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;
 
     // RISC-V 32 BIT CONTROLLER
     uint32  result <:: RV32CONTROL.IS_FASTALU ? EXECUTEFAST.result : EXECUTESLOW.result;
@@ -210,9 +213,6 @@ unit PAWSCPU(
     );
 
     uint4   memorycontrols <: { FETCH.busy, LOAD.busy, STORE.busy, DMAACTIVE };
-    uint1   SMT_next <:: ~SMT & SMTRUNNING;
-    uint$addr_width$  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;
-    uint$addr_width$  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;
 
     // SELECT L0 CACHE, MATCH AND COMPRESSED FLAGS, INSTRUCTION, UPDATE L0 cache flags
     uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );
@@ -751,7 +751,7 @@ unit dma(
 
     // COUNTERS FOR PIXEL BLOCK TRANSFERS
     uint1   PB4pixel = uninitialised;               uint3   PBmax <:: PB4pixel ? 4 : 2;                 uint3   PBcount = uninitialised;
-    uint3   PBcountp1 <:: PBcount + 1;              uint1   PBwritewait <:: ( PBcountp1 != PBmax );
+    uint3   PBcountp1 <:: PBcount + 1;
 
     uint4   dmamode = uninitialized;                uint$addr_width$  dmacount = uninitialised;         uint8   dmacycles = uninitialised;
     uint$addr_width$  dmasrc = uninitialised;       uint$addr_width$  dmadest = uninitialised;          uint32  memoryinput = uninitialised;
@@ -798,13 +798,13 @@ unit dma(
                                     while( memorybusy ) {} memoryinput = readdata;
                                     address = dmadest; PBcount = 0;
                                     while( PBcount != PBmax ) {
-                                        writedata = memoryinput[ { PBcount, 3b000 }, 8]; if( PBwritewait ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1;
+                                        writedata = memoryinput[ { PBcount, 3b000 }, 8]; writememory = 1; ++: ++: PBcount = PBcountp1;
                                     }
                                 }
                                 case 2b10: { address = dmadest; writememory = 1; while( memorybusy ) {} }
                                 case 2b11: {
                                     address = dmadest; PBcount = 0;
-                                    while( PBcount != PBmax ) { if( PBwritewait ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1; }
+                                    while( PBcount != PBmax ) { writememory = 1; ++: ++: PBcount = PBcountp1; }
                                 }
                             }
                             update = 1;

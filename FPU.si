@@ -196,19 +196,20 @@ unit floatclassify(
     input   uint4   classA,
     output  uint10  classification
 ) <reginputs> {
+    uint1   TRUEZERO <:: ~|fp32( sourceReg1F ).fraction;
+
     always_after{
-        if( |classA ) {
-            // INFINITY, NAN OR ZERO
-            onehot( classA ) {
-                case 0: { classification = ~|sourceReg1F[0,23] ? fp32( sourceReg1F ).sign ? 8 : 16 : fp32( sourceReg1F ).sign ? 4 : 32; }       // +/- 0 or subnormal
-                case 1: { classification = 512; }                                                                                               // qNAN
-                case 2: { classification = 256; }                                                                                               // sNAN
-                case 3: { classification = fp32( sourceReg1F ).sign ? 1 : 128; }                                                                // +/- INF
-            }
-        } else {
-            // NUMBER
-            classification = fp32( sourceReg1F ).sign ? 2 : 64;                                                                                 // +/- normal
-        }
+        classification = {  classA[1,1],                                            // 512  qNAN
+                            classA[2,1],                                            // 256  sNAN
+                            classA[3,1] & ~fp32( sourceReg1F ).sign,                // 128  +INF
+                            ~|classA & ~fp32( sourceReg1F ).sign,                   // 64   +NORMAL
+                            classA[0,1] & ~fp32( sourceReg1F ).sign & ~TRUEZERO,    // 32   +SUBNORMAL
+                            classA[0,1] & ~fp32( sourceReg1F ).sign & TRUEZERO,     // 16   +0
+                            classA[0,1] & fp32( sourceReg1F ).sign & TRUEZERO,      // 8    -0
+                            classA[0,1] & fp32( sourceReg1F ).sign & ~TRUEZERO,     // 4    -SUBNORMAL
+                            ~|classA & fp32( sourceReg1F ).sign,                    // 2    -NORMAL
+                            classA[3,1] & fp32( sourceReg1F ).sign                  // 1    -INF
+        };
     }
 }
 
@@ -223,7 +224,7 @@ unit floatminmax(
     output  uint5   flags,
     output  uint32  result
 ) <reginputs> {
-    uint1   NAN <:: ( classA[2,1] | classB[2,1] ) | ( classA[1,1] & classB[1,1] );
+    uint1   NAN <:: |( classA[1,2] | classB[1,2] );;
 
     always_after {
         { flags = { NAN, 4b0000 };  }
@@ -330,11 +331,15 @@ unit classifyF(
     input   uint32  a,
     output  uint4   class
 ) <reginputs> {
-    // CHECK FOR 8hff ( signals INF/NAN )
-    uint1   expFF <:: &fp32(a).exponent;            uint1   NAN <:: expFF & a[22,1];
+    uint1   expFF <:: &fp32(a).exponent;                // CHECK FOR 8hff ( signals INF/NAN )
+    uint1   zeroFRACTION <:: ~|a[0,23];                 // FRACTION == 0, INF, == 100... qNAN, == 0xxx... ( xxx... != 0 ) sNAN
 
     always_after {
-        class = { expFF & ~a[22,1], NAN & a[21,1], NAN & ~a[21,1], ~|( fp32(a).exponent ) };
+        class = {   expFF & zeroFRACTION,               // INF
+                    expFF & ~a[22,1] & ~zeroFRACTION,   // sNAN
+                    expFF & a[22,1],                    // qNAN
+                    ~|( fp32(a).exponent )              // ZERO / SUBNORMAL
+        };
     }
 }
 
@@ -555,8 +560,8 @@ unit floataddsub(
                 case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 0 : ( classB[0,1] ) ? a : b; }
                 default: {
                     switch( { IF, NN } ) {
-                        case 2b10: { result = NV ? 32hffc00000 : classA[3,1] ? a : b; }
-                        default: { result = 32hffc00000; }
+                        case 2b10: { result = NV ? 32h7fc00000 : classA[3,1] ? a : b; }
+                        default: { result = 32h7fc00000; }
                     }
                 }
             }
@@ -618,9 +623,9 @@ unit floatmultiply(
                 case 2b01: { result = { productsign, 31b0 }; }
                 default: {
                     switch( { IF, ZERO } ) {
-                        case 2b11: { result = 32hffc00000; }
-                        case 2b10: { result = NN ? 32hffc00000 : { productsign, 31h7f800000 }; }
-                        default: { result = 32hffc00000; }
+                        case 2b11: { result = 32h7fc00000; }
+                        case 2b10: { result = NN ? 32h7fc00000 : { productsign, 31h7f800000 }; }
+                        default: { result = 32h7fc00000; }
                     }
                 }
             }
@@ -693,8 +698,8 @@ unit floatdivide(
         {
             switch( ACTION ) {
                 case 2b00: { result = f32; }
-                case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 32hffc00000 : { quotientsign, classB[0,1] ? 31h7f800000 : 31h0 }; }
-                default: { result = ( classA[3,1] & classB[3,1] ) | NN | classB[0,1] ? 32hffc00000 : { quotientsign, (classA[0,1] | classB[3,1] ) ? 31b0 : 31h7f800000 }; }
+                case 2b01: { result = (classA[0,1] & classB[0,1] ) ? 32h7fc00000 : { quotientsign, classB[0,1] ? 31h7f800000 : 31h0 }; }
+                default: { result = ( classA[3,1] & classB[3,1] ) | NN | classB[0,1] ? 32h7fc00000 : { quotientsign, (classA[0,1] | classB[3,1] ) ? 31b0 : 31h7f800000 }; }
             }
         }
         { flags = { IF, NN, 1b0, classB[0,1], ~|ACTION & OF, ~|ACTION & UF, 1b0}; }
@@ -788,7 +793,7 @@ unit floatsqrt(
                 result = f32;
             } else {
                 // DETECT sNAN, qNAN, -INF, -x -> qNAN AND  INF -> INF, 0 -> 0
-                result = fp32( a ).sign ? 32hffc00000 : a;
+                result = fp32( a ).sign ? 32h7fc00000 : a;
             }
         }
         { flags = { classA[3,1], NN, NV, 1b0, ACTION & OF, ACTION & UF, 1b0 }; }
