@@ -84,32 +84,6 @@ unit random(
 
 
 // FIXED FLOAT 16.16 DIVISION ACCELERATOR
-unit do_fixed_t_divide(
-    input   uint1   start,
-    output  uint1   busy(0),
-    input   uint48  dividend,
-    input   uint48  divisor,
-    output  uint48  quotient
-) <reginputs> {
-    uint6   bit(63);                                uint48  remainder = uninitialised;                  uint48  temporary <:: { remainder[0,47], dividend[bit,1] };
-    uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
-
-    always_after {
-        {
-            if( &bit ) {
-                if( start ) {
-                    bit = 47; quotient = 0; remainder = 0;
-                }
-            } else {
-                quotient[bit,1] = bitresult;
-                remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
-                bit = bit - 1;
-            }
-        }
-        { busy = start | ( ~&bit ); }
-    }
-}
-
 unit fixed_t_divide(
     input   uint1   start,
     output  uint1   busy(0),
@@ -117,16 +91,31 @@ unit fixed_t_divide(
     input   uint32  fixed_t_b,
     output  uint32  result
 ) <reginputs> {
-    uint32 absA <:: fixed_t_a[31,1] ? -fixed_t_a : fixed_t_a;
-    uint32 absB <:: fixed_t_b[31,1] ? -fixed_t_b : fixed_t_b;
-    do_fixed_t_divide DOFIXEDDIVIDE();
+    uint48  quotient = uninitialised;
+    uint48  remainder = uninitialised;
+    uint48  dividend <:: { fixed_t_a[31,1] ? -fixed_t_a : fixed_t_a, 16b0 };                                                    // LEFT ALIGN ABSOLUTE VALUE OF DIVIDEND
+    uint48  divisor <:: { 16b0, fixed_t_b[31,1] ? -fixed_t_b : fixed_t_b };                                                     // RIGHT ALIGN ABSOLUTE VALUE OF DIVISOR
+    uint48  temporary <:: { remainder[0,47], dividend[bit,1] };
+    uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
+    uint6   bit(63);
+    uint1   update = uninitialised;
+    uint1   notdivzero <:: |fixed_t_b;
+
+    update := 0; busy := start | ( ~&bit );
+
+    algorithm <autorun> {
+        while(1) {
+            if( start & notdivzero ) { while( ~&bit ) { update = 1; } }                                     // ONLY RUN IF DIVISOR != 0
+        }
+    }
 
     // START DIVIDER AND EXTRACT RESULT
     always_after {
-        { DOFIXEDDIVIDE.dividend = { absA, 16b0 }; }
-        { DOFIXEDDIVIDE.divisor = { 16b0, absB }; }
-        { DOFIXEDDIVIDE.start = start & |fixed_t_b;  }
-        { busy = start | DOFIXEDDIVIDE.busy; }
-        { if( busy ) { result = ( |fixed_t_b ) ? fixed_t_a[31,1] ^ fixed_t_b[31,1] ? -DOFIXEDDIVIDE.quotient : DOFIXEDDIVIDE.quotient : 32hffffffff; } }
+        { if( start & notdivzero ) { quotient = 0; } else { if( update ) { quotient[bit,1] = bitresult; } } }
+        { if( start & notdivzero ) { remainder = 0; } else { if( update ) { remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 ); } } }
+        { bit = start & notdivzero ? 47 : bit - update; }
+        {
+            result = notdivzero ? ( fixed_t_a[31,1] ^ fixed_t_b[31,1] ? -quotient : quotient ) : 32hffffffff;               // RESULT CORRECTLY SIGNED OR -1 FOR /0
+        }
     }
 }

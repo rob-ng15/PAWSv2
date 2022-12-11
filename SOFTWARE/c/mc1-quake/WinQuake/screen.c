@@ -62,6 +62,8 @@ qboolean	scr_skipupdate;
 
 qboolean	block_drawing;
 
+static float	scr_frame_dt;
+
 void SCR_ScreenShot_f (void);
 
 /*
@@ -183,6 +185,46 @@ void SCR_CheckDrawCenterString (void)
 		return;
 
 	SCR_DrawCenterString ();
+}
+
+//=============================================================================
+
+/*
+====================
+SCR_DrawFPS
+====================
+*/
+void SCR_DrawFPS ()
+{
+	char	*start;
+	char	*end;
+	int		x, y;
+	float	t;
+	float	fps;
+	char	fps_str[16];
+
+	// Calculate the FPS.
+	fps = 1.0F / scr_frame_dt;
+
+	snprintf (&fps_str[0], sizeof(fps_str), "%.1f", (double)fps);
+	fps_str[sizeof(fps_str)-1] = 0;
+
+	// We draw the FPS figure right to left (start at the end of the string).
+	start = &fps_str[0];
+	end = start;
+	while (*end != 0)
+		++end;
+	if (end > start)
+	{
+		y = 0;
+		x = vid.width - 8;
+		do
+		{
+			--end;
+			Draw_Character (x, y, *end);
+			x -= 8;
+		} while (end != start);
+	}
 }
 
 //=============================================================================
@@ -809,8 +851,10 @@ void SCR_UpdateScreen (void)
 {
 	static float	oldscr_viewsize;
 	static float	oldlcd_x;
+	static double	oldscr_t;
+	double		t;
 	vrect_t		vrect;
-	
+
 	if (scr_skipupdate || block_drawing)
 		return;
 
@@ -839,6 +883,13 @@ void SCR_UpdateScreen (void)
 		oldscr_viewsize = scr_viewsize.value;
 		vid.recalc_refdef = 1;
 	}
+
+//
+// Keep track of frame time (for FPS display).
+//
+	t = Sys_FloatTime ();
+	scr_frame_dt = (float)(t - oldscr_t);
+	oldscr_t = t;
 	
 //
 // check for vid changes
@@ -930,6 +981,7 @@ void SCR_UpdateScreen (void)
 		SCR_CheckDrawCenterString ();
 		Sbar_Draw ();
 		SCR_DrawConsole ();
+		SCR_DrawFPS ();
 		M_Draw ();
 	}
 

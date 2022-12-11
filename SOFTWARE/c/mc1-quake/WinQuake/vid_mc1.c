@@ -22,14 +22,20 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "d_local.h"
+#include "mc1.h"
 
 #include <string.h>
 
-#include <PAWSlibrary.h>
+#ifdef __MRISC32__
+#include <mr32intrin.h>
+#endif
 
 // Video resolution (hardcoded).
 #define BASEWIDTH 320
 #define BASEHEIGHT ((BASEWIDTH * 9 + 8) / 16)
+
+// Memory config.
+#define SURFCACHE_SIZE_MB 8
 
 // Video buffers.
 static byte *s_vcp;
@@ -48,38 +54,166 @@ extern viddef_t vid;
 unsigned short d_8to16table[256];
 unsigned d_8to24table[256];
 
+// Pointers for the custom VRAM allocator.
+static byte *s_vram_alloc_ptr;
+static byte *s_vram_alloc_end;
+
+static void MC1_AllocInit (void)
+{
+	// We assume that the Quake binary is loaded into XRAM (0x80000000...), or
+	// into the "ROM" (0x00000000...) for the simulator, and that it has
+	// complete ownership of VRAM (0x40000000...).
+	// Note: We leave space for boot programs (0x40000000-0x40007fff).
+	s_vram_alloc_ptr = (byte*)0x40008000;
+	s_vram_alloc_end = (byte *)(0x40000000 + GET_MMIO (VRAMSIZE));
+}
+
+static byte *MC1_VRAM_Alloc (const size_t bytes)
+{
+	// Check if there is enough room.
+	byte *ptr = s_vram_alloc_ptr;
+	byte *new_ptr = ptr + bytes;
+	if (new_ptr > s_vram_alloc_end)
+		return NULL;
+
+	// Align the next allocation slot to a 32 byte boundary.
+	if ((((size_t)new_ptr) & 31) != 0)
+		new_ptr += 32U - (((size_t)new_ptr) & 31);
+	s_vram_alloc_ptr = new_ptr;
+
+	return ptr;
+}
+
+static byte *MC1_Alloc (const size_t bytes)
+{
+	// Prefer VRAM (for speed).
+	byte *ptr = MC1_VRAM_Alloc (bytes);
+	if (ptr == NULL)
+		ptr = (byte *)malloc (bytes);
+	return ptr;
+}
+
+static int MC1_IsVRAMPtr (const byte *ptr)
+{
+	return ptr >= (byte *)0x40000000 && ptr < (byte *)0x80000000;
+}
+
+static void MC1_Free (byte *ptr)
+{
+	// We can't free VRAM pointers.
+	if (!MC1_IsVRAMPtr (ptr))
+		free (ptr);
+}
+
 static void VID_CreateVCP (void)
 {
+	// Get the native video signal resolution and calculate the scaling factors.
+	unsigned native_width = GET_MMIO (VIDWIDTH);
+	unsigned native_height = GET_MMIO (VIDHEIGHT);
+	unsigned xincr = ((BASEWIDTH - 1) << 16) / (native_width - 1);
+	unsigned yincr = ((native_height - 1) << 16) / (BASEHEIGHT - 1);
+
+	// Frame configuraiton.
+	unsigned *vcp = (unsigned *)s_vcp;
+	*vcp++ = VCP_SETREG (VCR_XINCR, xincr);
+	*vcp++ = VCP_SETREG (VCR_CMODE, CMODE_PAL8);
+	*vcp++ = VCP_JSR (s_palette);
+
+	// Generate lines.
+	unsigned y = 0;
+	unsigned addr = (unsigned)s_framebuffer;
+	for (int i = 0; i < BASEHEIGHT; ++i)
+	{
+		if (i == 0)
+			*vcp++ = VCP_SETREG (VCR_HSTOP, native_width);
+		*vcp++ = VCP_WAITY (y >> 16);
+		*vcp++ = VCP_SETREG (VCR_ADDR, VCP_TOVCPADDR (addr));
+		addr += BASEWIDTH;
+		y += yincr;
+	}
+
+	// End of frame (wait forever).
+	*vcp = VCP_WAITY (32767);
+
+	// Palette.
+	unsigned *palette = (unsigned *)s_palette;
+	*palette++ = VCP_SETPAL (0, 256);
+	palette += 256;
+	*palette = VCP_RTS;
+
+	// Configure the main layer 1 VCP to call our VCP.
+	*((unsigned *)0x40000010) = VCP_JMP (s_vcp);
+
+	// The layer 2 VCP should do nothing.
+	*((unsigned *)0x40000020) = VCP_WAITY (32767);
 }
 
 void VID_SetPalette (unsigned char *palette)
 {
+	unsigned *dst = &((unsigned *)s_palette)[1];
+	const unsigned a = 255;
+	for (int i = 0; i < 256; ++i)
+	{
+		unsigned r = (unsigned)palette[i * 3];
+		unsigned g = (unsigned)palette[i * 3 + 1];
+		unsigned b = (unsigned)palette[i * 3 + 2];
+#ifdef __MRISC32_PACKED_OPS__
+		dst[i] = _mr32_pack_h (_mr32_pack (a, g), _mr32_pack (b, r));
+#else
+		dst[i] = (a << 24) | (b << 16) | (g << 8) | r;
+#endif
+	}
 }
 
 void VID_ShiftPalette (unsigned char *palette)
 {
+	VID_SetPalette (palette);
 }
 
 void VID_Init (unsigned char *palette)
 {
+	MC1_AllocInit ();
+
 	// Video buffers that need to be in VRAM.
-	s_framebuffer = (byte*)0x2020000;
+	const size_t vcp_size = (5 + BASEHEIGHT * 2) * sizeof (unsigned);
+	const size_t palette_size = (2 + 256) * sizeof (unsigned);
+	const size_t framebuffer_size = BASEWIDTH * BASEHEIGHT * sizeof (byte);
+	s_vcp = MC1_VRAM_Alloc (vcp_size);
+	s_palette = MC1_VRAM_Alloc (palette_size);
+	s_framebuffer = MC1_VRAM_Alloc (framebuffer_size);
+	if (s_framebuffer == NULL)
+	{
+		printf ("Error: Not enough VRAM!\n");
+		exit (1);
+	}
 
 	// Allocate memory for the various buffers that Quake needs.
 	const size_t vbuffer_size = BASEWIDTH * BASEHEIGHT * sizeof (byte);
 	const size_t zbuffer_size = BASEWIDTH * BASEHEIGHT * sizeof (short);
-	const size_t surfcache_size = 4 * 1024 * 1024 * sizeof (byte);
-	s_vbuffer = malloc (vbuffer_size);
-	s_zbuffer = malloc (zbuffer_size);
-	s_surfcache = malloc (surfcache_size);
+	const size_t surfcache_size = SURFCACHE_SIZE_MB * 1024 * 1024 * sizeof (byte);
+	s_vbuffer = MC1_Alloc (vbuffer_size);
+	if (MC1_IsVRAMPtr (s_vbuffer))
+		Con_Printf ("Using VRAM for the pixel buffer\n");
+	s_zbuffer = MC1_Alloc (zbuffer_size);
+	if (MC1_IsVRAMPtr (s_zbuffer))
+		Con_Printf ("Using VRAM for the Z buffer\n");
+	s_surfcache = MC1_Alloc (surfcache_size);
+	if (MC1_IsVRAMPtr (s_surfcache))
+		Con_Printf ("Using VRAM for the surface cache\n");
 
-	fprintf (stderr,
+	printf (
 		"VID_Init: Resolution = %d x %d\n"
-		"          Framebuffer @ 0x%08x (%d)\n",
+		"          Framebuffer @ 0x%08x (%d)\n"
+		"          Palette     @ 0x%08x (%d)\n",
 		BASEWIDTH,
 		BASEHEIGHT,
 		(unsigned)s_framebuffer,
-		(unsigned)s_framebuffer);
+		(unsigned)s_framebuffer,
+		(unsigned)(s_palette + 4),
+		(unsigned)(s_palette + 4));
+
+	// Create the VCP.
+	VID_CreateVCP ();
 
 	// Set up the vid structure that is used by the Quake rendering engine.
 	vid.maxwarpwidth = vid.width = vid.conwidth = BASEWIDTH;
@@ -97,9 +231,9 @@ void VID_Init (unsigned char *palette)
 
 void VID_Shutdown (void)
 {
-	free (s_surfcache);
-	free (s_zbuffer);
-	free (s_vbuffer);
+	MC1_Free (s_surfcache);
+	MC1_Free (s_zbuffer);
+	MC1_Free (s_vbuffer);
 }
 
 void VID_Update (vrect_t *rects)
@@ -121,19 +255,20 @@ void VID_Update (vrect_t *rects)
 
 		for (i = 0; i < num_rows; ++i)
 		{
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
 			memcpy (dst, src, bytes_per_row);
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
+
 			src += BASEWIDTH;
 			dst += BASEWIDTH;
 		}
 	}
-
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS; short volatile *GPU_REGS_H = (short volatile *)GPU_REGS;
-    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-
-    GPU_REGS_B[0xf2] = 0; GPU_REGS_B[0x7a] = PB_WRITEALL;                                                                        			// SET WRITE TO DISPLAYED IMAGE + SETUP PIXEL BLOCK REMAP
-    GPU_REGS[0] = 0x140000; GPU_REGS[1] = 0x400140; GPU_REGS_B[0x16] = 10;                                                                  // SETUP PIXEL BLOCK FOR 320 WIDE TRANSFER
-    DMA_REGS[0] = (int)s_framebuffer; DMA_REGS[1] = 0xd670; DMA_REGS[2] = BASEWIDTH*BASEHEIGHT/2; DMA_REGS_B[0x0c] = 7;                     // TRANSFER THE IMAGE FROM FRAMEBUFFER USING DMA PIXELBLOCK MODE
-    GPU_REGS_B[0x78] = 3; GPU_REGS_B[0xf2] = 1; GPU_REGS_B[0x7a] = PB_WRITEALL;                                                             // STOP THE PIXELBLOCK, SET WRITE TO HIDDEN IMAGE, STOP PIXEL BLOCK REMAP
 }
 
 /*

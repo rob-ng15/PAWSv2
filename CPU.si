@@ -23,7 +23,7 @@ $$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
 bitfield L00cacheI{ uint$L00Ipartaddresswidth$ tag, uint30 instruction, uint1 compressed, uint1 valid }
 
 // HART 1 - SMT
-$$ L01Iblocks = 4
+$$ L01Iblocks = 2
 $$ L01Icount = clog2(L01Iblocks)
 $$ L01Ipartaddresswidth = addr_width - 1 - L01Icount - L0Icacheaddrwidth
 $$ L01Ipartaddressstart = 1 + L01Icount + L0Icacheaddrwidth
@@ -61,12 +61,12 @@ unit PAWSCPU(
 
     // THREAD SELECTION, INSTRUCTION AND COMPRESSED FLAG, PROGRAM COUNTERS
     uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
-    uint1   SMT_next <:: ~SMT & SMTRUNNING;
+//    uint1   SMT_next <:: ~SMT & SMTRUNNING;
     uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
     uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;
     uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                      // SELECT PC FOR THIS CYCLE
-    uint$addr_width$  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;
-    uint$addr_width$  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;
+//    uint$addr_width$  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;
+//    uint$addr_width$  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;
 
     // RISC-V 32 BIT CONTROLLER
     uint32  result <:: RV32CONTROL.IS_FASTALU ? EXECUTEFAST.result : EXECUTESLOW.result;
@@ -150,7 +150,7 @@ unit PAWSCPU(
     );
 
     // EXECUTE SINGLE CYLE INSTRUCTIONS, MOST OF BASE PLUS INTEGER MULTIPLICATION
-    cpuexecuteFASTPATH EXECUTEFAST(
+    cpuSINGLECYCLE EXECUTEFAST(
         opCode <: RV32CONTROL.opCode,
         function3 <: RV32CONTROL.function3,
         function7 <: RV32CONTROL.function7,
@@ -283,9 +283,9 @@ unit PAWSCPU(
         { writememory = DMA.writememory | STORE.writememory; }
 
         // UPDATE CPU STATE
-        { if( COMMIT ) { pc = pc_next; } }
-        { if( COMMIT ) { pcSMT = pcSMT_next; } }
-        { if( COMMIT & ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = SMT_next; }  }
+        { if( COMMIT ) { pc = SMT ? pc :  RV32CONTROL.newPC; } }
+        { if( COMMIT ) { pcSMT = SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC; } }
+        { if( COMMIT & ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; }  }
     }
 }
 
@@ -569,49 +569,6 @@ unit cpuexecuteSLOWPATH(
             }
         }
         { frd = fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
-    }
-}
-
-unit cpuexecuteFASTPATH(
-    input   uint5   opCode,
-    input   uint3   function3,
-    input   uint7   function7,
-    input   uint5   rs1,
-    input   uint5   rs2,
-    input   int32   sourceReg1,
-    input   int32   sourceReg2,
-    input   int32   negSourceReg2,
-    input   uint32  sourceReg2F,
-    input   int32   immediateValue,
-    input   int32   memoryinput,
-    input   uint32  AUIPCLUI,
-    input   uint32  nextPC,
-    input   uint1   isLOAD,
-    input   uint1   isAUIPCLUI,
-    input   uint1   isJAL,
-    input   uint1   isFENCE,
-    output  int32   memoryoutput,
-    output  int32   result,
-    input   uint1   LT,
-    input   uint1   LTU,
-    output  uint2   fenceACTIVE(0)
-) <reginputs> {
-    // ALU
-    alu ALU(
-        opCode <: opCode, function3 <: function3, function7 <: function7,
-        rs1 <: rs1, rs2 <: rs2,
-        sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, negSourceReg2 <: negSourceReg2,
-        immediateValue <: immediateValue,
-        LT <: LT, LTU <: LTU
-    );
-
-    always_after {
-        { memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2; }                      // FLOAT STORE OR STORE
-        { result = isAUIPCLUI ? AUIPCLUI :                                              // LUI AUIPC
-                            isJAL ? nextPC :                                            // JAL[R]
-                            isLOAD ? memoryinput :                                      // [FLOAT]LOAD
-                            ALU.result; }                                               // INTEGER ALU AND MULTIPLICATION
-        { if( isFENCE ) { fenceACTIVE = { |function7[1,2], ~function3[0,1] }; } }       // SET FENCE ACTIVE, { IO, MEM }, IO STOPS THREAD SWITCHING, MEM RESETS L0CACHE (after load)
     }
 }
 

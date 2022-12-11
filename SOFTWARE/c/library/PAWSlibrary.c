@@ -2085,9 +2085,9 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
     return(1);
 }
 
-// newlib support routines - define standard malloc memory size 16MB
+// newlib support routines - define standard malloc memory size 24MB
 #ifndef MALLOC_MEMORY
-#define MALLOC_MEMORY ( 16384 * 1024 )
+#define MALLOC_MEMORY ( 24 * 1024 * 1024 )
 #endif
 
 void *__bram_point = (void *)0x1a00;

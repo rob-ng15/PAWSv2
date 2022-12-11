@@ -32,7 +32,7 @@ SQUAKE_OBJECTS= \
 	d_zpoint.o \
 	host.o \
 	host_cmd.o \
-	in_mc1.o \
+	in_paws.o \
 	keys.o \
 	menu.o \
 	mathlib.o \
@@ -70,9 +70,9 @@ SQUAKE_OBJECTS= \
 	wad.o \
 	world.o \
 	cd_null.o \
-	sys_mc1.o \
-	vid_mc1.o \
-	snd_null.o \
+	sys_paws.o \
+	vid_paws.o \
+	snd_paws.o \
 
 SQUAKE_BUILD_OBJECTS = \
 	$(BUILD_DIR)/cl_demo.o \
@@ -101,7 +101,7 @@ SQUAKE_BUILD_OBJECTS = \
 	$(BUILD_DIR)/d_zpoint.o \
 	$(BUILD_DIR)/host.o \
 	$(BUILD_DIR)/host_cmd.o \
-	$(BUILD_DIR)/in_mc1.o \
+	$(BUILD_DIR)/in_paws.o \
 	$(BUILD_DIR)/keys.o \
 	$(BUILD_DIR)/menu.o \
 	$(BUILD_DIR)/mathlib.o \
@@ -139,9 +139,9 @@ SQUAKE_BUILD_OBJECTS = \
 	$(BUILD_DIR)/wad.o \
 	$(BUILD_DIR)/world.o \
 	$(BUILD_DIR)/cd_null.o \
-	$(BUILD_DIR)/sys_mc1.o \
-	$(BUILD_DIR)/vid_mc1.o \
-	$(BUILD_DIR)/snd_null.o \
+	$(BUILD_DIR)/sys_paws.o \
+	$(BUILD_DIR)/vid_paws.o \
+	$(BUILD_DIR)/snd_paws.o \
 
 $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW :$(BUILD_DIR)/squake.elf
 	$(ARCH)-elf-objcopy -O binary $< $@

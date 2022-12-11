@@ -1082,7 +1082,6 @@ void COM_InitArgv (int argc, char **argv)
 	com_cmdline[n] = 0;
 
 	safe = true;
-
 	if (safe)
 	{
 	// force all the safe-mode switches. Note that we reserved extra space in

@@ -224,7 +224,7 @@ unit floatminmax(
     output  uint5   flags,
     output  uint32  result
 ) <reginputs> {
-    uint1   NAN <:: |( classA[1,2] | classB[1,2] );;
+    uint1   NAN <:: |( classA[1,2] | classB[1,2] );
 
     always_after {
         { flags = { NAN, 4b0000 };  }
@@ -635,32 +635,6 @@ unit floatmultiply(
 }
 
 // DIVIDE TWO FLOATING POINT NUMBERS
-unit dofloatdivide(
-    input   uint1   start,
-    output  uint1   busy(0),
-    input   uint50  sigA,
-    input   uint50  sigB,
-    output  uint50  quotient(0)
-) <reginputs> {
-    uint6   bit(63);
-    uint50  remainder = uninitialised;
-    uint50  temporary <:: { remainder[0,49], sigA[bit,1] };
-    uint1   bitresult <:: __unsigned(temporary) >= __unsigned(sigB);
-    uint2   normalshift <:: quotient[49,1] ? 2 : quotient[48,1];
-
-    busy := start | ( ~&bit ) | ( quotient[48,2] != 0 );
-
-    always_after {
-        // FIND QUOTIENT AND ENSURE 48 BIT FRACTION ( ie BITS 48 and 49 clear )
-        if( &bit ) {
-            if( start ) { bit = 49; quotient = 0; remainder = 0; } else { quotient = quotient[ normalshift, 48 ]; }
-        } else {
-            remainder = __unsigned(temporary) - ( bitresult ? __unsigned(sigB) : 0 );
-            quotient[bit,1] = bitresult;
-            bit = bit - 1;
-        }
-    }
-}
 unit floatdivide(
     input   uint1   start,
     output  uint1   busy(0),
@@ -682,19 +656,34 @@ unit floatdivide(
     uint1   NN <:: ( classA[2,1] | classA[1,1] | classB[2,1] | classB[1,1] );
     uint2   ACTION <:: { IF | NN, classA[0,1] | classB[0,1] };
 
-    // PREPARE THE DIVISION, DO THE DIVISION, NORMALISE THE RESULT
-    dofloatdivide DODIVIDE( quotient :> tonormalisebitstream );
+    // BREAK DOWN INITIAL float32 INPUTS AND FIND SIGN OF RESULT AND EXPONENT OF QUOTIENT ( -1 IF DIVISOR > DIVIDEND )
+    // ALIGN DIVIDEND TO THE LEFT, DIVISOR TO THE RIGHT
+    uint50  dividend <:: { 1b1, fp32(a).fraction, 26b0 };
+    uint50  divisor <:: { 27b1, fp32(b).fraction };
+    uint50  quotient = uninitialised;
+    uint50  remainder = uninitialised;
+    uint50  temporary <:: { remainder[0,49], dividend[bit,1] };
+    uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
+    uint6   bit = uninitialised;
+    uint1   update = uninitialised;
 
-    DODIVIDE.start := start & ~|ACTION; busy := start | DODIVIDE.busy;
+    update := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start & ~|ACTION ) { busy = 1; while( ~&bit ) { update = 1; } busy = 0; }
+        }
+    }
 
     always_after {
-        // BREAK DOWN INITIAL float32 INPUTS AND FIND SIGN OF RESULT AND EXPONENT OF QUOTIENT ( -1 IF DIVISOR > DIVIDEND )
-        // ALIGN DIVIDEND TO THE LEFT, DIVISOR TO THE RIGHT
+        { if( start ) { quotient = 0; } else { if( update ) { quotient[bit,1] = bitresult; } } }
+        { if( start ) { remainder = 0; } else { if( update ) { remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 ); } } }
+        { bit = start ? 49 : bit - update; }
+
+        // GENERATE QUOTIENT SIGN AND EXPONENT, NORMALISE THE RESULTANT BITSTREAM FOR OVERFLOW
         { quotientsign = fp32( a ).sign ^ fp32( b ).sign; }
         { quotientexp = fp32( a ).exponent - fp32( b ).exponent - ( fp32(b).fraction > fp32(a).fraction ); }
-        { DODIVIDE.sigA = { 1b1, fp32(a).fraction, 26b0 }; }
-        { DODIVIDE.sigB = { 27b1, fp32(b).fraction }; }
-
+        { tonormalisebitstream = quotient[ quotient[49,1] ? 2 : quotient[48,1], 48 ]; }
         {
             switch( ACTION ) {
                 case 2b00: { result = f32; }
@@ -730,30 +719,6 @@ unit floatdivide(
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
-unit dofloatsqrt(
-    input   uint1   start,
-    output  uint1   busy(0),
-    input   uint50  start_ac,
-    input   uint48  start_x,
-    output  uint48  squareroot
-) <reginputs> {
-    uint50  test_res <:: ac - { squareroot, 2b01 }; uint50  ac = uninitialised;
-    uint48  x = uninitialised;
-    uint6   i(47);
-
-    busy := start | ( i != 47 );
-
-    always_after {
-        if( i == 47) {
-            if( start ) { i = 0; squareroot = 0; ac = start_ac; x = start_x; }
-        } else {
-            ac = { test_res[49,1] ? ac[0,47] : test_res[0,47], x[46,2] };
-            squareroot = { squareroot[0,47], ~test_res[49,1] };
-            x = { x[0,46], 2b00 };
-            i = i + 1;
-        }
-    }
-}
 unit floatsqrt(
     input   uint1   start,
     output  uint1   busy(0),
@@ -772,21 +737,43 @@ unit floatsqrt(
     uint1   NV <:: classA[3,1] | NN | fp32( a ).sign;
     uint1   ACTION <:: ~|{ classA[3,1] | NN, classA[0,1] | fp32( a ).sign };
 
+    // FAST NORMALISE THE RESULT
+    fastnormal24 NORMAL( tonormal <: squareroot, normalfraction :> normalfraction );
+
     // EXPONENT OF INPUT ( used to determine if 1x.xxxxx or 01.xxxxx for fixed point fraction to sqrt )
     // SQUARE ROOT EXPONENT IS HALF OF INPUT EXPONENT
+    uint50  ac = uninitialised;
+    uint48  x = uninitialised;
+    uint48  squareroot = uninitialised;
     int10   expA  <:: fp32( a ).exponent - 127;
+    uint50  test_res <:: ac - { squareroot, 2b01 };
+    uint6   i = uninitialised;
+    uint1   update = uninitialised;
 
-    // PERFORM THE SQUAREROOT, FAST NORMALISE THE RESULT
-    dofloatsqrt DOSQRT();
-    fastnormal24 NORMAL( tonormal <: DOSQRT.squareroot, normalfraction :> normalfraction );
+    update := 0;
 
-    DOSQRT.start := start & ACTION; busy := start | DOSQRT.busy;
+    algorithm <autorun> {
+        while(1) {
+            if( start & ACTION ) { busy = 1; while( i != 47 ) { update = 1; } busy = 0; }
+        }
+    }
 
     always_after {
-        { DOSQRT.start_ac = expA[0,1] ? { 48b0, 1b1, a[22,1] } : 1; }
-        { DOSQRT.start_x = expA[0,1] ? { a[0,22], 26b0 } : { fp32( a ).fraction, 25b0 }; }
-        { squarerootexp = ( expA >>> 1 ); }
+        {
+            if( start ) { ac = expA[0,1] ? { 48b0, 1b1, a[22,1] } : 1; }
+                else { if( update ) { ac = { test_res[49,1] ? ac[0,47] : test_res[0,47], x[46,2] }; } }
+        }
+        {
+            if( start ) { x = expA[0,1] ? { a[0,22], 26b0 } : { fp32( a ).fraction, 25b0 }; }
+                else { if( update ) { x = { x[0,46], 2b00 }; } }
+        }
+        {
+            if( start ) { squareroot = 0; }
+                else { if( update ) { squareroot = { squareroot[0,47], ~test_res[49,1] }; } }
+        }
+        { i = start ? 0 : i + update; }
 
+        { squarerootexp = ( expA >>> 1 ); }
         {
             if( ACTION ) {
                 // STEPS: SETUP -> DOSQRT -> NORMALISE -> ROUND -> ADJUSTEXP -> COMBINE
