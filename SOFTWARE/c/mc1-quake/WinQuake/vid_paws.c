@@ -22,13 +22,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "d_local.h"
 
+#define MALLOC_MEMORY ( 30 * 1024 * 1024 )
 #include <PAWSlibrary.h>
 
 extern viddef_t	vid;				// global video state
 
 #define	BASEWIDTH	320
 #define	BASEHEIGHT	240
-
+#define SURFCACHESIZE 256*1024
 byte	*vid_buffer = (byte*)0x2020000;
 byte	*dis_buffer = (byte*)0x2000000;
 short	*zbuffer;
@@ -39,16 +40,20 @@ unsigned	d_8to24table[256];
 
 void	VID_SetPalette (unsigned char *palette)
 {
+
 }
 
 void	VID_ShiftPalette (unsigned char *palette)
 {
+	for (int i = 0; i < 256; i++) {
+		set_palette( i, ( palette[i * 3] << 16 ) + ( palette[i * 3 + 1] << 8 ) + palette[i * 3 + 2] );
+	}
 }
 
 void	VID_Init (unsigned char *palette)
 {
 	zbuffer = malloc( BASEWIDTH*BASEHEIGHT*sizeof(short) );
-	surfcache = malloc( 256*1024 );
+	surfcache = malloc( SURFCACHESIZE );
 
 	vid.maxwarpwidth = vid.width = vid.conwidth = BASEWIDTH;
 	vid.maxwarpheight = vid.height = vid.conheight = BASEHEIGHT;
@@ -60,18 +65,12 @@ void	VID_Init (unsigned char *palette)
 	vid.rowbytes = vid.conrowbytes = BASEWIDTH;
 
 	d_pzbuffer = zbuffer;
-	D_InitCaches (surfcache, sizeof(surfcache));
+	D_InitCaches (surfcache, SURFCACHESIZE);
 
-	unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    unsigned char volatile *DISPLAY_REGS_B = (unsigned char volatile *)DISPLAY_REGS;
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS; short volatile *GPU_REGS_H = (short volatile *)GPU_REGS;
+	screen_mode( 0, MODE_RGBM, 0 );																								// Set screen layer order, RGBM mode, hi-res character/tiles
+	bitmap_256( TRUE ); bitmap_display( 1 ); bitmap_draw( 2 ); use_palette( TRUE );												// 256 colour display, palette mode
 
-    DISPLAY_REGS_B[0x00] = 0; DISPLAY_REGS_B[0x01] = MODE_RGBM; DISPLAY_REGS_B[0x02] = 0; DISPLAY_REGS_B[0x15] = TRUE;         // Setup video hardware, RGBM, 256 colours with palette
-    GPU_REGS_B[0x7a] = PB_WRITEALL; GPU_REGS_B[0xf4] = TRUE;  GPU_REGS_B[0xf2] = 2; GPU_REGS_B[0xf0] = 1;                      // DRAW TO FB 1 , DISPLAY FB 0, BITMAP DISPLAY 256, PIXELBLOCK WRITE 256
-
-    DMA_REGS_B[0x0e] = 0; DMA_REGS[0] = (int)&DMA_REGS_B[0x0e];                                                                // CLEAR THE FRAMEBUFFERS USING MEMSET
-    DMA_REGS[1] = 0x2000000; DMA_REGS[2] = 320*240; DMA_REGS_B[0x0c] = 4;
-    DMA_REGS[1] = 0x2020000; DMA_REGS_B[0x0c] = 4;
+	memset( (void * restrict)0x2000000, 0, 320*240 ); memset( (void * restrict)0x2020000, 0, 320*240 );															// WIPE THE FRAMEBUFFERS
 }
 
 void	VID_Shutdown (void)

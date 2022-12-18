@@ -1517,6 +1517,8 @@ byte *COM_LoadFile (char *path, int usehunk)
 
 	buf = NULL;     // quiet compiler warning
 
+	fprintf(stderr,"COM_LoadFile : %s\n",path); //DEBUG
+
 // look for it in the filesystem or pack files
 	len = COM_OpenFile (path, &h);
 	if (h == -1)

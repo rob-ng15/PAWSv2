@@ -1,5 +1,5 @@
 // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S FEQ.S FLT.S FLE.S FCLASS.S FMV.X.W
-unit fpufast(
+unit fpuSINGLECYCLE(
     input   uint2   function3,
     input   uint5   function7,
     input   uint32  sourceReg1,
@@ -14,34 +14,63 @@ unit fpufast(
     output  uint5   FPUnewflags
 ) <reginputs> {
     floatcompare FPUlteq( a <: sourceReg1F, b <: sourceReg2F, classA <: classA, classB <: classB );
-    floatminmax FPUminmax( sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, classA <: classA, classB <: classB, less <: FPUlteq.less, function3 <: function3[0,1] );
-    floatcomparison FPUcompare( sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, classA <: classA, classB <: classB, less <: FPUlteq.less, equal <: FPUlteq.equal, function3 <: function3[0,2], );
-    floatclassify FPUclass( sourceReg1F <: sourceReg1F, classA <: classA );
-    floatsign FPUsign( function3 <: function3[0,2], sourceReg1F <: sourceReg1F, sourceReg2Fsign <: fp32( sourceReg2F ).sign );
+
+    uint1   NAN <:: |( classA[1,2] | classB[1,2] );
+    uint1   TRUEZERO <:: ~|fp32( sourceReg1F ).fraction;
+    uint4   LTEQ <:: { 1b0, FPUlteq.equal, FPUlteq.less, FPUlteq.less | FPUlteq.equal };
+
+    uint10  FCLASS = uninitialised;
+    uint32  MINMAX = uninitialised;                 uint5   flagsMINMAX = uninitialised;
+    uint32  COMPARE = uninitialised;                uint5   flagsCOMPARE = uninitialised;
+    uint32  SIGN = uninitialised;
 
     always_after {
         {
+            FCLASS = {  classA[1,1],                                            // 512  qNAN            { qNAN, sNAN, +INF, +ve normal, +ve subnormal, +0, -0, -ve subnormal, -ve normal, -INF }
+                        classA[2,1],                                            // 256  sNAN
+                        classA[3,1] & ~fp32( sourceReg1F ).sign,                // 128  +INF
+                        ~|classA & ~fp32( sourceReg1F ).sign,                   // 64   +NORMAL
+                        classA[0,1] & ~fp32( sourceReg1F ).sign & ~TRUEZERO,    // 32   +SUBNORMAL
+                        classA[0,1] & ~fp32( sourceReg1F ).sign & TRUEZERO,     // 16   +0
+                        classA[0,1] & fp32( sourceReg1F ).sign & TRUEZERO,      // 8    -0
+                        classA[0,1] & fp32( sourceReg1F ).sign & ~TRUEZERO,     // 4    -SUBNORMAL
+                        ~|classA & fp32( sourceReg1F ).sign,                    // 2    -NORMAL
+                        classA[3,1] & fp32( sourceReg1F ).sign                  // 1    -INF
+            };
+        }
+        { MINMAX = NAN ? 32h7fc00000 : classA[1,1] ? ( classB[1,1] ? 32h7fc00000 : sourceReg2F ) : classB[1,1] | ( function3[0,1] ^ FPUlteq.less ) ? sourceReg1F : sourceReg2F; }
+        { flagsMINMAX = { NAN, 4b0000 };  }
+        { COMPARE = ~NAN & LTEQ[ function3, 1 ]; }
+        { flagsCOMPARE = { function3[1,1] ? ( classA[2,1] | classB[2,1] ) : NAN, 4b0000 }; }
+        { SIGN = { function3[1,1] ? sourceReg1F[31,1] ^ fp32( sourceReg2F ).sign : function3[0,1] ^ fp32( sourceReg2F ).sign, sourceReg1F[0,31] }; }
+
+        {
             switch( function7[3,2] ) {                                                                                          // RESULT
-                case 2b00: { result = function7[0,1] ? FPUminmax.result : FPUsign.result; }                                     // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
-                case 2b10: { result = FPUcompare.result; }                                                                      // FEQ.S FLT.S FLE.S
-                default: { result = function7[1,1] ? sourceReg1 : function3[0,1] ? FPUclass.classification : sourceReg1F; }     // FCLASS.S FMV.X.W
+                case 2b00: { result = function7[0,1] ? MINMAX : SIGN; }                                                         // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
+                case 2b10: { result = COMPARE; }                                                                                // FEQ.S FLT.S FLE.S
+                default: { result = function7[1,1] ? sourceReg1 : function3[0,1] ? FCLASS : sourceReg1F; }                      // FCLASS.S FMV.X.W
             }
         }
         {
             switch( function7[3,2] ) {                                                                                          // FLAGS
-                case 2b00: { FPUnewflags = FPUflags | ( function7[0,1] ? FPUminmax.flags : 0 ); }                               // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
-                case 2b10: { FPUnewflags = FPUflags | FPUcompare.flags; }                                                       // FEQ.S FLT.S FLE.S
+                case 2b00: { FPUnewflags = FPUflags | ( function7[0,1] ? flagsMINMAX : 0 ); }                                   // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
+                case 2b10: { FPUnewflags = FPUflags | flagsCOMPARE; }                                                           // FEQ.S FLT.S FLE.S
                 default: { FPUnewflags = FPUflags; }                                                                            // FCLASS.S FMV.X.W
             }
         }
-        {
-            // SET WRITE TO FLOATING POINT REGISTER FLAG - FOR FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S AND FMV.W.X
-            frd = function7[3,1] ? function7[1,1] : ~|function7[3,2];
-        }
+        { frd = function7[3,1] ? function7[1,1] : ~|function7[3,2]; }                                                           // FRD for FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S AND FMV.W.X
     }
 }
 
 // FCVT.W.S FCVT.WU.S FCVT.S.W FCVT.S.WU
+unit clz32(
+    input   uint32  number,
+    output! uint5   zeros
+) <reginputs> {
+    always_after {
+        ( zeros ) = clz_silice_32( number );
+    }
+}
 unit floatconvert(
     input   uint5   function7,
     input   uint1   rs2,
@@ -55,13 +84,51 @@ unit floatconvert(
     input   uint5   FPUflags,
     output  uint5   FPUnewflags
 ) <reginputs> {
-    inttofloat FPUfloat( a <: sourceReg1, absa <: abssourceReg1, dounsigned <: rs2 );                                       // INT TO FLOAT, [un]signed
-    floattoint FPUint( a <: sourceReg1F, classA <: classA, dounsigned <: rs2 );                                             // FLOAT TO INT [un]signed
+    clz32 CLZ( number <: number );
+
+    // COUNT LEADING ZEROS - RETURNS NX IF NUMBER IS TOO LARGE, LESS THAN 8 LEADING ZEROS
+    uint1   sign <:: ~rs2 & sourceReg1[31,1];         uint32  number <:: sign ? abssourceReg1 : sourceReg1;
+    uint1   NX <:: ( ~|CLZ.zeros[3,2] );
+    int10   exponent <:: 158 - CLZ.zeros;
+    int23   fraction <:: NX ? number >> ( 8 - CLZ.zeros ) : number << ( CLZ.zeros - 8 );
+
+    int10   exp <:: fp32( sourceReg1F ).exponent - 127;
+    uint1   NN <:: classA[2,1] | classA[1,1];
+    uint1   NV <:: ( exp > ( rs2 ? 31 : 30 ) ) | ( rs2 & fp32( sourceReg1F ).sign ) | classA[3,1] | NN;
+    uint33  sig <:: ( exp < 24 ) ? { 9b1, fp32( sourceReg1F ).fraction, 1b0 } >> ( 23 - exp ) : { 9b1, fp32( sourceReg1F ).fraction, 1b0 } << ( exp - 24);
+    uint32  unsignedfraction <:: ( sig[1,32] + sig[0,1] );
+
+    uint32  FLOAT = uninitialised;                  uint5   flagsFLOAT = uninitialised;
+    uint32  INT = uninitialised;                    uint5   flagsINT = uninitialised;
 
     always_after {
+        { FLOAT = ( |sourceReg1 ) ? { sign, exponent[0,8], fraction } : 0; }
+        { flagsFLOAT = { 4b0, NX };  }
+
+        {
+            if( classA[0,1] ) {
+                INT = 0;
+            } else {
+                if( rs2 ) {
+                    if( classA[3,1] | NN ) {
+                        INT = NN ? 32hffffffff : { {32{~fp32( sourceReg1F ).sign}} };
+                    } else {
+                        INT = ( fp32( sourceReg1F ).sign ) ? 0 : NV ? 32hffffffff : unsignedfraction;
+                    }
+                } else {
+                    if( classA[3,1] | NN ) {
+                        INT = { ~NN & fp32( sourceReg1F ).sign, {31{~fp32( sourceReg1F ).sign}} };
+                    } else {
+                        INT = NV ? { {32{~fp32( sourceReg1F ).sign}} } : fp32( sourceReg1F ).sign ? -unsignedfraction : unsignedfraction;
+                    }
+                }
+            }
+        }
+        { flagsINT = { classA[3,1], NN, NV, 4b0000 }; }
+
         { frd = function7[1,1]; }                                                                                           // TO FLOAT REGISTER FLAG
-        { result = function7[1,1] ? FPUfloat.result : FPUint.result; }                                                      // RESULT
-        { FPUnewflags = FPUflags | ( function7[1,1] ?  FPUfloat.flags : FPUint.flags ); }                                   // FLAGS
+        { result = function7[1,1] ? FLOAT : INT; }                                                                          // RESULT
+        { FPUnewflags = FPUflags | ( function7[1,1] ?  flagsFLOAT : flagsINT ); }                                           // FLAGS
     }
 }
 
@@ -183,87 +250,9 @@ unit floatcalc(
                 flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
             }
         }
-        // RETURN NEW FLAGS
-        {
-            FPUnewflags = FPUflags | flags;
-        }
+        { FPUnewflags = FPUflags | flags; }                                                                             // RETURN NEW FLAGS
     }
 }
-
-// CLASSIFICATION 10 bits { qNAN, sNAN, +INF, +ve normal, +ve subnormal, +0, -0, -ve subnormal, -ve normal, -INF }
-unit floatclassify(
-    input   uint32  sourceReg1F,
-    input   uint4   classA,
-    output  uint10  classification
-) <reginputs> {
-    uint1   TRUEZERO <:: ~|fp32( sourceReg1F ).fraction;
-
-    always_after{
-        classification = {  classA[1,1],                                            // 512  qNAN
-                            classA[2,1],                                            // 256  sNAN
-                            classA[3,1] & ~fp32( sourceReg1F ).sign,                // 128  +INF
-                            ~|classA & ~fp32( sourceReg1F ).sign,                   // 64   +NORMAL
-                            classA[0,1] & ~fp32( sourceReg1F ).sign & ~TRUEZERO,    // 32   +SUBNORMAL
-                            classA[0,1] & ~fp32( sourceReg1F ).sign & TRUEZERO,     // 16   +0
-                            classA[0,1] & fp32( sourceReg1F ).sign & TRUEZERO,      // 8    -0
-                            classA[0,1] & fp32( sourceReg1F ).sign & ~TRUEZERO,     // 4    -SUBNORMAL
-                            ~|classA & fp32( sourceReg1F ).sign,                    // 2    -NORMAL
-                            classA[3,1] & fp32( sourceReg1F ).sign                  // 1    -INF
-        };
-    }
-}
-
-// MIN / MAX
-unit floatminmax(
-    input   uint1   less,
-    input   uint1   function3,
-    input   uint32  sourceReg1F,
-    input   uint32  sourceReg2F,
-    input   uint4   classA,
-    input   uint4   classB,
-    output  uint5   flags,
-    output  uint32  result
-) <reginputs> {
-    uint1   NAN <:: |( classA[1,2] | classB[1,2] );
-
-    always_after {
-        { flags = { NAN, 4b0000 };  }
-        { result = NAN ? 32h7fc00000 : classA[1,1] ? ( classB[1,1] ? 32h7fc00000 : sourceReg2F ) : classB[1,1] | ( function3 ^ less ) ? sourceReg1F : sourceReg2F; }
-    }
-}
-
-// COMPARISONS
-unit floatcomparison(
-    input   uint1   less,
-    input   uint1   equal,
-    input   uint2   function3,
-    input   uint32  sourceReg1F,
-    input   uint32  sourceReg2F,
-    input   uint4   classA,
-    input   uint4   classB,
-    output  uint5   flags,
-    output  uint1   result
-) <reginputs> {
-    uint1   NAN <:: |( classA[1,2] | classB[1,2] );
-    uint4 comparison <:: { 1b0, equal, less, less | equal };
-
-    always_after {
-        { flags = { function3[1,1] ? ( classA[2,1] | classB[2,1] ) : NAN, 4b0000 }; }
-        { result = ~NAN & comparison[ function3, 1 ]; }
-    }
-}
-
-unit floatsign(
-    input   uint2   function3,
-    input   uint32  sourceReg1F,
-    input   uint1   sourceReg2Fsign,
-    output  uint32  result,
-) <reginputs> {
-    always_after {
-        result = { function3[1,1] ? sourceReg1F[31,1] ^ sourceReg2Fsign : function3[0,1] ^ sourceReg2Fsign, sourceReg1F[0,31] };
-    }
-}
-
 
 // Rob Shelton ( @robng15 Twitter, @rob-ng15 GitHub )
 // Simple 32bit FPU calculation/conversion routines
@@ -331,14 +320,14 @@ unit classifyF(
     input   uint32  a,
     output  uint4   class
 ) <reginputs> {
-    uint1   expFF <:: &fp32(a).exponent;                // CHECK FOR 8hff ( signals INF/NAN )
-    uint1   zeroFRACTION <:: ~|a[0,23];                 // FRACTION == 0, INF, == 100... qNAN, == 0xxx... ( xxx... != 0 ) sNAN
+    uint1   expFF <:: &fp32(a).exponent;                                                                                        // CHECK FOR 8hff ( signals INF/NAN )
+    uint1   zeroFRACTION <:: ~|a[0,23];                                                                                         // FRACTION == 0, INF, == 100... qNAN, == 0xxx... ( xxx... != 0 ) sNAN
 
     always_after {
-        class = {   expFF & zeroFRACTION,               // INF
-                    expFF & ~a[22,1] & ~zeroFRACTION,   // sNAN
-                    expFF & a[22,1],                    // qNAN
-                    ~|( fp32(a).exponent )              // ZERO / SUBNORMAL
+        class = {   expFF & zeroFRACTION,                                                                                       // INF
+                    expFF & ~a[22,1] & ~zeroFRACTION,                                                                           // sNAN
+                    expFF & a[22,1],                                                                                            // qNAN
+                    ~|( fp32(a).exponent )                                                                                      // ZERO / SUBNORMAL
         };
     }
 }
@@ -355,7 +344,7 @@ unit clz48(
     always_after {
         { ( clz_l ) = clz_silice_32( bitstreaml ); }
         { ( clz_h ) = clz_silice_16( bitstreamh ); }
-        { count = |bitstreamh ? clz_h : 16 + clz_l; }
+        { count = |bitstreamh ? clz_h : 16 + clz_l; }                                                                           // COUNT LEADING ZEROS FOR NORMALISATION SHIFT
     }
 }
 // NORMALISE RESULT FOR ADD SUB DIVIDE
@@ -370,18 +359,8 @@ unit normalise24(
     clz48 CLZ48( bitstream <: bitstream );
 
     always_after {
-        { normalfraction = temporary[23,24]; }
-        { newexponent = exp - CLZ48.count; }
-    }
-}
-
-// NORMALISE RESULT FOR MULTIPLICATION AND SQUARE ROOT
-unit fastnormal24(
-    input   uint48  tonormal,
-    output  uint24  normalfraction
-) <reginputs> {
-    always_after {
-        normalfraction = tonormal[ tonormal[47,1] ? 23 : 22, 24 ];
+        { normalfraction = temporary[23,24]; }                                                                                  // EXTRACT 24 BITS ( 1 extra for rounding )
+        { newexponent = exp - CLZ48.count; }                                                                                    // ADDSUB EXPONENT ADJUSTMENT
     }
 }
 
@@ -404,76 +383,6 @@ unit doroundcombine(
         { OF = ( newexponent > 254 );  }
         { UF = newexponent[9,1];  }
         { f32 = UF ? 0 : { sign, OF ? 31h7f800000 : { newexponent[0,8], roundfraction } }; }
-    }
-}
-
-// CONVERT SIGNED/UNSIGNED INTEGERS TO FLOAT
-// dounsigned == 1 for signed conversion (31 bit plus sign), == 0 for dounsigned conversion (32 bit)
-unit clz32(
-    input   uint32  number,
-    output! uint5   zeros
-) <reginputs> {
-    always_after {
-        ( zeros ) = clz_silice_32( number );
-    }
-}
-unit inttofloat(
-    input   uint32  a,
-    input   uint32  absa,
-    input   uint1   dounsigned,
-    output  uint7   flags,
-    output  uint32  result
-) <reginputs> {
-    // COUNT LEADING ZEROS - RETURNS NX IF NUMBER IS TOO LARGE, LESS THAN 8 LEADING ZEROS
-    uint1   sign <:: ~dounsigned & a[31,1];         uint32  number <:: sign ? absa : a;
-    uint1   NX <:: ( ~|CLZ.zeros[3,2] );
-    int10   exponent <:: 158 - CLZ.zeros;
-    int23   fraction <:: NX ? number >> ( 8 - CLZ.zeros ) : number << ( CLZ.zeros - 8 );
-
-    clz32 CLZ( number <: number );
-
-    always_after {
-        { result = ( |a ) ? { sign, exponent[0,8], fraction } : 0; }
-        { flags = { 6b0, NX };  }
-    }
-
-}
-
-// CONVERT FLOAT TO SIGNED/UNSIGNED INTEGERS
-unit floattoint(
-    input   uint32  a,
-    input   uint1   dounsigned,
-    input   uint4   classA,
-    output  uint7   flags,
-    output  uint32  result
-) <reginputs> {
-    int10   exp <:: fp32( a ).exponent - 127;
-    uint1   NN <:: classA[2,1] | classA[1,1];
-    uint1   NV <:: ( exp > ( dounsigned ? 31 : 30 ) ) | ( dounsigned & fp32( a ).sign ) | classA[3,1] | NN;
-    uint33  sig <:: ( exp < 24 ) ? { 9b1, fp32( a ).fraction, 1b0 } >> ( 23 - exp ) : { 9b1, fp32( a ).fraction, 1b0 } << ( exp - 24);
-    uint32  unsignedfraction <:: ( sig[1,32] + sig[0,1] );
-
-    always_after {
-        {
-            if( classA[0,1] ) {
-                result = 0;
-            } else {
-                if( dounsigned ) {
-                    if( classA[3,1] | NN ) {
-                        result = NN ? 32hffffffff : { {32{~fp32( a ).sign}} };
-                    } else {
-                        result = ( fp32( a ).sign ) ? 0 : NV ? 32hffffffff : unsignedfraction;
-                    }
-                } else {
-                    if( classA[3,1] | NN ) {
-                        result = { ~NN & fp32( a ).sign, {31{~fp32( a ).sign}} };
-                    } else {
-                        result = { fp32( a ).sign, NV ? {31{~fp32( a ).sign}} : fp32( a ).sign ? -unsignedfraction : unsignedfraction };
-                    }
-                }
-            }
-        }
-        { flags = { classA[3,1], NN, NV, 4b0000 }; }
     }
 }
 
@@ -594,9 +503,7 @@ unit floatmultiply(
     uint1   NN <:: ( classA[2,1] | classA[1,1] | classB[2,1] | classB[1,1] );
     uint1   NV <:: IF & ZERO;
     uint2   ACTION <:: { IF | NN, ZERO };
-
-    // NORMALISE THE RESULTING PRODUCT AND EXTRACT THE 24 BITS AFTER THE LEADING 1.xxxx
-    fastnormal24 NORMAL( normalfraction :> normalfraction );
+    uint48  product <:: { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction };
 
     algorithm <autorun> {
         while(1) {
@@ -613,9 +520,9 @@ unit floatmultiply(
 
     always_after {
         // BREAK DOWN INITIAL float32 INPUTS, PERFORM THE MULTIPLICATION, AND FIND SIGN OF RESULT AND EXPONENT OF PRODUCT ( + 1 IF PRODUCT OVERFLOWS, MSB == 1 )
-        { NORMAL.tonormal = { 1b1, fp32( a ).fraction } * { 1b1, fp32( b ).fraction }; }
+        { normalfraction = product[ product[47,1] ? 23 : 22, 24 ]; }
         { productsign = fp32( a ).sign ^ fp32( b ).sign; }
-        { productexp = fp32( a ).exponent + fp32( b ).exponent - ( NORMAL.tonormal[47,1] ? 253 : 254 ); }
+        { productexp = fp32( a ).exponent + fp32( b ).exponent - ( product[47,1] ? 253 : 254 ); }
 
         {
             switch( ACTION ) {
@@ -737,9 +644,6 @@ unit floatsqrt(
     uint1   NV <:: classA[3,1] | NN | fp32( a ).sign;
     uint1   ACTION <:: ~|{ classA[3,1] | NN, classA[0,1] | fp32( a ).sign };
 
-    // FAST NORMALISE THE RESULT
-    fastnormal24 NORMAL( tonormal <: squareroot, normalfraction :> normalfraction );
-
     // EXPONENT OF INPUT ( used to determine if 1x.xxxxx or 01.xxxxx for fixed point fraction to sqrt )
     // SQUARE ROOT EXPONENT IS HALF OF INPUT EXPONENT
     uint50  ac = uninitialised;
@@ -773,6 +677,7 @@ unit floatsqrt(
         }
         { i = start ? 0 : i + update; }
 
+        { normalfraction = squareroot[ squareroot[47,1] ? 23 : 22, 24 ]; }
         { squarerootexp = ( expA >>> 1 ); }
         {
             if( ACTION ) {
@@ -834,7 +739,7 @@ unit floatcompare(
     input   uint32  b,
     input   uint4   classA,
     input   uint4   classB,
-    output  uint7   flags,
+    output  uint6   flags,
     output  uint1   less,
     output  uint1   equal
 ) <reginputs> {

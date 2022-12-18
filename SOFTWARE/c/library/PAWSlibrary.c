@@ -2085,9 +2085,9 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
     return(1);
 }
 
-// newlib support routines - define standard malloc memory size 24MB
+// newlib support routines - define standard malloc memory size 16MB
 #ifndef MALLOC_MEMORY
-#define MALLOC_MEMORY ( 24 * 1024 * 1024 )
+#define MALLOC_MEMORY ( 16 * 1024 * 1024 )
 #endif
 
 void *__bram_point = (void *)0x1a00;
@@ -2102,11 +2102,12 @@ extern unsigned char ps2_character_available( void );
 extern unsigned short ps2_inputcharacter( void );
 extern void ps2_keyboardmode( unsigned char mode );
 
-unsigned char *_heap = NULL;
-unsigned char *_sbrk( int incr ) {
-    unsigned char *prev_heap;
+char *_heap = NULL;
+char *_sbrk( int incr ) {
+    char *prev_heap;
+    extern char _heap_start;   //set by linker
 
-    if ( _heap == NULL) { _heap = (unsigned char *)MEMORYTOP - MALLOC_MEMORY - 32; }
+    if ( _heap == NULL) { _heap = &_heap_start; }
     prev_heap = _heap;
 
     if( incr < 0 ) { _heap = _heap; } else { _heap += incr; }
