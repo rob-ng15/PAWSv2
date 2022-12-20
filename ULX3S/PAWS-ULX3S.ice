@@ -1,4 +1,48 @@
+// DEFINE I/O CLOCKS
 $$ uart_in_clock_freq_mhz = 50
+
+// REGISTER AND MEMORY BUS DEFINITIONS
+$$ reg_width = 32
+$$ addr_width = 27
+
+// ON CPU INSTRUCTION CACHE DEFINITIONS
+
+// L0 CACHE SIZES FOR HART ID 0 AND 1
+// MAX size is 64 due to bram limits ( 32 is 1k )
+// size and blocks must be a power of 2
+$$ L0Isize = 32
+$$ L0Icacheaddrwidth = clog2(L0Isize)
+
+// HART 0 - MAIN
+$$ L00Iblocks = 8
+$$ L00Icount = clog2(L00Iblocks)
+$$ L00Ipartaddresswidth = addr_width - 1 - L00Icount - L0Icacheaddrwidth
+$$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
+bitfield L00cacheI{ uint$L00Ipartaddresswidth$ tag, uint30 instruction, uint1 compressed, uint1 valid }
+
+// HART 1 - SMT
+$$ L01Iblocks = 2
+$$ L01Icount = clog2(L01Iblocks)
+$$ L01Ipartaddresswidth = addr_width - 1 - L01Icount - L0Icacheaddrwidth
+$$ L01Ipartaddressstart = 1 + L01Icount + L0Icacheaddrwidth
+bitfield L01cacheI{ uint$L01Ipartaddresswidth$ tag, uint30 instruction, uint1 compressed, uint1 valid }
+
+// SDRAM CACHE DEFINITIONS
+
+// ADDRESS WIDTH OF THE SDRAM ( 26 bits is 32Mb )
+// CHIP SELECT is done by readflag/writeflag
+$$ sdram_addr_width = 26
+
+// CACHES SIZES - L1 2 x L1size for DATA
+$$if VERILATOR then
+$$ L1size = 128
+$$else
+$$ L1size = 4096
+$$end
+$$ L1cacheaddrwidth = clog2(L1size)
+$$ L1partaddresswidth = sdram_addr_width - 2 - L1cacheaddrwidth
+$$ L1partaddressstart = 2 + L1cacheaddrwidth
+bitfield L1cachetag{ uint1 needswrite, uint1 valid, uint$L1partaddresswidth$ partaddress }
 
 $$if not SIMULATION then
 // CLOCKS
@@ -52,8 +96,7 @@ $include('../timers_random.si')
 $$CPUISA = 0x40011027
 $include('../cpu_functionblocks.si')
 $include('../ALU.si')
-$include('../FPU.si')
-//$include('../FPU_NEW.si')
+$include('../FPU32.si')
 $include('../CPU.si')
 
 // MAIN PAWS.si cache is 32 bits
