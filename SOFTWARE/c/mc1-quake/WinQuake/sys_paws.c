@@ -217,7 +217,7 @@ void main (int argc, char **argv)
 
 	parms.memsize = 16*1024*1024;
 	parms.membase = malloc (parms.memsize);
-	parms.basedir = "/DEMO";
+	parms.basedir = "/GAMES";
 
 	fprintf (stderr,"argc = %d\n",argc);
 	COM_InitArgv (argc, argv);

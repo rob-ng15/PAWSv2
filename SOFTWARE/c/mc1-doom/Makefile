@@ -1,7 +1,7 @@
 include ../makefile.inc
 
 PROJECT=DOOM
-PROJECTTYPE=DEMO
+PROJECTTYPE=GAMES
 
 all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
 
@@ -134,7 +134,7 @@ $(BUILD_DIR)/z_zone.o
 $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW :$(BUILD_DIR)/doom.elf
 	$(ARCH)-elf-objcopy -O binary $< $@
 	@echo ""
-	@echo "Please copy doom1.wad to the /DEMO directory of the SDCARD"
+	@echo "Please copy doom1.wad to the /GAMES directory of the SDCARD"
 	@echo "When copying DOOM.PAW"
 
 $(BUILD_DIR)/doom.elf: $(DOOM_OBJECTS) $(LIBPAWS)

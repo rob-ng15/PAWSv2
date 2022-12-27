@@ -382,7 +382,7 @@ void main (int argc, char **argv)
 
 	parms.memsize = HEAP_SIZE_MB * 1024 * 1024;
 	parms.membase = malloc (parms.memsize);
-	parms.basedir = "/DEMO";
+	parms.basedir = "/GAMES";
 
 	COM_InitArgv (argc, argv);
 

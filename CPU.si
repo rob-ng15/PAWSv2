@@ -285,11 +285,9 @@ $$end
 
     always_after {
         uint$32+L00Ipartaddresswidth$ cacheline = uninitialised;
-
         { tagmatch = ~( invalidate | CLS ) & ( L00cacheI( cacheline ).tag == address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$] ) & L00cacheI( cacheline).valid; }
         { instruction = L00cacheI( cacheline ).instruction; }
         { compressed = L00cacheI( cacheline ).compressed; }
-
         {
             switch( address[1,$L00Icount$] ) {
                 $$for i=0,(L00Iblocks-1) do
@@ -297,7 +295,7 @@ $$end
                 $$end
             }
         }
-    }
+   }
 }
 
 unit il00cache_write(
@@ -361,11 +359,9 @@ $$end
 
     always_after {
         uint$32+L01Ipartaddresswidth$ cacheline = uninitialised;
-
         { tagmatch = ~( invalidate | CLS ) & ( L01cacheI( cacheline ).tag == address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$] ) & L01cacheI( cacheline ).valid; }
         { instruction = L01cacheI( cacheline ).instruction; }
         { compressed =  L01cacheI( cacheline ).compressed; }
-
         {
             switch( address[1,$L01Icount$] ) {
                 $$for i=0,(L01Iblocks-1) do
@@ -457,6 +453,7 @@ unit cpuexecuteSLOWPATH(
     uint1   fpufast <:: ( isFPU & FASTPATHFPU ) | fpuconvert;
     uint1   fpucalc <:: isFPU & ~fpufast;
     uint4   operation <:: { ~|{fpufast,isATOMIC,isCSR}, fpufast, isATOMIC, isCSR };
+    uint1   unitbusy <:: FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy;
 
     // M EXTENSION - DIVISION
     aluMD ALUMD( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, abssourceReg1 <: abssourceReg1, abssourceReg2 <: abssourceReg2 );
@@ -476,12 +473,8 @@ unit cpuexecuteSLOWPATH(
     );
 
     // FLOATING POINT FAST OPERATIONS
-    floatconvert FPUCONVERT(
-        FPUflags <: CSR.FPUflags,
-        function7 <: function7[2,5], rs2 <: rs2[0,1],
-        sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1, sourceReg1F <: sourceReg1F,
-        typeAF <: typeAF
-    );
+    int2float FPUFLOAT( FPUflags <: CSR.FPUflags, rs2 <: rs2[0,1], sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1 );
+    float2int FPUINT( FPUflags <: CSR.FPUflags, rs2 <: rs2[0,1], sourceReg1F <: sourceReg1F, typeAF <: typeAF );
     fpuSINGLECYCLE FPUFAST(
         FPUflags <: CSR.FPUflags,
         function3 <: function3[0,2], function7 <: function7[2,5],
@@ -490,7 +483,7 @@ unit cpuexecuteSLOWPATH(
     );
 
     // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
-    uint5   FPUnewflags <:: FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? FPUCONVERT.FPUnewflags : FPUCALC.FPUnewflags;
+    uint5   FPUnewflags <:: FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? ( function7[3,1] ? FPUFLOAT.FPUnewflags: FPUINT.FPUnewflags ) : FPUCALC.FPUnewflags;
     CSRblock CSR(
         SMT <: SMT,
         csrRegister <: csrRegister,
@@ -516,10 +509,9 @@ unit cpuexecuteSLOWPATH(
             if( start ) {
                 busy = 1;
                 onehot( operation ) {
-                    case 0: { ++: }                                                                                     // CSR
-                    case 1: {}                                                                                          // ATOMIC OPERATIONS
-                    case 2: {}                                                                                     // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                    case 3: { while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
+                    case 0: { ++: }                                                                                             // CSR
+                    default: {}                                                                                                 // ATOMIC OPERATIONS, FPU COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                    case 3: { while( unitbusy ) {} }                                                                            // FPU CALCULATIONS AND INTEGER DIVISION + CLMUL
                 }
                 busy = 0;
                 CSR.updateFPUflags = fpuconvert | fpucalc;
@@ -542,12 +534,12 @@ unit cpuexecuteSLOWPATH(
                             memoryoutput = sourceReg2;
                         }
                     }
-                    case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }                                   // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                    case 2: { result = fpuconvert ? ( function7[3,1] ? FPUFLOAT.result : FPUINT.result ) : FPUFAST.result; }                                   // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                     case 3: { result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result; }       // FPU CALCULATIONS AND INTEGER DIVISION
                 }
             }
         }
-        { frd = fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
+        { frd = fpuconvert ? function7[3,1] : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
     }
 }
 
@@ -652,7 +644,9 @@ unit load(
 ) <reginputs> {
     // SIGN FOR 8 AND 16 BIT LOADS
     uint1   sign <:: ~dounsigned & ( accesssize[0,1] ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
-
+    uint32  signextend <:: accesssize[1,1] ? readdata :                                                                         // 32 BIT
+                           accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                                                   // 16 BIT
+                                             { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };                              // 8 BIT
     uint1   complete = uninitialised;
     readmemory := start; complete := 0;
 
@@ -665,15 +659,8 @@ unit load(
     always_after {
         { if( start ) { busy = 1; } }
         { if( complete ) { busy = 0; } }
-        {
-            if( complete ) {
-                memoryinput = accesssize[1,1] ? readdata :                                              // 32 BIT
-                              accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                        // 16 BIT
-                                                { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };   // 8 BIT
-            }
-        }
+        { if( complete ) { memoryinput = signextend; } }
     }
-
 }
 
 // STORE UNIT FOR NON-FAST STORES ( to BRAM/SDRAM or 32 bit )

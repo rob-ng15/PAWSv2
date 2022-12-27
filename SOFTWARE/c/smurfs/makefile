@@ -1,7 +1,7 @@
 include ../makefile.inc
 
 PROJECT=SMURFS
-PROJECTTYPE=GAMES
+PROJECTTYPE=DEMO
 SOURCE=smurfs.c
 
 include ../makefile-paws.inc
