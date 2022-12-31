@@ -577,12 +577,13 @@ unit cpuexecuteFASTPATH(
     );
 
     always_after {
-        { memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2; }                      // FLOAT STORE OR STORE
-        { result = isAUIPCLUI ? AUIPCLUI :                                              // LUI AUIPC
-                            isJAL ? nextPC :                                            // JAL[R]
-                            isLOAD ? memoryinput :                                      // [FLOAT]LOAD
-                            ALU.result; }                                               // INTEGER ALU AND MULTIPLICATION
-        { if( isFENCE ) { fenceACTIVE = { |function7[1,2], ~function3[0,1] }; } }       // SET FENCE ACTIVE, { IO, MEM }, IO STOPS THREAD SWITCHING, MEM RESETS L0CACHE (after load)
+        { memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2; }                                                              // FLOAT STORE OR STORE
+        { result = isAUIPCLUI ? AUIPCLUI :                                                                                      // LUI AUIPC
+                   isJAL ? nextPC :                                                                                             // JAL[R]
+                   isLOAD ? memoryinput :                                                                                       // [FLOAT]LOAD
+                   ALU.result; }                                                                                                // INTEGER ALU AND MULTIPLICATION
+        { if( isFENCE ) { fenceACTIVE = { |function7[1,2], ~function3[0,1] }; } }                                               // SET FENCE ACTIVE { IO, MEM }
+                                                                                                                                // IO STOPS THREAD SWITCHING, MEM RESETS L0CACHE (after load)
     }
 }
 
@@ -721,7 +722,7 @@ unit dma(
 
     uint4   dmamode = uninitialized;                uint$addr_width$  dmacount = uninitialised;         uint8   dmacycles = uninitialised;
     uint$addr_width$  dmasrc = uninitialised;       uint$addr_width$  dmadest = uninitialised;          uint32  memoryinput = uninitialised;
-    uint1   update = uninitialised;
+    uint1   update = uninitialised;                 uint32  writecopy <:: DMA16BIT | DMA32BIT ? readdata :  readdata[ { dmasrc[0,1], 3b000 }, 8 ];
 
     uint$addr_width$  dmasrcNEXT <:: DMA32BIT ? dmasrc + 4 : DMA16BIT ? dmasrc + 2 : dmasrc + 1;
     uint$addr_width$  dmasrcADD <:: dmasrc + DMASOURCEADD;
@@ -733,7 +734,7 @@ unit dma(
     uint1   src16bit <:: ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~DMASOURCE[0,1];                    // SOURCE IS 16 BIT CAPABLE
     uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                 // DESTINATION IS 16 BIT CAPABLE
 
-    uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | PB4pixel ? 2 : 1 );
+    uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | ( &dmamode[0,3] & PB4pixel ) ? 2 : 1 );
 
     // 16/32 BIT FLAGS FOR SOURCE&DEST + SET&DEST
     uint1   SD16 <:: src16bit & dest16bit & ~DMACOUNT[0,1];
@@ -756,9 +757,7 @@ unit dma(
                             address = dmasrc; readmemory = ~srcSET;
                             switch( { srcSET, &dmamode[0,3] } ) {
                                 case 2b00: {
-                                    while( memorybusy ) {} memoryinput = readdata;
-                                    address = dmadest; writedata = DMA16BIT | DMA32BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
-                                    writememory = 1; while( memorybusy ) {}
+                                    while( memorybusy ) {} address = dmadest; writedata = writecopy; writememory = 1; while( memorybusy ) {}
                                 }
                                 case 2b01: {
                                     while( memorybusy ) {} memoryinput = readdata;
@@ -782,9 +781,7 @@ unit dma(
                                 address = dmasrc; readmemory = ~srcSET;
                                 switch( srcSET ) {
                                     case 0: {
-                                        while( memorybusy ) {} memoryinput = readdata;
-                                        address = dmadest; writedata = DMA16BIT | DMA32BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
-                                        writememory = 1; while( memorybusy ) {}
+                                        while( memorybusy ) {} address = dmadest; writedata = writecopy; writememory = 1; while( memorybusy ) {}
                                     }
                                     case 1: { address = dmadest;  writememory = 1; while( memorybusy ) {} }
                                 }
@@ -816,7 +813,7 @@ unit dma(
                         case 2: { dmasrc = dmasrcNEXT; }
                         case 3: { dmasrc = dmasrcNEXT; }
                         case 6: { dmasrc = dmasrcADD; }
-                        case 7: { dmasrc = PB4pixel ? dmasrc + 4 : dmasrc + 2; }
+                        case 7: { dmasrc = dmasrc + PBmax; }
                     }
                 }
             } else {
@@ -870,7 +867,7 @@ unit dma(
                     default: {}                                                                                                 // DEFAULT TO 8 BIT MODE
                     case 3: { DMA32BIT = SD32; DMA16BIT = SD16; }                                                               // MEMCPY IS 32/16 BIT CAPABLE
                     case 4: { DMA32BIT = SSD32; DMA16BIT = SSD16; }                                                             // MEMSET IS 32/16 BIT CAPABLE
-                    case 7: { PB4pixel = ~|dmacount[0,2] & src16bit; }                                                          // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
+                    case 7: { PB4pixel = ~|DMACOUNT[0,2] & src16bit; }                                                          // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
                     case 8: { DMA32BIT = SD32 & ADD32; DMA16BIT = SD16 & ADD16; }                                               // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
                     case 9: { DMA32BIT = SSD32 & ADD32; DMA16BIT = SSD16 & ADD16; }                                             // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
                 }
@@ -878,6 +875,6 @@ unit dma(
             }
         }
         { if( start ) { DMAACTIVE = 1; } }
-        { if( start ) { DMAACCESSSIZE = DMA32BIT | PB4pixel? 2b10 : DMA16BIT | &dmamode[0,3] ? 2b01: 2b00; } }                  // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
+        { if( start ) { DMAACCESSSIZE = DMA32BIT | ( &DMAMODE[0,3] & PB4pixel ) ? 2b10 : DMA16BIT | &DMAMODE[0,3] ? 2b01: 2b00; } } // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
     }
 }

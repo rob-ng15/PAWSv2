@@ -563,7 +563,7 @@ void main( void ) {
     *SMTSTATUS = 0;
 
     // CLEAR MEMORY
-    memset( &_bss_start, 0, &_bss_end - &_bss_end );
+    memset( &_bss_start, 0, &_bss_end - &_bss_start );
 
     // RESET THE DISPLAY
     reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
