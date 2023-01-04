@@ -59,7 +59,7 @@ $$if VGA then
 $include('vga.si')
 $$end
 
-// IO - UART, SDCARD, I2C and PS/2 KEYBOARD
+// IO - UART, SDCARD, PS/2 KEYBOARD
 $include('../common/uart.si')
 $include('../common/sdcard_write.si')
 $include('../common/ps2.si')
@@ -99,7 +99,7 @@ $include('../ALU.si')
 $include('../FPU32.si')
 $include('../CPU.si')
 
-// MAIN PAWS.si cache is 32 bits
+// MAIN PAWS.si
 $include('../PAWS.si')
 
 // I2C (EMARD FOR RTC)

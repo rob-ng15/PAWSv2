@@ -4,10 +4,10 @@ MEMORY
 }
 
 ENTRY(_start)
+STARTUP(../library/build/crt0.o)
 
 SECTIONS {
   .text 0x4000000 : {
-        ../library/build/crt0.o (.text)
         *(.text*)
     } > ram
     .bss :

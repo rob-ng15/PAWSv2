@@ -16,7 +16,7 @@ BUILD_DIR=build_lto
 OUTPUT_DIR=../../PAWS/
 
 CFLAGS=-march=rv32imafc_zba_zbb_zbc_zbs_zbkb_zbkx_zifencei -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
-LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf32lriscv -Wl,-belf32-littleriscv
+LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf32lriscv -Wl,-belf32-littleriscv,-nostdlib
 LCONFIG=-Wl,-T../config_c_SDRAM-lto.ld
 
 PAWSBASE=../
@@ -26,7 +26,7 @@ LIBRARY=/usr/riscv64-elf/lib/rv32imafc/ilp32f/libc.a \
 		/usr/riscv64-elf/lib/rv32imafc/ilp32f/libm.a \
 		/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv32imafc/ilp32f/libgcc.a \
 
-CRT0SOURCE=	$(PAWSBASE)library/crt0.c
+CRT0SOURCE=	$(PAWSBASE)library/crt0.s
 CRT0OBJ=	$(PAWSBASE)library/$(BUILD_DIR)/crt0.o
 
 LIBPAWSSOURCE=	$(PAWSBASE)library/PAWS.h $(PAWSBASE)library/PAWSdefinitions.h $(PAWSBASE)library/PAWSlibrary.c
@@ -48,9 +48,9 @@ FATIOLIBOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o \
 		$(PAWSBASE)library/$(BUILD_DIR)/fat_cache.o \
 		$(PAWSBASE)library/$(BUILD_DIR)/fat_format.o
 
-LIBPAWS=$(CRT0OBJ) $(LIBPAWSOBJ) $(PAWSPS2OBJ) $(NANOJPEGOBJ) $(FATIOLIBOBJ)
+LIBPAWS=$(LIBPAWSOBJ) $(PAWSPS2OBJ) $(NANOJPEGOBJ) $(FATIOLIBOBJ)
 
-$(LIBPAWSOBJ) : $(LIBPAWSSOURCE)
+$(LIBPAWSOBJ) : $(LIBPAWSSOURCE) $(CRT0OBJ)
 	$(CC) $(CFLAGS) -c $(PAWSBASE)library/PAWSlibrary.c -o $@
 
 $(PAWSPS2OBJ) : $(PAWSP2SOURCE)

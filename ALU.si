@@ -1,22 +1,26 @@
 // ALU - ALU for immediate-register operations and register-register operations
 
 // CALCULATES SLL SLLI SRL SRLI SRA SRAI + ROL ROR RORI
+unit left( input uint32 sourceReg1, input uint6 shiftcount, output! uint32 SLL ) <reginputs> { always_after { SLL = sourceReg1 << shiftcount; } }
+unit right( input uint32 sourceReg1, input uint6 shiftcount, output! uint32 SRL ) <reginputs> { always_after { SRL = sourceReg1 >> shiftcount; } }
 unit alushift(
     input   uint32  sourceReg1,
     input   uint5   shiftcount,
     input   uint1   reverse,
-    output  uint32  SLL,
-    output  uint32  SRL,
+    output! uint32  SLL,
+    output! uint32  SRL,
     output  uint32  SRA,
     output  uint32  ROTATE
 ) <reginputs> {
     uint6 shiftother <:: 32 - shiftcount;
+    left LEFT( sourceReg1 <: sourceReg1, shiftcount <: shiftcount, SLL :> SLL );
+    right RIGHT( sourceReg1 <: sourceReg1, shiftcount <: shiftcount, SRL :> SRL );
+    left LEFTalt( sourceReg1 <: sourceReg1, shiftcount <: shiftother );
+    right RIGHTalt( sourceReg1 <: sourceReg1, shiftcount <: shiftother );
 
     always_after {
-        { SLL = sourceReg1 << shiftcount; }
-        { SRL = sourceReg1 >> shiftcount; }
         { SRA = __signed(sourceReg1) >>> shiftcount; }
-        { ROTATE = reverse ? ( ( sourceReg1 << shiftother ) | SRL ) : ( SLL | ( sourceReg1 >> shiftother ) ); }
+        { ROTATE = reverse ? ( LEFTalt.SLL | RIGHT.SRL ) : ( LEFT.SLL | RIGHTalt.SRL ); }
     }
 }
 // CALCULATES BCLR BCLRI BEXT BEXTI BIN BINI BSET BSETI
@@ -348,6 +352,7 @@ unit aluMD(
     uint32  divisor <:: function3[0,1] ? sourceReg2 : abssourceReg2;
     uint32  temporary <:: { remainder[0,31], dividend[bit,1] };
     uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
+    uint32  remainderNEXT <:: __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
     uint6   bit(63);
     uint1   update = uninitialised;
     uint1   notdivzero <:: |sourceReg2;
@@ -363,12 +368,12 @@ unit aluMD(
     // START DIVIDER AND EXTRACT RESULT
     always_after {
         { if( start & notdivzero ) { quotient = 0; } else { if( update ) { quotient[bit,1] = bitresult; } } }
-        { if( start & notdivzero ) { remainder = 0; } else { if( update ) { remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 ); } } }
+        { if( start & notdivzero ) { remainder = 0; } else { if( update ) { remainder = remainderNEXT; } } }
         { bit = start & notdivzero ? 31 : bit - update; }
         {
             result = ( notdivzero ) ? function3[1,1] ? remainder :                                                          // RETURN REMAINDER
                                     ( ( ~function3[0,1] & ( sourceReg1[31,1] ^ sourceReg2[31,1] ) ) ? -quotient :           // RETURN QUOTIENT ( coreting sgn )
-                                                                                                        quotient ) :        // RETURN QUOTIENT ( unsigned or positive )
+                                                                                                       quotient ) :         // RETURN QUOTIENT ( unsigned or positive )
                                     function3[1,1] ? sourceReg1 : 32hffffffff;                                              // DIVIDE BY ZERO, dividend if remainder, -1 if quotient
         }
     }

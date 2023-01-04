@@ -1,4 +1,4 @@
-include ../makefile.inc
+include ../makefile-lto.inc
 
 PROJECT=PFORTH
 PROJECTTYPE=COMPUTER/PFORTH
@@ -18,10 +18,10 @@ PFORTH_OBJECTS= pf_cglue.o pf_clib.o pf_core.o pf_inner.o \
 		pf_text.o pf_words.o pfcompil.o pfcustom.o \
 		pf_fileio_stdio.o pf_io_stdio.o
 
-PFORTH_BUILD_OBJECTS= build/pf_cglue.o build/pf_clib.o build/pf_core.o build/pf_inner.o \
-		build/pf_io.o build/pf_main.o build/pf_mem.o build/pf_save.o \
-		build/pf_text.o build/pf_words.o build/pfcompil.o build/pfcustom.o \
-		build/pf_fileio_stdio.o build/pf_io_stdio.o
+PFORTH_BUILD_OBJECTS= build_lto/pf_cglue.o build_lto/pf_clib.o build_lto/pf_core.o build_lto/pf_inner.o \
+		build_lto/pf_io.o build_lto/pf_main.o build_lto/pf_mem.o build_lto/pf_save.o \
+		build_lto/pf_text.o build_lto/pf_words.o build_lto/pfcompil.o build_lto/pfcustom.o \
+		build_lto/pf_fileio_stdio.o build_lto/pf_io_stdio.o
 
 all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
 

@@ -19,16 +19,16 @@ unit fpuSINGLECYCLE(
     uint1   TRUEZERO <:: ~|fp32( sourceReg1F ).fraction;
     uint3   LTEQ <:: { FPUlteq.equal, FPUlteq.less, FPUlteq.less | FPUlteq.equal };
 
-    uint10  FCLASS <:: {  typeAF[1,1],                                                                                            // 512  qNAN
-                        typeAF[2,1],                                                                                            // 256  sNAN
-                        typeAF[3,1] & ~fp32( sourceReg1F ).sign,                                                                // 128  +INF
-                        ~|typeAF & ~fp32( sourceReg1F ).sign,                                                                   // 64   +NORMAL
-                        typeAF[0,1] & ~fp32( sourceReg1F ).sign & ~TRUEZERO,                                                    // 32   +SUBNORMAL
-                        typeAF[0,1] & ~fp32( sourceReg1F ).sign & TRUEZERO,                                                     // 16   +0
-                        typeAF[0,1] & fp32( sourceReg1F ).sign & TRUEZERO,                                                      // 8    -0
-                        typeAF[0,1] & fp32( sourceReg1F ).sign & ~TRUEZERO,                                                     // 4    -SUBNORMAL
-                        ~|typeAF & fp32( sourceReg1F ).sign,                                                                    // 2    -NORMAL
-                        typeAF[3,1] & fp32( sourceReg1F ).sign                                                                  // 1    -INF
+    uint10  FCLASS <:: {    typeAF[1,1],                                                                                            // 512  qNAN
+                            typeAF[2,1],                                                                                            // 256  sNAN
+                            typeAF[3,1] & ~fp32( sourceReg1F ).sign,                                                                // 128  +INF
+                            ~|typeAF & ~fp32( sourceReg1F ).sign,                                                                   // 64   +NORMAL
+                            typeAF[0,1] & ~fp32( sourceReg1F ).sign & ~TRUEZERO,                                                    // 32   +SUBNORMAL
+                            typeAF[0,1] & ~fp32( sourceReg1F ).sign & TRUEZERO,                                                     // 16   +0
+                            typeAF[0,1] & fp32( sourceReg1F ).sign & TRUEZERO,                                                      // 8    -0
+                            typeAF[0,1] & fp32( sourceReg1F ).sign & ~TRUEZERO,                                                     // 4    -SUBNORMAL
+                            ~|typeAF & fp32( sourceReg1F ).sign,                                                                    // 2    -NORMAL
+                            typeAF[3,1] & fp32( sourceReg1F ).sign                                                                  // 1    -INF
             };
     uint32  MINMAX <:: NAN ? 32h7fc00000 : typeAF[1,1] ? ( typeBF[1,1] ? 32h7fc00000 : sourceReg2F ) : typeBF[1,1] | ( function3[0,1] ^ FPUlteq.less ) ? sourceReg1F : sourceReg2F;
     uint5   flagsMINMAX <:: { NAN, 4b0000 };
@@ -300,7 +300,7 @@ unit typeF(
     uint1   zeroFRACTION <:: ~|fp32(a).fraction;                                                                                // FRACTION == 0, INF, == 100... qNAN, == 0xxx... ( xxx... != 0 ) sNAN
 
     always_after {
-        type = {   expFF & zeroFRACTION,                                                                                        // INF
+        type = {    expFF & zeroFRACTION,                                                                                        // INF
                     expFF & ~fp32(a).fraction[22,1] & ~zeroFRACTION,                                                            // sNAN
                     expFF & fp32(a).fraction[22,1],                                                                             // qNAN
                     ~|( fp32(a).exponent )                                                                                      // ZERO / SUBNORMAL
@@ -355,6 +355,8 @@ unit fastnormal24(
 // ADD BIAS TO EXPONENT AND ADJUST EXPONENT IF ROUNDING FORCES
 // COMBINE COMPONENTS resultO FLOATING POresult NUMBER - USED BY CALCULATIONS
 // UNDERFLOW return 0, OVERFLOW return infinity
+unit overflow( input int10 exponent, output! uint1 OF ) <reginputs> { always_after { OF = ( exponent > 254 ); } }
+
 unit doroundcombine(
     input   uint1   sign,
     input   uint24  bitstream,
@@ -365,11 +367,11 @@ unit doroundcombine(
 ) <reginputs> {
     uint23  roundfraction <:: bitstream[1,23] + bitstream[0,1];
     int10   newexponent <:: ( ( ~|roundfraction & bitstream[0,1] ) ? 128 : 127 ) + exponent;
+    overflow OVER( exponent <: newexponent, OF :> OF );
 
    always_after {
-        { OF = ( newexponent > 254 );  }
         { UF = newexponent[9,1];  }
-        { f32 = UF ? 0 : { sign, OF ? 31h7f800000 : { newexponent[0,8], roundfraction } }; }
+        { f32 = newexponent[9,1] ? 0 : { sign, OVER.OF ? 31h7f800000 : { newexponent[0,8], roundfraction } }; }
     }
 }
 
@@ -542,6 +544,7 @@ unit dofloatdivide(
     uint50  remainder = uninitialised;
     uint50  temporary <:: { remainder[0,49], sigA[bit,1] };
     uint1   bitresult <:: __unsigned(temporary) >= __unsigned(sigB);
+    uint50  remainderNEXT <:: __unsigned(temporary) - ( bitresult ? __unsigned(sigB) : 0 );
     uint2   normalshift <:: quotient[49,1] ? 2 : quotient[48,1];
 
     busy := start | ( ~&bit ) | ( quotient[48,2] != 0 );
@@ -551,7 +554,7 @@ unit dofloatdivide(
         if( &bit ) {
             if( start ) { bit = 49; quotient = 0; remainder = 0; } else { quotient = quotient[ normalshift, 48 ]; }
         } else {
-            remainder = __unsigned(temporary) - ( bitresult ? __unsigned(sigB) : 0 );
+            remainder = remainderNEXT;
             quotient[bit,1] = bitresult;
             bit = bit - 1;
         }
@@ -747,7 +750,8 @@ unit floatcompare(
     output  uint1   equal
 ) <reginputs> {
     uint1   NAN <:: typeAF[2,1] | typeBF[2,1] | typeAF[1,1] | typeBF[1,1];
-    uint1   aequalb <:: ( a == b );                 uint1   aorbleft1equal0 <:: ~|( ( a | b ) << 1 );
+    uint1   aequalb <:: ( a == b );
+    uint1   aorbleft1equal0 <:: ~|( ( a | b ) << 1 );
 
     // IDENTIFY NaN, RETURN 0 IF NAN, OTHERWISE RESULT OF COMPARISONS
     always_after {
