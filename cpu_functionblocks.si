@@ -19,6 +19,7 @@ unit control(
     output  uint5   rs2,
     output  uint5   rs3,
     output  uint5   rd,
+    output  uint12  csrRegister,
     output  int32   immediateValue,
     output  uint1   IS_AUIPCLUI,
     output  uint1   IS_JAL,
@@ -42,9 +43,9 @@ unit control(
     output! int32   sourceReg1F,
     output! int32   sourceReg2F,
     output  int32   sourceReg3F,
-    output  uint4   classA,
-    output  uint4   classB,
-    output  uint4   classC,
+    output  uint4   typeAF,
+    output  uint4   typeBF,
+    output  uint4   typeCF,
     output  int32   sourceReg1abs,
     output  int32   sourceReg2abs,
     output  int32   sourceReg2neg,
@@ -85,8 +86,8 @@ unit control(
     );
     uint1   takeBranch = uninitialized;
 
-    // FLOATING POINT REGISTERS CLASSIFICATION
-    classifyF class1F( a <: sourceReg1F, class :> classA ); classifyF class2F( a <: sourceReg2F, class :> classB ); classifyF class3F( a <: sourceReg3F, class :> classC );
+    // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
+    typeF class1F( a <: sourceReg1F, type :> typeAF ); typeF class2F( a <: sourceReg2F, type :> typeBF ); typeF class3F( a <: sourceReg3F, type :> typeCF );
 
     // REGISTERS I integer x 2, F float x 3, 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
@@ -124,6 +125,7 @@ unit control(
         { rs2 = Rtype(instruction).sourceReg2; }
         { rs3 = R4type(instruction).sourceReg3; }
         { rd = Rtype(instruction).destReg; }
+        { csrRegister = CSR(instruction).csr; }
 
         // FETCH REGISTERS FROM REGISTER FILE
         $$for i=0,1 do
@@ -357,7 +359,7 @@ unit csrf(
 ) <reginputs> {
     always_after {
         if( update ) {
-            CSRf = newflags;
+            CSRf = { CSRf[5,3], newflags };
         } else {
             switch( csr ) {
                 case 0: {}
@@ -392,13 +394,10 @@ unit csrf(
         }
     }
 }
-// BIT WIDTH FOR COUNTERS ( spec is 64 bit )
-$$ CWIDTH = 40
-$$ CREMAIN = CWIDTH - 32
 unit CSRblock(
     input   uint1   start,
     input   uint1   SMT,
-    input   uint32  instruction,
+    input   uint12  csrRegister,
     input   uint3   function3,
     input   uint5   rs1,
     input   uint32  sourceReg1,
@@ -416,8 +415,8 @@ unit CSRblock(
     uint32  writevalue <: function3[2,1] ? rs1 : sourceReg1;
 
     // FLOATING-POINT CSR FOR BOTH THREADS
-    csrf CSRF0( csr <: instruction[20,2], writevalue <: writevalue );                                   // MAIN CSRf ( CSR(instruction).csr[0,2] )
-    csrf CSRF1( csr <: instruction[20,2], writevalue <: writevalue );                                   // SMT CSRf  ( CSR(instruction).csr[0,2] )
+    csrf CSRF0( csr <: csrRegister[0,2], writevalue <: writevalue );                                   // MAIN CSRf ( csrRegister[0,2] )
+    csrf CSRF1( csr <: csrRegister[0,2], writevalue <: writevalue );                                   // SMT CSRf  ( csrRegister[0,2] )
 
     // UPDATE FLAGS FOR TIMERS, COUNTERS AND FPU-FLAGS
     CSRF0.writetype := 0; CSRF1.writetype := 0; CSRF0.update := updateFPUflags & ~SMT;  CSRF1.update := updateFPUflags & SMT;
@@ -426,7 +425,7 @@ unit CSRblock(
         { TIMER = TIMER + 1; }
         { if( SMT ) { CYCLE1 = CYCLE1 + 1; INSTRET1 = INSTRET1 + incCSRinstret; } else { CYCLE0 = CYCLE0 + 1; INSTRET0 = INSTRET0 + incCSRinstret; } }
         {
-            if( start & ~|CSR(instruction).csr[4,8] ) {
+            if( start & ~|csrRegister[4,8] ) {
                 switch( function3[0,2] ) {
                     case 2b00: {} // ECALL / EBBREAK
                     case 2b01: {
@@ -444,9 +443,9 @@ unit CSRblock(
 
             if( start ) {
                 result = 0;
-                switch( CSR(instruction).csr[8,4] ) {
+                switch( csrRegister[8,4] ) {
                     case 4h0: {
-                        switch( CSR(instruction).csr[0,2] ) {
+                        switch( csrRegister[0,2] ) {
                             case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                        // frflags
                             case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                         // frrm
                             case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                   // frcsr
@@ -455,7 +454,7 @@ unit CSRblock(
                     }
                     case 4h3: { result = $CPUISA$; }
                     case 4hc: {
-                        switch( { CSR(instruction).csr[7,1], CSR(instruction).csr[0,2] } ) {
+                        switch( { csrRegister[7,1], csrRegister[0,2] } ) {
                             case 3h0: { result = SMT ? CYCLE1[0,32] : CYCLE0[0,32]; }
                             case 3h4: { result = SMT ? CYCLE1[32,$CREMAIN$] : CYCLE0[32,$CREMAIN$]; }
                             case 3h1: { result = TIMER[0,32]; }

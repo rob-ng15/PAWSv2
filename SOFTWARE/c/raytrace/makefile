@@ -1,4 +1,4 @@
-include ../makefile-fast.inc
+include ../makefile-fast-lto.inc
 
 PROJECT=RAYTRACE
 PROJECTTYPE=DEMO

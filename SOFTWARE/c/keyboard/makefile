@@ -1,4 +1,4 @@
-include ../makefile.inc
+include ../makefile-lto.inc
 
 PROJECT=KEYBOARD
 PROJECTTYPE=TEST

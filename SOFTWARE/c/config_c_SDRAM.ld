@@ -4,13 +4,13 @@ MEMORY
 }
 
 ENTRY(_start)
+STARTUP(../library/build/crt0.o)
 
 SECTIONS {
   .text 0x4000000 : {
-        ../library/build/crt0.o (.text)
         *(.text*)
     } > ram
-    .bss (NOLOAD) :
+    .bss :
     {
        _bss_start = . ;
        *(.bss*)
@@ -32,9 +32,6 @@ SECTIONS {
     .rodata :
     {
         *(.rodata*)
-    } > ram
-    eh_frame :
-    {
-    KEEP (*(.eh_frame))
+        _heap_start = . ;
     } > ram
 }

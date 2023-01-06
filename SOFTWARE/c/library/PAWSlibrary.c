@@ -338,6 +338,11 @@ void screen_dimmer( unsigned char dimmerlevel ) {
     *DIMMER = dimmerlevel;
 }
 
+// SET THE SDCARD / JOYSTICK MODE / CAPS LOCK / NUMLOCK STATUS LIGHT DISPLAY
+void status_lights( unsigned char display, unsigned char background ) {
+    *STATUS_DISPLAY = display; *STATUS_BACKGROUND = background;
+}
+
 // SET THE FRAMEBUFFER TO DISPLAY / DRAW
 void bitmap_display( unsigned char framebuffer ) {
     await_vblank();
@@ -1539,9 +1544,16 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
 
         if( entries == 0xffff ) {
             // NO ENTRIES FOUND
+            gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
+            gpu_outputstringcentre( RED, 192, 1, "IN THIS DIRECTORY", 1 );
+            beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
+            sleep1khz( 1000, 0 );
             return(0);
         } else {
             sortdirectoryentries( entries );
+            gpu_outputstringcentre( WHITE, 88, 0, "Select directory/file using \x0f", 0 );
+            gpu_outputstringcentre( WHITE, 96, 0, "Scroll left/right using \x1b & \x1a", 0 );
+            gpu_outputstringcentre( WHITE, 104, 0, "Move UP a directory using \x18", 0 );
             gpu_outputstringcentre( WHITE, 128, 1, message, 0 );
         }
 
@@ -2087,7 +2099,7 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
 
 // newlib support routines - define standard malloc memory size 16MB
 #ifndef MALLOC_MEMORY
-#define MALLOC_MEMORY ( 16384 * 1024 )
+#define MALLOC_MEMORY ( 16 * 1024 * 1024 )
 #endif
 
 void *__bram_point = (void *)0x1a00;
@@ -2102,11 +2114,12 @@ extern unsigned char ps2_character_available( void );
 extern unsigned short ps2_inputcharacter( void );
 extern void ps2_keyboardmode( unsigned char mode );
 
-unsigned char *_heap = NULL;
-unsigned char *_sbrk( int incr ) {
-    unsigned char *prev_heap;
+char *_heap = NULL;
+char *_sbrk( int incr ) {
+    char *prev_heap;
+    extern char _heap_start;   //set by linker
 
-    if ( _heap == NULL) { _heap = (unsigned char *)MEMORYTOP - MALLOC_MEMORY - 32; }
+    if ( _heap == NULL) { _heap = &_heap_start; }
     prev_heap = _heap;
 
     if( incr < 0 ) { _heap = _heap; } else { _heap += incr; }

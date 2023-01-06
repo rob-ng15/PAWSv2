@@ -331,7 +331,34 @@ unit alu(
     }
 }
 
-// INTEGER DIVISION
+// ALU - M EXTENSION
+// ALU FOR DIVISION
+// UNSIGNED / SIGNED 32 by 32 bit division giving 32 bit remainder and quotient
+unit douintdivide(
+    input   uint1   start,
+    output  uint1   busy(0),
+    input   uint32  dividend,
+    input   uint32  divisor,
+    output  uint32  quotient,
+    output  uint32  remainder
+) <reginputs> {
+    uint6   bit(63);
+    uint32  temporary <:: { remainder[0,31], dividend[bit,1] };
+    uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
+
+    busy := start | ( ~&bit );
+
+    always_after {
+        if( start ) {
+            bit = 31; quotient = 0; remainder = 0;
+        } else {
+            quotient[bit,1] = bitresult;
+            remainder = __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
+            bit = bit - 1;
+        }
+    }
+}
+
 unit aluMD(
     input   uint1   start,
     output  uint1   busy(0),
@@ -342,40 +369,44 @@ unit aluMD(
     input   uint32  abssourceReg2,
     output  uint32  result
 ) <reginputs> {
-    uint32  quotient = uninitialised;
-    uint32  remainder = uninitialised;
-    uint32  dividend <:: function3[0,1] ? sourceReg1 : abssourceReg1;
-    uint32  divisor <:: function3[0,1] ? sourceReg2 : abssourceReg2;
-    uint32  temporary <:: { remainder[0,31], dividend[bit,1] };
-    uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
-    uint32  remainderNEXT <:: __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
-    uint6   bit(63);
-    uint1   update = uninitialised;
-    uint1   notdivzero <:: |sourceReg2;
-
-    update := 0; busy := start | ( ~&bit );
-
-    algorithm <autorun> {
-        while(1) {
-            if( start & notdivzero ) { while( ~&bit ) { update = 1; } }
-        }
-    }
+    douintdivide DODIVIDE();
+    DODIVIDE.dividend := function3[0,1] ? sourceReg1 : abssourceReg1;
+    DODIVIDE.divisor := function3[0,1] ? sourceReg2 : abssourceReg2;
+    DODIVIDE.start := start & |sourceReg2; busy := start | DODIVIDE.busy;
 
     // START DIVIDER AND EXTRACT RESULT
     always_after {
-        { if( start & notdivzero ) { quotient = 0; } else { if( update ) { quotient[bit,1] = bitresult; } } }
-        { if( start & notdivzero ) { remainder = 0; } else { if( update ) { remainder = remainderNEXT; } } }
-        { bit = start & notdivzero ? 31 : bit - update; }
-        {
-            result = ( notdivzero ) ? function3[1,1] ? remainder :                                                          // RETURN REMAINDER
-                                    ( ( ~function3[0,1] & ( sourceReg1[31,1] ^ sourceReg2[31,1] ) ) ? -quotient :           // RETURN QUOTIENT ( coreting sgn )
-                                                                                                       quotient ) :         // RETURN QUOTIENT ( unsigned or positive )
-                                    function3[1,1] ? sourceReg1 : 32hffffffff;                                              // DIVIDE BY ZERO, dividend if remainder, -1 if quotient
+        if( busy ) {
+            result = ( |sourceReg2 ) ? function3[1,1] ? DODIVIDE.remainder : ( ( ~function3[0,1] & ( sourceReg1[31,1] ^ sourceReg2[31,1] ) ) ? -DODIVIDE.quotient : DODIVIDE.quotient ) :
+            function3[1,1] ? sourceReg1 : 32hffffffff;
         }
     }
 }
 
 // ALU FOR CARRYLESS MULTIPLY FROM B-EXTENSION
+unit doclmul(
+    input   uint1   start,
+    output  uint1   busy(0),
+    input   uint32  sourceReg1,
+    input   uint32  sourceReg2,
+    input   uint6   startat,
+    input   uint6   stopat,
+    input   uint2   mode,
+    output  uint32  result
+) <reginputs> {
+    uint6   count = uninitialised;                  uint32  resultNEXT <:: result ^ ( ( mode[1,1] ) ? ( sourceReg1 >> ( ( mode[0,1] ? 31 : 32 ) - count ) ) : ( sourceReg1 << count ) );
+
+    always_after {
+        if( start ) {
+            busy = 1; result = 0; count = startat;
+        } else {
+            if( busy ) {
+                if( sourceReg2[ count, 1 ] ) { result = resultNEXT; }
+                if( count == stopat ) { busy = 0; } else { count = count + 1; }
+            }
+        }
+    }
+}
 unit aluCLMUL(
     input   uint1   start,
     output  uint1   busy(0),
@@ -384,23 +415,9 @@ unit aluCLMUL(
     input   uint32  sourceReg2,
     output  uint32  result
 ) <reginputs> {
-    uint6   startat <:: &function3;
-    uint6   stopat <:: function3[0,1] ? 32 : 31;
-    uint6   count = uninitialised;
-    uint1   update = uninitialised;
-    uint32  resultNEXT <:: result ^ ( ( function3[1,1] ) ? ( sourceReg1 >> ( ( function3[0,1] ? 31 : 32 ) - count ) ) : ( sourceReg1 << count ) );
-    update := 0;
-
-    algorithm <autorun> {
-        while(1) {
-            if( start ) { busy = 1; while( count != stopat ) { update = 1; } busy = 0; }
-        }
-    }
-
-    always_after {
-        { if( start ) { result = 0; } else { if( update ) { if( sourceReg2[ count, 1 ] ) { result = resultNEXT; } } } }
-        { count = start ? startat : count + update; }
-    }
+    doclmul DOCLMUL( sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, mode <: function3, result :> result );
+    DOCLMUL.start := start; DOCLMUL.startat := &function3; DOCLMUL.stopat := function3[0,1] ? 32 : 31;
+    busy := start | DOCLMUL.busy;
 }
 
 // ATOMIC A EXTENSION ALU
@@ -411,11 +428,11 @@ unit aluA (
     output  uint32  result
 ) <reginputs> {
     alulogic LOGIC( sourceReg1 <: memoryinput, operand2 <: sourceReg2 );
-    uint32  MINMAX <:: ( function7[2,1] ^ ( function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) :  ( __signed(memoryinput) < __signed(sourceReg2) ) ) ) ? memoryinput : sourceReg2;
 
     always_after {
         if( function7[4,1] ) {                                                      // AMOMAX[U] AMOMIN[U]
-            result = MINMAX;
+            result = ( function7[2,1] ^ ( function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) :  ( __signed(memoryinput) < __signed(sourceReg2) ) ) ) ?
+                     memoryinput : sourceReg2;
         } else {
             switch( function7[0,4] ) {
                 default: { result = memoryinput + sourceReg2; }                     // AMOADD

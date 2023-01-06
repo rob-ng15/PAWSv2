@@ -6,29 +6,6 @@
 // RISC-V - MAIN CPU LOOP
 //          ALU FUNCTIONALITY LISTED IN ALU-
 
-// ON CPU INSTRUCTION CACHE DEFINITIONS
-$$ addr_width = 27
-
-// L0 CACHE SIZES FOR HART ID 0 AND 1
-// MAX size is 64 due to bram limits ( 32 is 1k )
-// size and blocks must be a power of 2
-$$ L0Isize = 32
-$$ L0Icacheaddrwidth = clog2(L0Isize)
-
-// HART 0 - MAIN
-$$ L00Iblocks = 8
-$$ L00Icount = clog2(L00Iblocks)
-$$ L00Ipartaddresswidth = addr_width - 1 - L00Icount - L0Icacheaddrwidth
-$$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
-bitfield L00cacheI{ uint$L00Ipartaddresswidth$ tag, uint30 instruction, uint1 compressed, uint1 valid }
-
-// HART 1 - SMT
-$$ L01Iblocks = 4
-$$ L01Icount = clog2(L01Iblocks)
-$$ L01Ipartaddresswidth = addr_width - 1 - L01Icount - L0Icacheaddrwidth
-$$ L01Ipartaddressstart = 1 + L01Icount + L0Icacheaddrwidth
-bitfield L01cacheI{ uint$L01Ipartaddresswidth$ tag, uint30 instruction, uint1 compressed, uint1 valid }
-
 unit PAWSCPU(
     input   uint1   clock_CPUdecoder,
     input   uint1   clock_cache,
@@ -126,6 +103,7 @@ unit PAWSCPU(
         function7 <: RV32CONTROL.function7,
         rs1 <: RV32CONTROL.rs1,
         rs2 <: RV32CONTROL.rs2,
+        csrRegister <: RV32CONTROL.csrRegister,
         sourceReg1 <: RV32CONTROL.sourceReg1,
         sourceReg2 <: RV32CONTROL.sourceReg2,
         abssourceReg1 <: RV32CONTROL.sourceReg1abs,
@@ -133,9 +111,9 @@ unit PAWSCPU(
         sourceReg1F <: RV32CONTROL.sourceReg1F,
         sourceReg2F <: RV32CONTROL.sourceReg2F,
         sourceReg3F <: RV32CONTROL.sourceReg3F,
-        classA <: RV32CONTROL.classA,
-        classB<: RV32CONTROL.classB,
-        classC <: RV32CONTROL.classC,
+        typeAF <: RV32CONTROL.typeAF,
+        typeBF<: RV32CONTROL.typeBF,
+        typeCF <: RV32CONTROL.typeCF,
         memoryinput <: LOAD.memoryinput,
         incCSRinstret <: COMMIT,
         isALUM <: RV32CONTROL.IS_ALUM,
@@ -307,11 +285,9 @@ $$end
 
     always_after {
         uint$32+L00Ipartaddresswidth$ cacheline = uninitialised;
-
         { tagmatch = ~( invalidate | CLS ) & ( L00cacheI( cacheline ).tag == address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$] ) & L00cacheI( cacheline).valid; }
         { instruction = L00cacheI( cacheline ).instruction; }
         { compressed = L00cacheI( cacheline ).compressed; }
-
         {
             switch( address[1,$L00Icount$] ) {
                 $$for i=0,(L00Iblocks-1) do
@@ -319,7 +295,7 @@ $$end
                 $$end
             }
         }
-    }
+   }
 }
 
 unit il00cache_write(
@@ -383,11 +359,9 @@ $$end
 
     always_after {
         uint$32+L01Ipartaddresswidth$ cacheline = uninitialised;
-
         { tagmatch = ~( invalidate | CLS ) & ( L01cacheI( cacheline ).tag == address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$] ) & L01cacheI( cacheline ).valid; }
         { instruction = L01cacheI( cacheline ).instruction; }
         { compressed =  L01cacheI( cacheline ).compressed; }
-
         {
             switch( address[1,$L01Icount$] ) {
                 $$for i=0,(L01Iblocks-1) do
@@ -451,6 +425,7 @@ unit cpuexecuteSLOWPATH(
     input   uint7   function7,
     input   uint5   rs1,
     input   uint5   rs2,
+    input   uint12  csrRegister,
     input   int32   sourceReg1,
     input   int32   sourceReg2,
     input   int32   abssourceReg1,
@@ -458,9 +433,9 @@ unit cpuexecuteSLOWPATH(
     input   uint32  sourceReg1F,
     input   uint32  sourceReg2F,
     input   uint32  sourceReg3F,
-    input   uint4   classA,
-    input   uint4   classB,
-    input   uint4   classC,
+    input   uint4   typeAF,
+    input   uint4   typeBF,
+    input   uint4   typeCF,
     input   int32   memoryinput,
     output  uint1   frd,
     output  int32   memoryoutput,
@@ -478,6 +453,7 @@ unit cpuexecuteSLOWPATH(
     uint1   fpufast <:: ( isFPU & FASTPATHFPU ) | fpuconvert;
     uint1   fpucalc <:: isFPU & ~fpufast;
     uint4   operation <:: { ~|{fpufast,isATOMIC,isCSR}, fpufast, isATOMIC, isCSR };
+    uint1   unitbusy <:: FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy;
 
     // M EXTENSION - DIVISION
     aluMD ALUMD( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2, abssourceReg1 <: abssourceReg1, abssourceReg2 <: abssourceReg2 );
@@ -493,28 +469,24 @@ unit cpuexecuteSLOWPATH(
         FPUflags <: CSR.FPUflags,
         opCode <: opCode, function7 <: function7[2,5],
         sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, sourceReg3F <: sourceReg3F,
-        classA <: classA, classB <: classB, classC <: classC
+        typeAF <: typeAF, typeBF <: typeBF, typeCF <: typeCF
     );
 
     // FLOATING POINT FAST OPERATIONS
-    floatconvert FPUCONVERT(
-        FPUflags <: CSR.FPUflags,
-        function7 <: function7[2,5], rs2 <: rs2[0,1],
-        sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1, sourceReg1F <: sourceReg1F,
-        classA <: classA
-    );
-    fpufast FPUFAST(
+    int2float FPUFLOAT( FPUflags <: CSR.FPUflags, rs2 <: rs2[0,1], sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1 );
+    float2int FPUINT( FPUflags <: CSR.FPUflags, rs2 <: rs2[0,1], sourceReg1F <: sourceReg1F, typeAF <: typeAF );
+    fpuSINGLECYCLE FPUFAST(
         FPUflags <: CSR.FPUflags,
         function3 <: function3[0,2], function7 <: function7[2,5],
         sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
-        classA <: classA, classB <: classB
+        typeAF <: typeAF, typeBF <: typeBF
     );
 
     // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
-    uint5   FPUnewflags <:: FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? FPUCONVERT.FPUnewflags : FPUCALC.FPUnewflags;
+    uint5   FPUnewflags <:: FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? ( function7[3,1] ? FPUFLOAT.FPUnewflags: FPUINT.FPUnewflags ) : FPUCALC.FPUnewflags;
     CSRblock CSR(
         SMT <: SMT,
-        instruction <: instruction,
+        csrRegister <: csrRegister,
         function3 <: function3,
         rs1 <: rs1,
         sourceReg1 <: sourceReg1,
@@ -537,10 +509,9 @@ unit cpuexecuteSLOWPATH(
             if( start ) {
                 busy = 1;
                 onehot( operation ) {
-                    case 0: { ++: }                                                                                     // CSR
-                    case 1: {}                                                                                          // ATOMIC OPERATIONS
-                    case 2: { ++: }                                                                                     // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                    case 3: { while( FPUCALC.busy | ALUMD.busy | ALUBCLMUL.busy ) {} }                                                                    // FPU CALCULATIONS AND INTEGER DIVISION
+                    case 0: { ++: }                                                                                             // CSR
+                    default: {}                                                                                                 // ATOMIC OPERATIONS, FPU COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                    case 3: { while( unitbusy ) {} }                                                                            // FPU CALCULATIONS AND INTEGER DIVISION + CLMUL
                 }
                 busy = 0;
                 CSR.updateFPUflags = fpuconvert | fpucalc;
@@ -563,12 +534,12 @@ unit cpuexecuteSLOWPATH(
                             memoryoutput = sourceReg2;
                         }
                     }
-                    case 2: { result = fpuconvert ? FPUCONVERT.result : FPUFAST.result; }                                   // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                    case 2: { result = fpuconvert ? ( function7[3,1] ? FPUFLOAT.result : FPUINT.result ) : FPUFAST.result; }                                   // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                     case 3: { result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result; }       // FPU CALCULATIONS AND INTEGER DIVISION
                 }
             }
         }
-        { frd = fpuconvert ? FPUCONVERT.frd : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
+        { frd = fpuconvert ? function7[3,1] : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
     }
 }
 
@@ -606,12 +577,13 @@ unit cpuexecuteFASTPATH(
     );
 
     always_after {
-        { memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2; }                      // FLOAT STORE OR STORE
-        { result = isAUIPCLUI ? AUIPCLUI :                                              // LUI AUIPC
-                            isJAL ? nextPC :                                            // JAL[R]
-                            isLOAD ? memoryinput :                                      // [FLOAT]LOAD
-                            ALU.result; }                                               // INTEGER ALU AND MULTIPLICATION
-        { if( isFENCE ) { fenceACTIVE = { |function7[1,2], ~function3[0,1] }; } }       // SET FENCE ACTIVE, { IO, MEM }, IO STOPS THREAD SWITCHING, MEM RESETS L0CACHE (after load)
+        { memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2; }                                                              // FLOAT STORE OR STORE
+        { result = isAUIPCLUI ? AUIPCLUI :                                                                                      // LUI AUIPC
+                   isJAL ? nextPC :                                                                                             // JAL[R]
+                   isLOAD ? memoryinput :                                                                                       // [FLOAT]LOAD
+                   ALU.result; }                                                                                                // INTEGER ALU AND MULTIPLICATION
+        { if( isFENCE ) { fenceACTIVE = { |function7[1,2], ~function3[0,1] }; } }                                               // SET FENCE ACTIVE { IO, MEM }
+                                                                                                                                // IO STOPS THREAD SWITCHING, MEM RESETS L0CACHE (after load)
     }
 }
 
@@ -673,7 +645,9 @@ unit load(
 ) <reginputs> {
     // SIGN FOR 8 AND 16 BIT LOADS
     uint1   sign <:: ~dounsigned & ( accesssize[0,1] ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
-
+    uint32  signextend <:: accesssize[1,1] ? readdata :                                                                         // 32 BIT
+                           accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                                                   // 16 BIT
+                                             { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };                              // 8 BIT
     uint1   complete = uninitialised;
     readmemory := start; complete := 0;
 
@@ -686,15 +660,8 @@ unit load(
     always_after {
         { if( start ) { busy = 1; } }
         { if( complete ) { busy = 0; } }
-        {
-            if( complete ) {
-                memoryinput = accesssize[1,1] ? readdata :                                              // 32 BIT
-                              accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                        // 16 BIT
-                                                { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };   // 8 BIT
-            }
-        }
+        { if( complete ) { memoryinput = signextend; } }
     }
-
 }
 
 // STORE UNIT FOR NON-FAST STORES ( to BRAM/SDRAM or 32 bit )
@@ -755,7 +722,7 @@ unit dma(
 
     uint4   dmamode = uninitialized;                uint$addr_width$  dmacount = uninitialised;         uint8   dmacycles = uninitialised;
     uint$addr_width$  dmasrc = uninitialised;       uint$addr_width$  dmadest = uninitialised;          uint32  memoryinput = uninitialised;
-    uint1   update = uninitialised;
+    uint1   update = uninitialised;                 uint32  writecopy <:: DMA16BIT | DMA32BIT ? readdata :  readdata[ { dmasrc[0,1], 3b000 }, 8 ];
 
     uint$addr_width$  dmasrcNEXT <:: DMA32BIT ? dmasrc + 4 : DMA16BIT ? dmasrc + 2 : dmasrc + 1;
     uint$addr_width$  dmasrcADD <:: dmasrc + DMASOURCEADD;
@@ -767,7 +734,7 @@ unit dma(
     uint1   src16bit <:: ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~DMASOURCE[0,1];                    // SOURCE IS 16 BIT CAPABLE
     uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                 // DESTINATION IS 16 BIT CAPABLE
 
-    uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | PB4pixel ? 2 : 1 );
+    uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | ( &dmamode[0,3] & PB4pixel ) ? 2 : 1 );
 
     // 16/32 BIT FLAGS FOR SOURCE&DEST + SET&DEST
     uint1   SD16 <:: src16bit & dest16bit & ~DMACOUNT[0,1];
@@ -789,11 +756,7 @@ unit dma(
                         while( |dmacount ) {                                                                                        // SINGLE CYCLE MODE
                             address = dmasrc; readmemory = ~srcSET;
                             switch( { srcSET, &dmamode[0,3] } ) {
-                                case 2b00: {
-                                    while( memorybusy ) {} memoryinput = readdata;
-                                    address = dmadest; writedata = DMA16BIT | DMA32BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
-                                    writememory = 1; while( memorybusy ) {}
-                                }
+                                case 2b00: { while( memorybusy ) {} address = dmadest; writedata = writecopy; writememory = 1; while( memorybusy ) {} }
                                 case 2b01: {
                                     while( memorybusy ) {} memoryinput = readdata;
                                     address = dmadest; PBcount = 0;
@@ -815,11 +778,7 @@ unit dma(
                             while( |dmacount ) {                                                                                    // MULTI-CYCLE MODE
                                 address = dmasrc; readmemory = ~srcSET;
                                 switch( srcSET ) {
-                                    case 0: {
-                                        while( memorybusy ) {} memoryinput = readdata;
-                                        address = dmadest; writedata = DMA16BIT | DMA32BIT ? memoryinput :  memoryinput[ { dmasrc[0,1], 3b000 }, 8 ];
-                                        writememory = 1; while( memorybusy ) {}
-                                    }
+                                    case 0: { while( memorybusy ) {} address = dmadest; writedata = writecopy; writememory = 1; while( memorybusy ) {} }
                                     case 1: { address = dmadest;  writememory = 1; while( memorybusy ) {} }
                                 }
                                 update = 1;
@@ -850,7 +809,7 @@ unit dma(
                         case 2: { dmasrc = dmasrcNEXT; }
                         case 3: { dmasrc = dmasrcNEXT; }
                         case 6: { dmasrc = dmasrcADD; }
-                        case 7: { dmasrc = PB4pixel ? dmasrc + 4 : dmasrc + 2; }
+                        case 7: { dmasrc = dmasrc + PBmax; }
                     }
                 }
             } else {
@@ -904,7 +863,7 @@ unit dma(
                     default: {}                                                                                                 // DEFAULT TO 8 BIT MODE
                     case 3: { DMA32BIT = SD32; DMA16BIT = SD16; }                                                               // MEMCPY IS 32/16 BIT CAPABLE
                     case 4: { DMA32BIT = SSD32; DMA16BIT = SSD16; }                                                             // MEMSET IS 32/16 BIT CAPABLE
-                    case 7: { PB4pixel = ~|dmacount[0,2] & src16bit; }                                                          // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
+                    case 7: { PB4pixel = ~|DMACOUNT[0,2] & src16bit; }                                                          // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
                     case 8: { DMA32BIT = SD32 & ADD32; DMA16BIT = SD16 & ADD16; }                                               // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
                     case 9: { DMA32BIT = SSD32 & ADD32; DMA16BIT = SSD16 & ADD16; }                                             // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
                 }
@@ -912,6 +871,6 @@ unit dma(
             }
         }
         { if( start ) { DMAACTIVE = 1; } }
-        { if( start ) { DMAACCESSSIZE = DMA32BIT | PB4pixel? 2b10 : DMA16BIT | &dmamode[0,3] ? 2b01: 2b00; } }                  // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
+        { if( start ) { DMAACCESSSIZE = DMA32BIT | ( &DMAMODE[0,3] & PB4pixel ) ? 2b10 : DMA16BIT | &DMAMODE[0,3] ? 2b01: 2b00; } } // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
     }
 }

@@ -1,4 +1,4 @@
-include ../makefile-smt.inc
+include ../makefile-lto.inc
 
 PROJECT=ASTROIDS
 PROJECTTYPE=GAMES
