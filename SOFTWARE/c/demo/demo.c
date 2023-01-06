@@ -1257,7 +1257,7 @@ void spritedemo( void ) {
     set_sprite( UPPER_LAYER, 0, 1, 304, 415, 0, 1 );
 
     for( short i = 0; i < 1280; i++ ) {
-        await_vblank();
+        await_vblank_finish(); await_vblank();
         ghost_animation_frame = ( animation_count & 64 ) ? 1 : 0;
 
         // PACMAN "TUNE" - SLIGHTLY OUT

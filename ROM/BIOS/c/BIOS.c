@@ -35,19 +35,6 @@ unsigned short PAWSLOGO[] = {
     0b0000010000000000
 };
 
-// SDCARD BLITTER TILES
-unsigned short sdcardtiles[] = {
-    // CARD
-    0x0000, 0x0000, 0x0ec0, 0x08a0, 0xea0, 0x02a0, 0x0ec0, 0x0000,
-    0x0a60, 0x0a80, 0x0e80, 0xa80, 0x0a60, 0x0000, 0x0000, 0x0000,
-    // SDHC
-    0x3ff0, 0x3ff8, 0x3ffc, 0x3ffc, 0x3ffc, 0x3ff8, 0x1ffc, 0x1ffc,
-    0x3ffc, 0x3ffc, 0x3ffc, 0x3ffc, 0x3ffc, 0x3ffc, 0x3ffc, 0x3ffc,
-    // LED INDICATOR
-    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0018, 0x0018, 0x0000
-};
-
 // RISC-V CSR FUNCTIONS
 unsigned int CSRisa() {
    unsigned int isa;
@@ -254,14 +241,6 @@ void draw_paws_logo( void ) {
     gpu_blit( UK_GOLD, 2, 2, 3, 2 );
 }
 
-void draw_sdcard( void  ) {
-    set_blitter_bitmap( 0, &sdcardtiles[0] );
-    set_blitter_bitmap( 1, &sdcardtiles[16] );
-    set_blitter_bitmap( 2, &sdcardtiles[32] );
-    gpu_blit( UK_GOLD, 256, 2, 1, 2 );
-    gpu_blit( UK_BLUE, 256, 2, 0, 2 );
-}
-
 void reset_display( void ) {
     // WAIT FOR THE GPU TO FINISH
     gpu_pixelblock_stop();
@@ -270,7 +249,7 @@ void reset_display( void ) {
     *GPU_DITHERMODE = 0; *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
     *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
     *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
-    *SCREENMODE = 0; *COLOUR = 0; *REZ = 0; *DIMMER = 0;
+    *SCREENMODE = 0; *COLOUR = 0; *REZ = 0; *DIMMER = 0; *STATUS_DISPLAY = 1; *STATUS_BACKGROUND = 0x40;
     *TPU_CURSOR = 0; tpu_cs();
     *TERMINAL_SHOW = 0; *TERMINAL_RESET = 1;
     *LOWER_TM_SCROLLWRAPCLEAR = 5; *UPPER_TM_SCROLLWRAPCLEAR = 5;
@@ -383,7 +362,6 @@ void sdcard_wait( void ) {
 
 // READ A SECTOR FROM THE SDCARD AND COPY TO MEMORY
 void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress ) {
-    gpu_blit( RED, 256, 2, 2, 2 );
     sdcard_wait();
     *SDCARD_SECTOR = sectorAddress;
     *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
@@ -393,8 +371,6 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
     DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, 4 );
-
-    gpu_blit( GREEN, 256, 2, 2, 2 );
 }
 
 void sdcard_readcluster( unsigned int cluster, unsigned char *buffer ) {
@@ -592,10 +568,10 @@ int main( void ) {
     beep( 3, 0, 0, 0 ); volume( 7, 7 );
 
     // KEYBOARD INTO JOYSTICK MODE
-    *PS2_MODE = 0;
+    *PS2_MODE = 0; *PS2_CAPSLOCK = 0; *PS2_NUMLOCK = 0;
 
     // DRAW LOGO AND SDCARD
-     draw_paws_logo(); draw_sdcard();
+     draw_paws_logo();
 
      // OUTPUT SOC & ISA CAPABILITIES
     tpu_set( 1, 59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( *PAWSMAGIC, 32 );

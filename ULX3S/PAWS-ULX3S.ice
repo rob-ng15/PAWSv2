@@ -44,6 +44,10 @@ $$ L1partaddresswidth = sdram_addr_width - 2 - L1cacheaddrwidth
 $$ L1partaddressstart = 2 + L1cacheaddrwidth
 bitfield L1cachetag{ uint1 needswrite, uint1 valid, uint$L1partaddresswidth$ partaddress }
 
+// BIT WIDTH FOR CSR COUNTERS ( spec is 64 bit )
+$$ CWIDTH = 40
+$$ CREMAIN = CWIDTH - 32
+
 $$if not SIMULATION then
 // CLOCKS
 import('../common/clock_PAWS-sdram100.v')

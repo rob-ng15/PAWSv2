@@ -1,4 +1,4 @@
-include ../makefile-fast-lto.inc
+include ../makefile-lto.inc
 
 PROJECT=OUTRUN
 PROJECTTYPE=DEMO

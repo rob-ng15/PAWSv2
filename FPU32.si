@@ -356,7 +356,7 @@ unit fastnormal24(
 // COMBINE COMPONENTS resultO FLOATING POresult NUMBER - USED BY CALCULATIONS
 // UNDERFLOW return 0, OVERFLOW return infinity
 unit overflow( input int10 exponent, output! uint1 OF ) <reginputs> { always_after { OF = ( exponent > 254 ); } }
-
+unit newexp( input uint23 roundfraction, input uint1 lsb, input int10 exponent, output int10 newexponent ) <reginputs> { always_after { newexponent = ( ( ~|roundfraction & lsb[0,1] ) ? 128 : 127 ) + exponent; } }
 unit doroundcombine(
     input   uint1   sign,
     input   uint24  bitstream,
@@ -366,12 +366,12 @@ unit doroundcombine(
     output! uint32  f32
 ) <reginputs> {
     uint23  roundfraction <:: bitstream[1,23] + bitstream[0,1];
-    int10   newexponent <:: ( ( ~|roundfraction & bitstream[0,1] ) ? 128 : 127 ) + exponent;
-    overflow OVER( exponent <: newexponent, OF :> OF );
+    newexp EXP( roundfraction <: roundfraction, lsb <: bitstream[0,1], exponent <: exponent );
+    overflow OVER( exponent <: EXP.newexponent, OF :> OF );
 
    always_after {
-        { UF = newexponent[9,1];  }
-        { f32 = newexponent[9,1] ? 0 : { sign, OVER.OF ? 31h7f800000 : { newexponent[0,8], roundfraction } }; }
+        { UF = EXP.newexponent[9,1];  }
+        { f32 = EXP.newexponent[9,1] ? 0 : { sign, OVER.OF ? 31h7f800000 : { EXP.newexponent[0,8], roundfraction } }; }
     }
 }
 
@@ -404,11 +404,12 @@ unit dofloataddsub(
     output  uint48  resultfraction
 ) <reginputs> {
     uint1   AvB <:: ( sigA > sigB );
+    uint1   sign <:: ( signA ^ signB ) ? ( signA ? AvB : ~AvB ) : signA;
 
     always_after {
         // PERFORM ADDITION/SUBTRACTION ACCOUTING FOR INPUT AND RESULT SIGNS
-        { if( signA ^ signB ) { resultsign = signA ? AvB : ~AvB; } else { resultsign = signA; } }
-        { if( signA ^ signB ) { resultfraction = ( signA ^ resultsign ? sigB : sigA ) - ( signA ^ resultsign ? sigA : sigB ); } else { resultfraction = sigA + sigB; } }
+        { resultsign = sign; }
+        { if( signA ^ signB ) { resultfraction = ( signA ^ sign ? sigB : sigA ) - ( signA ^ sign ? sigA : sigB ); } else { resultfraction = sigA + sigB; } }
     }
 }
 unit floataddsub(

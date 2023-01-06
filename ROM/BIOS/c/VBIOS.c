@@ -25,18 +25,6 @@ unsigned short PAWSLOGO[] = {
     0b0000010000000000
 };
 
-// SDCARD BLITTER TILES
-unsigned short sdcardtiles[] = {
-    // CARD
-    0x0000, 0x0000, 0x0ec0, 0x08a0, 0xea0, 0x02a0, 0x0ec0, 0x0000,
-    0x0a60, 0x0a80, 0x0e80, 0xa80, 0x0a60, 0x0000, 0x0000, 0x0000,
-    // SDHC
-    0x3ff0, 0x3ff8, 0x3ffc, 0x3ffc, 0x3ffc, 0x3ff8, 0x1ffc, 0x1ffc,
-    0x3ffc, 0x3ffc, 0x3ffc, 0x3ffc, 0x3ffc, 0x3ffc, 0x3ffc, 0x3ffc,
-    // LED INDICATOR
-    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0018, 0x0018, 0x0000
-};
 
 // PACMAN GHOST GRAPHICS 2 EACH FOR RIGHT
 unsigned char ghost_bitmap[] = {
@@ -481,18 +469,6 @@ void draw_paws_logo( void ) {
     gpu_blit( UK_GOLD, 2, 2, 3, 2 );
 }
 
-void set_sdcard_bitmap( void ) {
-    set_blitter_bitmap( 0, &sdcardtiles[0] );
-    set_blitter_bitmap( 1, &sdcardtiles[16] );
-    set_blitter_bitmap( 2, &sdcardtiles[32] );
-}
-
-void draw_sdcard( void  ) {
-    set_sdcard_bitmap();
-    gpu_blit( UK_GOLD, 256, 2, 1, 2 );
-    gpu_blit( 6, 256, 2, 0, 2 );
-}
-
 void reset_display( void ) {
     *GPU_DITHERMODE = 0;
     *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
@@ -570,7 +546,6 @@ void main( void ) {
 
     // SETUP INITIAL WELCOME MESSAGE
     draw_paws_logo();
-    draw_sdcard();
 
      // OUTPUT SOC & ISA CAPABILITIES
     tpu_set( 1, 59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( *PAWSMAGIC, 32 );

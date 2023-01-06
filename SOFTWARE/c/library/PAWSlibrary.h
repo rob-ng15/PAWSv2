@@ -64,6 +64,7 @@ extern void bitmap_256( unsigned char );
 extern void bitmap_256( unsigned char mode );
 extern void set_palette( unsigned char entry, unsigned int rgb );
 extern void use_palette( unsigned char mode );
+extern void status_lights( unsigned char display, unsigned char background );
 
 // BACKGROUND GENERATOR
 extern void set_background( unsigned char, unsigned char, unsigned char );

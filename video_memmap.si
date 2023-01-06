@@ -36,6 +36,54 @@ unit characterrom512(
     }
 }
 
+unit statusdisplay(
+    input   uint9   pix_x,
+    input   uint8   pix_y,
+    input   uint1   pix_active,
+    input   uint1   pix_vblank,
+    output! uint8   pixel,
+    output! uint1   pixel_display,
+
+    input   uint1   display,
+    input   uint8   background(64),
+    input   uint2   sdcardlightcolour,
+    input   uint1   JOYSTICK,
+    input   uint1   CAPSLOCK,
+    input   uint1   NUMLOCK,
+    input   uint1   RESETSTATUS
+) <reginputs> {
+    uint9   x <: pix_x + 1;                         uint8   y <: pix_y - 1;                                                     // MOVE 1 pixel in from top right
+
+    pulse1khz COUNTER();                                                                                                        // TIMER, 1 SECOND = 1000 milliseconds
+
+    // 4 ICONS, SDCARD, JOYSTICK MODE, CAPS LOCK STATUS, NUM LOCK STATUS
+    brom uint16 sdcard[16] = { 16h0000, 16h3ff8, 16h3ffc, 16h3ffc, 16h3ffc, 16h3ff8, 16h1ffc, 16h1ffc, 16h3ffc, 16h3ffc, 16h3ffc, 16h3ffc, 16h3ffc, 16h3ffc, 16h3ffc, 16h0000 };
+    brom uint16 joystick[16] = { 16h0000, 16h0180, 16h03c0, 16h07e0, 16h0180, 16h1188, 16h318c, 16h7ffe, 16h7ffe, 16h318c, 16h1188, 16h0180, 16h07e0, 16h03c0, 16h0180, 16h0000 };
+    brom uint16 capslock[16] = { 16h0000, 16h03c0, 16h0e70, 16h381c, 16h700e, 16h6006, 16h6006, 16h7ffe, 16h7ffe, 16h6006, 16h6006, 16h6006, 16h6006, 16h6006, 16h6006, 16h0000 };
+    brom uint16 numlock[16] = { 16h0000, 16h0780, 16h0d80, 16h0980, 16h0180, 16h0180, 16h0180, 16h0180, 16h0180, 16h0180, 16h0180, 16h0180, 16h0180, 16h0180, 16h0ff0, 16h0000 };
+
+    sdcard.addr := y[0,4]; joystick.addr := y[0,4]; capslock.addr := y[0,4]; numlock.addr := y[0,4]; pixel_display := 0; COUNTER.resetCounter := 0;
+
+    always_after {
+        { if( RESETSTATUS ) { COUNTER.resetCounter = 1000; } }                                                                  // REQUEST TO DISPLAY STATUS LIGHTS
+        {
+            if( |COUNTER.counter1khz & display & pix_active & ( x > 255 ) & ( x < 319 ) & ( y < 16 ) ) {                        // CHECK IF IN RANGE
+                switch( x[4,2] ) {
+                    // SELECT PIXEL COLOUR ACCORDING TO EACH STATUS LIGHT
+                    case 2b00: {
+                        pixel = sdcard.rdata[~x[0,4],1] ? sdcardlightcolour[1,1] ? 8hf9 : sdcardlightcolour[0,1] ? 8hc1 : 8h5b  // SDCARD
+                                : background;
+                    }
+                    case 2b01: { pixel = joystick.rdata[~x[0,4],1] ? JOYSTICK ? 8h38 : 8h5b : background; }                     // JOYSTICK
+                    case 2b10: { pixel = capslock.rdata[~x[0,4],1] ? CAPSLOCK ? 8h38 : 8h5b : background; }                     // CAPSLOCK
+                    case 2b11: { pixel = numlock.rdata[~x[0,4],1] ? NUMLOCK ? 8h38 : 8h5b : background; }                       // NUMLOCK
+                }
+                pixel_display = ( pixel != 8h40 );                                                                              // CHECK NOT TRANSPARENT
+            }
+        }
+    }
+}
+
 unit video_memmap(
     // CLOCKS
     input   uint1   palette_clock,
@@ -69,7 +117,14 @@ $$end
 
     // RNG + CURSOR
     input   uint8   static8bit,
-    input   uint1   blink
+    input   uint1   blink,
+
+    // STATUSLIGHTS
+    input   uint2   sdcardlightcolour,
+    input   uint1   JOYSTICK,
+    input   uint1   CAPSLOCK,
+    input   uint1   NUMLOCK,
+    input   uint1   RESETSTATUS
 ) <reginputs> {
     // Video Reset
     uint1   video_reset = uninitialised; clean_reset video_rstcond<@video_clock,!reset> ( out :> video_reset );
@@ -227,9 +282,21 @@ $$end
         writeData <: writeData
     );
 
+    // STATUS LIGHTS
+    statusdisplay STATUS <@video_clock,!video_reset> (
+        pix_x      <: xscreen[1,9],
+        pix_y      <: yscreen[1,8],
+        pix_active <: pix_active,
+        sdcardlightcolour <: sdcardlightcolour,
+        JOYSTICK <: JOYSTICK,
+        CAPSLOCK <: CAPSLOCK,
+        NUMLOCK <: NUMLOCK,
+        RESETSTATUS <: RESETSTATUS
+    );
+
     // Combine the display layers for display, output the select RGBM/palette/grey pixel
     simple_dualport_bram uint24 palette <@palette_clock,@clock> [256] = uninitialized;
-    multiplex_display display <@video_clock,!video_reset>(
+    multiplex_display display <@video_clock,!video_reset> (
         palette_clock <: palette_clock,
         palette <:> palette,
         background_p <: BACKGROUND.pixel,
@@ -246,7 +313,9 @@ $$end
         character_map_p <: CHARACTER_MAP.pixel,
         character_map_display <: CHARACTER_MAP.pixel_display,
         terminal_p <: TERMINAL.pixel,
-        terminal_display <: TERMINAL.pixel_display
+        terminal_display <: TERMINAL.pixel_display,
+        status_p <: STATUS.pixel,
+        status_display <: STATUS.pixel_display
     );
 
     // I/O TO VIDEO CLOCK WRITE 2 CYCLE FLAG
@@ -259,7 +328,7 @@ $$end
         uint4   dimmer = 0;
 
         // SET DEFAULT DISPLAY ORDER, COLOUR MODE AND DIMMER
-        { if( reset ) { display.display_order = 0; display.colour = 0; display.usepalette = 0; dimmer = 0; } }
+        { if( reset ) { STATUS.display = 1; STATUS.background = 64; display.display_order = 0; display.colour = 0; display.usepalette = 0; dimmer = 0; } }
 
         {
             // READ IO Memory
@@ -335,11 +404,13 @@ $$end
                                 palette.wdata1 = writeData; palette.wenable1 = 1;
                             }
                         } else {
-                            switch( memoryAddress[0,2] ) {
-                                case 0: { display.display_order = writeData; }
+                            switch( memoryAddress[0,3] ) {
+                                default: { display.display_order = writeData; }
                                 case 1: { display.colour = writeData; }
                                 case 2: { hilorez = writeData; }
                                 case 3: { dimmer = writeData; }
+                                case 4: { STATUS.display = writeData; }
+                                case 5: { STATUS.background = writeData; }
                             }
                         }
                     }

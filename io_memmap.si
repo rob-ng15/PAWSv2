@@ -1,6 +1,11 @@
 unit io_memmap(
-    // LEDS (8 of)
+    // LEDS (8 of) + SDCARD JOYSTICK CAPSLOCK NUMLOCK STATUS LIGHTS
     output  uint8   leds,
+    output  uint2   sdcardlightcolour,
+    output  uint1   CAPSLOCK(0),
+    output  uint1   NUMLOCK(0),
+    output  uint1   JOYSTICK(1),
+    output  uint1   RESETSTATUS,
 
 $$if not SIMULATION then
     input   uint$NUM_BTNS$ btns,
@@ -84,13 +89,13 @@ $$end
     // ACCELERATOR FOR DOOM FIXED POINT 16.16 DIVISION
     fixed_t_divide FIXED_DIVIDE_1();
 
-
 $$if not SIMULATION then
     // I/O FLAGS
     UART_IN.inread := 0; UART_OUT.outwrite := 0; PS2.inread := 0;
     SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0;
 $$end
-    RTC.wr := 0; FIXED_DIVIDE_1.start := 0;
+    RTC.wr := 0; FIXED_DIVIDE_1.start := 0; RESETSTATUS := 0;
+
     always_after {
         // UNLOCK VALUE ( write to sector 0 )
         uint1 MAGICVALUE(0);                                                                // WRITE 32h50415357 { 'P', 'A', 'W', 'S' } TO ALLOW WRITING TO SDCARD SECTOR 0
@@ -102,7 +107,7 @@ $$end
                 $$if not SIMULATION then
                     PS2.outputkeycodes = 0;
                 $$end
-                MAGICVALUE = 0; DMAMODE = 0; RTC.addr = 7;
+                MAGICVALUE = 0; DMAMODE = 0; RTC.addr = 7; RESETSTATUS = 1;
             }
         }
 
@@ -132,7 +137,7 @@ $$end
                         }
                     }
                     case 4h2: { readData = PS2.outputkeycodes ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
-                    case 4h4: { readData = SDCARD.ready; }
+                    case 4h4: { readData = SDCARD.ready; if( SDCARD.ready ) { sdcardlightcolour = 0; RESETSTATUS = 1; } }
                     case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = buffer_in.addr0 + 1; }
                     $$end
                     case 4h3: { readData = leds; }
@@ -162,11 +167,17 @@ $$end
                 switch( memoryAddress[8,4] ) {
                     $$if not SIMULATION then
                     case 4h0: { UART_OUT.outwrite = 1; }
-                    case 4h1: { PS2.outputkeycodes = writeData; }
+                    case 4h1: {
+                        switch( memoryAddress[1,2] ) {
+                            default: { PS2.outputkeycodes = writeData; JOYSTICK = ~writeData; RESETSTATUS = 1; }
+                            case 2h1: { CAPSLOCK = writeData; RESETSTATUS = 1; }
+                            case 2h2: { NUMLOCK = writeData; RESETSTATUS = 1; }
+                        }
+                    }
                     case 4h4: {
                         switch( memoryAddress[1,2] ) {
-                            case 2h0: { SDCARD.readsector = 1; }
-                            case 2h1: { SDCARD.writesector = |SDCARD.sectoraddress | MAGICVALUE; }
+                            case 2h0: { SDCARD.readsector = 1; RESETSTATUS = 1; sdcardlightcolour = 1; }
+                            case 2h1: { SDCARD.writesector = |SDCARD.sectoraddress | MAGICVALUE; RESETSTATUS = 1; sdcardlightcolour = 2; }
                             default: { SDCARD.sectoraddress = writeData; }
                         }
                     }

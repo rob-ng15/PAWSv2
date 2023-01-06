@@ -338,6 +338,11 @@ void screen_dimmer( unsigned char dimmerlevel ) {
     *DIMMER = dimmerlevel;
 }
 
+// SET THE SDCARD / JOYSTICK MODE / CAPS LOCK / NUMLOCK STATUS LIGHT DISPLAY
+void status_lights( unsigned char display, unsigned char background ) {
+    *STATUS_DISPLAY = display; *STATUS_BACKGROUND = background;
+}
+
 // SET THE FRAMEBUFFER TO DISPLAY / DRAW
 void bitmap_display( unsigned char framebuffer ) {
     await_vblank();
@@ -1539,9 +1544,16 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
 
         if( entries == 0xffff ) {
             // NO ENTRIES FOUND
+            gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
+            gpu_outputstringcentre( RED, 192, 1, "IN THIS DIRECTORY", 1 );
+            beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
+            sleep1khz( 1000, 0 );
             return(0);
         } else {
             sortdirectoryentries( entries );
+            gpu_outputstringcentre( WHITE, 88, 0, "Select directory/file using \x0f", 0 );
+            gpu_outputstringcentre( WHITE, 96, 0, "Scroll left/right using \x1b & \x1a", 0 );
+            gpu_outputstringcentre( WHITE, 104, 0, "Move UP a directory using \x18", 0 );
             gpu_outputstringcentre( WHITE, 128, 1, message, 0 );
         }
 

@@ -2,6 +2,8 @@
 // PS/2 KEYBOARD
 unsigned char volatile *PS2_AVAILABLE = (unsigned char volatile *) 0xf100;
 unsigned char volatile *PS2_MODE = (unsigned char volatile *) 0xf100;
+unsigned char volatile *PS2_CAPSLOCK = (unsigned char volatile *) 0xf102;
+unsigned char volatile *PS2_NUMLOCK = (unsigned char volatile *) 0xf104;
 unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf102;
 
 // MODIFIER KEYS
@@ -33,8 +35,8 @@ unsigned char ps2_character_available() {
 
                 switch( keyevent & 0x1ff ) {
                     // DEAL WITH MODIFIER KEYS
-                    case 0x58:  capslock = !capslock; break;
-                    case 0x77:  numlock = !numlock; break;
+                    case 0x58:  capslock = !capslock; *PS2_CAPSLOCK = capslock; break;
+                    case 0x77:  numlock = !numlock; *PS2_NUMLOCK = numlock; break;
                     case 0x12:  lshift = 1; break;
                     case 0x59:  rshift = 1; break;
                     case 0x14:  lctrl = 1; break;

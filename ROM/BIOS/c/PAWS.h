@@ -7,6 +7,8 @@ unsigned char volatile *LEDS = (unsigned char volatile *) 0xf300;
 // PS/2 KEYBOARD
 unsigned char volatile *PS2_AVAILABLE = (unsigned char volatile *) 0xf100;
 unsigned char volatile *PS2_MODE = (unsigned char volatile *) 0xf100;
+unsigned char volatile *PS2_CAPSLOCK = (unsigned char volatile *) 0xf102;
+unsigned char volatile *PS2_NUMLOCK = (unsigned char volatile *) 0xf104;
 unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf102;
 
 // SDCARD
@@ -23,6 +25,8 @@ unsigned char volatile *SCREENMODE = (unsigned char volatile *) 0xdf00;
 unsigned char volatile *COLOUR = (unsigned char volatile *) 0xdf01;
 unsigned char volatile *REZ = (unsigned char volatile *) 0xdf02;
 unsigned char volatile *DIMMER = (unsigned char volatile *) 0xdf03;
+unsigned char volatile *STATUS_DISPLAY = (unsigned char volatile *) 0xdf04;
+unsigned char volatile *STATUS_BACKGROUND = (unsigned char volatile *) 0xdf05;
 unsigned int volatile *PALETTERGB = (unsigned int volatile *) 0xdf10;
 unsigned char volatile *PALETTEENTRY = (unsigned char volatile *) 0xdf14;
 unsigned char volatile *PALETTEACTIVE = (unsigned char volatile *) 0xdf15;
