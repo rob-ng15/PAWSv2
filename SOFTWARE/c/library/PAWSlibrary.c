@@ -926,30 +926,6 @@ void set_vector_vertex( unsigned char block, unsigned char vertex, unsigned char
     *VECTOR_WRITER_DELTAY = deltay;
 }
 
-// SOFTWARE VECTORS AND DRAWLISTS - FAST SINE. COSINE, TANGENT VIA LOOKUP TABLES FOR INTEGER ANGLES
-float sint[720], cost[720], tant[720];
-int trigt_init = 0;
-
-void paws_triginit( void ) {
-    for( int x = -359; x < 360; x++ ) {
-        float radx = x*0.01745329252;
-        sint[ x + 359 ] = sinf( radx );
-        cost[ x + 359 ] = cosf( radx );
-        tant[ x + 359 ] = tanf( radx );
-    }
-    trigt_init = 1;
-}
-
-float paws_sin( short angle ) {
-    return( sint[ angle + 359 ] );
-}
-float paws_cos( short angle ) {
-    return( cost[ angle + 359 ] );
-}
-float paws_tan( short angle ) {
-    return( tant[ angle + 359 ] );
-}
-
 // SCALE A POINT AND MOVE TO CENTRE POINT
 union Point2D Scale2D( union Point2D point, short xc, short yc, float scale ) {
     union Point2D newpoint;
@@ -957,9 +933,8 @@ union Point2D Scale2D( union Point2D point, short xc, short yc, float scale ) {
     return( newpoint );
 }
 union Point2D Rotate2D( union Point2D point, short xc, short yc, short angle, float scale ) {
-    union Point2D newpoint; if( !trigt_init ) paws_triginit();
-
-    float sine = paws_sin(angle), cosine = paws_cos(angle);
+    union Point2D newpoint;
+    float sine = sinf(angle * 0.0174533f), cosine = cosf(angle * 0.0174533f);
 
     newpoint.packed = _rv32_pack( ( (point.dx * scale)*cosine-(point.dy * scale)*sine ) + xc,
                                   ( (point.dx * scale)*sine+(point.dy * scale)*cosine ) + yc );
@@ -2545,14 +2520,6 @@ unsigned int paws_sleep( unsigned int seconds ) {
     while( *SLEEPTIMER0 && *SLEEPTIMER1 );
     sleep1khz( 1000 * seconds, ( !*SLEEPTIMER0 ) ? 0 : 1 );
     return(0);
-}
-
-// PAWS FIXED POINT DIVISION 16.16 ACCELERATOR
-int fixed_divide( int numerator, int denominator ) {
-    unsigned char volatile *FIXED_REGS_B = (unsigned char volatile *)FIXED_REGS;                 // BYTE ACCESS TO START / STATUS REGISTER
-
-    FIXED_REGS[0] = numerator; FIXED_REGS[1] = denominator; FIXED_REGS_B[0x08] = 1; while( FIXED_REGS_B[0x08] );
-    return( FIXED_REGS[0] );
 }
 
 // PAWS RISC-V B EXTENSION OPTIMISED strcmp strlen

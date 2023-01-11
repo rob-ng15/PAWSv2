@@ -37,13 +37,15 @@ unit control(
     // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
     input   uint1   frd,
     input   uint1   write,
-    input   int32   result,
+    input   int64   result,
     output  int32   sourceReg1,
     output  int32   sourceReg2,
-    output! int32   sourceReg1F,
-    output! int32   sourceReg2F,
-    output  int32   sourceReg3F,
+    output! int64   sourceReg1F,
+    output! int64   sourceReg2F,
+    output  int64   sourceReg3F,
     output  uint4   typeAF,
+    output  uint4   typeAS,
+    output  uint4   typeAD,
     output  uint4   typeBF,
     output  uint4   typeCF,
     output  int32   sourceReg1abs,
@@ -87,16 +89,21 @@ unit control(
     uint1   takeBranch = uninitialized;
 
     // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
-    typeF class1F( a <: sourceReg1F, type :> typeAF ); typeF class2F( a <: sourceReg2F, type :> typeBF ); typeF class3F( a <: sourceReg3F, type :> typeCF );
+    typeF class1F( df <: function7[0,1], a <: sourceReg1F, type :> typeAF );
+    typeF class2F( df <: function7[0,1], a <: sourceReg2F, type :> typeBF );
+    typeF class3F( df <: function7[0,1], a <: sourceReg3F, type :> typeCF );
+
+    typeF class1D( a <: sourceReg1F, type :> typeAD );  // FORCE CLASSIFICATION OF DOUBLE
+    typeF class1S( a <: sourceReg1F, type :> typeAS );  // FORCE CLASSIFICATION OF SINGLE
 
     // REGISTERS I integer x 2, F float x 3, 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
     $$for i=0,1 do
         simple_dualport_bram int32 I1_$i$[32] = { 0, pad(uninitialized) };
         simple_dualport_bram int32 I2_$i$[32] = { 0, pad(uninitialized) };
-        simple_dualport_bram int32 F1_$i$[32] = uninitialized;
-        simple_dualport_bram int32 F2_$i$[32] = uninitialized;
-        simple_dualport_bram int32 F3_$i$[32] = uninitialized;
+        simple_dualport_bram int64 F1_$i$[32] = uninitialized;
+        simple_dualport_bram int64 F2_$i$[32] = uninitialized;
+        simple_dualport_bram int64 F3_$i$[32] = uninitialized;
     $$end
 
     // REGISTER WRITE SWITCHES
@@ -112,6 +119,8 @@ unit control(
 
     // FLAGS FOR BRANCH
     uint4   flags <:: { LTU, LT, 1b0, EQ };
+
+    class1D.df := 1; class1S.df := 0;
 
     always_after {
         // EXTRACT BITFIELDS FROM INSTRUCTION
@@ -153,7 +162,7 @@ unit control(
         { sourceReg2abs = sourceReg2[31,1] ? sourceReg2neg : sourceReg2; }
 
         // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 1) 32, ATOMIC/FLOAD/FSTORE, 32, ELSE BY function3
-        { accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? ( FLAGS.IS_ATOMIC ? 2b10 : function3[0,2] ) : 2b10; }
+        { accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? ( ( FLAGS.IS_ATOMIC | FLAGS.IS_FLOAD | FLAGS.IS_FSTORE ) ? 2b10 : function3[0,2] ) : 2b10; }
 
         // BRANCH UNIT
         { takeBranch = function3[0,1] ^ flags[ function3[1,2], 1 ]; }
@@ -188,6 +197,8 @@ unit controlflags(
     output  uint1   IS_FASTFPU,
     output  uint1   IS_LOAD,
     output  uint1   IS_STORE,
+    output  uint1   IS_FLOAD,
+    output  uint1   IS_FSTORE,
     output  uint1   IS_FENCE,
     output  uint1   writeRegister,
     output  uint1   writeRegisterF,
@@ -199,7 +210,7 @@ unit controlflags(
 
     // SET DEFAULT CONTROL FLAGS - STANDARD "SINGLE CYCLE" INTEGER ALU OPERATION
     writeRegisterF := 0; writeRegister := 1; incPC := 1; IS_FASTALU := 1;
-    IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;
+    IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FLOAD := 0; IS_FSTORE := 0; IS_FENCE := 0;
 
     always_after {
         // IDENTIFY FLOATING POINT, MULTIPLICATION AND CARRYLESS MULTIPLICATION
@@ -216,9 +227,9 @@ unit controlflags(
                 case 5b11001: { IS_JAL = 1; incPC = 0; }                                            // JALR
                 case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                 // BRANCH
                 case 5b00000: { IS_LOAD = 1; }                                                      // LOAD
-                case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                  // FLOAT LOAD
+                case 5b00001: { IS_FLOAD = 1; IS_LOAD = 1; writeRegisterF = 1; }                     // FLOAT LOAD
                 case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                  // STORE
-                case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                  // FLOAT STORE
+                case 5b01001: { IS_FSTORE = 1; IS_STORE = 1; writeRegister = 0; }                                  // FLOAT STORE
                 case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                   // FENCE[I]
                 case 5b11100: { IS_CSR = 1; IS_FASTALU = 0; }                                       // CSR
                 case 5b01011: { IS_ATOMIC = 1; IS_FASTALU = 0; }                                    // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
@@ -239,11 +250,21 @@ unit compressed00(
             if( i16[15,1] ) {
                 // SW -> sw rs2', offset[6:2](rs1') { 110 uimm[5:3] rs1' uimm[2][6] rs2' 00 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
                 // FSW -> fsw rs2', offset[6:2](rs1') { 110 uimm[5:3] rs1' uimm[2][6] rs2' 00 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100111 }
-                i32 = { 5b0, CS(i16).ib_6, CS(i16).ib_5, {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b010, CS(i16).ib_4_3, CS(i16).ib_2, 2b0, { 4b0100, i16[13,1] } };
+                // FSD -> fsd rs2', offset[7:3](rs1') { 101 uimm[5:3] rs1' uimm[7:6] rs2' 00 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
+                if( i16[14,1] ) {
+                    i32 = { 5b0, CS(i16).ib_6, CS(i16).ib_5, {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b010, CS(i16).ib_4_3, CS(i16).ib_2, 2b0, { 4b0100, i16[13,1] } };
+                } else {
+                    i32 = { 4b0, i16[5,2], i16[12,1], {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b011, i16[10,2], 3b0, 5b01001 };
+                }
             } else {
                 // LW -> lw rd', offset[6:2](rs1') { 010 uimm[5:3] rs1' uimm[2][6] rd' 00 } -> { imm[11:0] rs1 010 rd 0000011 }
                 // FLW -> flw rd', offset[6:2](rs1') { 010 uimm[5:3] rs1' uimm[2][6] rd' 00 } -> { imm[11:0] rs1 010 rd 0000111 }
-                i32 = { 5b0, CL(i16).ib_6, CL(i16).ib_5_3, CL(i16).ib_2, 2b00, {2b01,CL(i16).rs1_alt}, 3b010, {2b01,CL(i16).rd_alt}, { 4b0000, i16[13,1] } };
+                // FLD -> flw rd', offset[7:3](rs1') { 001 uimm[5:3] rs1' uimm[7:6] rd' 00 } -> { imm[11:0] rs1 011 rd 0000111 }
+                if( i16[14,1] ) {
+                    i32 = { 5b0, CL(i16).ib_6, CL(i16).ib_5_3, CL(i16).ib_2, 2b00, {2b01,CL(i16).rs1_alt}, 3b010, {2b01,CL(i16).rd_alt}, { 4b0000, i16[13,1] } };
+                } else {
+                    i32 = { 4b0, i16[5,2], i16[10,3], 3b000, {2b01,CL(i16).rs1_alt}, 3b011, {2b01,CL(i16).rd_alt}, 5b00001 };
+                }
             }
         } else {
             // ADDI4SPN -> addi rd', x2, nzuimm[9:2] { 000, nzuimm[5:4|9:6|2|3] rd' 00 } -> { imm[11:0] rs1 000 rd 0010011 }
@@ -337,11 +358,21 @@ unit compressed10(
                 if( i16[15,1] ) {
                     // SWSP -> sw rs2, offset[7:2](x2) { 110 uimm[5][4:2][7:6] rs2 10 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
                     // FSWSP -> fsw rs2, offset[7:2](x2) { 110 uimm[5][4:2][7:6] rs2 10 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100111 }
-                    i32 = { 4b0, CSS(i16).ib_7_6, CSS(i16).ib_5, CSS(i16).rs2, 5h2, 3b010, CSS(i16).ib_4_2, 2b00, { 4b0100, i16[13,1] } };
+                    // FSDSP -> fsd rs2, offset[8:3](x2) { 101 uimm[5:3][8:6] rs2 10 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
+                    if( i16[14,1] ) {
+                        i32 = { 4b0, CSS(i16).ib_7_6, CSS(i16).ib_5, CSS(i16).rs2, 5h2, 3b010, CSS(i16).ib_4_2, 2b00, { 4b0100, i16[13,1] } };
+                    } else {
+                        i32 = { 3b0, i16[7,3], i16[12,1], CSS(i16).rs2, 5h2, 3b011, i16[10,2], 3b000, 5b01001 };
+                    }
                 } else {
                     // LWSP -> lw rd, offset[7:2](x2) { 011 uimm[5] rd uimm[4:2|7:6] 10 } -> { imm[11:0] rs1 010 rd 0000011 }
                     // FLWSP -> flw rd, offset[7:2](x2) { 011 uimm[5] rd uimm[4:2|7:6] 10 } -> { imm[11:0] rs1 010 rd 0000111 }
-                    i32 = { 4b0, CI(i16).ib_7_6, CI(i16).ib_5, CI(i16).ib_4_2, 2b0, 5h2 ,3b010, CI(i16).rd, { 4b0000, i16[13,1] } };
+                    // FLDSP -> fld rd, offset[8:3](x2) { 011 uimm[5] rd uimm[4:3|8:6] 10 } -> { imm[11:0] rs1 011 rd 0000111 }
+                    if( i16[14,1] ) {
+                        i32 = { 4b0, CI(i16).ib_7_6, CI(i16).ib_5, CI(i16).ib_4_2, 2b0, 5h2 ,3b010, CI(i16).rd, { 4b0000, i16[13,1] } };
+                    } else {
+                        i32 = { 3b0, i16[2,3], i16[12,1], i16[5,2], 3b0, 5h2, 3b011, CI(i16).rd, 5b00001 };
+                    }
                 }
             }
         }

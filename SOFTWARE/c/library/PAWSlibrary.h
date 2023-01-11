@@ -175,9 +175,6 @@ extern unsigned char *sdcard_selectfile( char *, char *, unsigned int *, char *)
 // ALLOCATION OF FAST BRAM MEMORY
 extern void *malloc_bram( int size );
 
-// FIXED POINT DIVISION 16.16 ACCELERATOR
-extern int fixed_divide( int a, int b );
-
 // HARDWARE REGISTER BASES
 extern int volatile *IO_REGS;
 extern int volatile *DMA_REGS;

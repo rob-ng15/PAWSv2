@@ -552,7 +552,7 @@ void main( void ) {
     tpu_set( 47,59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( CSRisa(), 32 );
 
     gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 66, 34, "Risc-V RV32IMAFCB CPU", 0 );
+    gpu_outputstring( WHITE, 70, 34, "Risc-V RV32GC+B CPU", 0 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {

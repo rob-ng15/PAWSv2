@@ -15,7 +15,7 @@ GCCVER=12.1.0
 BUILD_DIR=build_lto
 OUTPUT_DIR=../../PAWS/
 
-CFLAGS=-march=rv32imafc_zba_zbb_zbc_zbs_zbkb_zbkx_zifencei -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
+CFLAGS=-march=rv32gc_zba_zbb_zbc_zbs_zbkb_zbkx_zifencei -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf32lriscv -Wl,-belf32-littleriscv,-nostdlib
 LCONFIG=-Wl,-T../config_c_SDRAM-lto.ld
 

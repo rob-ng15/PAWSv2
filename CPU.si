@@ -43,7 +43,7 @@ unit PAWSCPU(
     uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                      // SELECT PC FOR THIS CYCLE
 
     // RISC-V 32 BIT CONTROLLER
-    uint32  result <:: RV32CONTROL.IS_FASTALU ? EXECUTEFAST.result : EXECUTESLOW.result;
+    uint64  result <:: RV32CONTROL.IS_FASTALU ? EXECUTEFAST.result : EXECUTESLOW.result;
     uint1   frd <:: RV32CONTROL.IS_FASTALU ? RV32CONTROL.writeRegisterF : EXECUTESLOW.frd;
     uint1   write <:: COMMIT & RV32CONTROL.writeRegister;
     control RV32CONTROL <@clock_CPUdecoder> (
@@ -82,7 +82,7 @@ unit PAWSCPU(
         memorybusy <: memorybusy
     );
 
-    // LOAD UNIT
+    // LOAD UNITS
     load LOAD(
         accesssize <: accesssize,
         byteaccess <: RV32CONTROL.loadAddress[0,1],
@@ -90,9 +90,15 @@ unit PAWSCPU(
         readdata <: readdata,
         memorybusy <: memorybusy
     );
+    load64 LOAD64(
+        loadAddress <: RV32CONTROL.loadAddress,
+        readdata <: readdata,
+        memorybusy <: memorybusy
+    );
 
-    // STORE UNIT
+    // STORE UNITS
     store STORE( memorybusy <: memorybusy );
+    store64 STORE64( memorybusy <: memorybusy, storeAddress <: RV32CONTROL.storeAddress, storedata <: RV32CONTROL.sourceReg2F );
 
     // EXECUTE MULTICYCLE INSTRUCTIONS, INTEGER DIVIDE, FPU, CSR AND ALU-A
     cpuexecuteSLOWPATH EXECUTESLOW(
@@ -111,10 +117,12 @@ unit PAWSCPU(
         sourceReg1F <: RV32CONTROL.sourceReg1F,
         sourceReg2F <: RV32CONTROL.sourceReg2F,
         sourceReg3F <: RV32CONTROL.sourceReg3F,
+        memoryinput <: LOAD.memoryinput,
         typeAF <: RV32CONTROL.typeAF,
+        typeAS <: RV32CONTROL.typeAS,
+        typeAD <: RV32CONTROL.typeAD,
         typeBF<: RV32CONTROL.typeBF,
         typeCF <: RV32CONTROL.typeCF,
-        memoryinput <: LOAD.memoryinput,
         incCSRinstret <: COMMIT,
         isALUM <: RV32CONTROL.IS_ALUM,
         isALUCLM <: RV32CONTROL.IS_ALUCLM,
@@ -136,7 +144,6 @@ unit PAWSCPU(
         negSourceReg2 <: RV32CONTROL.sourceReg2neg,
         sourceReg2F <: RV32CONTROL.sourceReg2F,
         immediateValue <: RV32CONTROL.immediateValue,
-        memoryinput <: LOAD.memoryinput,
         AUIPCLUI <: RV32CONTROL.AUIPCLUI,
         nextPC <: RV32CONTROL.nextPC,
         isLOAD <: RV32CONTROL.IS_LOAD,
@@ -187,7 +194,7 @@ unit PAWSCPU(
         invalidate <: EXECUTEFAST.fenceACTIVE[0,1]
     );
 
-    uint4   memorycontrols <: { FETCH.busy, LOAD.busy, STORE.busy, DMAACTIVE };
+    uint6   memorycontrols <: { LOAD64.busy, STORE64.busy, FETCH.busy, LOAD.busy, STORE.busy, DMAACTIVE };
     uint1   SMT_next <:: ~SMT & SMTRUNNING;
     uint$addr_width$  pc_next <:: SMT ? pc :  RV32CONTROL.newPC;
     uint$addr_width$  pcSMT_next <:: SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;
@@ -222,8 +229,8 @@ unit PAWSCPU(
                 switch( { RV32CONTROL.IS_LOAD, RV32CONTROL.IS_FASTALU, RV32CONTROL.IS_STORE } ) {
                     case 3b000: { EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                             // DIVISION, CLMUL, FLOATING POINT, CSR
                     case 3b010: {}                                                                                                  // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
-                    case 3b011: { STORE.start = 1; while( STORE.busy ) {} }                                                         // INTEGER + FLOAT STORE
-                    case 3b110: { LOAD.start = 1; while( LOAD.busy ) {} }                                                           // INTEGER + FLOAT LOAD
+                    case 3b011: { STORE.start = ~&RV32CONTROL.function3[0,2]; STORE64.start = &RV32CONTROL.function3[0,2]; while( STORE64.busy | STORE.busy ) {} }                                          // INTEGER + FLOAT/DOUBLE STORE
+                    case 3b110: { LOAD.start = ~&RV32CONTROL.function3[0,2]; LOAD64.start = &RV32CONTROL.function3[0,2]; while( LOAD64.busy | LOAD.busy ) {} }                                             // INTEGER + FLOAT/DOUBLE LOAD
                     default: {                                                                                                      // ATOMIC LOAD - MODIFY - STORE
                         LOAD.start = RV32CONTROL.IS_LOAD; while( LOAD.busy ) {}                                                     // + EMULATION OF LR.W AND SC.W
                         EXECUTESLOW.start = ~RV32CONTROL.IS_FASTALU; while( EXECUTESLOW.busy ) {}
@@ -242,7 +249,8 @@ unit PAWSCPU(
 
     always_after {
         // COPY MEMORY WRITE VALUE FROM DMA ENGINE OR STORE UNIT
-        { writedata = memorycontrols[0,1] ? DMA.writedata : RV32CONTROL.IS_FASTALU ? EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput; }
+        { writedata = memorycontrols[0,1] ? DMA.writedata : RV32CONTROL.IS_FASTALU ? memorycontrols[4,1] ? STORE64.writedata : EXECUTEFAST.memoryoutput : EXECUTESLOW.memoryoutput; }
+        { EXECUTEFAST.memoryinput = LOAD.memoryinput; }
 
         // COPY MEMORY ADDRESS FROM MEMORY CONTROL UNITS
         {
@@ -252,13 +260,15 @@ unit PAWSCPU(
                     case 1: { address = RV32CONTROL.storeAddress; }
                     case 2: { address = RV32CONTROL.loadAddress; }
                     case 3: { address = PC; }
+                    case 4: { address = STORE64.address; }
+                    case 5: { address = LOAD64.address; }
                 }
             }
         }
 
         // COPY MEMORY READ OR WRITE FLAGS
-        { readmemory = DMA.readmemory | LOAD.readmemory | FETCH.readmemory; }
-        { writememory = DMA.writememory | STORE.writememory; }
+        { readmemory = DMA.readmemory | LOAD.readmemory | LOAD64.readmemory | FETCH.readmemory; }
+        { writememory = DMA.writememory | STORE.writememory | STORE64.writememory; }
 
         // UPDATE CPU STATE
         { if( COMMIT ) { pc = pc_next; } }
@@ -430,16 +440,18 @@ unit cpuexecuteSLOWPATH(
     input   int32   sourceReg2,
     input   int32   abssourceReg1,
     input   int32   abssourceReg2,
-    input   uint32  sourceReg1F,
-    input   uint32  sourceReg2F,
-    input   uint32  sourceReg3F,
+    input   uint64  sourceReg1F,
+    input   uint64  sourceReg2F,
+    input   uint64  sourceReg3F,
     input   uint4   typeAF,
+    input   uint4   typeAS,
+    input   uint4   typeAD,
     input   uint4   typeBF,
     input   uint4   typeCF,
     input   int32   memoryinput,
     output  uint1   frd,
     output  int32   memoryoutput,
-    output  int32   result,
+    output  int64   result,
     input   uint1   incCSRinstret,
     input   uint1   isCSR,
     input   uint1   isATOMIC,
@@ -449,7 +461,15 @@ unit cpuexecuteSLOWPATH(
     input   uint1   FASTPATHFPU
 ) <reginputs> {
     // Classify the instruction
-    uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( function7[4,3] == 3b110 );
+    uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( ( function7[2,5] == 5b11010 ) | ( function7[2,5] == 5b11000 ) | ( function7[2,5] == 5b01000 ) );
+    uint6   converttype <:: {
+                                ( function7[2,5] == 5b01000 ) & ~function7[0,1],                                                // DOUBLE TO FLOAT
+                                ( function7[2,5] == 5b01000 ) & function7[0,1],                                                 // FLOAT TO DOUBLE
+                                ( function7[2,5] == 5b11000 ) & function7[0,1],                                                 // DOUBLE TO INT
+                                ( function7[2,5] == 5b11010 ) & function7[0,1],                                                 // INT TO DOUBLE
+                                ( function7[2,5] == 5b11000 ) & ~function7[0,1],                                                // FLOAT TO INT
+                                ( function7[2,5] == 5b11010 ) & ~function7[0,1]                                                 // INT TO FLOAT
+                            };
     uint1   fpufast <:: ( isFPU & FASTPATHFPU ) | fpuconvert;
     uint1   fpucalc <:: isFPU & ~fpufast;
     uint4   operation <:: { ~|{fpufast,isATOMIC,isCSR}, fpufast, isATOMIC, isCSR };
@@ -466,6 +486,7 @@ unit cpuexecuteSLOWPATH(
 
     // FLOATING POINT CALCULATIONS
     floatcalc FPUCALC(
+        df <: function7[0,1],
         FPUflags <: CSR.FPUflags,
         opCode <: opCode, function7 <: function7[2,5],
         sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, sourceReg3F <: sourceReg3F,
@@ -475,7 +496,23 @@ unit cpuexecuteSLOWPATH(
     // FLOATING POINT FAST OPERATIONS
     int2float FPUFLOAT( FPUflags <: CSR.FPUflags, rs2 <: rs2[0,1], sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1 );
     float2int FPUINT( FPUflags <: CSR.FPUflags, rs2 <: rs2[0,1], sourceReg1F <: sourceReg1F, typeAF <: typeAF );
+    int2double FPUDOUBLE( FPUflags <: CSR.FPUflags, rs2 <: rs2[0,1], sourceReg1 <: sourceReg1, abssourceReg1 <: abssourceReg1 );
+    double2int FPUDINT( FPUflags <: CSR.FPUflags, rs2 <: rs2[0,1], sourceReg1F <: sourceReg1F, typeAF <: typeAF );
+    float2double FPUFDOUBLE( FPUflags <: CSR.FPUflags, sourceReg1F <: sourceReg1F, typeAF <: typeAS );
+    double2float FPUDFLOAT( FPUflags <: CSR.FPUflags, sourceReg1F <: sourceReg1F, typeAF <: typeAD );
+    uint64  convertresult <:: converttype[5,1] ? FPUDFLOAT.result :
+                              converttype[4,1] ? FPUFDOUBLE.result :
+                              converttype[3,1] ? FPUDINT.result :
+                              converttype[2,1] ? FPUDOUBLE.result :
+                              converttype[1,1] ? FPUINT.result : FPUFLOAT.result;
+    uint5   convertflags  <:: converttype[5,1] ? FPUDFLOAT.FPUnewflags :
+                              converttype[4,1] ? FPUFDOUBLE.FPUnewflags :
+                              converttype[3,1] ? FPUDINT.FPUnewflags :
+                              converttype[2,1] ? FPUDOUBLE.FPUnewflags :
+                              converttype[1,1] ? FPUINT.FPUnewflags : FPUFLOAT.FPUnewflags;
+
     fpuSINGLECYCLE FPUFAST(
+        df <: function7[0,1],
         FPUflags <: CSR.FPUflags,
         function3 <: function3[0,2], function7 <: function7[2,5],
         sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
@@ -483,7 +520,7 @@ unit cpuexecuteSLOWPATH(
     );
 
     // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
-    uint5   FPUnewflags <:: FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? ( function7[3,1] ? FPUFLOAT.FPUnewflags: FPUINT.FPUnewflags ) : FPUCALC.FPUnewflags;
+    uint5   FPUnewflags <:: FASTPATHFPU ? FPUFAST.FPUnewflags : fpuconvert ? convertflags : FPUCALC.FPUnewflags;
     CSRblock CSR(
         SMT <: SMT,
         csrRegister <: csrRegister,
@@ -534,12 +571,12 @@ unit cpuexecuteSLOWPATH(
                             memoryoutput = sourceReg2;
                         }
                     }
-                    case 2: { result = fpuconvert ? ( function7[3,1] ? FPUFLOAT.result : FPUINT.result ) : FPUFAST.result; }                                   // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
+                    case 2: { result = fpuconvert ? convertresult : FPUFAST.result; }                                       // FPU FAST COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                     case 3: { result = fpucalc ? FPUCALC.result : function3[2,1] ? ALUMD.result : ALUBCLMUL.result; }       // FPU CALCULATIONS AND INTEGER DIVISION
                 }
             }
         }
-        { frd = fpuconvert ? function7[3,1] : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
+        { frd = fpuconvert ? ( |converttype[4,2] | converttype[2,1] | converttype[0,1] ) : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
     }
 }
 
@@ -552,17 +589,17 @@ unit cpuexecuteFASTPATH(
     input   int32   sourceReg1,
     input   int32   sourceReg2,
     input   int32   negSourceReg2,
-    input   uint32  sourceReg2F,
+    input   uint64  sourceReg2F,
     input   int32   immediateValue,
-    input   int32   memoryinput,
+    input   int64   memoryinput,
     input   uint32  AUIPCLUI,
     input   uint32  nextPC,
     input   uint1   isLOAD,
     input   uint1   isAUIPCLUI,
     input   uint1   isJAL,
     input   uint1   isFENCE,
-    output  int32   memoryoutput,
-    output  int32   result,
+    output  int64   memoryoutput,
+    output  int64   result,
     input   uint1   LT,
     input   uint1   LTU,
     output  uint2   fenceACTIVE(0)
@@ -637,7 +674,7 @@ unit load(
     input   uint1   byteaccess,
     input   uint2   accesssize,
     input   uint1   dounsigned,
-    output  int32   memoryinput,
+    output  int64   memoryinput,
 
     input!  uint32  readdata,
     output! uint1   readmemory,
@@ -660,10 +697,37 @@ unit load(
     always_after {
         { if( start ) { busy = 1; } }
         { if( complete ) { busy = 0; } }
-        { if( complete ) { memoryinput = signextend; } }
+        { if( complete ) { memoryinput = { 32hffffffff, signextend }; } }
     }
 }
+unit load64(
+    input   uint1   start,
+    output! uint1   busy(0),
+    output  int64   memoryinput,
+    input   uint$addr_width$ loadAddress,
+    output! uint$addr_width$ address,
+    input!  uint32  readdata,
+    output! uint1   readmemory,
+    input!  uint1   memorybusy
+) <reginputs> {
+    uint1   complete = uninitialised;
+    readmemory := 0; complete := 0;
 
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                address = loadAddress; readmemory = 1; while( memorybusy ) {} memoryinput[0,32] = readdata;
+                address = loadAddress + 2; readmemory = 1; while( memorybusy ) {}
+                complete = 1;
+            } else { complete = 0; }
+        }
+    }
+
+    always_after {
+        { if( start ) { busy = 1; } }
+        { if( complete ) { memoryinput[32,32] = readdata; busy = 0; } }
+    }
+}
 // STORE UNIT FOR NON-FAST STORES ( to BRAM/SDRAM or 32 bit )
 unit store(
     input   uint1   start,
@@ -676,6 +740,31 @@ unit store(
     algorithm <autorun> {
         while(1) {
             if( start ) { while( memorybusy ) {} busy = 0; } else { writememory = 0; }
+        }
+    }
+    always_after {
+        if( start ) { busy = 1; }
+    }
+}
+unit store64(
+    input   uint1   start,
+    input   uint64  storedata,
+    output  uint32  writedata,
+    input   uint$addr_width$ storeAddress,
+    output! uint$addr_width$ address,
+    output! uint1   busy(0),
+    output! uint1   writememory,
+    input!  uint1   memorybusy
+) <reginputs> {
+    writememory := 0;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                address = storeAddress; writedata = storedata[0,32]; writememory = 1; while( memorybusy ) {}
+                address = storeAddress + 2; writedata = storedata[32,32]; writememory = 1; while( memorybusy ) {}
+                busy = 0;
+            } else { writememory = 0; }
         }
     }
     always_after {

@@ -195,9 +195,6 @@ unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
 
-// FIXED POINT DIVISION ACCELERATOR
-int volatile *FIXED_REGS = (int volatile *)0xf800;                                       // TOP & RESULT [0], BOTTOM [1]
-
 // HARDWARE REGISTER BASES
 int volatile *TIMER_REGS = (int volatile *) 0xc000;
 int volatile *GPU_REGS = (int volatile *) 0xd600;
