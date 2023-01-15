@@ -228,13 +228,8 @@ void init_scene(Sphere* spheres, Light* lights) {
 }
 
 int main( int argc, char **argv ) {
-    Sphere spheres[NB_SPHERES];
-    Light lights[NB_LIGHTS];
-
-    init_scene(spheres, lights);
-
+    Sphere spheres[NB_SPHERES]; Light lights[NB_LIGHTS]; init_scene(spheres, lights);
     gpu_cs(); gpu_pixelblock_mode( PB_WRITEALL ); bitmap_256( TRUE ); gpu_pixelblock_start( 0, 0, 320 );
-
     render(spheres, NB_SPHERES, lights, NB_LIGHTS);
 
     sleep1khz( 4000, 0 );

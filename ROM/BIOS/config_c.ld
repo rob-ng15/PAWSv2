@@ -4,11 +4,18 @@ MEMORY
 }
 
 ENTRY(_start)
+STARTUP(build/crt0.o)
 
 SECTIONS {
-    .text 0x00000000 : {
-        build/crt0.o (.text)
+  .text 0x00000000 : {
         *(.text*)
+    } > ram
+    .bss :
+    {
+       _bss_start = . ;
+       *(.bss*)
+       *(COMMON)
+       _bss_end = . ;
     } > ram
     .sdata :
     {
@@ -25,12 +32,6 @@ SECTIONS {
     .rodata :
     {
         *(.rodata*)
-    } > ram
-    .bss (NOLOAD) :
-    {
-       _bss_start = . ;
-       *(.bss*)
-       *(COMMON)
-       _bss_end = . ;
+        _heap_start = . ;
     } > ram
 }

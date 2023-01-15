@@ -2,7 +2,7 @@
 $$ uart_in_clock_freq_mhz = 50
 
 // REGISTER AND MEMORY BUS DEFINITIONS
-$$ reg_width = 32
+$$ reg_width = 64
 $$ addr_width = 27
 
 // ON CPU INSTRUCTION CACHE DEFINITIONS
@@ -104,6 +104,7 @@ $include('../FPU64.si')
 $include('../CPU.si')
 
 // MAIN PAWS.si
+$include('../caches.si')
 $include('../PAWS.si')
 
 // I2C (EMARD FOR RTC)

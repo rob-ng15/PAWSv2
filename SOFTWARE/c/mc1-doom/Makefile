@@ -3,7 +3,7 @@ include ../makefile.inc
 PROJECT=DOOM
 PROJECTTYPE=GAMES
 
-all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
+all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).P64
 
 DOOM_OBJECTS= \
 am_map.o \
@@ -131,11 +131,11 @@ $(BUILD_DIR)/wi_stuff.o \
 $(BUILD_DIR)/w_wad.o \
 $(BUILD_DIR)/z_zone.o
 
-$(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW :$(BUILD_DIR)/doom.elf
+$(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).P64 :$(BUILD_DIR)/doom.elf
 	$(ARCH)-elf-objcopy -O binary $< $@
 	@echo ""
 	@echo "Please copy doom1.wad to the /GAMES directory of the SDCARD"
-	@echo "When copying DOOM.PAW"
+	@echo "When copying P64"
 
 $(BUILD_DIR)/doom.elf: $(DOOM_OBJECTS) $(LIBPAWS)
 	$(CC) $(CFLAGS) $(INCLUDE) $(LFLAGS) $(LCONFIG) -o $@ $(DOOM_BUILD_OBJECTS) $(LIBPAWS) $(LIBRARY)
@@ -145,5 +145,5 @@ $(BUILD_DIR)/doom.elf: $(DOOM_OBJECTS) $(LIBPAWS)
 	$(CC) $(INCLUDE) $(CFLAGS) -c -o $(BUILD_DIR)/$@ $<
 
 clean:
-	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.elf $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
+	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.elf $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).P64
 

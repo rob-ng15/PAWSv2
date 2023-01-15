@@ -198,22 +198,22 @@ extern unsigned char volatile *DMAMODE;
 extern unsigned char volatile *DMASET;
 
 static inline void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd ) {
-    *DMASOURCE = (unsigned int)source; *DMASOURCEADD = sourceadd,
-    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
+    *DMASOURCE = (unsigned long)source; *DMASOURCEADD = sourceadd,
+    *DMADEST = (unsigned long)destination; *DMADESTADD = destadd;
     *DMACOUNT = count;
     *DMAMODE = 6;
 }
 
 static inline void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles ) {
-    *DMASOURCE = (unsigned int)source; *DMASOURCEADD = sourceadd,
-    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
+    *DMASOURCE = (unsigned long)source; *DMASOURCEADD = sourceadd,
+    *DMADEST = (unsigned long)destination; *DMADESTADD = destadd;
     *DMACOUNT = count; *DMACYCLES = cycles;
     *DMAMODE = 8;
 }
 
 static inline void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
-    *DMASOURCE = (unsigned int)DMASET; *DMASET = (unsigned char)value;
-    *DMADEST = (unsigned int)destination; *DMADESTADD = destadd;
+    *DMASOURCE = (unsigned long)DMASET; *DMASET = (unsigned char)value;
+    *DMADEST = (unsigned long)destination; *DMADESTADD = destadd;
     *DMACOUNT = count; *DMACYCLES = cycles;
     *DMAMODE = 9;
 }

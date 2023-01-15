@@ -666,7 +666,7 @@ int main( void ) {
 
     // INITIALISE ALL VARIABLES AND START THE ASTEROID MOVING THREAD
     setup_game();
-    SMTSTART( (unsigned int )smt_thread );
+    SMTSTART( (unsigned long)smt_thread );
 
     while(1) {
         last_fire = ( last_fire > 0 ) ? last_fire - 1 : 0;

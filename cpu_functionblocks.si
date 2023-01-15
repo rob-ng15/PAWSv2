@@ -9,7 +9,7 @@ unit control(
     input   uint1   COMMIT_SMT,
 
     // PC and instruction decoding
-    input   uint$addr_width$  PC,
+    input   uint$addr_width$ PC,
     input   uint32  instruction,
     input   uint1   compressed,
     output  uint5   opCode,
@@ -20,37 +20,37 @@ unit control(
     output  uint5   rs3,
     output  uint5   rd,
     output  uint12  csrRegister,
-    output  int32   immediateValue,
+    output  uint64  immediateValue,
     output  uint1   IS_AUIPCLUI,
     output  uint1   IS_JAL,
     output  uint1   IS_ALUM,
-    output  uint1   IS_ALUCLM,
     output  uint1   IS_CSR,
     output  uint1   IS_ATOMIC,
     output  uint1   IS_FPU,
-    output  uint1   IS_FASTFPU,
     output  uint1   IS_LOAD,
     output  uint1   IS_STORE,
     output  uint1   IS_FENCE,
-    output  uint1   IS_FASTALU,
+    output  uint1   IS_ALU,
+    output  uint1   IS_FAST,
+    output  uint1   IS_FASTFPU,
+    output  uint1   IS_ALU32,
 
     // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
     input   uint1   frd,
     input   uint1   write,
-    input   int64   result,
-    output  int32   sourceReg1,
-    output  int32   sourceReg2,
-    output! int64   sourceReg1F,
-    output! int64   sourceReg2F,
-    output  int64   sourceReg3F,
+    input   uint64   result,
+    output  uint64   sourceReg1,
+    output  uint64   sourceReg2,
+    output  uint64   sourceReg1F,
+    output  uint64   sourceReg2F,
+    output  uint64   sourceReg3F,
     output  uint4   typeAF,
     output  uint4   typeAS,
     output  uint4   typeAD,
     output  uint4   typeBF,
     output  uint4   typeCF,
-    output  int32   sourceReg1abs,
-    output  int32   sourceReg2abs,
-    output  int32   sourceReg2neg,
+    output  uint64  sourceReg1abs,
+    output  uint64  sourceReg2abs,
     output  uint1   writeRegisterF,
     output  uint1   writeRegister,
 
@@ -60,7 +60,7 @@ unit control(
     output  uint1   EQ,
 
     // ADDRESS GENERATION
-    output  uint32  AUIPCLUI,
+    output  uint64  AUIPCLUI,
     output  uint$addr_width$  loadAddress,
     output  uint$addr_width$  storeAddress,
     output  uint$addr_width$  nextPC,
@@ -74,17 +74,18 @@ unit control(
         IS_AUIPCLUI :> IS_AUIPCLUI,
         IS_JAL :> IS_JAL,
         IS_ALUM :> IS_ALUM,
-        IS_ALUCLM :> IS_ALUCLM,
         IS_CSR :> IS_CSR,
         IS_ATOMIC :> IS_ATOMIC,
-        IS_FPU :> IS_FPU,
-        IS_FASTFPU :> IS_FASTFPU,
         IS_LOAD :> IS_LOAD,
         IS_STORE :> IS_STORE,
         IS_FENCE :> IS_FENCE,
         writeRegister :> writeRegister,
         writeRegisterF :> writeRegisterF,
-        IS_FASTALU :> IS_FASTALU
+        IS_FPU :> IS_FPU,
+        IS_ALU :> IS_ALU,
+        IS_ALU32 :> IS_ALU32,
+        IS_FAST :> IS_FAST,
+        IS_FASTFPU :> IS_FASTFPU
     );
     uint1   takeBranch = uninitialized;
 
@@ -92,15 +93,14 @@ unit control(
     typeF class1F( df <: function7[0,1], a <: sourceReg1F, type :> typeAF );
     typeF class2F( df <: function7[0,1], a <: sourceReg2F, type :> typeBF );
     typeF class3F( df <: function7[0,1], a <: sourceReg3F, type :> typeCF );
-
     typeF class1D( a <: sourceReg1F, type :> typeAD );  // FORCE CLASSIFICATION OF DOUBLE
     typeF class1S( a <: sourceReg1F, type :> typeAS );  // FORCE CLASSIFICATION OF SINGLE
 
     // REGISTERS I integer x 2, F float x 3, 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
     $$for i=0,1 do
-        simple_dualport_bram int32 I1_$i$[32] = { 0, pad(uninitialized) };
-        simple_dualport_bram int32 I2_$i$[32] = { 0, pad(uninitialized) };
+        simple_dualport_bram int64 I1_$i$[32] = { 0, pad(uninitialized) };
+        simple_dualport_bram int64 I2_$i$[32] = { 0, pad(uninitialized) };
         simple_dualport_bram int64 F1_$i$[32] = uninitialized;
         simple_dualport_bram int64 F2_$i$[32] = uninitialized;
         simple_dualport_bram int64 F3_$i$[32] = uninitialized;
@@ -115,11 +115,10 @@ unit control(
     uint$addr_width$ branchAddress <:: { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
 
     // 2ND OPERAND FOR COMPARISONS
-    int32   operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
+    int64   operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
 
     // FLAGS FOR BRANCH
     uint4   flags <:: { LTU, LT, 1b0, EQ };
-
     class1D.df := 1; class1S.df := 0;
 
     always_after {
@@ -127,7 +126,7 @@ unit control(
         { opCode = instruction[2,5]; }
         { function3 = Rtype(instruction).function3; }
         { function7 = Rtype(instruction).function7; }
-        { immediateValue = { {20{instruction[31,1]}}, Itype(instruction).immediate }; }
+        { immediateValue = { {52{instruction[31,1]}}, Itype(instruction).immediate }; }
 
         // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
         { rs1 = Rtype(instruction).sourceReg1; }
@@ -157,20 +156,19 @@ unit control(
         { sourceReg3F = SMT ? F3_1.rdata0 : F3_0.rdata0; }
 
         // GENERATE ABSOLUTE AND NEGATIVE OF REGISTERS FOR MULTIPLICATION, ADDITION AND INT -> FLOAT CONVERSION
-        { sourceReg1abs = sourceReg1[31,1] ? -sourceReg1 : sourceReg1; }
-        { sourceReg2neg = -sourceReg2; }
-        { sourceReg2abs = sourceReg2[31,1] ? sourceReg2neg : sourceReg2; }
+        { sourceReg1abs = sourceReg1[63,1] ? -sourceReg1 : sourceReg1; }
+        { sourceReg2abs = sourceReg2[63,1] ? -sourceReg2 : sourceReg2; }
 
-        // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 1) 32, ATOMIC/FLOAD/FSTORE, 32, ELSE BY function3
-        { accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? ( ( FLAGS.IS_ATOMIC | FLAGS.IS_FLOAD | FLAGS.IS_FSTORE ) ? 2b10 : function3[0,2] ) : 2b10; }
+        // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32 ELSE BY function3
+        { accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? function3[0,2] : 2b10; }
 
         // BRANCH UNIT
         { takeBranch = function3[0,1] ^ flags[ function3[1,2], 1 ]; }
 
         // ADDRESS GENRATION
-        { AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC ); }
-        { loadAddress = ( FLAGS.IS_ATOMIC ? 0 : immediateValue ) + sourceReg1; }
-        { storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1; }
+        { AUIPCLUI = { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC ); }
+        { loadAddress = ( FLAGS.IS_ATOMIC ? 0 : immediateValue ) + sourceReg1[0,$addr_width$]; }
+        { storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1[0,$addr_width$]; }
         { nextPC = PC + ( compressed ? 2 : 4 ); }
         { newPC = ( FLAGS.incPC ) ? ( FLAGS.IS_BRANCH & takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress ); }
 
@@ -190,34 +188,31 @@ unit controlflags(
     output  uint1   IS_JAL,
     output  uint1   IS_BRANCH,
     output  uint1   IS_ALUM,
-    output  uint1   IS_ALUCLM,
     output  uint1   IS_CSR,
     output  uint1   IS_ATOMIC,
     output  uint1   IS_FPU,
-    output  uint1   IS_FASTFPU,
     output  uint1   IS_LOAD,
     output  uint1   IS_STORE,
-    output  uint1   IS_FLOAD,
-    output  uint1   IS_FSTORE,
     output  uint1   IS_FENCE,
     output  uint1   writeRegister,
     output  uint1   writeRegisterF,
     output  uint1   incPC,
-    output  uint1   IS_FASTALU
+    output  uint1   IS_ALU,
+    output  uint1   IS_FAST,
+    output  uint1   IS_FASTFPU,
+    output  uint1   IS_ALU32
 ) <reginputs> {
     // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
-    uint1   REGREG <:: ( opCode == 5b01100 );
+    uint1   REGREG <:: ( opCode == 5b01100 ) | ( opCode == 5b01110 );
 
     // SET DEFAULT CONTROL FLAGS - STANDARD "SINGLE CYCLE" INTEGER ALU OPERATION
-    writeRegisterF := 0; writeRegister := 1; incPC := 1; IS_FASTALU := 1;
-    IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FLOAD := 0; IS_FSTORE := 0; IS_FENCE := 0;
+    writeRegisterF := 0; writeRegister := 1; incPC := 1;
+    IS_FAST := 1; IS_ALU := 0; IS_ALU32 := 0; IS_FPU := 0;
+    IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;
 
     always_after {
         // IDENTIFY FLOATING POINT, MULTIPLICATION AND CARRYLESS MULTIPLICATION
-        { IS_FPU = ( opCode[3,2] == 2b10 ); }
-        { IS_FASTFPU = IS_FPU & opCode[2,1] & function7[4,1]; }
         { IS_ALUM = REGREG & ( function7 == 7b0000001 ); }
-        { IS_ALUCLM = REGREG & ~function3[2,1] & ( function7 == 7b0000101 ); }
         {
             // DETERMINE CPU CONTROL FLAGS
             switch( opCode ) {
@@ -227,13 +222,18 @@ unit controlflags(
                 case 5b11001: { IS_JAL = 1; incPC = 0; }                                            // JALR
                 case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                 // BRANCH
                 case 5b00000: { IS_LOAD = 1; }                                                      // LOAD
-                case 5b00001: { IS_FLOAD = 1; IS_LOAD = 1; writeRegisterF = 1; }                     // FLOAT LOAD
+                case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                  // FLOAT LOAD
                 case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                  // STORE
-                case 5b01001: { IS_FSTORE = 1; IS_STORE = 1; writeRegister = 0; }                                  // FLOAT STORE
+                case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                  // FLOAT STORE
                 case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                   // FENCE[I]
-                case 5b11100: { IS_CSR = 1; IS_FASTALU = 0; }                                       // CSR
-                case 5b01011: { IS_ATOMIC = 1; IS_FASTALU = 0; }                                    // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
-                default: { IS_FASTALU = ~( IS_FPU | IS_ALUCLM | ( IS_ALUM & function3[2,1]) ); }    // FPU, CARRYLESS MULTIPLY OR INTEGER DIVIDE -> SLOWPATH ALL ELSE TO IS_FASTALU
+                case 5b11100: { IS_CSR = 1; IS_FAST = 0; }                                          // CSR ECALL EBBREAK
+                case 5b00100: { IS_ALU = 1; }                                                       // REGISTER-IMMEDIATE ALU
+                case 5b01100: { IS_ALU = 1; IS_FAST = ~( IS_ALUM & function3[2,1] ); }              // REGISTER-REGISTER ALU ( FAST NOT DIVIDE )
+                case 5b00110: { IS_ALU = 1; IS_ALU32 = 1; }                                         // REGISTER-IMMEDIATE ALU 32BIT
+                case 5b01110: { IS_ALU = 1; IS_ALU32 = 1; IS_FAST = ~( IS_ALUM & function3[2,1] ); }// REGISTER-REGISTER ALU 32BIT ( FAST NOT DIVIDE )
+                case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                       // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
+                case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }           // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
+                default: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = 0; }                                               // FUSED-FPU
             }
         }
     }
@@ -241,34 +241,41 @@ unit controlflags(
 
 
 // COMPRESSED INSTRUCTION EXPANSION
+// COMPRESSED INSTRUCTION EXPANSION
 unit compressed00(
     input   uint16  i16,
     output  uint30  i32
 ) <reginputs> {
     always_after {
-        if( |i16[13,3] ) {
-            if( i16[15,1] ) {
-                // SW -> sw rs2', offset[6:2](rs1') { 110 uimm[5:3] rs1' uimm[2][6] rs2' 00 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
-                // FSW -> fsw rs2', offset[6:2](rs1') { 110 uimm[5:3] rs1' uimm[2][6] rs2' 00 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100111 }
-                // FSD -> fsd rs2', offset[7:3](rs1') { 101 uimm[5:3] rs1' uimm[7:6] rs2' 00 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
-                if( i16[14,1] ) {
-                    i32 = { 5b0, CS(i16).ib_6, CS(i16).ib_5, {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b010, CS(i16).ib_4_3, CS(i16).ib_2, 2b0, { 4b0100, i16[13,1] } };
-                } else {
-                    i32 = { 4b0, i16[5,2], i16[12,1], {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b011, i16[10,2], 3b0, 5b01001 };
-                }
-            } else {
-                // LW -> lw rd', offset[6:2](rs1') { 010 uimm[5:3] rs1' uimm[2][6] rd' 00 } -> { imm[11:0] rs1 010 rd 0000011 }
-                // FLW -> flw rd', offset[6:2](rs1') { 010 uimm[5:3] rs1' uimm[2][6] rd' 00 } -> { imm[11:0] rs1 010 rd 0000111 }
-                // FLD -> flw rd', offset[7:3](rs1') { 001 uimm[5:3] rs1' uimm[7:6] rd' 00 } -> { imm[11:0] rs1 011 rd 0000111 }
-                if( i16[14,1] ) {
-                    i32 = { 5b0, CL(i16).ib_6, CL(i16).ib_5_3, CL(i16).ib_2, 2b00, {2b01,CL(i16).rs1_alt}, 3b010, {2b01,CL(i16).rd_alt}, { 4b0000, i16[13,1] } };
-                } else {
-                    i32 = { 4b0, i16[5,2], i16[10,3], 3b000, {2b01,CL(i16).rs1_alt}, 3b011, {2b01,CL(i16).rd_alt}, 5b00001 };
-                }
+        switch( i16[13,3] ) {
+            default: {
+                // ADDI4SPN -> addi rd', x2, nzuimm[9:2] { 000, nzuimm[5:4|9:6|2|3] rd' 00 } -> { imm[11:0] rs1 000 rd 0010011 }
+                i32 = { 2b0, CIu94(i16).ib_9_6, CIu94(i16).ib_5_4, CIu94(i16).ib_3, CIu94(i16).ib_2, 2b00, 5h2, 3b000, {2b01,CIu94(i16).rd_alt}, 5b00100 };
             }
-        } else {
-            // ADDI4SPN -> addi rd', x2, nzuimm[9:2] { 000, nzuimm[5:4|9:6|2|3] rd' 00 } -> { imm[11:0] rs1 000 rd 0010011 }
-            i32 = { 2b0, CIu94(i16).ib_9_6, CIu94(i16).ib_5_4, CIu94(i16).ib_3, CIu94(i16).ib_2, 2b00, 5h2, 3b000, {2b01,CIu94(i16).rd_alt}, 5b00100 };
+            case 3b001: {
+                // FLD -> flw rd', offset[7:3](rs1') { 001 uimm[5:3] rs1' uimm[7:6] rd' 00 } -> { imm[11:0] rs1 011 rd 0000111 }
+                i32 = { 4b0, i16[5,2], i16[10,3], 3b000, {2b01,CL(i16).rs1_alt}, 3b011, {2b01,CL(i16).rd_alt}, 5b00001 };
+            }
+            case 3b010: {
+                // LW -> lw rd', offset[6:2](rs1') { 010 uimm[5:3] rs1' uimm[2][6] rd' 00 } -> { imm[11:0] rs1 010 rd 0000011 }
+                i32 = { 5b0, CL(i16).ib_6, CL(i16).ib_5_3, CL(i16).ib_2, 2b00, {2b01,CL(i16).rs1_alt}, 3b010, {2b01,CL(i16).rd_alt}, 5b00000 };
+            }
+            case 3b011: {
+                // LD -> ld rd', offset[7:3](rs1') { 011 uimm[5:3] rs1' uimm[7:6] rd' 00 } -> { imm[11:0] rs1 011 rd 0000011 }
+                i32 = { 4b0, i16[5,2], i16[10,3], 3b000, {2b01,CL(i16).rs1_alt}, 3b011, {2b01,CL(i16).rd_alt}, 5b00000 };
+            }
+            case 3b101: {
+            // FSD -> fsd rs2', offset[7:3](rs1') { 101 uimm[5:3] rs1' uimm[7:6] rs2' 00 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
+                i32 = { 4b0, i16[5,2], i16[12,1], {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b011, i16[10,2], 3b0, 5b01001 };
+            }
+            case 3b110: {
+                // SW -> sw rs2', offset[6:2](rs1') { 110 uimm[5:3] rs1' uimm[2][6] rs2' 00 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
+                i32 = { 5b0, CS(i16).ib_6, CS(i16).ib_5, {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b010, CS(i16).ib_4_3, CS(i16).ib_2, 2b0, 5b01000 };
+            }
+            case 3b111: {
+                // SD -> sd rs2', offset[7:3](rs1') { 111 uimm[5:3] rs1' uimm[7:6] rs2' 00 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100011 }
+                i32 = { 4b0, i16[5,2], i16[12,1], {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b011, i16[10,2], 3b0, 5b01000 };
+            }
         }
     }
 }
@@ -282,6 +289,10 @@ unit compressed01(
                 // ADDI -> addi rd, rd, nzimm[5:0] { 000 nzimm[5] rs1/rd!=0 nzimm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
                 // NOP if rd == 0 and nzimm == 5b000000
                 i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, CI50(i16).rd, 3b000, CI50(i16).rd, 5b00100 };
+            }
+            case 3b001: {
+                // 3b001 -> ADDIW -> addiw rd,rd,imm[5:0] { 001, imm[5], rd, imm[4:0], 01 } -> { imm[11:0] rd 000 rd 0011011 }
+                i32 = { 6b0, CI50(i16).ib_5, CI50(i16).ib_4_0, CI50(i16).rd, 3b000,  CI50(i16).rd, 5b00110 };
             }
             case 3b010: {
                 // LI -> addi rd, x0, imm[5:0] { 010 imm[5] rd!=0 imm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
@@ -300,34 +311,38 @@ unit compressed01(
                 // MISC-ALU
                 if( CBalu(i16).function2[1,1] ) {
                     if( CBalu(i16).function2[0,1] ) {
-                        // CBalu(i16).logical2 -> SUB XOR OR AND
+                        // CBalu(i16).logical2 -> SUB XOR OR AND SUBW ADDW
                         // 2b00 -> SUB -> sub rd', rd', rs2' { 100 0 11 rs1'/rd' 00 rs2' 01 } -> { 0100000 rs2 rs1 000 rd 0110011 }
                         // 2b01 -> XOR -> xor rd', rd', rs2' { 100 0 11 rs1'/rd' 01 rs2' 01 } -> { 0000000 rs2 rs1 100 rd 0110011 }
                         // 2b10 -> OR  -> or  rd', rd', rd2' { 100 0 11 rs1'/rd' 10 rs2' 01 } -> { 0000000 rs2 rs1 110 rd 0110011 }
                         // 2b11 -> AND -> and rd', rd', rs2' { 100 0 11 rs1'/rd' 11 rs2' 01 } -> { 0000000 rs2 rs1 111 rd 0110011 }
-                        i32 = { { 1b0, ~|CBalu(i16).logical2, 5b00000 }, { 2b01, CBalu(i16).rs2_alt }, { 2b01, CBalu(i16).rd_alt },
-                                ( ^CBalu(i16).logical2 ) ? { 1b1, CBalu(i16).logical2[1,1], 1b0 } : {3{CBalu(i16).logical2[0,1]}}, { 2b01, CBalu(i16).rd_alt }, 5b01100 };
+                        if( i16[12,1] ) {
+                            // SUBW ADDW
+                            i32 = { 1b0, ~CBalu(i16).logical2[0,1], 5b00000, { 2b01, CBalu(i16).rs2_alt }, { 2b01, CBalu(i16).rd_alt },
+                                    3b000, { 2b01, CBalu(i16).rd_alt }, 5b01110 };
+                        } else {
+                            i32 = { { 1b0, ~|CBalu(i16).logical2, 5b00000 }, { 2b01, CBalu(i16).rs2_alt }, { 2b01, CBalu(i16).rd_alt },
+                                    ( ^CBalu(i16).logical2 ) ? { 1b1, CBalu(i16).logical2[1,1], 1b0 } : {3{CBalu(i16).logical2[0,1]}}, { 2b01, CBalu(i16).rd_alt }, 5b01100 };
+                        }
                     } else {
                         // ANDI -> andi rd', rd', imm[5:0] { 100 imm[5], 10 rs1'/rd' imm[4:0] 01 } -> { imm[11:0] rs1 111 rd 0010011 }
                         i32 = { {7{CBalu50(i16).ib_5}}, CBalu50(i16).ib_4_0, { 2b01, CBalu50(i16).rd_alt }, 3b111, { 2b01, CBalu50(i16).rd_alt }, 5b00100 };
                     }
                 } else {
                     // i16[10,1] -> SRLI SRAI
-                    // 1b0 -> SRLI -> srli rd', rd', shamt[5:0] { 100 nzuimm[5] 00 rs1'/rd' nzuimm[4:0] 01 } -> { 0000000 shamt rs1 101 rd 0010011 }
-                    // 1b1 -> SRAI -> srai rd', rd', shamt[5:0] { 100 nzuimm[5] 01 rs1'/rd' nzuimm[4:0] 01 } -> { 0100000 shamt rs1 101 rd 0010011 }
-                    i32 = { { 1b0, i16[10,1], 5b00000 }, CBalu50(i16).ib_4_0, { 2b01, CBalu50(i16).rd_alt }, 3b101, { 2b01, CBalu50(i16).rd_alt }, 5b00100 };
+                    // 1b0 -> SRLI -> srli rd', rd', shamt[5:0] { 100 nzuimm[5] 00 rs1'/rd' nzuimm[4:0] 01 } -> { 000000 shamt rs1 101 rd 0010011 }
+                    // 1b1 -> SRAI -> srai rd', rd', shamt[5:0] { 100 nzuimm[5] 01 rs1'/rd' nzuimm[4:0] 01 } -> { 010000 shamt rs1 101 rd 0010011 }
+                    i32 = { { 1b0, i16[10,1], 4b00000 }, i16[12,1], CBalu50(i16).ib_4_0, { 2b01, CBalu50(i16).rd_alt }, 3b101, { 2b01, CBalu50(i16).rd_alt }, 5b00100 };
                 }
             }
+            case 3b101: {
+                // 3b101 -> J -> jal, x0, offset[11:1] { 101, imm[11|4|9:8|10|6|7|3:1|5] 01 } -> { imm[20|10:1|11|19:12] rd 1101111 }
+                i32 = { CJ(i16).ib_11, CJ(i16).ib_10, CJ(i16).ib_9_8, CJ(i16).ib_7, CJ(i16).ib_6, CJ(i16).ib_5, CJ(i16).ib_4, CJ(i16).ib_3_1, {9{CJ(i16).ib_11}}, 5h0, 5b11011 };
+            }
             default: {
-                if( i16[14,1] ) {
-                    // 3b110 -> BEQZ -> beq rs1', x0, offset[8:1] { 110, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011 }
-                    // 3b111 -> BNEZ -> bne rs1', x0, offset[8:1] { 111, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011 }
-                    i32 = { {4{CB(i16).offset_8}}, CB(i16).offset_7_6, CB(i16).offset_5, 5h0, {2b01,CB(i16).rs1_alt}, { 2b00, i16[13,1] }, CB(i16).offset_4_3, CB(i16).offset_2_1, CB(i16).offset_8, 5b11000 };
-                } else {
-                    // 3b001 -> JAL -> jal x1, offset[11:1] { 001, imm[11|4|9:8|10|6|7|3:1|5] 01 } -> { imm[20|10:1|11|19:12] rd 1101111 }
-                    // 3b101 -> J -> jal, x0, offset[11:1] { 101, imm[11|4|9:8|10|6|7|3:1|5] 01 } -> { imm[20|10:1|11|19:12] rd 1101111 }
-                    i32 = { CJ(i16).ib_11, CJ(i16).ib_10, CJ(i16).ib_9_8, CJ(i16).ib_7, CJ(i16).ib_6, CJ(i16).ib_5, CJ(i16).ib_4, CJ(i16).ib_3_1, {9{CJ(i16).ib_11}}, 4h0, ~i16[15,1], 5b11011 };
-                }
+                // 3b110 -> BEQZ -> beq rs1', x0, offset[8:1] { 110, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011 }
+                // 3b111 -> BNEZ -> bne rs1', x0, offset[8:1] { 111, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011 }
+                i32 = { {4{CB(i16).offset_8}}, CB(i16).offset_7_6, CB(i16).offset_5, 5h0, {2b01,CB(i16).rs1_alt}, { 2b00, i16[13,1] }, CB(i16).offset_4_3, CB(i16).offset_2_1, CB(i16).offset_8, 5b11000 };
             }
         }
     }
@@ -339,8 +354,20 @@ unit compressed10(
     always_after {
         switch( i16[13,3] ) {
             case 3b000: {
-                // SLLI -> slli rd, rd, shamt[5:0] { 000, nzuimm[5], rs1/rd!=0 nzuimm[4:0] 10 } -> { 0000000 shamt rs1 001 rd 0010011 }
-                i32 = { 7b0000000, CI50(i16).ib_4_0, CI50(i16).rd, 3b001, CI50(i16).rd, 5b00100 };
+                // SLLI -> slli rd, rd, shamt[5:0] { 000, nzuimm[5], rs1/rd!=0 nzuimm[4:0] 10 } -> { 000000 shamt rs1 001 rd 0010011 }
+                i32 = { 6b000000, CI50(i16).ib_5, CI50(i16).ib_4_0, CI50(i16).rd, 3b001, CI50(i16).rd, 5b00100 };
+            }
+            case 3b001: {
+                    // FLDSP -> fld rd, offset[8:3](x2) { 001 uimm[5] rd uimm[4:3|8:6] 10 } -> { imm[11:0] rs1 011 rd 0000111 }
+                    i32 = { 3b0, i16[2,3], i16[12,1], i16[5,2], 3b0, 5h2, 3b011, CI(i16).rd, 5b00001 };
+            }
+            case 3b010: {
+                    // LWSP -> lw rd, offset[7:2](x2) { 010 uimm[5] rd uimm[4:2|7:6] 10 } -> { imm[11:0] rs1 010 rd 0000011 }
+                    i32 = { 4b0, CI(i16).ib_7_6, CI(i16).ib_5, CI(i16).ib_4_2, 2b0, 5h2 , 3b010, CI(i16).rd, 5b00000 };
+            }
+            case 3b011: {
+                    // LDSP -> ld rd, offset[7:2](x2) { 011 uimm[5] rd uimm[4:2|7:6] 10 } -> { imm[11:0] rs1 011 rd 0000011 }
+                    i32 = { 4b0, CI(i16).ib_7_6, CI(i16).ib_5, CI(i16).ib_4_2, 2b0, 5h2 , 3b011, CI(i16).rd, 5b00000 };
             }
             case 3b100: {
                 // J[AL]R / MV / ADD
@@ -354,26 +381,17 @@ unit compressed10(
                     i32 = { 7b0000000, CR(i16).rs2, i16[12,1] ? CR(i16).rs1 : 5h0, 3b000, CR(i16).rs1, 5b01100 };
                 }
             }
-            default: {
-                if( i16[15,1] ) {
-                    // SWSP -> sw rs2, offset[7:2](x2) { 110 uimm[5][4:2][7:6] rs2 10 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
-                    // FSWSP -> fsw rs2, offset[7:2](x2) { 110 uimm[5][4:2][7:6] rs2 10 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100111 }
+            case 3b101: {
                     // FSDSP -> fsd rs2, offset[8:3](x2) { 101 uimm[5:3][8:6] rs2 10 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
-                    if( i16[14,1] ) {
-                        i32 = { 4b0, CSS(i16).ib_7_6, CSS(i16).ib_5, CSS(i16).rs2, 5h2, 3b010, CSS(i16).ib_4_2, 2b00, { 4b0100, i16[13,1] } };
-                    } else {
                         i32 = { 3b0, i16[7,3], i16[12,1], CSS(i16).rs2, 5h2, 3b011, i16[10,2], 3b000, 5b01001 };
-                    }
-                } else {
-                    // LWSP -> lw rd, offset[7:2](x2) { 011 uimm[5] rd uimm[4:2|7:6] 10 } -> { imm[11:0] rs1 010 rd 0000011 }
-                    // FLWSP -> flw rd, offset[7:2](x2) { 011 uimm[5] rd uimm[4:2|7:6] 10 } -> { imm[11:0] rs1 010 rd 0000111 }
-                    // FLDSP -> fld rd, offset[8:3](x2) { 011 uimm[5] rd uimm[4:3|8:6] 10 } -> { imm[11:0] rs1 011 rd 0000111 }
-                    if( i16[14,1] ) {
-                        i32 = { 4b0, CI(i16).ib_7_6, CI(i16).ib_5, CI(i16).ib_4_2, 2b0, 5h2 ,3b010, CI(i16).rd, { 4b0000, i16[13,1] } };
-                    } else {
-                        i32 = { 3b0, i16[2,3], i16[12,1], i16[5,2], 3b0, 5h2, 3b011, CI(i16).rd, 5b00001 };
-                    }
-                }
+            }
+            case 3b110: {
+                    // SWSP -> sw rs2, offset[7:2](x2) { 110 uimm[5][4:2][7:6] rs2 10 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
+                        i32 = { 4b0, CSS(i16).ib_7_6, CSS(i16).ib_5, CSS(i16).rs2, 5h2, 3b010, CSS(i16).ib_4_2, 2b00, 5b01000 };
+            }
+            case 3b111: {
+                    // SDSP -> sd rs2, offset[7:2](x2) { 111 uimm[5][4:2][7:6] rs2 10 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
+                        i32 = { 4b0, CSS(i16).ib_7_6, CSS(i16).ib_5, CSS(i16).rs2, 5h2, 3b011, CSS(i16).ib_4_2, 2b00, 5b01000 };
             }
         }
     }
@@ -431,12 +449,12 @@ unit CSRblock(
     input   uint12  csrRegister,
     input   uint3   function3,
     input   uint5   rs1,
-    input   uint32  sourceReg1,
+    input   uint8  sourceReg1,
     input   uint1   incCSRinstret,
     input   uint1   updateFPUflags,
     input   uint5   FPUnewflags,
     output  uint5   FPUflags,
-    output  uint32  result
+    output  uint64  result
 ) <reginputs> {
     uint$CWIDTH$  TIMER(0);                                                                             // CYCLES SINCE BOOT
     uint$CWIDTH$  CYCLE0(0);                        uint$CWIDTH$  CYCLE1(0);                            // CYCLES HART ACTIVE
@@ -486,12 +504,9 @@ unit CSRblock(
                     case 4h3: { result = $CPUISA$; }
                     case 4hc: {
                         switch( { csrRegister[7,1], csrRegister[0,2] } ) {
-                            case 3h0: { result = SMT ? CYCLE1[0,32] : CYCLE0[0,32]; }
-                            case 3h4: { result = SMT ? CYCLE1[32,$CREMAIN$] : CYCLE0[32,$CREMAIN$]; }
-                            case 3h1: { result = TIMER[0,32]; }
-                            case 3h5: { result = TIMER[32,$CREMAIN$]; }
-                            case 3h2: { result = SMT ? INSTRET1[0,32] : INSTRET0[0,32]; }
-                            case 3h6: { result = SMT ? INSTRET1[32,$CREMAIN$] : INSTRET0[32,$CREMAIN$]; }
+                            case 3h0: { result = SMT ? CYCLE1 : CYCLE0; }
+                            case 3h1: { result = TIMER; }
+                            case 3h2: { result = SMT ? INSTRET1 : INSTRET0; }
                             default: {}
                         }
                         }

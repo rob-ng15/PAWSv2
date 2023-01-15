@@ -142,7 +142,7 @@ void display_village( void ) {
     int BDx = 0, BDx_last = 0, BDwidth = 1024, FDx = 0, FDx_last = 0, FDwidth = 4608, anim_number = 0;
 
     // DISPLAY VILLAGE + START TUNE
-    bitmap_display( 3 ); SMTSTART( (unsigned int )smt_thread );
+    bitmap_display( 3 ); SMTSTART( (unsigned long)smt_thread );
 
     while( FDx < ( FDwidth - 320 ) ) {
         await_vblank();

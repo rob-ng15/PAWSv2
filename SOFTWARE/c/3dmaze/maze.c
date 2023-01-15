@@ -871,7 +871,7 @@ int main( int argc, char **argv ) {
         powerpills = ( level < 4 ) ? level + 1 : 4;
 
         // ENTER THE MAZE IN 3D - Play tune if level 1
-        set_background( DKBLUE, DKGREEN, BKG_5050_V ); if( !level ) SMTSTART( (unsigned int )smt_thread );
+        set_background( DKBLUE, DKGREEN, BKG_5050_V ); if( !level ) SMTSTART( (unsigned long)smt_thread );
         if( walk_maze( levelwidths[level], levelheights[level] ) ) {
             // PACMAN WILT GRAPHICS
             for( unsigned char i = 0; i < 5; i++ ) {

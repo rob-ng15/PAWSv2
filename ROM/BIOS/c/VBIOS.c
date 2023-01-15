@@ -135,17 +135,10 @@ unsigned char pacman_bitmap[] = {
     0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40
 };
 
-// RISC-V CSR FUNCTIONS
-unsigned int CSRisa() {
-   unsigned int isa;
-   asm volatile ("csrr %0, 0x301" : "=r"(isa));
-   return isa;
-}
-
 // DMA CONTROLLER
 void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
-    *DMASOURCE = (unsigned int)source;
-    *DMADEST = (unsigned int)destination;
+    *DMASOURCE = (unsigned long)source;
+    *DMADEST = (unsigned long)destination;
     *DMACOUNT = count;
     *DMAMODE = mode;
 }
@@ -171,41 +164,6 @@ short strlen( char *s ) {
 void sleep( unsigned short counter ) {
     *SLEEPTIMER0 = counter;
     while( *SLEEPTIMER0 );
-}
-
-// AUDIO OUTPUT
-// START A note (1 == DEEP C, 25 == MIDDLE C )
-// OF duration MILLISECONDS TO THE LEFT ( channel_number == 1 ) RIGHT ( channel_number == 2 ) or BOTH ( channel_number == 3 ) AUDIO CHANNEL
-// IN waveform 0 == SQUARE, 1 == SAWTOOTH, 2 == TRIANGLE, 3 == SINE, 4 == WHITE NOISE, 7 == SAMPLE MODE
-// 1 = C 2 or Deep C
-// 25 = C 3
-// 49 = C 4 or Middle C
-// 73 = C 5 or Tenor C
-// 97 = C 6 or Soprano C
-// 121 = C 7 or Double High C
-void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
-    AUDIO_REGS[ 0x00 ] = _rv32_pack( waveform, note );
-    AUDIO_REGS[ 0x01 ] = _rv32_pack( duration, channel_number );
-}
-void volume( unsigned char left, unsigned char right ) {
-    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
-}
-void await_beep( unsigned char channel_number ) {
-    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
-    while( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) ) {}
-}
-
-unsigned short get_beep_active( unsigned char channel_number ) {
-    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
-    return( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) );
-}
-
-// USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
-void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_SAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
 }
 
 // WAIT FOR VBLANK TO START
@@ -332,10 +290,6 @@ void tpu_outputstring( char *s ) {
         tpu_output_character( *s );
         s++;
     }
-}
-void tpu_outputbinary( int number, int length ) {
-    for( int i = length - 1; i != -1; i-- )
-        tpu_output_character( '0' +  _rv32_bext( number, i ) );
 }
 
 // SET THE TILEMAP TILE at (x,y) to tile
@@ -547,12 +501,8 @@ void main( void ) {
     // SETUP INITIAL WELCOME MESSAGE
     draw_paws_logo();
 
-     // OUTPUT SOC & ISA CAPABILITIES
-    tpu_set( 1, 59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( *PAWSMAGIC, 32 );
-    tpu_set( 47,59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( CSRisa(), 32 );
-
     gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 70, 34, "Risc-V RV32GC+B CPU", 0 );
+    gpu_outputstring( WHITE, 70, 34, "Risc-V RV64GC CPU", 0 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
@@ -561,12 +511,11 @@ void main( void ) {
         set_tilemap_tile( 0, i, 15, i+1, 0 );
         set_tilemap_tile( 1, i, 29, i+1, 0 );
     }
-
     gpu_outputstringcentre( UK_GOLD, 74, "VERILATOR - SMT + FPU TEST", 0 );
     gpu_outputstringcentre( UK_GOLD, 82, "THREAD 0 - PACMAN SPRITES", 0 );
     gpu_outputstringcentre( UK_GOLD, 90, "THREAD 1 - FPU MANDELBROT", 0 );
 
-    SMTSTART( (unsigned int )smtthread );
+    SMTSTART( (unsigned long)smtthread );
 
     set_sprite_bitmaps( 1, 0, &pacman_bitmap[0] );
     set_sprite_bitmaps( 1, 1, &ghost_bitmap[0] );
@@ -574,24 +523,7 @@ void main( void ) {
     set_sprite( 1, 0, 1, 0, 440, 4, 13 );
     set_sprite( 1, 1, 1, 64, 440, 0, 8);
 
-    beep( CHANNEL_LEFT, WAVE_TRIANGLE, 3, 250 );
-
-#define MEMTEST unsigned char
-    MEMTEST *memword, word, error, action;
-    memword = (MEMTEST *)0x6000000; word = 0; error = 0; action = 0;
-
     while(1) {
-        if( memword < (MEMTEST *)0x8000080 ) {
-            if( action ) {
-                if( *memword != word ) {
-                    error++;
-                    set_background( RED, RED, 0 );
-                }
-                memword++; word--;
-            } else {
-                *memword++ = word--;
-            }
-        } else { memword = (MEMTEST *)0x6000000; word = 0; error = 0; action = 1 - action; }
         await_vblank();
         tilemap_scrollwrapclear( 0, 3, 1 );
         tilemap_scrollwrapclear( 1, 1, 1 );

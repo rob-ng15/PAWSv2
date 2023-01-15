@@ -35,17 +35,10 @@ unsigned short PAWSLOGO[] = {
     0b0000010000000000
 };
 
-// RISC-V CSR FUNCTIONS
-unsigned int CSRisa() {
-   unsigned int isa;
-   asm volatile ("csrr %0, 0x301" : "=r"(isa));
-   return isa;
-}
-
 // DMA CONTROLLER
 void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
-    *DMASOURCE = (unsigned int)source;
-    *DMADEST = (unsigned int)destination;
+    *DMASOURCE = (unsigned long)source;
+    *DMADEST = (unsigned long)destination;
     *DMACOUNT = count;
     *DMAMODE = mode;
 }
@@ -274,19 +267,15 @@ void tpu_outputstring( char *s ) {
         s++;
     }
 }
-void tpu_outputbinary( int number, int length ) {
-    for( int i = length - 1; i != -1; i-- )
-        tpu_output_character( '0' +  _rv32_bext( number, i ) );
-}
 
 // SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
 void scrollbars( void ) {
     unsigned char leds = 1, direction = 0, ledcount = 0;
     short count = 0;
-    int rtc_low, rtc_high;
+    long rtc;
 
     while(1) {
-        await_vblank();count++;
+        await_vblank(); count++;
         if( count == 64 ) {
             tilemap_scrollwrapclear( 0, 3, 1 );
             tilemap_scrollwrapclear( 1, 1, 1 );
@@ -301,17 +290,18 @@ void scrollbars( void ) {
                 *LEDS = leds;
                 ledcount = 0;
                 tpu_set( 0, 17, TRANSPARENT, WHITE );
-                rtc_high = RTC[0] << 8; rtc_low = RTC[1] + 0x20000000;
-                for( int i = 0; i < 8; i++ ) {
-                    tpu_output_character( 48 + ( ( rtc_low & 0xf0000000 ) >> 28 ) );
-                    rtc_low = rtc_low << 4;
-                    if( ( i == 3 ) || ( i == 5 ) ) tpu_output_character('-');
-                }
-                tpu_output_character(' ');
-                for( int i = 0; i < 6; i++ ) {
-                    tpu_output_character( 48 + ( ( rtc_high & 0xf0000000 ) >> 28 ) );
-                    rtc_high = rtc_high << 4;
-                    if( ( i == 1 ) || ( i == 3 ) ) tpu_output_character(':');
+                rtc = *RTC + 0x2000000000000000;
+                for( int i = 0; i < 16; i++ ) {
+                    switch(i) {
+                        case 8: case 9: break;
+                        default: tpu_output_character( 48 + ( ( rtc & 0xf000000000000000 ) >> 60 ) );
+                    }
+                    rtc = rtc << 4;
+                    switch(i) {
+                        case 3: case 5: tpu_output_character('-'); break;
+                        case 7: tpu_output_character(' '); break;
+                        case 11: case 13: tpu_output_character(':'); break;
+                    }
                 }
             }
         }
@@ -320,7 +310,7 @@ void scrollbars( void ) {
 
 void smtthread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp ,0x4000");
+    asm volatile ("li sp, 0x6000");
     scrollbars();
     SMTSTOP();
 }
@@ -442,11 +432,11 @@ void sortdirectoryentries( unsigned short entries ) {
 
 // WAIT FOR USER TO SELECT A VALID PAW FILE, BROWSING SUBDIRECTORIES
 unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) {
-    unsigned int thisdirectorycluster = startdirectorycluster;
+    int thisdirectorycluster = startdirectorycluster;
     FAT32DirectoryEntry *fileentry;
 
     unsigned char rereaddirectory = 1;
-    unsigned short entries, present_entry;
+    short entries, present_entry;
     int temp;
 
     directorycluster = ( FAT32DirectoryEntry * )directorynames - FAT32clustersize * 512;
@@ -479,8 +469,8 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
                             if( fileentry[i].attributes != 0x0f ) {
                                 // SHORT FILE NAME ENTRY
                                 if( ( ( fileentry[i].ext[0] == 'P' ) ) &&
-                                    ( ( fileentry[i].ext[1] == 'A' ) ) &&
-                                    ( ( fileentry[i].ext[2] == 'W' ) ) ) {
+                                    ( ( fileentry[i].ext[1] == '6' ) ) &&
+                                    ( ( fileentry[i].ext[2] == '4' ) ) ) {
                                         entries++;
                                         memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
                                         directorynames[entries].type = 1;
@@ -553,15 +543,14 @@ extern int _bss_start, _bss_end;
 unsigned char chime[] = { 75, 83, 89, 0 };
 
 int main( void ) {
-    unsigned int isa;
-    unsigned short i, j, x, y;
-    unsigned short selectedfile = 0;
+    short i, j, x, y;
+    short selectedfile = 0;
 
     // STOP SMT AND PIXELBLOCK
     SMTSTOP(); *PB_STOP = *PB_MODE = 0;
 
     // CLEAR MEMORY
-    memset( &_bss_start, 0, &_bss_end - &_bss_end );
+    memset( &_bss_start, 0, &_bss_end - &_bss_start );
 
     // RESET THE DISPLAY, AUDIO AND VOLUME
     reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
@@ -571,11 +560,7 @@ int main( void ) {
     *PS2_MODE = 0; *PS2_CAPSLOCK = 0; *PS2_NUMLOCK = 0;
 
     // DRAW LOGO AND SDCARD
-     draw_paws_logo();
-
-     // OUTPUT SOC & ISA CAPABILITIES
-    tpu_set( 1, 59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( *PAWSMAGIC, 32 );
-    tpu_set( 47,59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( CSRisa(), 32 );
+    draw_paws_logo();
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
@@ -584,10 +569,10 @@ int main( void ) {
         set_tilemap_tile( 0, i, 21, i+1, 0 );
         set_tilemap_tile( 1, i, 27, i+1, 0 );
     }
-    SMTSTART( (unsigned int )smtthread );
+    SMTSTART( (unsigned long)smtthread );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 70, 34, 0, "Risc-V RV32GC+B CPU", 0 );
+    gpu_outputstring( WHITE, 70, 34, 0, "Risc-V RV64GC CPU", 0 );
     gpu_outputstringcentre( UK_BLUE, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS
@@ -634,7 +619,7 @@ int main( void ) {
     sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 63 ); SMTSTOP();
 
     *LEDS = 255;
-    gpu_outputstringcentre( WHITE, 72, 1, "PAW File", 0 );
+    gpu_outputstringcentre( WHITE, 72, 1, "P64 File", 0 );
     gpu_outputstringcentre( WHITE, 80, 1, "SELECTED", 0 );
     gpu_outputstringcentre( WHITE, 88, 0, "", 0 );
     gpu_outputstringcentre( WHITE, 96, 0, "", 0 );

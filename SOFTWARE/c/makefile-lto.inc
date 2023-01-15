@@ -15,16 +15,16 @@ GCCVER=12.1.0
 BUILD_DIR=build_lto
 OUTPUT_DIR=../../PAWS/
 
-CFLAGS=-march=rv32gc_zba_zbb_zbc_zbs_zbkb_zbkx_zifencei -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
-LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf32lriscv -Wl,-belf32-littleriscv,-nostdlib
+CFLAGS=-march=rv64imafd_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
+LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleriscv,-nostdlib
 LCONFIG=-Wl,-T../config_c_SDRAM-lto.ld
 
 PAWSBASE=../
 INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I/usr/riscv32-elf/include/
 
-LIBRARY=/usr/riscv64-elf/lib/rv32imafc/ilp32f/libc.a \
-		/usr/riscv64-elf/lib/rv32imafc/ilp32f/libm.a \
-		/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv32imafc/ilp32f/libgcc.a \
+LIBRARY=/usr/riscv64-elf/lib/rv64imafdc/lp64d/libc.a \
+		/usr/riscv64-elf/lib/rv64imafdc/lp64d/libm.a \
+		/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv64imafdc/lp64d/libgcc.a \
 
 CRT0SOURCE=	$(PAWSBASE)library/crt0.s
 CRT0OBJ=	$(PAWSBASE)library/$(BUILD_DIR)/crt0.o

@@ -52,7 +52,7 @@ void I_InitGraphics (void) {
     DISPLAY_REGS_B[0x00] = 0; DISPLAY_REGS_B[0x01] = MODE_RGBM; DISPLAY_REGS_B[0x02] = 0; DISPLAY_REGS_B[0x15] = TRUE;         // Setup video hardware, RGBM, 256 colours with palette
     GPU_REGS_B[0x7a] = PB_WRITEALL; GPU_REGS_B[0xf4] = TRUE;  GPU_REGS_B[0xf2] = 2; GPU_REGS_B[0xf0] = 1;                      // DRAW TO FB 1 , DISPLAY FB 0, BITMAP DISPLAY 256, PIXELBLOCK WRITE 256
 
-    DMA_REGS_B[0x0e] = 0; DMA_REGS[0] = (int)&DMA_REGS_B[0x0e];                                                                // CLEAR THE FRAMEBUFFERS USING MEMSET
+    DMA_REGS_B[0x0e] = 0; DMA_REGS[0] = (long)&DMA_REGS_B[0x0e];                                                                // CLEAR THE FRAMEBUFFERS USING MEMSET
     DMA_REGS[1] = 0x2000000; DMA_REGS[2] = 320*240; DMA_REGS_B[0x0c] = 4;
     DMA_REGS[1] = 0x2020000; DMA_REGS_B[0x0c] = 4;
 }
@@ -89,7 +89,7 @@ void I_StartTic (void) {
         doomkeycode = PAWSKEYtoDOOM( keycode & 0x1ff );
         if( doomkeycode ) {
             event.data1 = doomkeycode;
-            event.type = _rv32_bext( keycode, 9 ); D_PostEvent( &event );
+            event.type = (keycode&256)>>8; D_PostEvent( &event );
         }
     }
 }
@@ -100,12 +100,12 @@ void I_UpdateNoBlit (void) {
 
 void I_FinishUpdate (void) {
     unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    DMA_REGS[0] = (int)screens[0]; DMA_REGS[1] = 0x2001900; DMA_REGS[2] = FB_WIDTH * FB_HEIGHT; DMA_REGS_B[0x0c] = 3;                            // COPY THE WORK SCREEN TO VISIBLE, CENTRE VERTICALLY
+    DMA_REGS[0] = (long)screens[0]; DMA_REGS[1] = 0x2001900; DMA_REGS[2] = FB_WIDTH * FB_HEIGHT; DMA_REGS_B[0x0c] = 3;                            // COPY THE WORK SCREEN TO VISIBLE, CENTRE VERTICALLY
 }
 
 void I_ReadScreen (byte* scr) {
     unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    DMA_REGS[0] = (int)screens[0]; DMA_REGS[1] = (int)scr; DMA_REGS[2] = SCREENWIDTH * SCREENHEIGHT; DMA_REGS_B[0x0c] = 3;                       // COPY THE WORK SCREEN TO VISIBLE, CENTRE VERTICALLY
+    DMA_REGS[0] = (long)screens[0]; DMA_REGS[1] = (long)scr; DMA_REGS[2] = SCREENWIDTH * SCREENHEIGHT; DMA_REGS_B[0x0c] = 3;                       // COPY THE WORK SCREEN TO VISIBLE, CENTRE VERTICALLY
 }
 
 // SET THE NEW PALETTE

@@ -23,15 +23,15 @@ PFORTH_BUILD_OBJECTS= build_lto/pf_cglue.o build_lto/pf_clib.o build_lto/pf_core
 		build_lto/pf_text.o build_lto/pf_words.o build_lto/pfcompil.o build_lto/pfcustom.o \
 		build_lto/pf_fileio_stdio.o build_lto/pf_io_stdio.o
 
-all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
+all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).P64
 
-$(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW : $(BUILD_DIR)/pforth.elf
+$(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).P64 : $(BUILD_DIR)/pforth.elf
 	$(ARCH)-elf-objcopy -O binary $< $@
 	@echo ""
 	@echo "Copy the files in fth/ to the SDCARD"
 	@echo "in folder /COMPUTER/PFORTH/"
 	@echo ""
-	@echo "FORTH.PAW loads files from /COMPUTER/PFORTH/"
+	@echo "FORTH.P64 loads files from /COMPUTER/PFORTH/"
 	@echo ""
 
 $(BUILD_DIR)/pforth.elf : $(LIBPAWS) $(PFORTH_OBJECTS)
@@ -41,4 +41,4 @@ $(BUILD_DIR)/pforth.elf : $(LIBPAWS) $(PFORTH_OBJECTS)
 	$(CC) $(INCLUDE) $(CFLAGS) -c -o $(BUILD_DIR)/$@ $<
 
 clean :
-	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.elf $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).PAW
+	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.elf $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).P64
