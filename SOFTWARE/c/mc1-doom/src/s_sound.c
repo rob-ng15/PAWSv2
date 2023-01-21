@@ -121,7 +121,7 @@ void S_Init
 {
   int           i;
 
-  printf("S_Init: Default sfx volume %d\n", sfxVolume);
+  fprintf(stderr, "S_Init: Default sfx volume %d\n", sfxVolume);
 
   S_SetSfxVolume(sfxVolume);
   S_SetMusicVolume(musicVolume);

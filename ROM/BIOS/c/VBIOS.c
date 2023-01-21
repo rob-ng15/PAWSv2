@@ -144,7 +144,7 @@ void DMASTART( const void *restrict source, void *restrict destination, unsigned
 }
 
 // STANDARD C FUNCTIONS ( from @sylefeb mylibc )
-void * memset(void *dest, int val, size_t len) {
+void *memset(void *dest, int val, size_t len) {
     *DMASET = val;
     DMASTART( (const void *restrict)DMASET, dest, len, 4 );
     return dest;
@@ -257,13 +257,10 @@ void gpu_outputstringcentre( unsigned char colour, short y, char *s, unsigned ch
     gpu_rectangle( TRANSPARENT, 0, y, 319, y + ( 8 << size ) - 1 );
     gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1) , y, s, 0 );
 }
-// SET THE BLITTER TILE to the 16 x 16 pixel bitmap
+// SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as is halfed by dma engine)
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
-
-    for( short i = 0; i < 16; i ++ ) {
-        *BLIT_WRITER_BITMAP = bitmap[i];
-    }
+    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, 1 );
 }
 
 // CHARACTER MAP FUNCTIONS

@@ -69,7 +69,7 @@ unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
                                 19,  0, 20,  0, 22,  0,  24, 0, 0xff };
 
 // SMT THREAD TO PLAY THE INTRO TUNE
-void playtune( void ) {
+__attribute__((used)) void playtune( void ) {
     short trebleposition = 0, bassposition = 0;
 
     while( ( tune_treble[ trebleposition ] != 0xff ) || ( tune_bass[ bassposition ] != 0xff ) ) {
@@ -91,9 +91,8 @@ void playtune( void ) {
 
 void smt_thread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp ,0x4000");
-
-    playtune();
+    asm volatile ("li sp, 0x4000");
+    asm volatile ("j playtune");
 }
 
 // DRAW WELCOME SCREEN
@@ -871,7 +870,7 @@ int main( int argc, char **argv ) {
         powerpills = ( level < 4 ) ? level + 1 : 4;
 
         // ENTER THE MAZE IN 3D - Play tune if level 1
-        set_background( DKBLUE, DKGREEN, BKG_5050_V ); if( !level ) SMTSTART( (unsigned long)smt_thread );
+        set_background( DKBLUE, DKGREEN, BKG_5050_V ); if( !level ) SMTSTART( smt_thread );
         if( walk_maze( levelwidths[level], levelheights[level] ) ) {
             // PACMAN WILT GRAPHICS
             for( unsigned char i = 0; i < 5; i++ ) {

@@ -112,6 +112,8 @@ unsigned char volatile *PB_STOP = (unsigned char volatile *) 0xd678;
 unsigned char volatile *PB_MODE = (unsigned char volatile *) 0xd67a;
 unsigned char volatile *PB_CMNUMBER = (unsigned char volatile *) 0xd67c;
 unsigned char volatile *PB_CMENTRY = (unsigned char volatile *) 0xd67e;
+unsigned int volatile *PB_ARGB = (unsigned int volatile *) 0xd680;
+unsigned int volatile *PB_RGBA = (unsigned int volatile *) 0xd684;
 
 unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e0;
 unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e2;
@@ -279,10 +281,11 @@ typedef struct {
 } __attribute((packed)) FAT32DirectoryEntry;
 
 typedef struct {
-    unsigned char filename[8];
-    unsigned char ext[3];
-    unsigned char type;
-    unsigned long starting_cluster;
+    unsigned char   filename[8];
+    unsigned char   ext[3];
+    unsigned char   type;
+    unsigned int    starting_cluster;
+    unsigned int    file_size;
 } __attribute((packed)) DirectoryEntry;
 
 // COLOURS - RGBM MODE

@@ -19,8 +19,6 @@
 //
 //-----------------------------------------------------------------------------
 
-#include <stdio.h>
-
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -915,7 +913,8 @@ void M_Episode(int choice)
     if ( (gamemode == registered)
          && (choice > 2))
     {
-      printf("M_Episode: 4th episode requires UltimateDOOM\n");
+      fprintf( stderr,
+               "M_Episode: 4th episode requires UltimateDOOM\n");
       choice = 0;
     }
 

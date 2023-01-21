@@ -26,9 +26,6 @@
 #ifndef __D_STATE__
 #define __D_STATE__
 
-//#define LX_STDIO_OVERRIDE
-//#include <lite_stdio.h>
-
 // We need globally shared data structures,
 //  for defining the global state variables.
 #include "doomdata.h"
@@ -208,11 +205,6 @@ extern  int             maxammo[NUMAMMO];
 
 // File handling stuff.
 extern  char            basedefault[1024];
-
-#ifndef FILE
-#define FILE int
-#endif
-
 extern  FILE*           debugfile;
 
 // if true, load all graphics at level load

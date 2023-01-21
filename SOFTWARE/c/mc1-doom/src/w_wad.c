@@ -18,16 +18,13 @@
 //
 //-----------------------------------------------------------------------------
 
-#include <stdio.h>
-#include <fcntl.h>
-
 #include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
 #include <sys/types.h>
 
 #include <unistd.h>
-
+#include <fcntl.h>
 #include <sys/stat.h>
 #define O_BINARY                0
 
@@ -141,13 +138,11 @@ void W_AddFile (char *filename)
         reloadlump = numlumps;
     }
 
-    printf("calling open()\n");
     if ( (handle = open (filename,O_RDONLY | O_BINARY)) == -1)
     {
         printf (" couldn't open %s\n",filename);
         return;
     }
-    printf("called open()\n");
 
     printf (" adding %s\n",filename);
     startlump = numlumps;

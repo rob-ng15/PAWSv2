@@ -24,7 +24,6 @@
 
 #include "m_fixed.h"
 
-#include <stdio.h>
 //
 // FixedDiv
 //
@@ -41,7 +40,6 @@ fixed_t FixedDiv (fixed_t a, fixed_t b)
     if ((abs (a) >> 14) >= abs (b))
         return (a ^ b) < 0 ? MININT : MAXINT;
 
-    printf("FIXED DIV : %x / %x \n",a,b);
 #if DIV_METHOD == 1
     return (fixed_t) ((((long long)a) << 16) / ((long long)b));
 #elif DIV_METHOD == 2

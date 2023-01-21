@@ -55,8 +55,8 @@ void *memcpy( void *dest, void *src, size_t len ) {
     return dest;
 }
 
-short strlen( char *s ) {
-    short i = 0;
+int strlen( char *s ) {
+    int i = 0;
     while( *s++ ) {
         i++;
     }
@@ -168,13 +168,10 @@ void gpu_outputstringcentre( unsigned char colour, short y, char bold, char *s, 
     gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1) , y, bold, s, size );
 }
 
-// SET THE BLITTER TILE to the 16 x 16 pixel bitmap
+// SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as is halfed by dma engine)
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
-
-    for( short i = 0; i < 16; i ++ ) {
-        *BLIT_WRITER_BITMAP = *bitmap++;
-    }
+    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, 1 );
 }
 
 // STOP PIXEL BLOCK - SENT DURING RESET TO ENSURE GPU RESETS
@@ -224,8 +221,8 @@ unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char act
 void SMTSTOP( void ) {
     *SMTSTATUS = 0;
 }
-void SMTSTART( unsigned int code ) {
-    *SMTPC = code;
+void SMTSTART( void *code ) {
+    *SMTPC = (unsigned long )code;
     *SMTSTATUS = 1;
 }
 
@@ -266,53 +263,6 @@ void tpu_outputstring( char *s ) {
         tpu_output_character( *s );
         s++;
     }
-}
-
-// SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
-void scrollbars( void ) {
-    unsigned char leds = 1, direction = 0, ledcount = 0;
-    short count = 0;
-    long rtc;
-
-    while(1) {
-        await_vblank(); count++;
-        if( count == 64 ) {
-            tilemap_scrollwrapclear( 0, 3, 1 );
-            tilemap_scrollwrapclear( 1, 1, 1 );
-            count = 0;
-            ledcount++;
-            if( ledcount == 32 ) {
-                if( direction ) {
-                    if( leds == 1 ) { direction = 0; } else { leds = leds >> 1; }
-                } else {
-                    if( leds == 128 ) { direction = 1; } else { leds = leds << 1; }
-                }
-                *LEDS = leds;
-                ledcount = 0;
-                tpu_set( 0, 17, TRANSPARENT, WHITE );
-                rtc = *RTC + 0x2000000000000000;
-                for( int i = 0; i < 16; i++ ) {
-                    switch(i) {
-                        case 8: case 9: break;
-                        default: tpu_output_character( 48 + ( ( rtc & 0xf000000000000000 ) >> 60 ) );
-                    }
-                    rtc = rtc << 4;
-                    switch(i) {
-                        case 3: case 5: tpu_output_character('-'); break;
-                        case 7: tpu_output_character(' '); break;
-                        case 11: case 13: tpu_output_character(':'); break;
-                    }
-                }
-            }
-        }
-    }
-}
-
-void smtthread( void ) {
-    // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp, 0x6000");
-    scrollbars();
-    SMTSTOP();
 }
 
 // DISPLAY FILENAME, ADD AN ARROW IN FRONT OF DIRECTORIES
@@ -384,11 +334,10 @@ unsigned int getnextcluster( unsigned int thiscluster ) {
 void sdcard_readfile( unsigned int starting_cluster, unsigned char * copyAddress ) {
     unsigned int nextCluster = starting_cluster;
     unsigned char *CLUSTERBUFFER = (unsigned char *)directorycluster;
-    int i;
 
     do {
         sdcard_readcluster( nextCluster, CLUSTERBUFFER );
-        for( i = 0; i < FAT32clustersize * 512; i++ ) {
+        for( unsigned int i = 0; i < FAT32clustersize * 512; i++ ) {
             *copyAddress = CLUSTERBUFFER[i];
             copyAddress++;
         }
@@ -397,7 +346,7 @@ void sdcard_readfile( unsigned int starting_cluster, unsigned char * copyAddress
 }
 
 // SORT DIRECTORY ENTRIES BY TYPE AND FIRST CHARACTER
-void swapentries( short i, short j ) {
+void swapentries( unsigned int i, unsigned int j ) {
     // SIMPLE BUBBLE SORT, PUT DIRECTORIES FIRST, THEN FILES, IN ALPHABETICAL ORDER
     DirectoryEntry temporary;
 
@@ -406,11 +355,11 @@ void swapentries( short i, short j ) {
     memcpy( &directorynames[j], &temporary, sizeof( DirectoryEntry ) );
 }
 
-void sortdirectoryentries( unsigned short entries ) {
+void sortdirectoryentries( unsigned int entries ) {
     if( !entries )
         return;
 
-    short changes;
+    int changes;
     do {
         changes = 0;
 
@@ -432,18 +381,15 @@ void sortdirectoryentries( unsigned short entries ) {
 
 // WAIT FOR USER TO SELECT A VALID PAW FILE, BROWSING SUBDIRECTORIES
 unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) {
-    int thisdirectorycluster = startdirectorycluster;
-    FAT32DirectoryEntry *fileentry;
-
+    unsigned int thisdirectorycluster = startdirectorycluster, entries, present_entry, temp;
     unsigned char rereaddirectory = 1;
-    short entries, present_entry;
-    int temp;
+    FAT32DirectoryEntry *fileentry;
 
     directorycluster = ( FAT32DirectoryEntry * )directorynames - FAT32clustersize * 512;
 
     while( 1 ) {
         if( rereaddirectory ) {
-            entries = 0xffff; present_entry = 0;
+            entries = -1; present_entry = 0;
             fileentry = (FAT32DirectoryEntry *) directorycluster;
             memset( &directorynames[0], 0, sizeof( DirectoryEntry ) * 256 );
         }
@@ -451,10 +397,10 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
         while( rereaddirectory ) {
             sdcard_readcluster( thisdirectorycluster, (unsigned char *)directorycluster );
 
-            for( int i = 0; i < 16 * FAT32clustersize; i++ ) {
+            for( unsigned int i = 0; i < 16 * FAT32clustersize; i++ ) {
                 if( ( fileentry[i].filename[0] != 0x00 ) && ( fileentry[i].filename[0] != 0xe5 ) ) {
                     // LOG ITEM INTO directorynames
-                    if( fileentry[i].attributes &  0x10 ) {
+                    if( fileentry[i].attributes & 0x10 ) {
                         // DIRECTORY, IGNORING "." and ".."
                         if( fileentry[i].filename[0] != '.' ) {
                             entries++;
@@ -490,7 +436,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
             }
         }
 
-        if( entries == 0xffff ) {
+        if( entries == -1 ) {
             // NO ENTRIES FOUND
             gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
             gpu_outputstringcentre( RED, 192, 1, "IN THIS DIRECTORY", 1 );
@@ -542,9 +488,54 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 extern int _bss_start, _bss_end;
 unsigned char chime[] = { 75, 83, 89, 0 };
 
+// SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
+__attribute__((used)) void scrollbars( void ) {
+    unsigned char leds = 1;
+    int count = 0, direction = 0, ledcount = 0;
+    long rtc;
+
+    while(1) {
+        await_vblank(); count++;
+        if( count == 64 ) {
+            tilemap_scrollwrapclear( 0, 3, 1 );
+            tilemap_scrollwrapclear( 1, 1, 1 );
+            count = 0;
+            ledcount++;
+            if( ledcount == 32 ) {
+                if( direction ) {
+                    if( leds == 1 ) { direction = 0; } else { leds = leds >> 1; }
+                } else {
+                    if( leds == 128 ) { direction = 1; } else { leds = leds << 1; }
+                }
+                *LEDS = leds;
+                ledcount = 0;
+                tpu_set( 0, 17, TRANSPARENT, WHITE );
+                rtc = *RTC + 0x2000000000000000;
+                for( int i = 0; i < 16; i++ ) {
+                    switch(i) {
+                        case 8: case 9: break;
+                        default: tpu_output_character( 48 + ( ( rtc & 0xf000000000000000 ) >> 60 ) );
+                    }
+                    rtc = rtc << 4;
+                    switch(i) {
+                        case 3: case 5: tpu_output_character('-'); break;
+                        case 7: tpu_output_character(' '); break;
+                        case 11: case 13: tpu_output_character(':'); break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void smtthread( void ) {
+    // SETUP STACKPOINTER FOR THE SMT THREAD
+    asm volatile ("li sp, 0x4000");
+    asm volatile ("j scrollbars");
+}
+
 int main( void ) {
-    short i, j, x, y;
-    short selectedfile = 0;
+    unsigned int i, j, x, y, selectedfile = 0;
 
     // STOP SMT AND PIXELBLOCK
     SMTSTOP(); *PB_STOP = *PB_MODE = 0;
@@ -569,7 +560,7 @@ int main( void ) {
         set_tilemap_tile( 0, i, 21, i+1, 0 );
         set_tilemap_tile( 1, i, 27, i+1, 0 );
     }
-    SMTSTART( (unsigned long)smtthread );
+    SMTSTART( smtthread );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 70, 34, 0, "Risc-V RV64GC CPU", 0 );
@@ -610,7 +601,7 @@ int main( void ) {
     gpu_outputstringcentre( RED, 144, 1, "No Files Found", 0 );
 
     // CALL FILEBROWSER
-    unsigned int starting_cluster = filebrowser( VOLUMEID -> startof_root, VOLUMEID -> startof_root );
+    int starting_cluster = filebrowser( VOLUMEID -> startof_root, VOLUMEID -> startof_root );
     if( !starting_cluster ) {
         while(1) {}
     }

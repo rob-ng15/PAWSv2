@@ -17,8 +17,8 @@
 //
 //-----------------------------------------------------------------------------
 
-#include <stdio.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 
 #include <stdarg.h>
@@ -80,7 +80,6 @@ int  I_GetTime (void)
     if (!basetime)
         basetime = tp.tv_sec;
     newtics = (tp.tv_sec-basetime)*TICRATE + tp.tv_usec*TICRATE/1000000;
-
     return newtics;
 }
 
@@ -134,12 +133,12 @@ void I_Error (const char *error, ...)
 
     // Message first.
     va_start (argptr,error);
-    printf ("Error: ");
-    vprintf (error,argptr);
-    printf ("\n");
+    fprintf (stderr, "Error: ");
+    vfprintf (stderr,error,argptr);
+    fprintf (stderr, "\n");
     va_end (argptr);
 
-//   fflush( stderr );
+    fflush( stderr );
 
     // Shutdown. Here might be other errors.
     if (demorecording)

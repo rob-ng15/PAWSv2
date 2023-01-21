@@ -10,12 +10,12 @@ LD=$(ARCH)-elf-ld.bfd
 NM=$(ARCH)--elf-nm
 RANLIB=$(ARCH)--elf-ranlib
 
-GCCVER=12.1.0
+GCCVER=12.2.0
 
 BUILD_DIR=build_lto
 OUTPUT_DIR=../../PAWS/
 
-CFLAGS=-march=rv64imafd_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
+CFLAGS=-march=rv64gc_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleriscv,-nostdlib
 LCONFIG=-Wl,-T../config_c_SDRAM-lto.ld
 

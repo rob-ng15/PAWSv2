@@ -62,8 +62,8 @@ void SMTSTOP( void ) {
     *SMTSTATUS = 0;
 }
 
-void SMTSTART( unsigned int code ) {
-    *SMTPC = code; *SMTSTATUS = 1;
+void SMTSTART( void *code ) {
+    *SMTPC = (unsigned long)code; *SMTSTATUS = 1;
 }
 
 unsigned char SMTSTATE( void ) {
@@ -758,12 +758,36 @@ void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsi
 
 // PB_MODE = 0 COPY A { RRRRRRRR GGGGGGGG BBBBBBBB } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
 // PB_MODE = 1 SAME BUT CONVERT TO GREYSCALE
-void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, unsigned char *buffer  ) {
+void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, unsigned char *buffer ) {
     wait_gpu_finished();
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
     DMASTART( buffer, (void *)PB_COLOUR8R, 3*w*h, 2 );
+
+    *PB_STOP = 0;
+}
+
+// PB_MODE = 0 COPY A { AAAAAAAA RRRRRRRR GGGGGGGG BBBBBBBB } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
+// PB_MODE = 1 SAME BUT CONVERT TO GREYSCALE
+void gpu_pixelblockARGB( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer ) {
+    wait_gpu_finished();
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
+
+    // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
+    DMASTART( buffer, (void *)PB_ARGB, 4*w*h, 1 );
+
+    *PB_STOP = 0;
+}
+
+// PB_MODE = 0 COPY A { RRRRRRRR GGGGGGGG BBBBBBBB AAAAAAAA } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
+// PB_MODE = 1 SAME BUT CONVERT TO GREYSCALE
+void gpu_pixelblockRGBA( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer ) {
+    wait_gpu_finished();
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
+
+    // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
+    DMASTART( buffer, (void *)PB_RGBA, 4*w*h, 1 );
 
     *PB_STOP = 0;
 }
@@ -780,6 +804,14 @@ void gpu_pixelblock_pixel( unsigned char pixel ) {
 
 void gpu_pixelblock_pixel24( unsigned char red, unsigned char green, unsigned char blue ) {
     *PB_COLOUR8R = red; *PB_COLOUR8G = green; *PB_COLOUR8B = blue;
+}
+
+void gpu_pixelblock_pixelARGB( unsigned int ARGB ) {
+    *PB_ARGB = ARGB;
+}
+
+void gpu_pixelblock_pixelRGBA( unsigned int RGBA ) {
+    *PB_RGBA = RGBA;
 }
 
 void gpu_pixelblock_stop( void ) {
@@ -824,39 +856,39 @@ void set_vector_vertex( unsigned char block, unsigned char vertex, unsigned char
 }
 
 // SCALE A POINT AND MOVE TO CENTRE POINT
-union Point2D Scale2D( union Point2D point, short xc, short yc, float scale ) {
+union Point2D Scale2D( union Point2D point, int xc, int yc, int scale ) {
     union Point2D newpoint;
-    newpoint.dx = point.dx * scale + xc; newpoint.dy = point.dy * scale + yc;
+    newpoint.dx = ((float)point.dx*scale)+xc; newpoint.dy = ((float)point.dy*scale)+yc;
     return( newpoint );
 }
-union Point2D Rotate2D( union Point2D point, short xc, short yc, short angle, float scale ) {
+union Point2D Rotate2D( union Point2D point, int xc, int yc, int angle, float scale ) {
     union Point2D newpoint;
-    float sine = sinf(angle * 0.0174533f), cosine = cosf(angle * 0.0174533f);
+    float sine = sinf(((float)angle * 0.0174533f)), cosine = cosf(((float)angle * 0.0174533f));
 
-    newpoint.dx = (point.dx * scale)*cosine-((point.dy * scale)*sine ) + xc;
-    newpoint.dy = (point.dx * scale)*sine+((point.dy * scale)*cosine ) + yc;
+    newpoint.dx = ((float)point.dx*scale*cosine) - ((float)point.dy*scale*sine) + xc;
+    newpoint.dy = ((float)point.dx*scale*sine) + ((float)point.dy*scale*cosine) + yc;
     return( newpoint );
 }
 
-union Point2D MakePoint2D( short x, short y ) {
+union Point2D MakePoint2D( int x, int y ) {
     union Point2D newpoint;
     newpoint.dx = x; newpoint.dy = y;
     return( newpoint );
 }
 
 // PROCESS A SOFTWARE VECTOR BLOCK AFTER SCALING AND ROTATION
-void DrawVectorShape2D( unsigned char colour, union Point2D *points, short numpoints, short xc, short yc, short angle, float scale ) {
+void DrawVectorShape2D( unsigned char colour, union Point2D *points, int numpoints, int xc, int yc, int angle, float scale ) {
     union Point2D *NewShape  = (union Point2D *)0x1800;
-    for( short vertex = 0; vertex < numpoints; vertex++ ) {
+    for( int vertex = 0; vertex < numpoints; vertex++ ) {
         NewShape[ vertex ] = Rotate2D( points[vertex], xc, yc, angle, scale );
     }
-    for( short vertex = 0; vertex < numpoints; vertex++ ) {
+    for( int vertex = 0; vertex < numpoints; vertex++ ) {
         gpu_line( colour, NewShape[ vertex ].dx, NewShape[ vertex ].dy, NewShape[ ( vertex == ( numpoints - 1 ) ) ? 0 : vertex + 1 ].dx, NewShape[ vertex == ( numpoints - 1 ) ? 0 : vertex + 1 ].dy );
     }
 }
 
 // PROCESS A DRAWLIST DRAWING SHAPES AFTER SCALING, ROTATING AND MOVING TO CENTRE POINT
-void DoDrawList2D( struct DrawList2D *list, short numentries, short xc, short yc, short angle, float scale ) {
+void DoDrawList2D( struct DrawList2D *list, int numentries, int xc, int yc, int angle, float scale ) {
     union Point2D XY1, XY2, XY3, XY4;
     for( int i = 0; i < numentries; i++ ) {
         gpu_dither( list[i].dithermode, list[i].alt_colour );
@@ -902,7 +934,7 @@ void DoDrawList2D( struct DrawList2D *list, short numentries, short xc, short yc
 }
 
 // PROCESS A DRAWLIST DRAWING SHAPES AFTER SCALING AND MOVING TO CENTRE POINT
-void DoDrawList2Dscale( struct DrawList2D *list, short numentries, short xc, short yc, float scale ) {
+void DoDrawList2Dscale( struct DrawList2D *list, int numentries, int xc, int yc, float scale ) {
     union Point2D XY1, XY2, XY3, XY4;
     for( int i = 0; i < numentries; i++ ) {
         gpu_dither( list[i].dithermode, list[i].alt_colour );
@@ -1379,7 +1411,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
             for( int i = 0; i < 16 * FAT32clustersize; i++ ) {
                 if( ( fileentry[i].filename[0] != 0x00 ) && ( fileentry[i].filename[0] != 0xe5 ) ) {
                     // LOG ITEM INTO directorynames, if appropriate
-                    if( fileentry[i].attributes &  0x10 ) {
+                    if( fileentry[i].attributes & 0x10 ) {
                         // DIRECTORY, IGNORING "." and ".."
                         if( fileentry[i].filename[0] != '.' ) {
                             entries++;

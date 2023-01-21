@@ -214,10 +214,10 @@ struct sprite_update_flag {
 // FOR 2D SOFTWARE VECTORS
 union Point2D {
     struct {
-        short dx;
-        short dy;
+        int dx;
+        int dy;
     };
-    int packed;
+    long packed;
 };
 
 // FOR SOFTWARE DRAWLISTS

@@ -78,7 +78,7 @@ unsigned short size_bass [] = { 128,
                                 0xff };
 
 // SMT THREAD TO PLAY THE INTRO TUNE
-void playtune( void ) {
+__attribute__((used)) void playtune( void ) {
     short trebleposition = 0, bassposition = 0;
 
     while( ( tune_treble[ trebleposition ] != 0xff ) || ( tune_bass[ bassposition ] != 0xff ) ) {
@@ -99,8 +99,8 @@ void playtune( void ) {
 }
 void smt_thread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp ,0x4000");
-    playtune();
+    asm volatile ("li sp, 0x4000");
+    asm volatile ("j playtune");
 }
 
 // RESET THE DISPLAY
@@ -142,7 +142,7 @@ void display_village( void ) {
     int BDx = 0, BDx_last = 0, BDwidth = 1024, FDx = 0, FDx_last = 0, FDwidth = 4608, anim_number = 0;
 
     // DISPLAY VILLAGE + START TUNE
-    bitmap_display( 3 ); SMTSTART( (unsigned long)smt_thread );
+    bitmap_display( 3 ); SMTSTART( smt_thread );
 
     while( FDx < ( FDwidth - 320 ) ) {
         await_vblank();

@@ -21,8 +21,6 @@
 #ifndef __M_FIXED__
 #define __M_FIXED__
 
-#include <PAWSintrinsics.h>
-
 //
 // Fixed point, 32bit as 16.16.
 //

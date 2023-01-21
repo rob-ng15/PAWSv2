@@ -34,8 +34,6 @@
 // State.
 #include "doomstat.h"
 
-#include <PAWSlibrary.h>
-
 // status bar height at bottom of screen
 #define SBARHEIGHT              32
 
@@ -54,29 +52,27 @@ int             scaledviewwidth;
 int             viewheight;
 int             viewwindowx;
 int             viewwindowy;
-byte**          ylookup = (byte **)0x2300; // moved to BRAM from //byte* ylookup[SCREENHEIGHT]; (800 bytes)
-int             *columnofs = (int *)0x1a00; // moved to BRAM from int columnofs[SCREENWIDTH];
+byte*           ylookup[SCREENHEIGHT];
+int             columnofs[SCREENWIDTH];
 
 // Color tables for different players,
 //  translate a limited part to another
 //  (color ramps used for  suit colors).
 //
-byte            *translations[3] = { (byte*)0x1f00, (byte*)0x2000, (byte*)0x2100 }; // moved to BRAM from byte translations[3][256];
+byte            translations[3][256];
 
 #define FUZZTABLE 50
 #define FUZZOFF (SCREENWIDTH)
 
-// ON FIRST USE, MOVE TO BRAM
-int             *fuzzoffset = (int *)0x2200, _fuzzoffsetinit = 0;
-const int _fuzzoffset[FUZZTABLE] =
-{
-    FUZZOFF,-FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,
-    FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,
-    FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,-FUZZOFF,-FUZZOFF,-FUZZOFF,
-    FUZZOFF,-FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,
-    FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,-FUZZOFF,FUZZOFF,
-    FUZZOFF,-FUZZOFF,-FUZZOFF,-FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,
-    FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF
+const int fuzzoffset[FUZZTABLE] =
+    {
+        FUZZOFF,-FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,
+        FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,
+        FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,-FUZZOFF,-FUZZOFF,-FUZZOFF,
+        FUZZOFF,-FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,
+        FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,-FUZZOFF,FUZZOFF,
+        FUZZOFF,-FUZZOFF,-FUZZOFF,-FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,
+        FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF,FUZZOFF,-FUZZOFF,FUZZOFF
 };
 
 //
@@ -95,7 +91,7 @@ static void R_DrawColumnKernel (byte* dst,
                                 const lighttable_t* const colormap,
                                 fixed_t frac,
                                 const fixed_t fracstep,
-                                const int count)
+                                int count)
 {
     for (int i = count; i >= 0; --i)
     {
@@ -118,12 +114,6 @@ static void R_DrawColumnKernel (byte* dst,
 
 static int R_DrawFuzzColumnKernel (byte* dst, int fuzz, const int count)
 {
-    // MOVE fuzzoffset to BRAM on first call
-    if( !_fuzzoffsetinit ) {
-        memcpy( fuzzoffset, &_fuzzoffset[0], FUZZTABLE*sizeof(int) );
-        _fuzzoffsetinit = 1;
-    }
-
     // TODO(m): Can we vectorize this?
     const lighttable_t* colormap = &colormaps[6*256];
     for (int i = count; i >= 0; --i)
@@ -150,7 +140,7 @@ static void R_DrawTranslatedColumnKernel (byte* dst,
                                           const lighttable_t* const colormap,
                                           fixed_t frac,
                                           const fixed_t fracstep,
-                                          const int count)
+                                          int count)
 {
     for (int i = count; i >= 0; --i)
     {
@@ -180,9 +170,8 @@ static void R_DrawSpanKernel (byte* dst,
                               const fixed_t xfracstep,
                               fixed_t yfrac,
                               const fixed_t yfracstep,
-                              const int count)
+                              int count)
 {
-
     for (int i = count; i >= 0; --i)
     {
         // Current texture index in u,v. All floor textures are 64x64 in size.
@@ -232,13 +221,6 @@ void R_DrawColumn (void)
     if (count < 0)
         return;
 
-#ifdef RANGECHECK
-    if ((unsigned)dc_x >= SCREENWIDTH
-        || dc_yl < 0
-        || dc_yh >= SCREENHEIGHT)
-        I_Error ("R_DrawColumn: %i to %i at %i", dc_yl, dc_yh, dc_x);
-#endif
-
     // Framebuffer destination address.
     // Use ylookup LUT to avoid multiply with ScreenWidth.
     // Use columnofs LUT for subwindows?
@@ -282,15 +264,6 @@ void R_DrawFuzzColumn (void)
     if (count < 0)
         return;
 
-#ifdef RANGECHECK
-    if ((unsigned)dc_x >= SCREENWIDTH
-        || dc_yl < 0 || dc_yh >= SCREENHEIGHT)
-    {
-        I_Error ("R_DrawFuzzColumn: %i to %i at %i",
-                 dc_yl, dc_yh, dc_x);
-    }
-#endif
-
     // Does not work with blocky mode.
     dest = ylookup[dc_yl] + columnofs[dc_x];
 
@@ -319,16 +292,6 @@ void R_DrawTranslatedColumn (void)
     count = dc_yh - dc_yl;
     if (count < 0)
         return;
-
-#ifdef RANGECHECK
-    if ((unsigned)dc_x >= SCREENWIDTH
-        || dc_yl < 0
-        || dc_yh >= SCREENHEIGHT)
-    {
-        I_Error ( "R_DrawColumn: %i to %i at %i",
-                  dc_yl, dc_yh, dc_x);
-    }
-#endif
 
     // FIXME. As above.
     dest = ylookup[dc_yl] + columnofs[dc_x];
@@ -411,18 +374,6 @@ void R_DrawSpan (void)
     fixed_t             yfrac;
     byte*               dest;
     int                 count;
-
-#ifdef RANGECHECK
-    if (ds_x2 < ds_x1
-        || ds_x1<0
-        || ds_x2>=SCREENWIDTH
-        || (unsigned)ds_y>SCREENHEIGHT)
-    {
-        I_Error( "R_DrawSpan: %i to %i at %i",
-                 ds_x1,ds_x2,ds_y);
-    }
-//      dscount++;
-#endif
 
     count = ds_x2 - ds_x1;
 
@@ -508,8 +459,11 @@ void R_FillBackScreen (void)
 
     for (y=0 ; y<SCREENHEIGHT-SBARHEIGHT ; y++)
     {
-        paws_memcpy_rectangle( dest, src+((y&63)<<6), 64, 64, 0, SCREENWIDTH/64 ); dest += SCREENWIDTH;
-//        for (x=0 ; x<SCREENWIDTH/64 ; x++) { memcpy (dest, src+((y&63)<<6), 64); dest += 64; }
+        for (x=0 ; x<SCREENWIDTH/64 ; x++)
+        {
+            memcpy (dest, src+((y&63)<<6), 64);
+            dest += 64;
+        }
 
         if (SCREENWIDTH&63)
         {

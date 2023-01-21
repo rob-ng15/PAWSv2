@@ -611,7 +611,8 @@ void R_InitColormaps (void)
     //  256 byte align tables.
     lump = W_GetNumForName("COLORMAP");
     length = W_LumpLength (lump) + 255;
-    colormaps = (lighttable_t *)0x2800; // moved to BRAM from colormaps = Z_Malloc (length, PU_STATIC, 0); colormaps = (byte *)( ((size_t)colormaps + 255)&~(size_t)0xff);
+    colormaps = Z_Malloc (length, PU_STATIC, 0);
+    colormaps = (byte *)( ((size_t)colormaps + 255)&~(size_t)0xff);
     W_ReadLump (lump,colormaps);
 }
 
@@ -624,13 +625,13 @@ void R_InitColormaps (void)
 void R_InitData (void)
 {
     R_InitTextures ();
-    printf ("InitTextures\n");
+    printf ("\nInitTextures");
     R_InitFlats ();
-    printf ("InitFlats\n");
+    printf ("\nInitFlats");
     R_InitSpriteLumps ();
-    printf ("InitSprites\n");
+    printf ("\nInitSprites");
     R_InitColormaps ();
-    printf ("InitColormaps\n");
+    printf ("\nInitColormaps");
 }
 
 //
@@ -647,7 +648,7 @@ int R_FlatNumForName (const char* name)
     if (i == -1)
     {
         namet[8] = 0;
-        memcpy (namet, name,7); // <- bug here, I think, replaced 8 with 7 [BL]
+        memcpy (namet, name,8);
         I_Error ("R_FlatNumForName: %s not found",namet);
     }
     return i - firstflat;
