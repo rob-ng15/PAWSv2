@@ -80,6 +80,8 @@ unit intlong2float(
     input   uint1   dounsigned,
     input   uint1   il,
     input   uint64  sourceReg1,
+    input   uint32  S1_abs32,
+    input   uint64  S1_abs64,
     output  uint64  result,
     input   uint5   FPUflags,
     output  uint5   FPUnewflags
@@ -87,14 +89,13 @@ unit intlong2float(
     // COUNT LEADING ZEROS - RETURNS NX IF NUMBER IS TOO LARGE
     fpuclz64 CLZ( number <: number );
     uint1   sign <:: ~dounsigned & sourceReg1[ il ? 63 : 31, 1 ];
-    uint64  number <:: il ? sign ? ( sourceReg1[63,1] ? -sourceReg1 : sourceReg1 ) : sourceReg1 :
-                            sign ? ( sourceReg1[31,1] ? -sourceReg1[0,32] : sourceReg1[0,32] ) : sourceReg1[0,32];
+    uint64  number <:: il ? sign ? S1_abs64 : sourceReg1 : sign ? S1_abs32 : sourceReg1[0,32];
     uint1   NX <:: il ? 0 : ( CLZ.zeros < 40 );
     int13   exponent <:: 190 - CLZ.zeros;
     uint64  fraction <:: number << CLZ.zeros;
 
     always_after {
-        { result = ( |sourceReg1 ) ? { 32hffffffff, sign, exponent[0,8], fraction[40,23] } : 64hffffffff00000000; }             // RESULT NAN BOXED
+        { result = ( il ? |sourceReg1 : |sourceReg1[0,32] ) ? { 32hffffffff, sign, exponent[0,8], fraction[40,23] } : 64hffffffff00000000; }             // RESULT NAN BOXED
         { FPUnewflags = FPUflags | { 4b0, NX }; }                                                                               // FLAGS
     }
 }
@@ -102,6 +103,8 @@ unit intlong2double(
     input   uint1   dounsigned,
     input   uint1   il,
     input   uint64  sourceReg1,
+    input   uint32  S1_abs32,
+    input   uint64  S1_abs64,
     output  uint64  result,
     input   uint5   FPUflags,
     output  uint5   FPUnewflags
@@ -109,14 +112,13 @@ unit intlong2double(
     // COUNT LEADING ZEROS - RETURNS NX IF NUMBER IS TOO LARGE
     fpuclz64 CLZ( number <: number );
     uint1   sign <:: ~dounsigned & sourceReg1[ il ? 63 : 31, 1 ];
-    uint64  number <:: il ? sign ? ( sourceReg1[63,1] ? -sourceReg1 : sourceReg1 ) : sourceReg1 :
-                            sign ? ( sourceReg1[31,1] ? -sourceReg1[0,32] : sourceReg1[0,32] ) : sourceReg1[0,32];
+    uint64  number <:: il ? sign ? S1_abs64 : sourceReg1 : sign ? S1_abs32 : sourceReg1[0,32];
     uint1   NX <:: il ? ( CLZ.zeros < 10 ) : 0;
     int13   exponent <:: 1086  - CLZ.zeros;
     uint64  fraction <:: number << CLZ.zeros;
 
     always_after {
-        { result = ( |sourceReg1 ) ? { sign, exponent[0,11], fraction[11,52] } : 64h0000000000000000; }                         // RESULT
+        { result = ( il ? |sourceReg1 : |sourceReg1[0,32] ) ? { sign, exponent[0,11], fraction[11,52] } : 64h0000000000000000; }                         // RESULT
         { FPUnewflags = FPUflags | { 4b0, NX }; }                                                                               // FLAGS
     }
 }
@@ -136,16 +138,26 @@ unit floatdouble2int(
     uint1   ZERO <:: typeAF[0,1];
     uint1   NV <:: ( exp > ( dounsigned ? 31 : 30 ) ) | ( dounsigned & sign ) | IF | NN;
     uint33  fraction <:: ( df ? { 1b1, sourceReg1F[20,32] } : { 1b1, fp32( sourceReg1F ).fraction, 9b0 } ) >> ( 31 - exp );
-    uint32  dounsignedfraction <:: ( fraction[1,32] + fraction[0,1] );
+    uint32  unsignedfraction <:: ( fraction[1,32] + fraction[0,1] );
 
     always_after {
         {
-            switch( { IF, NN, ZERO, NV } ) {
-                default: { result = sign ? { 32hffffffff, -dounsignedfraction } : dounsignedfraction; }
-                case 4b1000: { result = sign ? 64hffffffff80000000 : 64h000000007fffffff; }
-                case 4b0100: { result = 64hffffffffffffffff; }
-                case 4b0010: { result = 0; }
-                case 4b0001: { result = { {64{~sign}} }; }
+            if( ZERO ) {
+                result = 0;
+            } else {
+                if( dounsigned ) {
+                    if( IF | NN ) {
+                        result = NN ? 64hffffffffffffffff : sign ? 0 :  64hffffffffffffffff;
+                    } else {
+                        result = sign ? 0 : NV ? 64hffffffffffffffff : unsignedfraction;
+                    }
+                } else {
+                    if( IF | NN ) {
+                        result = NN ? 64h000000007fffffff : sign ? 0 : 64h000000007fffffff;
+                    } else {
+                        result = NV ? { {64{~sign}} } : sign ? { 32hffffffff, -unsignedfraction } : unsignedfraction;
+                    }
+                }
             }
         }
         { FPUnewflags = FPUflags | { NV, 4b0000 }; }                                            // FLAGS
@@ -167,16 +179,26 @@ unit floatdouble2long(
     uint1   ZERO <:: typeAF[0,1];
     uint1   NV <:: ( exp > ( dounsigned ? 63 : 62 ) ) | ( dounsigned & sign ) | IF | NN;
     uint65  fraction <:: ( df ? { 1b1, fp64( sourceReg1F ).fraction, 12b0 } : { 1b1, fp32( sourceReg1F ).fraction, 41b0 } ) >> ( 63 - exp );
-    uint64  dounsignedfraction <:: ( fraction[1,64] + fraction[0,1] );
+    uint64  unsignedfraction <:: ( fraction[1,64] + fraction[0,1] );
 
     always_after {
         {
-            switch( { IF, NN, ZERO, NV } ) {
-                default: { result = sign ? -dounsignedfraction : dounsignedfraction; }
-                case 4b1000: { result = sign ? 64h8000000000000000 : 64h7fffffffffffffff; }
-                case 4b0100: { result = 64hffffffffffffffff; }
-                case 4b0010: { result = 0; }
-                case 4b0001: { result = { {64{~sign}} }; }
+            if( ZERO ) {
+                result = 0;
+            } else {
+                if( dounsigned ) {
+                    if( IF | NN ) {
+                        result = NN ? 64hffffffffffffffff : sign ? 0 :  64hffffffffffffffff;
+                    } else {
+                        result = ( sign ) ? 0 : NV ? 64hffffffffffffffff : unsignedfraction;
+                    }
+                } else {
+                    if( IF | NN ) {
+                        result = NN ? 64h7fffffffffffffff : sign ? 64h8000000000000000 : 64h7fffffffffffffff;
+                    } else {
+                        result = NV ? { {64{~sign}} } : sign ? -unsignedfraction : unsignedfraction;
+                    }
+                }
             }
         }
         { FPUnewflags = FPUflags | { NV, 4b0000 }; }                                            // FLAGS

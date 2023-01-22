@@ -35,6 +35,13 @@ unsigned short PAWSLOGO[] = {
     0b0000010000000000
 };
 
+// BIOS MALLOC - ALLLOCATE FROM TOP OF MEMORY DOWN
+void *HEAPEND;
+void *bios_malloc( int size ) {
+    HEAPEND = HEAPEND - size;
+    return( HEAPEND );
+}
+
 // DMA CONTROLLER
 void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
     *DMASOURCE = (unsigned long)source;
@@ -144,8 +151,7 @@ void gpu_blit( unsigned char colour, short x1, short y1, short tile, unsigned ch
 }
 
 // BLIT AN 8 x8  ( blit_size == 1 doubled to 16 x 16, blit_size == 1 doubled to 32 x 32 ) CHARACTER ( from tile 0 to 255 ) to (x1,y1) in colour
-void gpu_character_blit( unsigned char colour, short x1, short y1, unsigned short tile, unsigned char blit_size ) {
-    *GPU_COLOUR = colour;
+void gpu_character_blit( short x1, short y1, unsigned short tile, unsigned char blit_size ) {
     *GPU_X = x1;
     *GPU_Y = y1;
     *GPU_PARAM0 = tile;
@@ -158,8 +164,9 @@ void gpu_character_blit( unsigned char colour, short x1, short y1, unsigned shor
 
 // OUTPUT A STRING TO THE GPU
 void gpu_outputstring( unsigned char colour, short x, short y, char bold, char *s, unsigned char size ) {
+    *GPU_COLOUR = colour;
     while( *s ) {
-        gpu_character_blit( colour, x, y, ( bold ? 256 : 0 ) + *s++, size );
+        gpu_character_blit( x, y, ( bold ? 256 : 0 ) + *s++, size );
         x = x + ( 8 << size );
     }
 }
@@ -179,16 +186,11 @@ void gpu_pixelblock_stop( void ) {
     *PB_STOP = 3;
 }
 
-// CLEAR THE CHARACTER MAP
-void tpu_cs( void ) {
-    *TPU_COMMIT = 3;
-}
-
 // SET THE TILEMAP TILE at (x,y) to tile
 void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
+    while( *LOWER_TM_STATUS | *UPPER_TM_STATUS );
     switch( tm_layer ) {
         case 0:
-            while( *LOWER_TM_STATUS );
             *LOWER_TM_X = x;
             *LOWER_TM_Y = y;
             *LOWER_TM_TILE = tile;
@@ -196,7 +198,6 @@ void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y,
             *LOWER_TM_COMMIT = 1;
             break;
         case 1:
-            while( *UPPER_TM_STATUS );
             *UPPER_TM_X = x;
             *UPPER_TM_Y = y;
             *UPPER_TM_TILE = tile;
@@ -204,17 +205,6 @@ void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y,
             *UPPER_TM_COMMIT = 1;
             break;
     }
-}
-
-// SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
-//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN
-//  action == 5 clear the tilemap
-//  RETURNS 0 if no action taken other than pixel shift, action if SCROLL WRAP or CLEAR was actioned
-unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
-    while( *( tm_layer ? UPPER_TM_STATUS : LOWER_TM_STATUS ) );
-    *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
-    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = action;
-    return( tm_layer ? *UPPER_TM_SCROLLWRAPCLEAR : *LOWER_TM_SCROLLWRAPCLEAR );
 }
 
 // SMT START STOP
@@ -236,13 +226,15 @@ void reset_display( void ) {
     gpu_pixelblock_stop();
     while( !*GPU_FINISHED );
 
+    set_background( BLACK, BLACK, BKG_SOLID );
     *GPU_DITHERMODE = 0; *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
     *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
     *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
     *SCREENMODE = 0; *COLOUR = 0; *REZ = 0; *DIMMER = 0; *STATUS_DISPLAY = 1; *STATUS_BACKGROUND = 0x40;
-    *TPU_CURSOR = 0; tpu_cs();
+    *TPU_CURSOR = 0; *TPU_COMMIT = 3;
     *TERMINAL_SHOW = 0; *TERMINAL_RESET = 1;
-    *LOWER_TM_SCROLLWRAPCLEAR = 5; *UPPER_TM_SCROLLWRAPCLEAR = 5;
+    *LOWER_TM_SCROLLWRAPCLEAR = *UPPER_TM_SCROLLWRAPCLEAR = 5;
+    *UPPER_TM_SCROLLWRAPAMOUNT = *LOWER_TM_SCROLLAMOUNT = 1;
     for( unsigned short i = 0; i < 16; i++ ) {
         LOWER_SPRITE_ACTIVE[i] = UPPER_SPRITE_ACTIVE[i] = 0;
     }
@@ -268,7 +260,7 @@ void tpu_outputstring( char *s ) {
 // DISPLAY FILENAME, ADD AN ARROW IN FRONT OF DIRECTORIES
 void displayfilename( unsigned char *filename, unsigned char type ) {
     char displayname[10], i, j;
-    gpu_outputstringcentre( UK_BLUE, 144, 1, "Current PAW File:", 0 );
+    gpu_outputstringcentre( UK_BLUE, 144, 1, "P64 File:", 0 );
     memset( displayname, 0, 10 );
 
     j = type - 1;
@@ -283,13 +275,13 @@ void displayfilename( unsigned char *filename, unsigned char type ) {
     gpu_outputstringcentre( type == 1 ? UK_BLUE : GREY2, 176, 1, displayname, 2 );
 }
 
-// FAT32 FILE BROWSER FOR DIRECTORIES AND .PAW FILES
-unsigned char *BOOTRECORD = (unsigned char *) 0x8000000 - 0x200;
+// FAT32 FILE BROWSER FOR DIRECTORIES AND .P64 FILES
+unsigned char *BOOTRECORD;;
 PartitionTable *PARTITIONS;
 
-Fat32VolumeID *VOLUMEID = (Fat32VolumeID *)0x8000000 - 0x400;
-unsigned int *FAT32table = (unsigned int *)0x8000000 - 0x600;
-DirectoryEntry *directorynames = (DirectoryEntry *) ( 0x8000000 - 0x600 - ( sizeof( DirectoryEntry) * 256 ) );
+Fat32VolumeID *VOLUMEID;
+unsigned int *FAT32table;
+DirectoryEntry *directorynames;
 
 FAT32DirectoryEntry *directorycluster;
 unsigned int FAT32startsector, FAT32clustersize, FAT32clusters;
@@ -337,10 +329,7 @@ void sdcard_readfile( unsigned int starting_cluster, unsigned char * copyAddress
 
     do {
         sdcard_readcluster( nextCluster, CLUSTERBUFFER );
-        for( unsigned int i = 0; i < FAT32clustersize * 512; i++ ) {
-            *copyAddress = CLUSTERBUFFER[i];
-            copyAddress++;
-        }
+        memcpy( copyAddress, CLUSTERBUFFER, FAT32clustersize * 512 ); copyAddress += FAT32clustersize * 512;
         nextCluster = getnextcluster( nextCluster);
     } while( nextCluster < 0xffffff8 );
 }
@@ -384,8 +373,6 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
     unsigned int thisdirectorycluster = startdirectorycluster, entries, present_entry, temp;
     unsigned char rereaddirectory = 1;
     FAT32DirectoryEntry *fileentry;
-
-    directorycluster = ( FAT32DirectoryEntry * )directorynames - FAT32clustersize * 512;
 
     while( 1 ) {
         if( rereaddirectory ) {
@@ -439,7 +426,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
         if( entries == -1 ) {
             // NO ENTRIES FOUND
             gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
-            gpu_outputstringcentre( RED, 192, 1, "IN THIS DIRECTORY", 1 );
+            gpu_outputstringcentre( RED, 192, 1, "IN DIRECTORY", 1 );
             beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
             sleep( 1000 );
             return(0);
@@ -497,8 +484,8 @@ __attribute__((used)) void scrollbars( void ) {
     while(1) {
         await_vblank(); count++;
         if( count == 64 ) {
-            tilemap_scrollwrapclear( 0, 3, 1 );
-            tilemap_scrollwrapclear( 1, 1, 1 );
+            while( *UPPER_TM_STATUS | *LOWER_TM_STATUS );
+            *LOWER_TM_SCROLLWRAPCLEAR = 3; *UPPER_TM_SCROLLWRAPCLEAR = 1;
             count = 0;
             ledcount++;
             if( ledcount == 32 ) {
@@ -540,8 +527,14 @@ int main( void ) {
     // STOP SMT AND PIXELBLOCK
     SMTSTOP(); *PB_STOP = *PB_MODE = 0;
 
-    // CLEAR MEMORY
+    // CLEAR BSS MEMORY AND DEFINE HEAPEND AND ALLOCATE FAT32 MEMORY
     memset( &_bss_start, 0, &_bss_end - &_bss_start );
+    HEAPEND = (void *)((long)*RAMTOP);
+    BOOTRECORD = bios_malloc( 512 );
+    PARTITIONS = (PartitionTable *)&BOOTRECORD[446];
+    VOLUMEID = bios_malloc( 512 );
+    FAT32table = bios_malloc( 512 );
+    directorynames = (DirectoryEntry *)bios_malloc( sizeof( DirectoryEntry ) * 256 );
 
     // RESET THE DISPLAY, AUDIO AND VOLUME
     reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
@@ -563,25 +556,21 @@ int main( void ) {
     SMTSTART( smtthread );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 70, 34, 0, "Risc-V RV64GC CPU", 0 );
+    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV64GC CPU", 0 );
     gpu_outputstringcentre( UK_BLUE, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS
-    while( *UART_STATUS & 1 ) { (void)*UART_DATA; }
-    while( *PS2_AVAILABLE ) { (void)*PS2_DATA; }
+    while( ( *UART_STATUS & 1 ) | *PS2_AVAILABLE ) { (void)*UART_DATA;( void)*PS2_DATA; }
 
     gpu_outputstringcentre( RED, 72, 0, "Waiting for SDCARD", 0 );
-    gpu_outputstringcentre( RED, 80, 0, "Press RESET if not detected", 0 );
+    gpu_outputstringcentre( RED, 88, 0, "Press RESET", 0 );
     sdcard_readsector( 0, BOOTRECORD );
     PARTITIONS = (PartitionTable *) &BOOTRECORD[ 0x1BE ];
-
-    gpu_outputstringcentre( GREEN, 72, 0, "Ready", 0 );
-    gpu_outputstringcentre( RED, 80, 0, "", 0 );
 
     // NO FAT16 PARTITION FOUND
     if( ( PARTITIONS[0].partition_type != 0x0b ) && ( PARTITIONS[0].partition_type != 0x0c ) ) {
         gpu_outputstringcentre( RED, 72, 1, "ERROR", 2 );
-        gpu_outputstringcentre( RED, 120, 1, "Please Insert SDCARD", 0 );
+        gpu_outputstringcentre( RED, 120, 1, "Insert SDCARD", 0 );
         gpu_outputstringcentre( RED, 128, 1, "WITH FAT32 PARTITION", 0 );
         gpu_outputstringcentre( RED, 136, 1, "Press RESET", 0 );
         while(1) {}
@@ -592,13 +581,14 @@ int main( void ) {
     FAT32startsector = PARTITIONS[0].start_sector + VOLUMEID -> reserved_sectors;
     FAT32clusters = PARTITIONS[0].start_sector + VOLUMEID -> reserved_sectors + ( VOLUMEID -> number_of_fats * VOLUMEID -> fat32_size_sectors );
     FAT32clustersize = VOLUMEID -> sectors_per_cluster;
+    directorycluster = bios_malloc( FAT32clustersize * 512 );
 
     // FILE SELECTOR
     gpu_outputstringcentre( WHITE, 72, 1, "Select File", 0 );
-    gpu_outputstringcentre( WHITE, 88, 0, "SELECT USING \x0f", 0 );
-    gpu_outputstringcentre( WHITE, 96, 0, "SCROLL USING \x1b & \x1a", 0 );
-    gpu_outputstringcentre( WHITE, 104, 0, "RETURN FROM DIRECTORY USING \x18", 0 );
-    gpu_outputstringcentre( RED, 144, 1, "No Files Found", 0 );
+    gpu_outputstringcentre( WHITE, 88, 0, "SELECT \x0f", 0 );
+    gpu_outputstringcentre( WHITE, 96, 0, "SCROLL \x1b & \x1a", 0 );
+    gpu_outputstringcentre( WHITE, 104, 0, "UP A DIRECTORY \x18", 0 );
+    gpu_outputstringcentre( RED, 144, 1, "No Files", 0 );
 
     // CALL FILEBROWSER
     int starting_cluster = filebrowser( VOLUMEID -> startof_root, VOLUMEID -> startof_root );
@@ -612,23 +602,20 @@ int main( void ) {
     *LEDS = 255;
     gpu_outputstringcentre( WHITE, 72, 1, "P64 File", 0 );
     gpu_outputstringcentre( WHITE, 80, 1, "SELECTED", 0 );
-    gpu_outputstringcentre( WHITE, 88, 0, "", 0 );
-    gpu_outputstringcentre( WHITE, 96, 0, "", 0 );
-    gpu_outputstringcentre( WHITE, 104, 0, "", 0 );
+    gpu_rectangle( TRANSPARENT, 0, 80, 319, 111 );
     sleep( 500 );
     gpu_outputstringcentre( WHITE, 80, 1, "LOADING", 0 );
-    asm volatile ("fence iorw,iorw"); sdcard_readfile( starting_cluster, (unsigned char *)0x4000000 ); asm volatile ("fence.i");
+    asm volatile ("fence iorw,iorw"); sdcard_readfile( starting_cluster, (unsigned char *)((long)*RAMBASE) ); asm volatile ("fence.i");
     gpu_outputstringcentre( WHITE, 72, 1, "LOADED", 0 );
     gpu_outputstringcentre( WHITE, 80, 1, "LAUNCHING", 0 );
     sleep(500);
 
     // RESET THE DISPLAY AND TURN OFF LEDS
     reset_display();
-    set_background( BLACK, BLACK, BKG_SOLID );
     *LEDS = 0;
 
     // CALL SDRAM LOADED PROGRAM
-    ((void(*)(void))0x4000000)();
+    ((void(*)(void))((long)*RAMBASE))();
     // RETURN TO BIOS IF PROGRAM EXITS
     ((void(*)(void))0x0)();
 }

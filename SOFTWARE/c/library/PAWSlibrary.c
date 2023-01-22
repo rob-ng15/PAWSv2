@@ -23,9 +23,6 @@ extern int errno;
 #define FENCEALL asm volatile ("fence iorw, iorw");
 #define NOFENCE asm volatile ("fence.i");
 
-// TOP OF SDRAM MEMORY
-unsigned char *MEMORYTOP = (unsigned char *)0x8000000;;
-
 // RISC-V CSR FUNCTIONS
 unsigned int CSRisa() {
    unsigned int isa;
@@ -855,18 +852,19 @@ void set_vector_vertex( unsigned char block, unsigned char vertex, unsigned char
     *VECTOR_WRITER_DELTAY = deltay;
 }
 
+// SOFTWARE VECTORS AND DRAWLISTS
 // SCALE A POINT AND MOVE TO CENTRE POINT
-union Point2D Scale2D( union Point2D point, int xc, int yc, int scale ) {
+union Point2D Scale2D( union Point2D point, int xc, int yc, float scale ) {
     union Point2D newpoint;
-    newpoint.dx = ((float)point.dx*scale)+xc; newpoint.dy = ((float)point.dy*scale)+yc;
+    newpoint.dx = point.dx * scale + xc;
+    newpoint.dy = point.dy * scale + yc;
     return( newpoint );
 }
 union Point2D Rotate2D( union Point2D point, int xc, int yc, int angle, float scale ) {
     union Point2D newpoint;
-    float sine = sinf(((float)angle * 0.0174533f)), cosine = cosf(((float)angle * 0.0174533f));
-
-    newpoint.dx = ((float)point.dx*scale*cosine) - ((float)point.dy*scale*sine) + xc;
-    newpoint.dy = ((float)point.dx*scale*sine) + ((float)point.dy*scale*cosine) + yc;
+    float sine = sinf(angle*0.01745329252), cosine = cosf(angle*0.01745329252);
+    newpoint.dx = ( (point.dx * scale)*cosine-(point.dy * scale)*sine ) + xc;
+    newpoint.dy = ( (point.dx * scale)*sine+(point.dy * scale)*cosine ) + yc;
     return( newpoint );
 }
 
@@ -1352,10 +1350,7 @@ void readfile( unsigned int starting_cluster, unsigned char *copyAddress ) {
 
     do {
         readcluster( nextCluster, CLUSTERBUFFER );
-        for( i = 0; i < FAT32clustersize * 512; i++ ) {
-            *copyAddress = CLUSTERBUFFER[i];
-            copyAddress++;
-        }
+        memcpy( copyAddress, CLUSTERBUFFER, FAT32clustersize * 512 ); copyAddress += FAT32clustersize * 512;
         nextCluster = getnextcluster( nextCluster);
     } while( nextCluster < 0xffffff8 );
 }

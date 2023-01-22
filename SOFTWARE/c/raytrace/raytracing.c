@@ -229,8 +229,14 @@ void init_scene(Sphere* spheres, Light* lights) {
 
 int main( int argc, char **argv ) {
     Sphere spheres[NB_SPHERES]; Light lights[NB_LIGHTS]; init_scene(spheres, lights);
-    gpu_cs(); gpu_pixelblock_mode( PB_WRITEALL ); bitmap_256( TRUE ); gpu_pixelblock_start( 0, 0, 320 );
-    render(spheres, NB_SPHERES, lights, NB_LIGHTS);
+    gpu_pixelblock_mode( PB_WRITEALL ); bitmap_256( TRUE );
 
-    sleep1khz( 4000, 0 );
+    // CYCLE THROUGH COLOUR AND GREY
+    for( unsigned char mode = 0; mode <2; mode++ ) {
+        gpu_cs(); screen_mode( 0, mode, 0 ); gpu_pixelblock_mode( mode );
+        gpu_pixelblock_start( 0, 0, 320 );
+        render(spheres, NB_SPHERES, lights, NB_LIGHTS);
+        gpu_pixelblock_stop();
+        sleep1khz( 4000, 0 );
+    }
 }
