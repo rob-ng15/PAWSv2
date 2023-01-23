@@ -1,0 +1,678 @@
+unit io_memmap(
+    // LEDS (8 of) + SDCARD JOYSTICK CAPSLOCK NUMLOCK STATUS LIGHTS
+    output  uint8   leds,
+    output  uint2   sdcardlightcolour,
+    output  uint1   CAPSLOCK(0),
+    output  uint1   NUMLOCK(0),
+    output  uint1   JOYSTICK(1),
+    output  uint1   RESETSTATUS,
+
+$$if not SIMULATION then
+    input   uint$NUM_BTNS$ btns,
+
+    // GPIO
+    input   uint28  gn,
+    output  uint28  gp,
+
+    // UART
+    output  uint1   uart_tx,
+    input   uint1   uart_rx,
+
+    // USB for PS/2
+    input   uint1   us2_bd_dp,
+    input   uint1   us2_bd_dn,
+
+    // SDCARD
+    output  uint1   sd_clk,
+    output  uint1   sd_mosi,
+    output  uint1   sd_csn,
+    input   uint1   sd_miso,
+$$end
+    // I2C
+    inout   uint1   gpdi_sda,
+    inout   uint1   gpdi_scl,
+
+    // CLOCKS
+    input   uint1   clock_25mhz,
+
+    // Memory access
+    input   uint12  memoryAddress,
+    input   uint1   memoryWrite,
+    input   uint1   memoryRead,
+    input   uint2   accesssize,
+    input   uint32  writeData,
+    output  uint32  readData,
+
+    // SMT STATUS
+    output  uint1   SMTRUNNING(0),
+    output  uint$addr_width$  SMTSTARTPC(0),
+
+    // MINI DMA CONTROLLER
+    output  uint$addr_width$  DMASOURCE,
+    output  uint$addr_width$  DMASOURCEADD,
+    output  uint$addr_width$  DMADEST,
+    output  uint$addr_width$  DMADESTADD,
+    output  uint$addr_width$  DMACOUNT(0),
+    output  uint8   DMACYCLES(0),
+    output  uint4   DMAMODE(0),
+    output  uint8   DMASET,
+    input   uint1   DMAACTIVE,
+
+    // System Capabilities Flag
+    input   uint32  SOC
+) <reginputs> {
+$$if not SIMULATION then
+    // UART CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
+    uart_IN UART_IN( uart_rx <: uart_rx );
+    uart_OUT UART_OUT( uart_tx :> uart_tx, outchar <: writeData[0,8] );
+
+    // PS2 CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
+    ps2buffer PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn );
+
+    // SDCARD AND BUFFER
+    simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                          // READ FROM SDCARD
+    simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                         // WRITE TO SDCARD
+    sdcardcontroller SDCARD(
+        sd_clk :> sd_clk,
+        sd_mosi :> sd_mosi,
+        sd_csn :> sd_csn,
+        sd_miso <: sd_miso,
+        buffer_in <:> buffer_in,
+        buffer_out <:> buffer_out
+    );
+$$end
+
+    // I2C FOR RTC
+    rtc RTC( clk <: clock, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );              // EMARD verilog version
+    //mcp7940n RTC <@clock_25mhz> ( sda <:> gpdi_sda, scl <:> gpdi_scl );                             // Silice translation (not yet working)
+
+    // ACCELERATOR FOR DOOM FIXED POINT 16.16 DIVISION
+    fixed_t_divide FIXED_DIVIDE_1();
+
+$$if not SIMULATION then
+    // I/O FLAGS
+    UART_IN.inread := 0; UART_OUT.outwrite := 0; PS2.inread := 0;
+    SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0;
+$$end
+    RTC.wr := 0; FIXED_DIVIDE_1.start := 0; RESETSTATUS := 0;
+
+    always_after {
+        // UNLOCK VALUE ( write to sector 0 )
+        uint1 MAGICVALUE(0);                                                                // WRITE 32h50415357 { 'P', 'A', 'W', 'S' } TO ALLOW WRITING TO SDCARD SECTOR 0
+
+        {
+            // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE, RTC to read mode
+            if( reset ) {
+                SMTRUNNING = 0;
+                $$if not SIMULATION then
+                    PS2.outputkeycodes = 0;
+                $$end
+                MAGICVALUE = 0; DMAMODE = 0; RTC.addr = 7; RESETSTATUS = 1;
+            }
+        }
+
+        {
+            uint64  LATCHrtc = uninitialised;
+
+            // READ IO Memory
+            if( memoryRead ) {
+                switch( memoryAddress[8,4] ) {
+                    $$if not SIMULATION then
+                    case 4h0: {
+                        if( memoryAddress[1,1] ) {
+                            readData = { 14b0, UART_OUT.outfull, UART_IN.inavailable };
+                        } else {
+                            readData = { 8b0, UART_IN.inchar }; UART_IN.inread = 1;
+                        }
+                    }
+                    case 4h1: {
+                        if( memoryAddress[1,1] ) {
+                            if( PS2.inavailable ) {
+                                readData = PS2.inkey; PS2.inread = 1;
+                            } else {
+                                readData = 0;
+                            }
+                        } else {
+                            readData = PS2.inavailable;
+                        }
+                    }
+                    case 4h2: { readData = PS2.outputkeycodes ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
+                    case 4h4: { readData = SDCARD.ready; if( SDCARD.ready ) { sdcardlightcolour = 0; RESETSTATUS = 1; } }
+                    case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = buffer_in.addr0 + 1; }
+                    $$end
+                    case 4h3: { readData = leds; }
+                    case 4h6: {
+                        switch( memoryAddress[2,1] ) {
+                            case 0: { LATCHrtc = RTC.datetime_o; readData = RTC.datetime_o[0,32]; }
+                            case 1: { readData = LATCHrtc[32,32]; }
+                        }
+                    }
+                    case 4h7: { readData = SOC; }
+                    case 4h8: {
+                        switch( memoryAddress[3,1] ) {
+                            case 0: { readData = FIXED_DIVIDE_1.result; }
+                            case 1: { readData = FIXED_DIVIDE_1.busy; }
+                        }
+                    }
+                    case 4he: { readData = DMASET; }
+                    case 4hf: { readData = SMTRUNNING; }
+                    default: { readData = 0; }
+                }
+            }
+        }
+
+        {
+            // WRITE IO Memory
+            if( memoryWrite ) {
+                switch( memoryAddress[8,4] ) {
+                    $$if not SIMULATION then
+                    case 4h0: { UART_OUT.outwrite = 1; }
+                    case 4h1: {
+                        switch( memoryAddress[1,2] ) {
+                            default: { PS2.outputkeycodes = writeData; JOYSTICK = ~writeData; RESETSTATUS = 1; }
+                            case 2h1: { CAPSLOCK = writeData; RESETSTATUS = 1; }
+                            case 2h2: { NUMLOCK = writeData; RESETSTATUS = 1; }
+                        }
+                    }
+                    case 4h4: {
+                        switch( memoryAddress[1,2] ) {
+                            case 2h0: { SDCARD.readsector = 1; RESETSTATUS = 1; sdcardlightcolour = 1; }
+                            case 2h1: { SDCARD.writesector = |SDCARD.sectoraddress | MAGICVALUE; RESETSTATUS = 1; sdcardlightcolour = 2; }
+                            default: { SDCARD.sectoraddress = writeData; }
+                        }
+                    }
+                    case 4h5: {
+                        switch( memoryAddress[1,1] ) {
+                            case 0: { buffer_in.addr0 = 0; buffer_out.addr1 = 511; }
+                            case 1: { buffer_out.addr1 = buffer_out.addr1 + 1; buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
+                        }
+                    }
+                    $$end
+                    case 4h3: { leds = writeData; }
+                    case 4h7: { MAGICVALUE = ( writeData == 32h50415357 ); } // SPECIAL VALUE TO ALLOW WRITING TO SDCARD SECTOR 0 { 'P', 'A', 'W', 'S' }
+                    case 4h8: {
+                        switch( memoryAddress[2,2] ) {
+                            case 2b00: { FIXED_DIVIDE_1.fixed_t_a = writeData; }
+                            case 2b01: { FIXED_DIVIDE_1.fixed_t_b = writeData; }
+                            default: { FIXED_DIVIDE_1.start = 1; }
+                        }
+                    }
+                    case 4hd: {
+                        switch( memoryAddress[2,2] ) {
+                            case 2b00: { DMASOURCEADD = writeData; }
+                            case 2b01: { DMADESTADD = writeData; }
+                            default: { DMACYCLES = writeData; }
+                        }
+                    }
+                    case 4he: {
+                        switch( memoryAddress[2,2] ) {
+                            case 2b00: { DMASOURCE = writeData; }
+                            case 2b01: { DMADEST = writeData; }
+                            case 2b10: { DMACOUNT = writeData; }
+                            case 2b11: { if( memoryAddress[1,1] ) { DMASET = writeData; } else { DMAMODE = writeData; } }
+                        }
+                    }
+                    case 4hf: {
+                        switch( memoryAddress[2,1] ) {
+                            case 1b0: { SMTSTARTPC = writeData; }
+                            case 1b1: { SMTRUNNING = writeData; }
+                        }
+                    }
+                    default: {}
+                }
+            }
+        }
+        { if( DMAACTIVE ) { DMAMODE = 0; } } // CANCEL DMA REQUEST ONCE DMA STARTS
+    }
+}
+
+unit timers_memmap(
+    // CLOCKS
+    input   uint1   clock_25mhz,
+
+    // Memory access
+    input   uint6   memoryAddress,
+    input   uint1   memoryWrite,
+    input   uint1   memoryRead,
+    input   uint32  writeData,
+    output  uint32  readData,
+
+    // RNG + CURSOR BLINK
+    output  uint16  static16bit,
+    output  uint1   cursor
+) <reginputs> {
+    // TIMERS and RNG
+    uint32  floatrng <:: { 1b0, 1b0, &timers.u_noise_out[0,7] ? 7b1111110 : timers.u_noise_out[0,7], timers.g_noise_out[0,16], timers.u_noise_out[8,7] };
+    timers_rng timers <@clock_25mhz> ( seconds :> cursor, g_noise_out :> static16bit );
+
+    always_after {
+        {
+            // LATCH TIME OF DAY
+            uint64  LATCHseconds = uninitialised;
+            uint25  LATCHmilliseconds = uninitialised;
+
+            // READ IO Memory
+            if( memoryRead ) {
+                if( memoryAddress[5,1] ) {
+                    switch( memoryAddress[2,2] ) {
+                        case 2h0: { LATCHseconds = timers.seconds; LATCHmilliseconds = timers.milliseconds; readData = timers.seconds[0,32]; }
+                        case 2h1: { readData = LATCHseconds[32,32]; }
+                        case 2h2: { readData = LATCHmilliseconds; }
+                        default: { readData = 0; }
+                    }
+                } else {
+                    switch( memoryAddress[1,4] ) {
+                        // RNG ( 2 interger, 1 float 0 <= fng < 1 ) and TIMERS
+                        case 4h0: { readData = timers.g_noise_out; }
+                        case 4h1: { readData = timers.u_noise_out; }
+                        case 4h2: { readData = floatrng; }
+                        case 4h8: { readData = timers.timer1hz0; }
+                        case 4h9: { readData = timers.timer1hz1; }
+                        case 4ha: { readData = timers.timer1khz0; }
+                        case 4hb: { readData = timers.timer1khz1; }
+                        case 4hc: { readData = timers.sleepTimer0; }
+                        case 4hd: { readData = timers.sleepTimer1; }
+                        default: { readData = 0; }
+                    }
+                }
+            }
+        }
+
+        {
+            // LATCH MEMORYWRITE
+            uint1   LATCHmemoryWrite = uninitialized;
+
+            // WRITE IO Memory
+            switch( { memoryWrite, LATCHmemoryWrite } ) {
+                case 2b10: {
+                    if( memoryAddress[5,1] ) {
+                        switch( memoryAddress[2,2] ) {
+                            case 2h0: { timers.newtime[0,32] = writeData; }
+                            case 2h1: { timers.newtime[32,32] = writeData; }
+                            default: { timers.resetcounter = 7; }
+                        }
+                    } else {
+                        timers.counter = writeData; timers.resetcounter = memoryAddress[1,3] + 1;
+                    }
+                }
+                case 2b00: { timers.resetcounter = 0; }
+                default: {}
+            }
+            LATCHmemoryWrite = memoryWrite;
+        }
+    }
+}
+
+// TIMERS and RNG Controllers
+unit timers_rng(
+    output  uint64  seconds,
+    input   uint64  newtime,
+    output  uint20  milliseconds,
+    output  uint16  timer1hz0,
+    output  uint16  timer1hz1,
+    output  uint16  timer1khz0,
+    output  uint16  timer1khz1,
+    output  uint16  sleepTimer0,
+    output  uint16  sleepTimer1,
+    output  uint16  u_noise_out,
+    output  uint16  g_noise_out,
+    input   uint16  counter,
+    input   uint3   resetcounter
+) <reginputs> {
+    // RNG random number generator
+    random rng( u_noise_out :> u_noise_out,  g_noise_out :> g_noise_out );
+
+    // 1hz timers (P1 used for systemClock, T1hz0 and T1hz1 for user purposes)
+    timesinceboot P1( newtime <: newtime, counter1hz :> seconds, counter1mhz :> milliseconds );
+    pulse1hz T1hz0( counter1hz :> timer1hz0 );
+    pulse1hz T1hz1( counter1hz :> timer1hz1 );
+
+    // 1khz timers (sleepTimers used for sleep command, timer1khzs for user purposes)
+    pulse1khz T0khz0( counter1khz :> timer1khz0 );
+    pulse1khz T1khz1( counter1khz :> timer1khz1 );
+    pulse1khz STimer0( counter1khz :> sleepTimer0 );
+    pulse1khz STimer1( counter1khz :> sleepTimer1 );
+
+    P1.resettime := 0;
+    T1hz0.resetCounter := 0; T1hz1.resetCounter := 0;
+    T0khz0.resetCounter := 0; T1khz1.resetCounter := 0;
+    STimer0.resetCounter := 0; STimer1.resetCounter := 0;
+
+    always_after {
+        switch( resetcounter ) {
+            case 0: {}
+            case 1: { T1hz0.resetCounter = 1; }
+            case 2: { T1hz1.resetCounter = 1; }
+            case 3: { T0khz0.resetCounter = counter; }
+            case 4: { T1khz1.resetCounter = counter; }
+            case 5: { STimer0.resetCounter = counter; }
+            case 6: { STimer1.resetCounter = counter; }
+            case 7: { P1.resettime = 1; }
+        }
+    }
+}
+
+// AUDIO MEMORY MAP CONTROLLER
+unit audio_memmap(
+    // CLOCKS
+    input   uint1   clock_25mhz,
+
+    // Memory access
+    input   uint5   memoryAddress,
+    input   uint2   accesssize,
+    input   uint1   memoryWrite,
+    input   uint32  writeData,
+    output  uint1   readData,
+
+    // AUDIO
+    output  uint4   audio_l,
+    output  uint4   audio_r,
+
+    // RNG
+    input  uint8   static8bit
+) <reginputs> {
+    // BLOCK STORAGE FOR "SAMPLES" - A SERIES OF NOTES TO BE PLAYED FOR A GIVEN NUMBER OF MILLISECONDS
+    simple_dualport_bram uint7 samples_left <@clock_25mhz,@clock> [256] = uninitialized;
+    simple_dualport_bram uint7 samples_right <@clock_25mhz,@clock> [256] = uninitialized;
+
+    // POINTERS WITHIN THE BUFFERS
+    uint8   maxSL = uninitialised;                  uint8   maxSR = uninitialised;
+
+    // Left and Right audio channels
+    audio apu_processor <@clock_25mhz> (
+        samples_left <:> samples_left,
+        samples_right <:> samples_right,
+        staticGenerator <: static8bit,
+        audio_l :> audio_l,
+        audio_r :> audio_r,
+        samples_MAX_L <: maxSL,
+        samples_MAX_R <: maxSR
+    );
+
+    // SAMPLE MEMORY CONTROLS
+    samples_left.wenable1 := 1; samples_right.wenable1 := 1;
+
+    always_after {
+        { if( reset ) { apu_processor.volume_l = 7; apu_processor.volume_r = 7; } }
+        { readData = memoryAddress[1,1] ? apu_processor.audio_active_r : apu_processor.audio_active_l; }
+        {
+            // LATCH MEMORYWRITE
+            uint1   LATCHmemoryWrite = uninitialized;
+
+            // WRITE IO Memory
+            switch( { memoryWrite, LATCHmemoryWrite } ) {
+                case 2b10: {
+                    switch( memoryAddress[1,4] ) {
+                        case 4h0: {                                                                                                             // SET APU FROM CPU
+                            if( accesssize[1,1] ) {
+                                apu_processor.waveform = writeData[0,5]; apu_processor.frequency = writeData[16,7];
+                            } else { apu_processor.waveform = writeData; }
+                        }
+                        case 4h1: { apu_processor.frequency = writeData; }
+                        case 4h2: {
+                            if( accesssize[1,1] ) {
+                                apu_processor.duration = writeData[0,16]; apu_processor.apu_write = writeData[16,2];
+                            } else { apu_processor.duration = writeData; }
+                        }
+                        case 4h3: { apu_processor.apu_write = writeData; }
+                        case 4h4: { if( writeData[0,1] ) { maxSL = 0; }  if( writeData[1,1] ) { maxSR = 0; } }                                  // RESET SAMPLES
+                        case 4h5: { samples_left.addr1 = maxSL; samples_left.wdata1 = writeData; maxSL = maxSL + 1; }                           // WRITE TO LEFT SAMPLE MEMORY
+                        case 4h6: { samples_right.addr1 = maxSR; samples_right.wdata1 = writeData; maxSR = maxSR + 1; }                         // WRITE TO RIGHT SAMPLE MEMORY
+                        case 4h8: {                                                                                                             // SET VOLUME LEFT ( OR BOTH )
+                            if( accesssize[1,1] ) {
+                                apu_processor.volume_l = writeData[0,3]; apu_processor.volume_r = writeData[16,3];
+                            } else { apu_processor.volume_l = writeData; }
+
+                        }
+                        case 4h9: { apu_processor.volume_r = writeData; }                                                                       // SET VOLUME RIGHT
+                        default: {}
+                    }
+                }
+                case 2b00: { apu_processor.apu_write = 0;  }
+                default: {}
+            }
+            LATCHmemoryWrite = memoryWrite;
+        }
+    }
+}
+
+// AUDIO L&R Controller
+unit audio(
+    simple_dualport_bram_port0  samples_left,
+    simple_dualport_bram_port0  samples_right,
+
+    input   uint8   staticGenerator,
+    input   uint5   waveform,
+    input   uint7   frequency,
+    input   uint16  duration,
+    input   uint2   apu_write,
+    input   uint3   volume_l,
+    input   uint3   volume_r,
+    output  uint4   audio_l,
+    output  uint1   audio_active_l,
+    output  uint4   audio_r,
+    output  uint1   audio_active_r,
+
+    input   uint8   samples_MAX_L,
+    input   uint8   samples_MAX_R
+) <reginputs> {
+    // SHARED FREQUENCY TABLE - FIRST 24 NOTES, USE OCTAVE ALGORITHM TO GET ADDITIONAL NOTES, 3 = c 2 , 5 = c#2, 7 = d 2... ( rest generated by shifts ) + 24 per octave
+    uint12 frequency_table[] = {
+        0,
+        3164, 3072, 2986, 2900, 2819, 2737, 2660, 2584, 2511, 2439, 2370, 2302, 2237, 2172, 2112, 2051, 1993, 1935, 1881, 1827, 1776, 1724, 1676, 1528
+    };
+    octave CPUINPUT( frequency <: frequency );                  uint12  CPUfrequency <:: frequency_table[ CPUINPUT.basefrequency ] >> CPUINPUT.shift;
+    octave SAMPLELEFT( frequency <: samples_left.rdata0 );      uint12  SLfrequency <:: frequency_table[ SAMPLELEFT.basefrequency ] >> SAMPLELEFT.shift;
+    octave SAMPLERIGHT( frequency <: samples_right.rdata0 );    uint12  SRfrequency <:: frequency_table[ SAMPLERIGHT.basefrequency ] >> SAMPLERIGHT.shift;
+
+    // Left and Right audio channels
+    // 8 bit output from audio channel goes through PWM modulator
+    apu apu_processor_L( volume <: volume_l, staticGenerator <: staticGenerator, audio_active :> audio_active_l );
+    apu apu_processor_R( volume <: volume_r, staticGenerator <: staticGenerator, audio_active :> audio_active_r );
+    audio_pwm PWM_L( active <: apu_processor_L.audio_active, wave <: apu_processor_L.audio_output, audio :> audio_l );
+    audio_pwm PWM_R( active <: apu_processor_R.audio_active, wave <: apu_processor_R.audio_output, audio :> audio_r );
+    uint8   SAMP0P1 <:: samples_left.addr0 + 1;
+    uint8   SAMP1P1 <:: samples_right.addr0 + 1;
+
+    apu_processor_L.apu_write := 0; apu_processor_R.apu_write := 0;
+
+    always_after {
+        uint1   SAMPLEMODE_L = uninitialised;                   uint1   SAMPLEMODE_R = uninitialised;
+        uint1   REPEAT_L = uninitialised;                       uint1   REPEAT_R = uninitialised;
+
+        // DISPATCH NEXT SAMPLE IF SAMPLE MODE ACTIVE LEFT/RIGHT / RESET SAMPLE POINTER IF NOT
+        {
+            uint1   newSL = uninitialised;
+
+            if( SAMPLEMODE_L ) {
+                if( ~apu_processor_L.audio_active ) {
+                    if( newSL ) {
+                        // SEND NEXT SAMPLE TO LEFT
+                        apu_processor_L.frequency = SLfrequency; apu_processor_L.apu_write = 1; newSL = 0;
+                        if( SAMP0P1 == samples_MAX_L ) { samples_left.addr0 = 0; SAMPLEMODE_L = REPEAT_L; } else { samples_left.addr0 = SAMP0P1; }
+                    }
+                } else {
+                    newSL = 1;
+                }
+            } else {
+                samples_left.addr0 = 0; newSL = 1;
+            }
+        }
+        {
+            uint1   newSR = uninitialised;
+
+            if( SAMPLEMODE_R ) {
+                if( ~apu_processor_R.audio_active ) {
+                    if( newSR ) {
+                        // SEND NEXT SAMPLE TO RIGHT
+                        apu_processor_R.frequency = SRfrequency; apu_processor_R.apu_write = 1; newSR = 0;
+                        if( SAMP1P1 == samples_MAX_R ) { samples_right.addr0 = 0; SAMPLEMODE_R = REPEAT_R; } else { samples_right.addr0 = SAMP1P1; }
+                    }
+                } else {
+                    newSR = 1;
+                }
+            } else {
+                samples_right.addr0 = 0; newSR = 1;
+            }
+        }
+
+        // IF REQUEST TO START LEFT/RIGHT CHECK IF SAMPLE MODE REQUESTED AND START, OTHERWISE DISPATCH REQUESTED NOTE
+        {
+            if( apu_write[0,1] ) {
+                apu_processor_L.duration = duration; SAMPLEMODE_L = waveform[3,1]; REPEAT_L = waveform[4,1]; apu_processor_L.waveform = waveform[0,3];
+                if( waveform[3,1] ) {
+                    samples_left.addr0 = 0;
+                } else {
+                    apu_processor_L.frequency = CPUfrequency;
+                    apu_processor_L.apu_write = 1;
+                }
+            }
+        }
+        {
+            if( apu_write[1,1] ) {
+                apu_processor_R.duration = duration; SAMPLEMODE_R = waveform[3,1]; REPEAT_R = waveform[4,1]; apu_processor_R.waveform = waveform[0,3];
+                if( waveform[3,1] ) {
+                    samples_right.addr0 = 0;
+                } else {
+                    apu_processor_R.frequency = CPUfrequency;
+                    apu_processor_R.apu_write = 1;
+                }
+            }
+        }
+    }
+}
+
+// UART BUFFER CONTROLLER
+// 128 entry FIFO queue
+unit fifo8(
+    output  uint1   available,
+    output  uint1   full,
+    input   uint1   read,
+    input   uint1   write,
+    output  uint8   first,
+    input   uint8   last
+) <reginputs> {
+    simple_dualport_bram uint8 queue[128] = uninitialized;
+    uint1   update = uninitialized;
+    uint7   top = 0;
+    uint7   next = 0;
+
+    queue.addr0 := next; first := queue.rdata0;
+    queue.wenable1 := 1;
+
+    always_after {
+        { available = ( top != next ); full = ( top + 1 == next ); }
+        { next = next + read; }
+
+        {
+            if( write ) {
+                queue.addr1 = top; queue.wdata1 = last; update = 1;
+            } else {
+                if( update ) { top = top + 1; update = 0; }
+            }
+        }
+    }
+}
+unit uart_IN(
+    // UART
+    input   uint1   uart_rx,
+    output  uint1   inavailable,
+    output  uint8   inchar,
+    input   uint1   inread
+) <reginputs> {
+    uart_in ui; uart_receiver urecv( io <:> ui, uart_rx <: uart_rx );
+    fifo8 IN(
+        available :> inavailable,
+        first :> inchar,
+        read <: inread,
+        last <: ui.data_out,
+        write <: ui.data_out_ready
+    );
+}
+unit uart_OUT(
+    // UART
+    output  uint1   uart_tx,
+    output  uint1   outfull,
+    input   uint8   outchar,
+    input   uint1   outwrite
+) <reginputs> {
+    uart_out uo; uart_sender usend( io <:> uo, uart_tx :> uart_tx );
+    fifo8 OUT(
+        full :> outfull,
+        last <: outchar,
+        write <: outwrite,
+        first :> uo.data_in
+    );
+    always_after {
+        { OUT.read = OUT.available & !uo.busy; }
+        { uo.data_in_ready = OUT.available & ( !uo.busy ); }
+    }
+}
+
+// PS2 BUFFER CONTROLLER
+// 9 bit 128 entry FIFO buffer
+unit fifo9(
+    output  uint1   available,
+    input   uint1   read,
+    input   uint1   write,
+    output  uint10  first,
+    input   uint10  last
+) <reginputs> {
+    uint7   top = 0;
+    uint7   next = 0;
+    simple_dualport_bram uint10 queue[128] = uninitialized;
+
+    queue.addr0 := next; first := queue.rdata0;
+    queue.wenable1 := 1;
+
+    always_after {
+        { available = ( top != next ); }
+        { if( write ) { queue.addr1 = top; queue.wdata1 = last; } }
+        { top = top + write; }
+        { next = next + read; }
+    }
+}
+unit ps2buffer(
+    // USB for PS/2
+    input   uint1   us2_bd_dp,
+    input   uint1   us2_bd_dn,
+    output  uint10  inkey,
+    output  uint1   inavailable,
+    input   uint1   inread,
+    input   uint1   outputkeycodes,
+    output  uint16  joystick
+) <reginputs> {
+    // PS/2 input FIFO (128 character) - 9 bit to deal with special characters
+    fifo9 FIFO( available :> inavailable, read <: inread, write <: PS2.keycodevalid, first :> inkey, last <: PS2.keycode );
+
+    // PS/2 KEYCODE AND JOYSTICK EMULATION MAPPER
+    ps2ascii PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn, outputkeycodes <: outputkeycodes, joystick :> joystick );
+}
+
+// SDCARD CONTROLLER
+unit sdcardcontroller(
+    // SDCARD
+    output  uint1   sd_clk,
+    output  uint1   sd_mosi,
+    output  uint1   sd_csn,
+    input   uint1   sd_miso,
+
+    input   uint1   readsector,
+    input   uint1   writesector,
+    input   uint32  sectoraddress,
+    output  uint1   ready,
+
+  simple_dualport_bram_port0 buffer_out,
+  simple_dualport_bram_port1 buffer_in
+) <reginputs> {
+    // SDCARD - Code for the SDCARD from @sylefeb
+    sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, buffer_read <:> buffer_in, buffer_write <:> buffer_out );
+
+    // SDCARD Commands
+    always_after {
+        { sdcio.read_sector = readsector; }
+        { sdcio.write_sector = writesector; }
+        { sdcio.addr_sector = sectoraddress; }
+        { ready = sdcio.ready; }
+    }
+}

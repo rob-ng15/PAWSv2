@@ -1,0 +1,201 @@
+// ALU - ALU for immediate-register operations and register-register operations
+
+// CALCULATES SLL SLLI SRL SRLI SRA SRAI + ROL ROR RORI
+unit alushift(
+    input   uint1   size32,
+    input   uint64  sourceReg1,
+    input   uint6   shiftcount,
+    output  uint64  SLL,
+    output  uint64  SRL,
+    output  uint64  SRA,
+) <reginputs> {
+    always_after {
+        { SLL = size32 ? ( sourceReg1[0,32] << shiftcount ) & 32hffffffff : ( sourceReg1 << shiftcount ); }
+        { SRL = ( size32 ? sourceReg1[0,32] : sourceReg1 ) >> shiftcount; }
+        { SRA = __signed( { size32 ? {32{sourceReg1[31,1]}} : sourceReg1[32,32], sourceReg1[0,32] } ) >>> shiftcount; }
+    }
+}
+// CALCULATES ADD ADDI SUB
+unit aluaddsub(
+    input   uint1   size32,
+    input   uint1   dosub,
+    input   int64   sourceReg1,
+    input   int64   operand2,
+    output  int64   addsub
+) <reginputs> {
+    always_after {
+        addsub = dosub ? ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) - ( size32 ? operand2[0,32] : operand2 ) ) :
+                         ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) + ( size32 ? operand2[0,32] : operand2 ) );
+    }
+}
+// CALCULATES AND/ANDN OR/ORN XOR/XNOR
+unit alulogic(
+    input   uint64  sourceReg1,
+    input   uint64  operand2,
+    output  uint64  AND,
+    output  uint64  OR,
+    output  uint64  XOR
+) <reginputs> {
+    always_after {
+        { AND = sourceReg1 & operand2; }             { OR = sourceReg1 | operand2; }
+        { XOR = sourceReg1 ^ operand2; }
+    }
+}
+
+// ALU FOR MULTIPLICATION
+// UNSIGNED / SIGNED 65 by 65 bit multiplication giving 130 bit product using DSP blocks
+unit alumultiply(
+    input   uint1   size32,
+    input   uint2   function3,
+    input   int64   sourceReg1,
+    input   int64   sourceReg2,
+    output  int64   mult
+) <reginputs> {
+    // SIGN EXTEND IF SIGNED MULTIPLY
+    uint2   dosigned <:: function3[1,1] ? function3[0,1] ? 2b00 : 2b01 : 2b11;
+    int65   factor_1 <:: size32 ? sourceReg1[0,32] : { dosigned[0,1] & sourceReg1[ 63, 1 ], sourceReg1 }; // SIGN EXTEND IF SIGNED MULTIPLY
+    int65   factor_2 <:: size32 ? sourceReg2[0,32] : { dosigned[1,1] & sourceReg2[ 63, 1 ], sourceReg2 }; // SIGN EXTEND IF SIGNED MULTIPLY
+    int130   product <:: factor_1 * factor_2;
+
+    always_after {
+        mult = size32 ? product[ 0, 32 ] : product[ { |function3, 6b0 }, 64 ];
+    }
+}
+
+// DECODE ALU INSTRUCTIONS
+unit aludecode(
+    input   uint1   regreg,
+    input   uint7   function7,
+    input   uint3   function3,
+    input   uint5   rs2,
+
+    output  uint1   domul,
+    output  uint1   doalt,
+    output  uint1   dosra,
+) <reginputs> {
+    uint1   f70000100 <:: ( function7 == 7b0000100 );
+    uint1   f70110100 <:: ( function7 == 7b0110100 );
+    uint1   f70110000 <:: ( function7 == 7b0110000 );
+    uint1   f70100000 <:: ( function7 == 7b0100000 );
+    uint1   f70010100 <:: ( function7 == 7b0010100 );
+
+    always_after {
+        { doalt = regreg & f70100000; }                                             // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
+        { dosra = function7[1,6] == 6b010000; }                                     // SRA SRAI
+        { domul = regreg & ( function7 == 7b0000001 ); }                            // MULTIPLICATION
+    }
+}
+
+unit alu(
+    input   uint1   size32,
+    input   uint5   opCode,
+    input   uint3   function3,
+    input   uint7   function7,
+    input   uint5   rs1,
+    input   uint5   rs2,
+    input   int64   sourceReg1,
+    input   int64   sourceReg2,
+    input   int64   immediateValue,
+    input   uint1   LT,                                                             // SIGNED COMPARE sourceReg1 < operand2
+    input   uint1   LTU,                                                            // UNSIGNED COMPARE sourceReg1 < operand2
+
+    output  int64   result
+) <reginputs> {
+    uint6   shiftcount <:: opCode[3,1] ? ( size32 ? sourceReg2[0,5] : sourceReg2[0,6] ) : { ~size32 & function7[0,1], rs2 };
+    uint64  operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
+
+    // DECODE THE ALU OPERATION
+    aludecode AD( regreg <: opCode[3,1], function7 <: function7, function3 <: function3, rs2 <: rs2 );
+
+    aluaddsub ADDSUB( size32 <: size32, dosub <: AD.doalt, sourceReg1 <: sourceReg1, operand2 <: operand2 );
+    alulogic LOGIC( sourceReg1 <: sourceReg1, operand2 <: operand2 );
+    alumultiply MULT( size32 <: size32, function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
+    alushift SHIFTS( size32 <: size32, sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
+
+    always_after {
+        switch( function3 ) {
+            case 3b000: { result = AD.domul ? MULT.mult : ADDSUB.addsub; }
+            case 3b001: { result = AD.domul ? MULT.mult : SHIFTS.SLL; }
+            case 3b010: { result = AD.domul ? MULT.mult : LT; }
+            case 3b011: { result = AD.domul ? MULT.mult : opCode[3,1] ? ( ~|rs1 ) ? ( |operand2 ) : LTU : ( operand2 == 1 ) ? ( ~|sourceReg1 ) : LTU; }
+            case 3b100: { result = LOGIC.XOR; }
+            case 3b101: { result = AD.dosra ? SHIFTS.SRA : SHIFTS.SRL; }
+            case 3b110: { result = LOGIC.OR; }
+            case 3b111: { result = LOGIC.AND; }
+        }
+    }
+}
+
+// INTEGER DIVISION
+unit aludivision(
+    input   uint1   size32,
+    input   uint1   start,
+    output  uint1   busy(0),
+    input   uint2   function3,
+    input   uint64  sourceReg1,
+    input   uint32  S1_abs32,
+    input   uint64  S1_abs64,
+    input   uint32  S2_abs32,
+    input   uint64  S2_abs64,
+    input   uint64  sourceReg2,
+    output  uint64  result
+) <reginputs> {
+    uint64  quotient = uninitialised;
+    uint64  remainder = uninitialised;
+    uint64  dividend <:: size32 ? ( function3[0,1] ? sourceReg1[0,32] : S1_abs32 ) :
+                                  ( function3[0,1] ? sourceReg1 : S1_abs64 ) ;
+    uint64  divisor <:: size32 ? ( function3[0,1] ? sourceReg2[0,32] : S2_abs32 ) :
+                                 ( function3[0,1] ? sourceReg2 : S2_abs64 );
+    uint64  temporary <:: size32 ? { remainder[0,31], dividend[bit,1] } : { remainder[0,63], dividend[bit,1] };
+    uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
+    uint64  remainderNEXT <:: __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
+    uint7   bit(127);
+    uint1   update = uninitialised;
+    uint1   notdivzero <:: size32 ? |sourceReg2[0,32] : |sourceReg2;
+
+    update := 0; busy := start | ( ~&bit );
+
+    algorithm <autorun> {
+        while(1) {
+            if( start & notdivzero ) { while( ~&bit ) { update = 1; } }
+        }
+    }
+
+    // START DIVIDER AND EXTRACT RESULT
+    always_after {
+        { if( start & notdivzero ) { quotient = 0; } else { if( update ) { quotient[bit,1] = bitresult; } } }
+        { if( start & notdivzero ) { remainder = 0; } else { if( update ) { remainder = remainderNEXT; } } }
+        { bit = start & notdivzero ? size32 ? 31 : 63 : bit - update; }
+        {
+            result = ( notdivzero ) ? function3[1,1] ? remainder :                                                          // RETURN REMAINDER
+                                    ( ( ~function3[0,1] & ( sourceReg1[size32 ? 31 : 63,1] ^ sourceReg2[size32 ? 31 : 63,1] ) ) ? -quotient :           // RETURN QUOTIENT ( coreting sgn )
+                                                                                                       quotient ) :         // RETURN QUOTIENT ( unsigned or positive )
+                                    function3[1,1] ? sourceReg1 : 64hffffffffffffffff;                                      // DIVIDE BY ZERO, dividend if remainder, -1 if quotient
+        }
+    }
+}
+
+// ATOMIC A EXTENSION ALU
+unit aluA(
+    input   uint7   function7,
+    input   uint64  memoryinput,
+    input   uint64  sourceReg2,
+    output  uint64  result
+) <reginputs> {
+    alulogic LOGIC( sourceReg1 <: memoryinput, operand2 <: sourceReg2 );
+    uint64  MINMAX <:: ( function7[2,1] ^ ( function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) :  ( __signed(memoryinput) < __signed(sourceReg2) ) ) ) ? memoryinput : sourceReg2;
+
+    always_after {
+        if( function7[4,1] ) {                                                      // AMOMAX[U] AMOMIN[U]
+            result = MINMAX;
+        } else {
+            switch( function7[0,4] ) {
+                default: { result = memoryinput + sourceReg2; }                     // AMOADD
+                case 4b0001: { result = sourceReg2; }                               // AMOSWAP
+                case 4b0100: { result = LOGIC.XOR; }                                // AMOXOR
+                case 4b1000: { result = LOGIC.OR; }                                 // AMOOR
+                case 4b1100: { result = LOGIC.AND; }                                // AMOAND
+            }
+        }
+    }
+}

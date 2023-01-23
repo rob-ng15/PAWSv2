@@ -1,0 +1,176 @@
+# The makefile is not very Windows friendly, but it will work under Cygwin
+ECHO	= echo
+AR	= ar
+CC	= gcc
+CFLAGS	= -Wall -Wextra -g -pedantic -std=c99 -O2
+LDFLAGS =
+INCLUDE = libline
+TARGET	= forth
+RM      = rm -rf
+CTAGS  ?= ctags
+CP      = cp
+VIEWER  = mupdf
+
+MDS     := ${wildcard *.md}
+DOCS    := ${MDS:%.md=%.htm}
+
+FORTH_FILE = forth.fth
+
+.PHONY: all shorthelp doc clean test profile unit.test forth.test line small fast static
+
+all: shorthelp ${TARGET}
+
+shorthelp:
+	@${ECHO} "Use 'make help' for a list of all options"
+
+help:
+	@${ECHO} ""
+	@${ECHO} "project:      lib${TARGET}"
+	@${ECHO} "description: A small ${TARGET} interpreter and library"
+	@${ECHO} ""
+	@${ECHO} "make {option}*"
+	@${ECHO} ""
+	@${ECHO} "      all             create the ${TARGET} libraries and executables"
+	@${ECHO} "      ${TARGET}           create the ${TARGET} executable"
+	@${ECHO} "      unit            create the unit test executable"
+	@${ECHO} "      test            execute the unit tests"
+	@${ECHO} "      doc             make the project documentation"
+	@${ECHO} "      lib${TARGET}.a      make a static ${TARGET} library"
+	@${ECHO} "      libforth        make ${TARGET} with built in core file"
+	@${ECHO} "      clean           remove generated files"
+	@${ECHO} "      dist            create a distribution archive"
+	@${ECHO} "      profile         generate lots of profiling information"
+	@${ECHO} ""
+
+%.o: %.c *.h
+	@echo "cc $< -c -o $@"
+	@${CC} ${CFLAGS} $< -c -o $@
+
+lib${TARGET}.a: lib${TARGET}.o
+	${AR} rcs $@ $<
+
+${TARGET}: main.o unit.o lib${TARGET}.a
+	@echo "cc $^ -o $@"
+	@${CC} ${CFLAGS} $^ ${LDFLAGS} -o $@
+
+forth.core: ${TARGET} ${FORTH_FILE} test
+	./${TARGET} -s $@ ${FORTH_FILE}
+
+forth.dump: forth.core ${TARGET}
+	./${TARGET} -l $< -e "0 here dump" > $@
+
+run: ${TARGET} ${FORTH_FILE}
+	./$< -t ${FORTH_FILE}
+
+# Use the previously built executable to help generate a new one with
+# a built in core.
+core.gen.c: forth.core
+	./forth -l $< -e 'c" forth.core" c" core.gen.c" core2c'
+
+lib${TARGET}: main.c unit.o core.gen.c lib${TARGET}.a
+	@echo "cc $^ -o $@"
+	@${CC} ${CFLAGS} -I. -DUSE_BUILT_IN_CORE $^ ${LDFLAGS} -o $@
+
+# "unit" contains the unit tests against the C API
+unit.test: ${TARGET}
+	./$< -u
+
+# A side effect of failing the tests in "unit.fth" is the fact that saving to
+# "forth.core" will fail, making this test fail.
+forth.test: forth unit.test forth.fth unit.fth
+	./$< -s forth_test.core forth.fth unit.fth
+	@${RM} forth_test.core
+
+test: unit.test forth.test
+
+tags: lib${TARGET}.c lib${TARGET}.h unit.c main.c
+	${CTAGS} $^
+
+dist: ${TARGET} ${TARGET}.1 lib${TARGET}.a lib${TARGET}.htm ${DOCS} forth.core
+	tar zvcf ${TARGET}.tgz $^
+
+%.htm: %.md
+	markdown $< > $@
+
+libforth.md: main.c libforth.c libforth.h
+	./convert    libforth.c    >  $@
+	echo "## Appendix "               >> $@
+	echo "### libforth header"        >> $@
+	./convert -H libforth.h    >> $@
+	echo "### main.c example program" >> $@
+	./convert main.c           >> $@
+
+%.pdf: %.md
+	pandoc -V geometry:margin=0.5in --toc $< -o $@
+
+%.1: %.md
+	pandoc -s -t man $< -o $@
+
+%.md: %.c convert
+	./convert $< > $@
+
+%.md: %.h convert
+	./convert -H $< -o $@
+
+%.3: %.h
+	./convert -H $< | pandoc -f markdown -s -t man -o $@
+
+${TARGET}.1: readme.1
+	${CP} $^ $@
+
+doc: lib${TARGET}.htm ${DOCS}
+
+doxygen: *.c *.h *.md
+	doxygen -g
+	doxygen 2> doxygen_warnings.log
+
+small: CFLAGS = -m32 -g -std=c99 -Os
+small: ${TARGET}
+
+fast: CFLAGS = -DNDEBUG -O3 -std=c99
+fast: ${TARGET}
+
+static: CC=musl-gcc -std=c99 -static
+static: ${TARGET}
+
+libline/makefile:
+	git submodule update
+
+libline/libline.a:
+	make -C libline libline.a
+
+# just a handy helper when making documentation
+show: lib${TARGET}.pdf
+	${VIEWER} $<
+
+# This option requires a clean build
+line: LDFLAGS += -lline
+line: CFLAGS += -L${INCLUDE} -I${INCLUDE} -DUSE_LINE_EDITOR
+line: libline/libline.a ${TARGET}
+
+# CFLAGS: Add "-save-temps" to keep temporary files around
+# objdump: Add "-M intel" for a more sensible assembly output
+profile: CFLAGS += -pg -g -O2 -DNDEBUG -fprofile-arcs -ftest-coverage
+profile: clean ${TARGET}
+	./${TARGET} forth.fth unit.fth > testrun.log
+	gprof ${TARGET} gmon.out > profile.log
+	gcov lib${TARGET}.c
+	objdump -d -S lib${TARGET}.o > libforth.s
+
+# attempt decompilation of all visible words
+decompile: ${TARGET} forth.fth
+	rm -vf decompiled.log words.log words.see.log
+	./${TARGET} -f forth.fth -e words > words.log
+	sed 's/ / see /g' < words.log > words.see.log
+	./${TARGET} -t -f forth.fth -e hex < words.see.log > decompiled.log
+
+clean:
+	${RM} ${TARGET} unit *.a *.so *.o
+	${RM} *.log *.htm *.tgz *.pdf
+	${RM} *.core *.dump
+	${RM} tags
+	${RM} *.i *.s *.gcov *.gcda *.gcno *.out
+	${RM} html latex Doxyfile *.db *.bak
+	${RM} libforth.md
+	${RM} libforth core.gen.c
+
