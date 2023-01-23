@@ -79,36 +79,30 @@ void *paws_memcpy( void *restrict destination, const void *restrict source, size
 }
 
 void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd ) {
-    DMA_REGS_ALT[0] = sourceadd; DMA_REGS_ALT[1] = destadd;
+    *DMASOURCEADD = sourceadd; *DMADESTADD = destadd;
     DMASTART( source, (void *restrict)destination, count, 6 );
 }
 
 void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles ) {
-    unsigned char volatile *DMA_REGS_ALT_B = (unsigned char volatile *)DMA_REGS_ALT;
-    DMA_REGS_ALT[0] = sourceadd; DMA_REGS_ALT[1] = destadd; DMA_REGS_ALT_B[0x08] = cycles;
+    *DMASOURCEADD = sourceadd; *DMADESTADD = destadd; *DMACYCLES = cycles;
     DMASTART( source, (void *restrict)destination, count, 8 );
 }
 
 // PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
 void *paws_memset( void *restrict destination, int value, size_t count ) {
-    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    DMA_REGS_B[0x0e] = (unsigned char)value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    *DMASET = (unsigned char)value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
     return( destination );
 }
 
 void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
-    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    unsigned char volatile *DMA_REGS_ALT_B = (unsigned char volatile *)DMA_REGS_ALT;
-    DMA_REGS_B[0x0e] = (unsigned char)value; DMA_REGS_ALT[1] = destadd; DMA_REGS_ALT_B[0x08] = cycles;
+    *DMASET = (unsigned char)value; *DMADESTADD = destadd; *DMACYCLES = cycles;
     DMASTART( (const void *restrict)DMASET, destination, count, 9 );
 }
 
 // OUTPUT TO UART
 // OUTPUT INDIVIDUAL CHARACTER/STRING TO THE UART
 void uart_outputcharacter(char c) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS;
-
-    while( IO_REGS_B[ 0x02 ] & 2 ) {} IO_REGS_B[ 0x00 ] = c;
+    while( *UART_STATUS & 2 ) {} *UART_DATA = c;
     if( c == '\n' ) uart_outputcharacter('\r');
 }
 void uart_outputstring( const char *s ) {
@@ -117,16 +111,12 @@ void uart_outputstring( const char *s ) {
 // INPUT FROM UART
 // RETURN 1 IF UART CHARACTER AVAILABLE, OTHERWISE 0
 unsigned char uart_character_available( void ) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS;
-
-    return( IO_REGS_B[ 0x02 ] & 1 );
+    return( *UART_STATUS & 1 );
 }
 // RETURN CHARACTER FROM UART
 char uart_inputcharacter( void ) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS;
-
     while( !uart_character_available() ) {}
-    return IO_REGS_B[ 0x00 ];
+    return *UART_DATA;
 }
 
 // TIMER AND PSEUDO RANDOM NUMBER GENERATOR
@@ -134,7 +124,7 @@ char uart_inputcharacter( void ) {
 // PSEUDO RANDOM NUMBER GENERATOR
 // RETURN FLOAT IN RANGE 0 <= frng < 1.0
 float frng( void ) {
-    return( TIMER_REGS[ 0x01 ] );
+    return( *FRNG );
 }
 
 // RETURN PSEUDO RANDOM NUMBER 0 <= RNG < RANGE ( effectively 0 to range - 1 )
@@ -164,38 +154,32 @@ unsigned short rng( unsigned short range ) {
 
 // SLEEP FOR counter milliseconds
 void sleep1khz( unsigned short counter, unsigned char timer ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    TIMER_REGS_H[ 0x0c + timer ] = counter; while( TIMER_REGS_H[ 0x0c + timer ] );
+    TIMER_REGS[ 0x0c + timer ] = counter; while( TIMER_REGS[ 0x0c + timer ] );
 }
 
 // SET THE 1khz COUNTDOWN TIMER
 void set_timer1khz( unsigned short counter, unsigned char timer ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    TIMER_REGS_H[ 0x0a + timer ] = counter;
+    TIMER_REGS[ 0x0a + timer ] = counter;
 }
 
 // READ THE 1khz COUNTDOWN TIMER
 unsigned short get_timer1khz( unsigned char timer  ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    return( TIMER_REGS_H[ 0x0a + timer ] );
+    return( TIMER_REGS[ 0x0a + timer ] );
 }
 
 // WAIT FOR THE 1khz COUNTDOWN TIMER
 void wait_timer1khz( unsigned char timer  ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    while( TIMER_REGS_H[ 0x0a + timer ] );
+    while( TIMER_REGS[ 0x0a + timer ] );
 }
 
 // READ THE 1hz TIMER
 unsigned short get_timer1hz( unsigned char timer  ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    return( TIMER_REGS_H[ 0x08 + timer ] );
+    return( TIMER_REGS[ 0x08 + timer ] );
 }
 
 // RESET THE 1hz TIMER
 void reset_timer1hz( unsigned char timer  ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    TIMER_REGS_H[ 0x08 + timer ] = 0;
+    TIMER_REGS[ 0x08 + timer ] = 0;
 }
 
 // SYSTEM CLOCK, SECONDS SINCE RESET
@@ -228,13 +212,11 @@ void set_volume( unsigned char left, unsigned char right ) {
     *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
 }
 void await_beep( unsigned char channel_number ) {
-    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
-    while( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) ) {}
+    while( ( ( channel_number & 1) & *AUDIO_L_ACTIVE ) | ( ( channel_number & 2) & *AUDIO_R_ACTIVE ) ) {}
 }
 
 unsigned short get_beep_active( unsigned char channel_number ) {
-    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
-    return( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) );
+    return( ( ( channel_number & 1) & *AUDIO_L_ACTIVE ) | ( ( channel_number & 2) & *AUDIO_R_ACTIVE ) );
 }
 
 // USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
@@ -515,10 +497,7 @@ unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char act
 
 // SET GPU DITHER MODE AND ALTERNATIVE COLOUR
 void gpu_dither( unsigned char mode, unsigned char colour ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    //*GPU_COLOUR_ALT = colour; *GPU_DITHERMODE = mode;
-    wait_gpu(); GPU_REGS_B[0x12] = colour; GPU_REGS_B[0x14] = mode;
+    wait_gpu(); *GPU_COLOUR_ALT = colour; *GPU_DITHERMODE = mode;
 }
 
 // SET GPU CROPPING RECTANGLE
@@ -530,6 +509,10 @@ void gpu_crop( short left, short top, short right, short bottom ) {
 // SET THE PIXEL at (x,y) to colour
 void gpu_pixel( unsigned char colour, short x, short y ) {
     *GPU_COLOUR = colour; *GPU_X = x; *GPU_Y = y;
+    *GPU_WRITE = 1;
+}
+void gpu_pixel_RGB( unsigned int colour, short x, short y ) {
+    *GPU_COLOURRGB = colour; *GPU_X = x; *GPU_Y = y;
     *GPU_WRITE = 1;
 }
 
@@ -2410,7 +2393,7 @@ int bcdtobin( int bcd ) {
 }
 // CONVERT ULX3S BCD RTC TO LINUX EPOCH TIME
 void paws_settime( void ) {
-    struct tm calendar; uint64_t rtc = *((uint64_t *)RTC), sinceepoch;
+    struct tm calendar; uint64_t rtc = *RTC, sinceepoch;
 
     calendar.tm_sec = bcdtobin( ( rtc & 0x00000000000000ff ) >> 0 );
     calendar.tm_min = bcdtobin( ( rtc & 0x000000000000ff00 ) >> 8 );
@@ -2420,7 +2403,7 @@ void paws_settime( void ) {
     calendar.tm_year = 2000 + bcdtobin( ( rtc & 0x00ff000000000000 ) >> 48 ) - 1900;
     calendar.tm_wday = 0; calendar.tm_yday = 0; calendar.tm_isdst = 0;
     sinceepoch = mktime( &calendar );
-    TIMER_REGS[8] = (int)(sinceepoch & 0xffffffff); TIMER_REGS[9] = (int)(sinceepoch >> 32); TIMER_REGS[10] = 0xffffffff;
+    *SET_RTC_TIME = sinceepoch; *SET_RTC = 1;;
 }
 int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
     int *storage = (int *)tv;

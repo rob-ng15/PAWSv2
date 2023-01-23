@@ -16,7 +16,6 @@ char ps2_event_available( void ) {
 
 // RETURN THE PS/2 KEY EVENT { press/release, extended, keycode }
 unsigned short ps2_event_get( void ) {
-    while( !*PS2_AVAILABLE ) {}
     return *PS2_DATA;
 }
 

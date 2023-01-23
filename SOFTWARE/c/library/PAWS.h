@@ -70,6 +70,7 @@ short volatile *GPU_PARAM3 = (short volatile *) 0xd60a;
 short volatile *GPU_PARAM4 = (short volatile *) 0xd60c;
 short volatile *GPU_PARAM5 = (short volatile *) 0xd60e;
 unsigned char volatile *GPU_COLOUR = (unsigned char volatile *) 0xd610;
+unsigned int volatile *GPU_COLOURRGB = (unsigned int volatile *) 0xd610;
 unsigned char volatile *GPU_COLOUR_ALT = (unsigned char volatile *) 0xd612;
 unsigned char volatile *GPU_DITHERMODE = (unsigned char volatile *) 0xd614;
 unsigned char volatile *GPU_WRITE = (unsigned char volatile *) 0xd616;
@@ -172,15 +173,18 @@ unsigned char volatile *AUDIO_R_VOLUME = (unsigned char volatile *) 0xe012;
 unsigned short volatile *RNG = (unsigned short volatile *) 0xc000;
 unsigned short volatile *ALT_RNG = (unsigned short volatile *) 0xc002;
 float volatile *FRNG = (float volatile *) 0xc004;
+unsigned short volatile *TIMER_REGS = (unsigned short volatile *) 0xc000;
 unsigned short volatile *TIMER1HZ0 = (unsigned short volatile *) 0xc010;
 unsigned short volatile *TIMER1HZ1 = (unsigned short volatile *) 0xc012;
 unsigned short volatile *TIMER1KHZ0 = (unsigned short volatile *) 0xc014;
 unsigned short volatile *TIMER1KHZ1 = (unsigned short volatile *) 0xc016;
 unsigned short volatile *SLEEPTIMER0 = (unsigned short volatile *) 0xc018;
 unsigned short volatile *SLEEPTIMER1 = (unsigned short volatile *) 0xc01a;
+unsigned long volatile *SET_RTC_TIME = (unsigned long volatile *) 0xc020;
 unsigned int volatile *SYSTEMSECONDS = (unsigned int volatile *) 0xc020;
 unsigned int volatile *SYSTEMMILLISECONDS = (unsigned int volatile *)0xc028;
-unsigned int volatile *RTC = (unsigned int volatile *) 0xf600;
+unsigned char volatile *SET_RTC = (unsigned char volatile *)0xc02a;
+unsigned long volatile *RTC = (unsigned long volatile *) 0xf600;
 int volatile *PAWSMAGIC = (int volatile *) 0xf700;
 
 // HANDLE SMT - RUNNING STATUS AND POINTER TO CODE TO RUN
@@ -196,12 +200,3 @@ unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
 unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
-
-// HARDWARE REGISTER BASES
-int volatile *TIMER_REGS = (int volatile *) 0xc000;
-int volatile *GPU_REGS = (int volatile *) 0xd600;
-int volatile *DISPLAY_REGS = (int volatile *) 0xdf00;
-int volatile *AUDIO_REGS = (int volatile *) 0xe000;
-int volatile *IO_REGS = (int volatile *) 0xf000;
-int volatile *DMA_REGS = (int volatile *) 0xfe00; int volatile *DMA_REGS_ALT = (int volatile *) 0xfd00;
-

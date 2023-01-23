@@ -87,6 +87,7 @@ extern unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned c
 extern void gpu_dither( unsigned char , unsigned char );
 extern void gpu_crop( unsigned short, unsigned short, unsigned short, unsigned short );
 extern void gpu_pixel( unsigned char, short, short );
+extern void gpu_pixel_RGB( unsigned int colour, short x, short y );
 extern void gpu_rectangle( unsigned char, short, short, short, short );
 extern void gpu_box( unsigned char, short, short, short, short, unsigned short );
 extern void gpu_cs( void );

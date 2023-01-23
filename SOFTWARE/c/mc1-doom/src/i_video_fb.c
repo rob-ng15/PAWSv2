@@ -39,22 +39,15 @@ unsigned char PAWSKEYlookup[] = {
 };
 
 void I_InitGraphics (void) {
-    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    unsigned char volatile *DISPLAY_REGS_B = (unsigned char volatile *)DISPLAY_REGS;
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS; short volatile *GPU_REGS_H = (short volatile *)GPU_REGS;
-
     // Only initialize once.
     static int initialized = 0;
     if (initialized)
         return;
     initialized = 1; screens[0] = (byte*)0x2020000;
 
-    DISPLAY_REGS_B[0x00] = 0; DISPLAY_REGS_B[0x01] = MODE_RGBM; DISPLAY_REGS_B[0x02] = 0; DISPLAY_REGS_B[0x15] = TRUE;         // Setup video hardware, RGBM, 256 colours with palette
-    GPU_REGS_B[0x7a] = PB_WRITEALL; GPU_REGS_B[0xf4] = TRUE;  GPU_REGS_B[0xf2] = 2; GPU_REGS_B[0xf0] = 1;                      // DRAW TO FB 1 , DISPLAY FB 0, BITMAP DISPLAY 256, PIXELBLOCK WRITE 256
-
-    DMA_REGS_B[0x0e] = 0; DMA_REGS[0] = (long)&DMA_REGS_B[0x0e];                                                                // CLEAR THE FRAMEBUFFERS USING MEMSET
-    DMA_REGS[1] = 0x2000000; DMA_REGS[2] = 320*240; DMA_REGS_B[0x0c] = 4;
-    DMA_REGS[1] = 0x2020000; DMA_REGS_B[0x0c] = 4;
+    screen_mode( 0, MODE_RGBM, 0 ); bitmap_256( TRUE );
+    bitmap_display( 1 ); bitmap_draw( 2 ); bitmap_256( TRUE ); use_palette( TRUE ); gpu_pixelblock_mode( PB_WRITEALL );
+    memset( (void *restrict)0x2000000, 0, 320*240 ); memset( (void *restrict)0x2020000, 0, 320*240 );
 }
 
 void I_ShutdownGraphics (void) {
@@ -76,20 +69,19 @@ unsigned char PAWSKEYtoDOOM( unsigned short keycode ) {
         case 0x16b: return KEY_LEFTARROW;
         case 0x114: return KEY_RCTRL;
         case 0x111: return KEY_RALT;
-        default:    return keycode & 0x100 ? 0 : PAWSKEYlookup[ keycode ];
+        default:    return keycode & 0x100 ? 0 : PAWSKEYlookup[ keycode & 0xff ];
     }
 }
 
 void I_StartTic (void) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS; short volatile *IO_REGS_H = (short volatile *)IO_REGS;
     event_t event; unsigned short keycode, doomkeycode;
 
-    if( IO_REGS_B[ 0x100 ] ) {
-        keycode = IO_REGS_H[ 0x81 ];
+    if( ps2_event_available() ) {
+        keycode = ps2_event_get();
         doomkeycode = PAWSKEYtoDOOM( keycode & 0x1ff );
         if( doomkeycode ) {
             event.data1 = doomkeycode;
-            event.type = (keycode&256)>>8; D_PostEvent( &event );
+            event.type = (keycode&512) != 0; D_PostEvent( &event );
         }
     }
 }
@@ -99,19 +91,16 @@ void I_UpdateNoBlit (void) {
 }
 
 void I_FinishUpdate (void) {
-    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    DMA_REGS[0] = (long)screens[0]; DMA_REGS[1] = 0x2001900; DMA_REGS[2] = FB_WIDTH * FB_HEIGHT; DMA_REGS_B[0x0c] = 3;                            // COPY THE WORK SCREEN TO VISIBLE, CENTRE VERTICALLY
+    memcpy( (void *restrict)0x2001900, screens[0], FB_WIDTH * FB_HEIGHT );
 }
 
 void I_ReadScreen (byte* scr) {
-    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    DMA_REGS[0] = (long)screens[0]; DMA_REGS[1] = (long)scr; DMA_REGS[2] = SCREENWIDTH * SCREENHEIGHT; DMA_REGS_B[0x0c] = 3;                       // COPY THE WORK SCREEN TO VISIBLE, CENTRE VERTICALLY
+    memcpy( scr, screens[0], SCREENWIDTH * SCREENHEIGHT );
 }
 
 // SET THE NEW PALETTE
 void I_SetPalette (byte* palette) {
-    unsigned char volatile *DISPLAY_REGS_B = (unsigned char volatile *)DISPLAY_REGS;
     for (int i = 0; i < 256; i++) {
-        DISPLAY_REGS_B[0x14] = i; DISPLAY_REGS[0x04] = ( gammatable[usegamma][*palette++] << 16 ) + ( gammatable[usegamma][*palette++] << 8 ) + gammatable[usegamma][*palette++];
+        set_palette( i, ( gammatable[usegamma][*palette++] << 16 ) + ( gammatable[usegamma][*palette++] << 8 ) + gammatable[usegamma][*palette++] );
     }
 }
