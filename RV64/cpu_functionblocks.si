@@ -17,8 +17,6 @@ unit control(
     output  uint7   function7,
     output  uint5   rs1,
     output  uint5   rs2,
-    output  uint5   rs3,
-    output  uint5   rd,
     output  uint12  csrRegister,
     output  uint64  immediateValue,
     output  uint1   IS_AUIPCLUI,
@@ -39,11 +37,15 @@ unit control(
     input   uint1   frd,
     input   uint1   write,
     input   uint64  result,
-    output  uint64  sourceReg1,
-    output  uint64  sourceReg2,
+    output! uint64  sourceReg1,
+    output  uint32  S1_abs32,
+    output  uint64  S1_abs64,
+    output! uint64  sourceReg2,
+    output  uint32  S2_abs32,
+    output  uint64  S2_abs64,
     output! uint64  sourceReg1F,
     output! uint64  sourceReg2F,
-    output  uint64  sourceReg3F,
+    output! uint64  sourceReg3F,
     output  uint4   typeAF,
     output  uint4   typeAS,
     output  uint4   typeAD,
@@ -87,13 +89,6 @@ unit control(
     );
     uint1   takeBranch = uninitialized;
 
-    // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
-    typeF class1F( df <: function7[0,1], a <: sourceReg1F, type :> typeAF );
-    typeF class2F( df <: function7[0,1], a <: sourceReg2F, type :> typeBF );
-    typeF class3F( df <: function7[0,1], a <: sourceReg3F, type :> typeCF );
-    typeF class1D( a <: sourceReg1F, type :> typeAD );  // FORCE CLASSIFICATION OF DOUBLE
-    typeF class1S( a <: sourceReg1F, type :> typeAS );  // FORCE CLASSIFICATION OF SINGLE
-
     // REGISTERS I integer x 2, F float x 3, 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
     $$for i=0,1 do
@@ -105,15 +100,35 @@ unit control(
     $$end
 
     // REGISTER WRITE SWITCHES
-    uint1   I0write <:: ~COMMIT_SMT & write & ~frd & |rd;  uint1   F0write <:: ~COMMIT_SMT & write & frd;   // HART 0 (MAIN)
-    uint1   I1write <:: COMMIT_SMT & write & ~frd & |rd;   uint1   F1write <:: COMMIT_SMT & write & frd;    // HART 1 (SMT)
+    uint1   Iwrite <:: write & ~frd & |Rtype(instruction).destReg;  uint1   Fwrite <:: write & frd;
+
+    regR I1R( SMT <: SMT, regfile0 <:> I1_0, regfile1 <:> I1_1, addr0 <: Rtype(instruction).sourceReg1, rdata0 :> sourceReg1 );
+    regR I2R( SMT <: SMT, regfile0 <:> I2_0, regfile1 <:> I2_1, addr0 <: Rtype(instruction).sourceReg2, rdata0 :> sourceReg2 );
+    regR F1R( SMT <: SMT, regfile0 <:> F1_0, regfile1 <:> F1_1, addr0 <: R4type(instruction).sourceReg1, rdata0 :> sourceReg1F );
+    regR F2R( SMT <: SMT, regfile0 <:> F2_0, regfile1 <:> F2_1, addr0 <: R4type(instruction).sourceReg2, rdata0 :> sourceReg2F );
+    regR F3R( SMT <: SMT, regfile0 <:> F3_0, regfile1 <:> F3_1, addr0 <: R4type(instruction).sourceReg3, rdata0 :> sourceReg3F );
+    regW I1W( SMT <: COMMIT_SMT, regfile0 <:> I1_0, regfile1 <:> I1_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );
+    regW I2W( SMT <: COMMIT_SMT, regfile0 <:> I2_0, regfile1 <:> I2_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );
+    regW F1W( SMT <: COMMIT_SMT, regfile0 <:> F1_0, regfile1 <:> F1_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+    regW F2W( SMT <: COMMIT_SMT, regfile0 <:> F2_0, regfile1 <:> F2_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+    regW F3W( SMT <: COMMIT_SMT, regfile0 <:> F3_0, regfile1 <:> F3_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+
+    // ABSOLUTE VALUES OF sourceReg1 and sourceReg2
+    abs3264 S1_abs( sourceReg <: I1R.rdata0, abs32 :> S1_abs32, abs64 :> S1_abs64 ); abs3264 S2_abs( sourceReg <: I2R.rdata0, abs32 :> S2_abs32, abs64 :> S2_abs64 );
+
+    // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
+    typeF class1F( df <: function7[0,1], a <: F1R.rdata0, type :> typeAF );
+    typeF class2F( df <: function7[0,1], a <: F2R.rdata0, type :> typeBF );
+    typeF class3F( df <: function7[0,1], a <: F3R.rdata0, type :> typeCF );
+    typeF class1D( a <: F1R.rdata0, type :> typeAD );  // FORCE CLASSIFICATION OF DOUBLE
+    typeF class1S( a <: F1R.rdata0, type :> typeAS );  // FORCE CLASSIFICATION OF SINGLE
 
     // JUMP AND BRANCH DESTINATIONS
     uint$addr_width$ jumpAddress <:: { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
     uint$addr_width$ branchAddress <:: { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
 
     // 2ND OPERAND FOR COMPARISONS
-    int64   operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
+    int64   operand2 <:: opCode[3,1] ? I2R.rdata0 : immediateValue;
 
     // FLAGS FOR BRANCH
     uint4   flags <:: { LTU, LT, 1b0, EQ };
@@ -131,29 +146,7 @@ unit control(
         // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
         { rs1 = Rtype(instruction).sourceReg1; }
         { rs2 = Rtype(instruction).sourceReg2; }
-        { rs3 = R4type(instruction).sourceReg3; }
-        { rd = Rtype(instruction).destReg; }
         { csrRegister = CSR(instruction).csr; }
-
-        // FETCH REGISTERS FROM REGISTER FILE
-        $$for i=0,1 do
-        { I1_$i$.addr0 = rs1; } { I2_$i$.addr0 = rs2; } { F1_$i$.addr0 = rs1; } { F2_$i$.addr0 = rs2; } { F3_$i$.addr0 = rs3; }
-        $$end
-
-        // WRITE RESULT TO REGISTER FILE
-        $$for i=0,1 do
-        { I1_$i$.addr1 = rd; } { I2_$i$.addr1 = rd; } { F1_$i$.addr1 = rd; } { F2_$i$.addr1 = rd; } { F3_$i$.addr1 = rd; }
-        { I1_$i$.wdata1 = result; } { I2_$i$.wdata1 = result; }
-        { F1_$i$.wdata1 = result; } { F2_$i$.wdata1 = result; } { F3_$i$.wdata1 = result; }
-        { I1_$i$.wenable1 = I$i$write; } { I2_$i$.wenable1 = I$i$write; } { F1_$i$.wenable1 = F$i$write; } { F2_$i$.wenable1 = F$i$write; } { F3_$i$.wenable1 = F$i$write; }
-        $$end
-
-        // SELECT SOURCE REGISTERS FROM APPROPRIATE HART
-        { sourceReg1 = SMT ? I1_1.rdata0 : I1_0.rdata0; }
-        { sourceReg2 = SMT ? I2_1.rdata0 : I2_0.rdata0; }
-        { sourceReg1F = SMT ? F1_1.rdata0 : F1_0.rdata0; }
-        { sourceReg2F = SMT ? F2_1.rdata0 : F2_0.rdata0; }
-        { sourceReg3F = SMT ? F3_1.rdata0 : F3_0.rdata0; }
 
         // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32 ELSE BY function3
         { accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? function3[0,2] : 2b10; }
@@ -163,15 +156,49 @@ unit control(
 
         // ADDRESS GENRATION
         { AUIPCLUI = { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC ); }
-        { loadAddress = ( FLAGS.IS_ATOMIC ? 0 : immediateValue ) + sourceReg1[0,$addr_width$]; }
-        { storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + sourceReg1[0,$addr_width$]; }
+        { loadAddress = ( FLAGS.IS_ATOMIC ? 0 : immediateValue ) + I1R.rdata0[0,$addr_width$]; }
+        { storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R.rdata0[0,$addr_width$]; }
         { nextPC = PC + ( compressed ? 2 : 4 ); }
         { newPC = ( FLAGS.incPC ) ? ( FLAGS.IS_BRANCH & takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress ); }
 
         // COMPARISON
-        { LT = __signed( sourceReg1 ) < __signed( operand2 ); }
-        { LTU = __unsigned( sourceReg1 ) < __unsigned( operand2 ); }
-        { EQ = sourceReg1 == ( operand2 ); }
+        { LT = __signed( I1R.rdata0 ) < __signed( operand2 ); }
+        { LTU = __unsigned( I1R.rdata0 ) < __unsigned( operand2 ); }
+        { EQ = I1R.rdata0 == ( operand2 ); }
+    }
+}
+
+// REGISTER READ AND WRITE BLOCKS
+unit regR(
+    input   uint1   SMT,
+    simple_dualport_bram_port0 regfile0,
+    simple_dualport_bram_port0 regfile1,
+    input   uint5   addr0,
+    output! uint64  rdata0
+) <reginputs> {
+    regfile0.addr0 := addr0; regfile1.addr0 := addr0; rdata0 := SMT ? regfile1.rdata0 : regfile0.rdata0;
+}
+unit regW(
+    input   uint1   SMT,
+    simple_dualport_bram_port1 regfile0,
+    simple_dualport_bram_port1 regfile1,
+    input   uint5   addr1,
+    input   uint1   wenable1,
+    input   uint64  wdata1
+) <reginputs> {
+    regfile0.addr1 := addr1; regfile0.wdata1 := wdata1; regfile0.wenable1 := ~SMT & wenable1;
+    regfile1.addr1 := addr1; regfile1.wdata1 := wdata1; regfile1.wenable1 := SMT & wenable1;
+}
+
+// ABSOLUTE VALUES FOR 32 AND 64 BIT REGISTER CONTENTS
+unit abs3264(
+    input   uint64  sourceReg,
+    output  uint32  abs32,
+    output  uint64  abs64
+) <reginputs> {
+    always_after {
+        abs32 = sourceReg[31,1] ? -sourceReg[0,32] : sourceReg[0,32];
+        abs64 = sourceReg[63,1] ? -sourceReg : sourceReg;
     }
 }
 
@@ -520,14 +547,3 @@ unit CSRblock(
     }
 }
 
-// ABSOLUTE VALUES FOR 32 AND 64 BIT REGISTER CONTENTS
-unit abs3264(
-    input   uint64  sourceReg,
-    output  uint32  abs32,
-    output  uint64  abs64
-) <reginputs> {
-    always_after {
-        abs32 = sourceReg[31,1] ? -sourceReg[0,32] : sourceReg[0,32];
-        abs64 = sourceReg[63,1] ? -sourceReg : sourceReg;
-    }
-}

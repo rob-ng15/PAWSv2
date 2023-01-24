@@ -89,12 +89,8 @@ typedef enum
 
 // Actual rendering resolution.
 // TODO(m): We can't set this too high, or Doom will crash.
-#ifndef SCREENWIDTH
-#define SCREENWIDTH BASE_WIDTH
-#endif
-#ifndef SCREENHEIGHT
-#define SCREENHEIGHT BASE_HEIGHT
-#endif
+#define SCREENWIDTH 320
+#define SCREENHEIGHT 200
 
 // Convert 320x200 coordinates to rendering coordinates.
 #define TOSCREENX(x) (((x)*SCREENWIDTH+(BASE_WIDTH/2))/BASE_WIDTH)

@@ -71,7 +71,11 @@ unit PAWSCPU(
         rs2 <: RV64CONTROL.rs2,
         csrRegister <: RV64CONTROL.csrRegister,
         sourceReg1 <: RV64CONTROL.sourceReg1,
+        S1_abs32 <: RV64CONTROL.S1_abs32,
+        S1_abs64 <: RV64CONTROL.S1_abs64,
         sourceReg2 <: RV64CONTROL.sourceReg2,
+        S2_abs32 <: RV64CONTROL.S2_abs32,
+        S2_abs64 <: RV64CONTROL.S2_abs64,
         sourceReg1F <: RV64CONTROL.sourceReg1F,
         sourceReg2F <: RV64CONTROL.sourceReg2F,
         sourceReg3F <: RV64CONTROL.sourceReg3F,
@@ -299,7 +303,11 @@ unit cpuexecuteSLOWPATH(
     input   uint5   rs2,
     input   uint12  csrRegister,
     input   int64   sourceReg1,
+    input   uint32  S1_abs32,
+    input   uint64  S1_abs64,
     input   int64   sourceReg2,
+    input   uint32  S2_abs32,
+    input   uint64  S2_abs64,
     input   uint64  sourceReg1F,
     input   uint64  sourceReg2F,
     input   uint64  sourceReg3F,
@@ -321,11 +329,9 @@ unit cpuexecuteSLOWPATH(
 ) <reginputs> {
     // Classify the instruction
     uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( ( function7[2,5] == 5b11010 ) | ( function7[2,5] == 5b11000 ) | ( function7[2,5] == 5b01000 ) );
-    uint6   converttype <:: {
-                                ( function7[2,5] == 5b11000 ) & rs2[1,1],                                                       // FD2L
-                                ( function7[2,5] == 5b11000 ) & ~rs2[1,1],                                                      // FD2I
-                                ( function7 == 7b1101001 ),                                                                     // IL2D
-                                ( function7 == 7b1101000 ),                                                                     // IL2F
+    uint4   converttype <:: {
+                                ( function7[2,5] == 5b11000 ),                                                                  // FD2IL
+                                ( function7[2,5] == 7b11010 ),                                                                  // IL2FD
                                 ( function7 == 7b0100001 ),                                                                     // F2D
                                 ( function7 == 7b0100000 )                                                                      // D2F
                             };
@@ -334,14 +340,11 @@ unit cpuexecuteSLOWPATH(
     uint4   operation <:: { ~|{fpufast,isATOMIC,isCSR}, fpufast, isATOMIC, isCSR };
     uint1   unitbusy <:: FPUCALC.busy | ALUMD.busy;
 
-    // ABSOLUTE VALUES
-    abs3264 S1_abs( sourceReg <: sourceReg1 ); abs3264 S2_abs( sourceReg <: sourceReg2 );
-
     // M EXTENSION - DIVISION
     aludivision ALUMD(
         size32 <: size32, function3 <: function3[0,2],
-        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs.abs32, S1_abs64 <: S1_abs.abs64,
-        sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs.abs32, S2_abs64 <: S2_abs.abs64
+        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64,
+        sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
     );
 
     // ATOMIC MEMORY OPERATIONS
@@ -357,22 +360,17 @@ unit cpuexecuteSLOWPATH(
     );
 
     // FLOATING POINT FAST OPERATIONS
-    intlong2float FPUIL2F( dounsigned <: rs2[0,1], il <: rs2[1,1], sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs.abs32, S1_abs64 <: S1_abs.abs64, FPUflags <: CSR.FPUflags );
-    intlong2double FPUIL2D( dounsigned <: rs2[0,1], il <: rs2[1,1], sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs.abs32, S1_abs64 <: S1_abs.abs64, FPUflags <: CSR.FPUflags );
-    floatdouble2int FPUFD2I( dounsigned <: rs2[0,1], df <: function7[0,1], sourceReg1F <: sourceReg1F, typeAF <: typeAF, FPUflags <: CSR.FPUflags );
-    floatdouble2long FPUFD2L( dounsigned <: rs2[0,1], df <: function7[0,1], sourceReg1F <: sourceReg1F, typeAF <: typeAF, FPUflags <: CSR.FPUflags );
+
+    intlong2floatdouble FPUIL2FD( dounsigned <: rs2[0,1], il <: rs2[1,1], df <: function7[0,1], sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64, FPUflags <: CSR.FPUflags );
+    floatdouble2intlong FPUFD2IL( dounsigned <: rs2[0,1], il <: rs2[1,1], df <: function7[0,1], sourceReg1F <: sourceReg1F, typeAF <: typeAF, FPUflags <: CSR.FPUflags );
     float2double FPUF2D( sourceReg1F <: sourceReg1F[0,32], typeAF <: typeAS, FPUflags <: CSR.FPUflags );
     double2float FPUD2F( sourceReg1F <: sourceReg1F, typeAF <: typeAD, FPUflags <: CSR.FPUflags );
-    uint64  convertresult <:: converttype[5,1] ? FPUFD2L.result :
-                              converttype[4,1] ? FPUFD2I.result :
-                              converttype[3,1] ? FPUIL2D.result :
-                              converttype[2,1] ? FPUIL2F.result :
+    uint64  convertresult <:: converttype[3,1] ? FPUFD2IL.result :
+                              converttype[2,1] ? FPUIL2FD.result :
                               converttype[1,1] ? FPUF2D.result :
                                                  FPUD2F.result;
-    uint5   convertflags  <:: converttype[5,1] ? FPUFD2L.FPUnewflags :
-                              converttype[4,1] ? FPUFD2I.FPUnewflags :
-                              converttype[3,1] ? FPUIL2D.FPUnewflags :
-                              converttype[2,1] ? FPUIL2F.FPUnewflags :
+    uint5   convertflags  <:: converttype[3,1] ? FPUFD2IL.FPUnewflags :
+                              converttype[2,1] ? FPUIL2FD.FPUnewflags :
                               converttype[1,1] ? FPUF2D.FPUnewflags :
                                                  FPUD2F.FPUnewflags;
 
@@ -443,7 +441,7 @@ unit cpuexecuteSLOWPATH(
                 }
             }
         }
-        { frd = fpuconvert ? ( |converttype[0,4] ) : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
+        { frd = fpuconvert ? ( |converttype[0,3] ) : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
     }
 }
 
@@ -457,7 +455,7 @@ unit cpuexecuteFASTPATH(
     input   int64   sourceReg1,
     input   int64   sourceReg2,
     input   uint64  sourceReg2F,
-    input   int64  immediateValue,
+    input   int64   immediateValue,
     input   int64   memoryinput,
     input   uint64  AUIPCLUI,
     input   uint$addr_width$  nextPC,
@@ -485,7 +483,7 @@ unit cpuexecuteFASTPATH(
         { result = isAUIPCLUI ? AUIPCLUI :                                                                                      // LUI AUIPC
                    isJAL ? nextPC :                                                                                             // JAL[R]
                    isLOAD ? ( ( opCode == 5b00001 ) & ~&function3[0,2] ) ? { 32hffffffff, memoryinput[0,32] } : memoryinput :   // [FLOAT]LOAD ( NAN BOX 32 BIT FLOAD LOADS )
-                   size32 ? { {32{ALU.result[31,1]}}, ALU.result[0,32] }  : ALU.result; }                                       // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
+                   size32  ? { {32{ALU.result[31,1]}}, ALU.result[0,32] } : ALU.result; }                                       // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
         { if( isFENCE ) { fenceACTIVE = { |function7[1,2], ~function3[0,1] }; } }                                               // SET FENCE ACTIVE { IO, MEM }
                                                                                                                                 // IO STOPS THREAD SWITCHING, MEM RESETS L0CACHE (after load)
     }

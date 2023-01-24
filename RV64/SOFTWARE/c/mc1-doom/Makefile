@@ -22,7 +22,7 @@ i_net_dummy.o \
 info.o \
 i_sound_paws.o \
 i_system.o \
-i_video_fb.o \
+i_video_paws.o \
 m_argv.o \
 m_bbox.o \
 m_cheat.o \
@@ -85,7 +85,7 @@ $(BUILD_DIR)/i_net_dummy.o \
 $(BUILD_DIR)/info.o \
 $(BUILD_DIR)/i_sound_paws.o \
 $(BUILD_DIR)/i_system.o \
-$(BUILD_DIR)/i_video_fb.o \
+$(BUILD_DIR)/i_video_paws.o \
 $(BUILD_DIR)/m_argv.o \
 $(BUILD_DIR)/m_bbox.o \
 $(BUILD_DIR)/m_cheat.o \
