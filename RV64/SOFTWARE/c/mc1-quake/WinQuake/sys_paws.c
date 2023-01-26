@@ -19,16 +19,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
-#ifdef MC1_SDK
-#include <mc1/newlib_integ.h>
-#endif
-
 #include "quakedef.h"
 #include "errno.h"
-#include "mc1.h"
 
 #include <stdint.h>
 #include <sys/time.h>
+
+#include <PAWSlibrary.h>
 
 // Memory config.
 #define HEAP_SIZE_MB 16
@@ -37,7 +34,7 @@ qboolean isDedicated;
 
 static int Sys_TranslateKey (unsigned keycode)
 {
-	// clang-format off
+/*	// clang-format off
     switch (keycode)
     {
         case KB_SPACE:         return K_SPACE;
@@ -116,24 +113,20 @@ static int Sys_TranslateKey (unsigned keycode)
         default:
             return 0;
     }
-	// clang-format on
+*/	// clang-format on
 }
-
-static unsigned s_keyptr;
 
 static qboolean Sys_PollKeyEvent (void)
 {
-	unsigned keyptr, keycode;
+	unsigned keycode;
 	int quake_key;
 
 	// Check if we have any new keycode from the keyboard.
-	keyptr = GET_MMIO (KEYPTR);
-	if (s_keyptr == keyptr)
+	if (!ps2_event_available())
 		return false;
 
 	// Get the next keycode.
-	++s_keyptr;
-	keycode = GET_KEYBUF (s_keyptr % KEYBUF_SIZE);
+	keycode = ps2_event_get();
 
 	// Translate the MC1 keycode to a Quake keycode.
 	quake_key = Sys_TranslateKey (keycode & 0x1ff);
@@ -273,11 +266,11 @@ void Sys_Error (char *error, ...)
 {
 	va_list argptr;
 
-	printf ("Sys_Error: ");
+	fprintf (stderr,"Sys_Error: ");
 	va_start (argptr, error);
-	vprintf (error, argptr);
+	vfprintf (stderr,error, argptr);
 	va_end (argptr);
-	printf ("\n");
+	fprintf (stderr,"\n");
 
 	exit (1);
 }
@@ -287,7 +280,7 @@ void Sys_Printf (char *fmt, ...)
 	va_list argptr;
 
 	va_start (argptr, fmt);
-	vprintf (fmt, argptr);
+	vfprintf (stderr,fmt, argptr);
 	va_end (argptr);
 }
 
@@ -374,10 +367,6 @@ void main (int argc, char **argv)
 	double oldtime, newtime;
 	float time;
 
-#ifdef MC1_SDK
-	mc1newlib_init(MC1NEWLIB_ALL & ~MC1NEWLIB_CONSOLE);
-#endif
-
 	parms.memsize = HEAP_SIZE_MB * 1024 * 1024;
 	parms.membase = malloc (parms.memsize);
 	parms.basedir = ".";
@@ -387,10 +376,9 @@ void main (int argc, char **argv)
 	parms.argc = com_argc;
 	parms.argv = com_argv;
 
-	printf ("Host_Init\n");
+	fprintf (stderr,"Host_Init\n");
 	Host_Init (&parms);
 
-	s_keyptr = GET_MMIO (KEYPTR);
 	oldtime = Sys_FloatTime () - 0.1;
 	while (1)
 	{

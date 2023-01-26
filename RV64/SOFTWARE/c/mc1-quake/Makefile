@@ -68,11 +68,11 @@ QUAKE_OBJECTS= \
 	net_loop.o \
 	net_main.o \
 	net_vcr.o \
-	in_mc1.o \
+	in_paws.o \
 	net_none.o \
 	snd_null.o \
-	sys_mc1.o \
-	vid_mc1.o
+	sys_paws.o \
+	vid_paws.o
 
 QUAKE_BUILD_OBJECTS= \
 	$(BUILD_DIR)/chase.o \
@@ -137,11 +137,11 @@ QUAKE_BUILD_OBJECTS= \
 	$(BUILD_DIR)/net_loop.o \
 	$(BUILD_DIR)/net_main.o \
 	$(BUILD_DIR)/net_vcr.o \
-	$(BUILD_DIR)/in_mc1.o \
+	$(BUILD_DIR)/in_paws.o \
 	$(BUILD_DIR)/net_none.o \
 	$(BUILD_DIR)/snd_null.o \
-	$(BUILD_DIR)/sys_mc1.o \
-	$(BUILD_DIR)/vid_mc1.o
+	$(BUILD_DIR)/sys_paws.o \
+	$(BUILD_DIR)/vid_paws.o
 
 $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).P64 :$(BUILD_DIR)/quake.elf
 	$(ARCH)-elf-objcopy -O binary $< $@

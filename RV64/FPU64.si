@@ -66,147 +66,6 @@ unit fpuSINGLECYCLE(
     }
 }
 
-// CONVERSION FCVT.dest.source
-unit fpuclz64(
-    input   uint64  number,
-    output! uint7   zeros
-) <reginputs> {
-    always_after {
-        ( zeros ) = clz_silice_64( number );
-    }
-}
-unit intlong2floatdouble(
-    input   uint1   dounsigned,
-    input   uint1   il,
-    input   uint1   df,
-    input   uint64  sourceReg1,
-    input   uint32  S1_abs32,
-    input   uint64  S1_abs64,
-    output  uint64  result,
-    input   uint5   FPUflags,
-    output  uint5   FPUnewflags
-) <reginputs> {
-    // COUNT LEADING ZEROS - RETURNS NX IF NUMBER IS TOO LARGE
-    fpuclz64 CLZ( number <: number );
-    uint1   sign <:: ~dounsigned & sourceReg1[ il ? 63 : 31, 1 ];
-    uint64  number <:: il ? sign ? S1_abs64 : sourceReg1 : sign ? S1_abs32 : sourceReg1[0,32];
-    uint1   NX <:: df ? ( il ? ( CLZ.zeros < 10 ) : 0 ) : ( il ? 0 : ( CLZ.zeros < 40 ) );
-    int13   exponent <:: ( df ? 1086 : 190 ) - CLZ.zeros;
-    uint64  fraction <:: number << CLZ.zeros;
-
-    always_after {
-        {
-            // FLOAT RESULT RESULT IS NAN BOXED
-            result =  df ? ( il ? |sourceReg1 : |sourceReg1[0,32] ) ? { sign, exponent[0,11], fraction[11,52] } : 64h00000000000 :
-                           ( il ? |sourceReg1 : |sourceReg1[0,32] ) ? { 32hffffffff, sign, exponent[0,8], fraction[40,23] } : 64hffffffff00000000;
-        }
-        { FPUnewflags = FPUflags | { 4b0, NX }; }                                                                               // FLAGS
-    }
-}
-
-unit floatdouble2intlong(
-    input   uint1   dounsigned,
-    input   uint1   il,
-    input   uint1   df,
-    input   uint64  sourceReg1F,
-    input   uint4   typeAF,
-    output  uint64  result,
-    input   uint5   FPUflags,
-    output  uint5   FPUnewflags
-) <reginputs> {
-    uint1   sign <:: sourceReg1F[ df ? 63 : 31, 1 ];
-    int13   exp <:: ( df ? fp64( sourceReg1F ).exponent : fp32( sourceReg1F ).exponent ) - ( df ? 1023 : 127 );
-    uint1   IF <:: typeAF[3,1];
-    uint1   NN <:: |typeAF[1,2];
-    uint1   ZERO <:: typeAF[0,1];
-    uint1   NV <:: ( exp > ( dounsigned ? il ? 63 : 31 : il ? 62 : 30 ) ) | ( dounsigned & sign ) | IF | NN;
-    uint65  fraction <:: ( il ? ( df ? { 1b1, fp64( sourceReg1F ).fraction, 12b0 } : { 1b1, fp32( sourceReg1F ).fraction, 41b0 } ) :
-                              ( df ? { 1b1, sourceReg1F[20,32] } : { 1b1, fp32( sourceReg1F ).fraction, 9b0 } ) ) >> ( ( il ? 63 : 31 ) - exp );
-    uint64  unsignedfraction <:: ( fraction[1,64] + fraction[0,1] );
-    uint32  unsignedfraction32 <:: ( fraction[1,32] + fraction[0,1] );
-
-    always_after {
-        {
-            if( ZERO ) {
-                result = 0;
-            } else {
-                if( dounsigned ) {
-                    if( IF | NN ) {
-                        result = NN ? 64hffffffffffffffff : sign ? 0 :  64hffffffffffffffff;
-                    } else {
-                        result = ( sign ) ? 0 : NV ? 64hffffffffffffffff : il ? unsignedfraction : unsignedfraction32;
-                    }
-                } else {
-                    if( IF | NN ) {
-                        result = NN ? 64h7fffffffffffffff : sign ? 64h8000000000000000 : 64h7fffffffffffffff;
-                    } else {
-                        result = NV ? { {64{~sign}} } : il ? sign ? -unsignedfraction : unsignedfraction :
-                                                             sign ? { 32hffffffff, -unsignedfraction32 } : unsignedfraction32;
-                    }
-                }
-            }
-        }
-        { FPUnewflags = FPUflags | { NV, 4b0000 }; }                                            // FLAGS
-    }
-}
-
-unit float2double(
-    input   uint32  sourceReg1F,
-    input   uint4   typeAF,
-
-    output  uint64  result,
-    input   uint5   FPUflags,
-    output  uint5   FPUnewflags
-) <reginputs> {
-    int13   exp <:: fp32( sourceReg1F ).exponent - 127 + 1023;
-
-    always_after {
-        {
-            switch( typeAF ) {
-                default: { result = { fp32( sourceReg1F ).sign, exp[0,11], fp32( sourceReg1F ).fraction, 29b0 }; }
-                case 4b1000: { result = 63h7FF0000000000000; }
-                case 4b0100: { result = 64h7FF4000000000000; }
-                case 4b0010: { result = 64h7FF8000000000000; }
-                case 4b0001: { result = { fp32( sourceReg1F ).sign, 63h0 }; }
-            }
-        }
-        { FPUnewflags = FPUflags; }                                            // FLAGS
-    }
-}
-unit double2float(
-    input   uint64  sourceReg1F,
-    input   uint4   typeAF,
-
-    output  uint64  result,
-    input   uint5   FPUflags,
-    output  uint5   FPUnewflags
-) <reginputs> {
-    int13   exp <:: fp64( sourceReg1F ).exponent - 1023 + 127;
-
-    always_after {
-        {
-            switch( typeAF ) {
-                default: {
-                    if( __signed(exp) > __signed(254) ) {
-                        result = { 32hffffffff, fp64( sourceReg1F ).sign, 31h7f800000 };
-                    } else {
-                        if( __signed(exp) < __signed(-127) ) {
-                            result = { 32hffffffff, fp64( sourceReg1F ).sign, 31h0 };
-                        } else {
-                            result = { 32hffffffff, fp64( sourceReg1F ).sign, exp[0,8], fp64( sourceReg1F ).fraction[29,23] };
-                        }
-                    }
-                }
-                case 4b1000: { result = { 32hffffffff, fp64( sourceReg1F ).sign, 31h7f800000 }; }
-                case 4b0100: { result = 64hffffffff7fa00000; }
-                case 4b0010: { result = 64hffffffff7fc00000; }
-                case 4b0001: { result = { 32hffffffff, fp64( sourceReg1F ).sign, 31h0 }; }
-            }
-        }
-        { FPUnewflags = FPUflags; }                                            // FLAGS
-    }
-}
-
 // FPU CALCULATION BLOCKS FUSED ADD SUB MUL DIV SQRT
 unit floatcalc(
     input   uint1   start,
@@ -406,6 +265,147 @@ unit typeF(
     }
 }
 
+// CONVERSION FCVT.dest.source
+unit fpuclz64(
+    input   uint64  number,
+    output! uint7   zeros
+) <reginputs> {
+    always_after {
+        ( zeros ) = clz_silice_64( number );
+    }
+}
+unit intlong2floatdouble(
+    input   uint1   dounsigned,
+    input   uint1   il,
+    input   uint1   df,
+    input   uint64  sourceReg1,
+    input   uint32  S1_abs32,
+    input   uint64  S1_abs64,
+    output  uint64  result,
+    input   uint5   FPUflags,
+    output  uint5   FPUnewflags
+) <reginputs> {
+    // COUNT LEADING ZEROS - RETURNS NX IF NUMBER IS TOO LARGE
+    fpuclz64 CLZ( number <: number );
+    uint1   sign <:: ~dounsigned & sourceReg1[ il ? 63 : 31, 1 ];
+    uint64  number <:: il ? sign ? S1_abs64 : sourceReg1 : sign ? S1_abs32 : sourceReg1[0,32];
+    uint1   NX <:: df ? ( il ? ( CLZ.zeros < 10 ) : 0 ) : ( il ? 0 : ( CLZ.zeros < 40 ) );
+    int13   exponent <:: ( df ? 1086 : 190 ) - CLZ.zeros;
+    uint64  fraction <:: number << CLZ.zeros;
+
+    always_after {
+        {
+            // FLOAT RESULT RESULT IS NAN BOXED
+            result =  df ? ( il ? |sourceReg1 : |sourceReg1[0,32] ) ? { sign, exponent[0,11], fraction[11,52] } : 64h00000000000 :
+                           ( il ? |sourceReg1 : |sourceReg1[0,32] ) ? { 32hffffffff, sign, exponent[0,8], fraction[40,23] } : 64hffffffff00000000;
+        }
+        { FPUnewflags = FPUflags | { 4b0, NX }; }                                                                               // FLAGS
+    }
+}
+
+unit floatdouble2intlong(
+    input   uint1   dounsigned,
+    input   uint1   il,
+    input   uint1   df,
+    input   uint64  sourceReg1F,
+    input   uint4   typeAF,
+    output  uint64  result,
+    input   uint5   FPUflags,
+    output  uint5   FPUnewflags
+) <reginputs> {
+    uint1   sign <:: sourceReg1F[ df ? 63 : 31, 1 ];
+    int13   exp <:: ( df ? fp64( sourceReg1F ).exponent : fp32( sourceReg1F ).exponent ) - ( df ? 1023 : 127 );
+    uint1   IF <:: typeAF[3,1];
+    uint1   NN <:: |typeAF[1,2];
+    uint1   ZERO <:: typeAF[0,1];
+    uint1   NV <:: ( exp > ( dounsigned ? il ? 63 : 31 : il ? 62 : 30 ) ) | ( dounsigned & sign ) | IF | NN;
+    uint65  fraction <:: ( il ? ( df ? { 1b1, fp64( sourceReg1F ).fraction, 12b0 } : { 1b1, fp32( sourceReg1F ).fraction, 41b0 } ) :
+                              ( df ? { 1b1, sourceReg1F[20,32] } : { 1b1, fp32( sourceReg1F ).fraction, 9b0 } ) ) >> ( ( il ? 63 : 31 ) - exp );
+    uint64  unsignedfraction <:: ( fraction[1,64] + fraction[0,1] );
+    uint32  unsignedfraction32 <:: ( fraction[1,32] + fraction[0,1] );
+
+    always_after {
+        {
+            if( ZERO ) {
+                result = 0;
+            } else {
+                if( dounsigned ) {
+                    if( IF | NN ) {
+                        result = NN ? 64hffffffffffffffff : sign ? 0 :  64hffffffffffffffff;
+                    } else {
+                        result = ( sign ) ? 0 : NV ? 64hffffffffffffffff : il ? unsignedfraction : unsignedfraction32;
+                    }
+                } else {
+                    if( IF | NN ) {
+                        result = NN ? 64h7fffffffffffffff : sign ? 64h8000000000000000 : 64h7fffffffffffffff;
+                    } else {
+                        result = NV ? { {64{~sign}} } : il ? sign ? -unsignedfraction : unsignedfraction :
+                                                             sign ? { 32hffffffff, -unsignedfraction32 } : unsignedfraction32;
+                    }
+                }
+            }
+        }
+        { FPUnewflags = FPUflags | { NV, 4b0000 }; }                                            // FLAGS
+    }
+}
+
+unit float2double(
+    input   uint32  sourceReg1F,
+    input   uint4   typeAF,
+
+    output  uint64  result,
+    input   uint5   FPUflags,
+    output  uint5   FPUnewflags
+) <reginputs> {
+    int13   exp <:: fp32( sourceReg1F ).exponent - 127 + 1023;
+
+    always_after {
+        {
+            switch( typeAF ) {
+                default: { result = { fp32( sourceReg1F ).sign, exp[0,11], fp32( sourceReg1F ).fraction, 29b0 }; }
+                case 4b1000: { result = 63h7FF0000000000000; }
+                case 4b0100: { result = 64h7FF4000000000000; }
+                case 4b0010: { result = 64h7FF8000000000000; }
+                case 4b0001: { result = { fp32( sourceReg1F ).sign, 63h0 }; }
+            }
+        }
+        { FPUnewflags = FPUflags; }                                            // FLAGS
+    }
+}
+unit double2float(
+    input   uint64  sourceReg1F,
+    input   uint4   typeAF,
+
+    output  uint64  result,
+    input   uint5   FPUflags,
+    output  uint5   FPUnewflags
+) <reginputs> {
+    int13   exp <:: fp64( sourceReg1F ).exponent - 1023 + 127;
+
+    always_after {
+        {
+            switch( typeAF ) {
+                default: {
+                    if( __signed(exp) > __signed(254) ) {
+                        result = { 32hffffffff, fp64( sourceReg1F ).sign, 31h7f800000 };
+                    } else {
+                        if( __signed(exp) < __signed(-127) ) {
+                            result = { 32hffffffff, fp64( sourceReg1F ).sign, 31h0 };
+                        } else {
+                            result = { 32hffffffff, fp64( sourceReg1F ).sign, exp[0,8], fp64( sourceReg1F ).fraction[29,23] };
+                        }
+                    }
+                }
+                case 4b1000: { result = { 32hffffffff, fp64( sourceReg1F ).sign, 31h7f800000 }; }
+                case 4b0100: { result = 64hffffffff7fa00000; }
+                case 4b0010: { result = 64hffffffff7fc00000; }
+                case 4b0001: { result = { 32hffffffff, fp64( sourceReg1F ).sign, 31h0 }; }
+            }
+        }
+        { FPUnewflags = FPUflags; }                                            // FLAGS
+    }
+}
+
 // NORMALISE A 106 BIT MANTISSA SO THAT THE MSB IS ONE, FOR ADDSUB ALSO DECREMENT THE EXPONENT FOR EACH SHIFT LEFT
 // EXTRACT THE 53 (double) 24 (float) BITS FOLLOWING THE MSB (1.xxxx) FOR ROUNDING
 unit clz106(
@@ -443,7 +443,7 @@ unit donormal(
     clz106 CLZ106( bitstream <: bitstream );
 
     always_after {
-        { normalfraction = df ? temporary[ 52, 53 ] : { temporary[ 81, 25 ], 28b0 }; }                                                // EXTRACT 53 ( double) 24 ( float ) BITS ( 1 extra for rounding )
+        { normalfraction = temporary[ 52, 53 ]; }                                                                               // EXTRACT 53 BITS ( 1 extra for rounding )
         { newexponent = exp - CLZ106.count; }                                                                                   // ADDSUB EXPONENT ADJUSTMENT
     }
 }
@@ -455,7 +455,7 @@ unit fastnormal(
     output  uint53  normalfraction
 ) <reginputs> {
     always_after {
-        normalfraction = df ? tonormal[ tonormal[105,1] ? 52 : 51, 53 ] : { tonormal[ tonormal[105,1] ? 82 : 81, 24 ], 29b0 };
+        normalfraction = tonormal[ tonormal[105,1] ? 52 : 51, 53 ];
     }
 }
 
@@ -491,11 +491,11 @@ unit doroundcombine(
     output! uint1   UF,
     output! uint64  combined
 ) <reginputs> {
-    uint52  roundfraction <:: df ? ( bitstream[1,52] + bitstream[0,1] ) : ( bitstream[29,23] + bitstream[28,1] );
+    uint52  roundfraction <:: df ? ( bitstream[1,52] + bitstream[0,1] ) : ( bitstream[30,23] + bitstream[29,1] );
     newexp EXP( df <: df, roundfraction <: roundfraction, exponent <: exponent );
     overflow OVER( df <: df, exponent <: EXP.newexponent, OF :> OF );
 
-    EXP.lsb := bitstream[ df ? 0 : 28, 1 ];
+    EXP.lsb := bitstream[ df ? 0 : 29, 1 ];
 
     always_after {
         { UF = EXP.newexponent[12,1];  }
@@ -833,16 +833,15 @@ unit floatsqrt(
     // SQUARE ROOT EXPONENT IS HALF OF INPUT EXPONENT
     int13   expA  <:: ( df ? fp64( a ).exponent : fp32( a ).exponent ) - ( df ? 1023 : 127 );
 
-    // PERFORM THE SQUAREROOT, FAST NORMALISE THE RESULT
+    // PERFORM THE SQUAREROOT, NORMALISE THE RESULT
     dofloatsqrt DOSQRT( df <: df );
-    fastnormal NORMAL( df <: df, normalfraction :> normalfraction );
+    donormal NORMAL( df <: df, bitstream <: DOSQRT.squareroot, normalfraction :> normalfraction );
 
     DOSQRT.start := start & ACTION; busy := start | DOSQRT.busy;
 
     always_after {
         { DOSQRT.start_ac = expA[0,1] ? { 106b0, 1b1, a[ df ? 51 : 22, 1 ] } : 1; }
         { DOSQRT.start_x = expA[0,1] ? df ? { a[0,51], 55b0 } : { a[0,22], 84b0 } : df ? { fp64( a ).fraction, 54b0 } : { fp32( a ).fraction, 83b0 }; }
-        { NORMAL.tonormal = df ? DOSQRT.squareroot : ( DOSQRT.squareroot << 59 ); }
         { squarerootexp = expA >>> 1; }
         {
             if( ACTION ) {
