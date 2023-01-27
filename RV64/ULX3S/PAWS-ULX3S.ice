@@ -1,9 +1,13 @@
 // DEFINE I/O CLOCKS
 $$ uart_in_clock_freq_mhz = 50
 
+// ADDRESS WIDTH OF THE SDRAM ( 26 bits is 32Mb )
+// CHIP SELECT is done by readflag/writeflag
+$$ sdram_addr_width = 26
+
 // REGISTER AND MEMORY BUS DEFINITIONS
 $$ reg_width = 64
-$$ addr_width = 27
+$$ addr_width = sdram_addr_width + 1
 
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 
@@ -29,10 +33,6 @@ bitfield L01cacheI{ uint$L01Ipartaddresswidth$ tag, uint30 instruction, uint1 co
 
 // SDRAM CACHE DEFINITIONS
 
-// ADDRESS WIDTH OF THE SDRAM ( 26 bits is 32Mb )
-// CHIP SELECT is done by readflag/writeflag
-$$ sdram_addr_width = 26
-
 // CACHES SIZES - L1 2 x L1size for DATA
 $$if VERILATOR then
 $$ L1size = 128
@@ -46,7 +46,6 @@ bitfield L1cachetag{ uint1 needswrite, uint1 valid, uint$L1partaddresswidth$ par
 
 // BIT WIDTH FOR CSR COUNTERS ( spec is 64 bit )
 $$ CWIDTH = 40
-$$ CREMAIN = CWIDTH - 32
 
 $$if not SIMULATION then
 // CLOCKS

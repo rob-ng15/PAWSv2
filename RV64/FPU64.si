@@ -72,6 +72,7 @@ unit floatcalc(
     output  uint1   busy(0),
     input   uint1   df,
     input   uint5   opCode,
+    input   uint3   function3,
     input   uint5   function7,
     input   uint64  sourceReg1F,
     input   uint64  sourceReg2F,
@@ -80,7 +81,7 @@ unit floatcalc(
     input   uint4   typeBF,
     input   uint4   typeCF,
 
-    input   uint5   FPUflags,
+    input   uint8   FPUflags,
     output  uint5   FPUnewflags,
     output  uint64  result
 ) <reginputs> {
@@ -94,7 +95,7 @@ unit floatcalc(
     floatsqrt FPUsqrt( df <: df, a <: sourceReg1F, typeAF <: typeAF, OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined );
 
     // NORMALISE RESULT OF ADD SUB DIV
-    donormal DONORMAL( df <: df, exp <: FPUaddsub.tonormaliseexp );
+    donormal DONORMAL( exp <: FPUaddsub.tonormaliseexp );
 
     // ROUNDING AND COMBINING OF FINAL RESULTS
     doroundcombine MAKERESULT( df <: df );
@@ -133,6 +134,7 @@ unit floatcalc(
         { DONORMAL.bitstream = opCode[2,1] & ( &function7[0,2] ) ? FPUdivide.tonormalisebitstream : FPUaddsub.tonormalisebitstream; }
 
         // CONTROL INPUTS TO ROUNDING AND COMBINING
+        { if( &FPUflags[5,3] ) { MAKERESULT.rm = function3; } else { MAKERESULT.rm = FPUflags[5,3]; } }                         // SET ROUNDING FLAG ( ONLY RNE AND RTZ SUPPORTED )
         {
             if( isbusy ) {
                 onehot( unitbusy ) {
@@ -191,7 +193,7 @@ unit floatcalc(
                 flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
             }
         }
-        { FPUnewflags = FPUflags | flags; }                                                                             // RETURN NEW FLAGS
+        { FPUnewflags = FPUflags[0,5] | flags; }                                                                             // RETURN NEW FLAGS
     }
 }
 
@@ -274,7 +276,10 @@ unit fpuclz64(
         ( zeros ) = clz_silice_64( number );
     }
 }
+
+// 32/64 BIT INTEGER TO 32/64 BIT FLOATING POINT, NAN BOXED FOR 32 BIT FLOATING POINT
 unit intlong2floatdouble(
+    input   uint3   rm,
     input   uint1   dounsigned,
     input   uint1   il,
     input   uint1   df,
@@ -292,18 +297,19 @@ unit intlong2floatdouble(
     uint1   NX <:: df ? ( il ? ( CLZ.zeros < 10 ) : 0 ) : ( il ? 0 : ( CLZ.zeros < 40 ) );
     int13   exponent <:: ( df ? 1086 : 190 ) - CLZ.zeros;
     uint64  fraction <:: number << CLZ.zeros;
+    uint52  fraction52 <:: fraction[11,52] + ( fraction[10,1] & ( rm != 3b001 ) );                                              // DETECT ROUND TO ZERO FLAG
+    uint23  fraction23 <:: fraction[40,23] + ( fraction[39,1] & ( rm != 3b001 ) );                                              // DETECT ROUND TO ZERO FLAG
 
     always_after {
-        {
-            // FLOAT RESULT RESULT IS NAN BOXED
-            result =  df ? ( il ? |sourceReg1 : |sourceReg1[0,32] ) ? { sign, exponent[0,11], fraction[11,52] } : 64h00000000000 :
-                           ( il ? |sourceReg1 : |sourceReg1[0,32] ) ? { 32hffffffff, sign, exponent[0,8], fraction[40,23] } : 64hffffffff00000000;
-        }
+        { result =  df ? ( il ? |sourceReg1 : |sourceReg1[0,32] ) ? { sign, exponent[0,11], fraction52 } : 64h00000000000 :
+                         ( il ? |sourceReg1 : |sourceReg1[0,32] ) ? { 32hffffffff, sign, exponent[0,8], fraction23 } : 64hffffffff00000000; }
         { FPUnewflags = FPUflags | { 4b0, NX }; }                                                                               // FLAGS
     }
 }
 
+// 32/64 BIT FLOATING POINT TO 32/64 BIT INTEGER, SIGN EXTENSION FOR SIGNED CONVERSIONS
 unit floatdouble2intlong(
+    input   uint3   rm,
     input   uint1   dounsigned,
     input   uint1   il,
     input   uint1   df,
@@ -320,9 +326,9 @@ unit floatdouble2intlong(
     uint1   ZERO <:: typeAF[0,1];
     uint1   NV <:: ( exp > ( dounsigned ? il ? 63 : 31 : il ? 62 : 30 ) ) | ( dounsigned & sign ) | IF | NN;
     uint65  fraction <:: ( il ? ( df ? { 1b1, fp64( sourceReg1F ).fraction, 12b0 } : { 1b1, fp32( sourceReg1F ).fraction, 41b0 } ) :
-                              ( df ? { 1b1, sourceReg1F[20,32] } : { 1b1, fp32( sourceReg1F ).fraction, 9b0 } ) ) >> ( ( il ? 63 : 31 ) - exp );
-    uint64  unsignedfraction <:: ( fraction[1,64] + fraction[0,1] );
-    uint32  unsignedfraction32 <:: ( fraction[1,32] + fraction[0,1] );
+                                ( df ? { 1b1, sourceReg1F[20,32] } : { 1b1, fp32( sourceReg1F ).fraction, 9b0 } ) ) >> ( ( il ? 63 : 31 ) - exp );
+    uint64  unsignedfraction <:: ( fraction[1,64] + ( fraction[0,1] & ( rm != 3b001 ) ) );                                      // DETECT ROUND TO ZERO FLAG
+    uint32  unsignedfraction32 <:: ( fraction[1,32] + ( fraction[0,1] & ( rm != 3b001 ) ) );                                    // DETECT ROUND TO ZERO FLAG
 
     always_after {
         {
@@ -432,7 +438,6 @@ unit clz106(
 }
 // NORMALISE RESULT FOR ADD SUB DIVIDE
 unit donormal(
-    input   uint1   df,
     input   int13   exp,
     input   uint106 bitstream,
     output  int13   newexponent,
@@ -483,6 +488,7 @@ unit newexp(
     }
 }
 unit doroundcombine(
+    input   uint3   rm,
     input   uint1   df,
     input   uint1   sign,
     input   uint53  bitstream,
@@ -491,19 +497,17 @@ unit doroundcombine(
     output! uint1   UF,
     output! uint64  combined
 ) <reginputs> {
-    uint52  roundfraction <:: df ? ( bitstream[1,52] + bitstream[0,1] ) : ( bitstream[30,23] + bitstream[29,1] );
+    uint52  roundfraction <:: df ? ( bitstream[1,52] + ( ( rm != 3b001 ) & bitstream[0,1] ) ) : ( bitstream[30,23] +( ( rm != 3b001 ) & bitstream[29,1] ) );
     newexp EXP( df <: df, roundfraction <: roundfraction, exponent <: exponent );
     overflow OVER( df <: df, exponent <: EXP.newexponent, OF :> OF );
 
-    EXP.lsb := bitstream[ df ? 0 : 29, 1 ];
+    EXP.lsb := ( rm == 3b001 ) ? 0 : bitstream[ df ? 0 : 29, 1 ];
 
     always_after {
         { UF = EXP.newexponent[12,1];  }
         { combined = EXP.newexponent[12,1] ? df ? 64h0000000000000000 : 64hffffffff00000000 :
                                              df ? { sign, OVER.OF ? 63h7FF0000000000000 : { EXP.newexponent[0,11], roundfraction } } :
-                                                  { 32hffffffff, sign, OVER.OF ? 31h7f800000 : { EXP.newexponent[0,8], roundfraction[0,23] } };
-
-        }
+                                                  { 32hffffffff, sign, OVER.OF ? 31h7f800000 : { EXP.newexponent[0,8], roundfraction[0,23] } }; }
     }
 }
 
@@ -833,9 +837,9 @@ unit floatsqrt(
     // SQUARE ROOT EXPONENT IS HALF OF INPUT EXPONENT
     int13   expA  <:: ( df ? fp64( a ).exponent : fp32( a ).exponent ) - ( df ? 1023 : 127 );
 
-    // PERFORM THE SQUAREROOT, NORMALISE THE RESULT
+    // PERFORM THE SQUAREROOT, FAST NORMALISE THE RESULT
     dofloatsqrt DOSQRT( df <: df );
-    donormal NORMAL( df <: df, bitstream <: DOSQRT.squareroot, normalfraction :> normalfraction );
+    donormal NORMAL( bitstream <: DOSQRT.squareroot, normalfraction :> normalfraction );
 
     DOSQRT.start := start & ACTION; busy := start | DOSQRT.busy;
 

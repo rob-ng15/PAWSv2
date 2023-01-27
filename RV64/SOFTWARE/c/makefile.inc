@@ -20,7 +20,7 @@ LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleris
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 
 PAWSBASE=../
-INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I/usr/riscv64-elf/include/
+INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I$(PAWSBASE)/library/imgui/ -I/usr/riscv64-elf/include/
 
 LIBRARY=/usr/riscv64-elf/lib/rv64imafdc/lp64d/libc.a \
 		/usr/riscv64-elf/lib/rv64imafdc/lp64d/libm.a \
@@ -37,6 +37,13 @@ PAWSPS2OBJ=	$(PAWSBASE)library/$(BUILD_DIR)/PAWSPS2driver.o
 
 NANOJPEGSOURCE= $(PAWSBASE)library/nanojpeg/nanojpeg.c
 NANOJPEGOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/nanojpeg.o
+
+IMGUISOURCE=	$(wildcard $(PAWSBASE)library/imgui/*.cpp) $(wildcard $(PAWSBASE)library/imgui/*.h)
+IMGUIOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/imgui_draw.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_sw.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_tables.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_widgets.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui.o
 
 FATIOLIBSOURCE= $(wildcard $(PAWSBASE)library/fat_io_lib/*.c) $(wildcard $(PAWSBASE)library/fat_io_lib/*.h)
 FATIOLIBOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o \
@@ -58,6 +65,13 @@ $(PAWSPS2OBJ) : $(PAWSP2SOURCE)
 
 $(NANOJPEGOBJ) : $(NANOJPEGSOURCE)
 	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
+
+$(IMGUIOBJ) : $(IMGUISOURCE)
+	$(CC) $(CFLAGS) -c $(PAWSBASE)library/imgui/imgui_draw.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_draw.o
+	$(CC) $(CFLAGS) -I$(PAWSBASE)/library/ -c $(PAWSBASE)library/imgui/imgui_sw.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_sw.o
+	$(CC) $(CFLAGS) -c $(PAWSBASE)library/imgui/imgui_tables.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_tables.o
+	$(CC) $(CFLAGS) -c $(PAWSBASE)library/imgui/imgui_widgets.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_widgets.o
+	$(CC) $(CFLAGS) -c $(PAWSBASE)library/imgui/imgui.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui.o
 
 $(FATIOLIBOBJ) : $(FATIOLIBSOURCE)
 	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_filelib.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o
