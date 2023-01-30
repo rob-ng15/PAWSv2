@@ -1,0 +1,555 @@
+// RISC V INSTRUCTION DECODER + REGISTER BLOCK
+unit control(
+    // THREAD, DMA AND MEMORY ACCESS SIZE
+    input   uint1   cacheselect,
+    output  uint2   accesssize,
+    input   uint1   DMAACTIVE,
+    input   uint2   DMAACCESSSIZE,
+    input   uint1   SMT,
+    input   uint1   COMMIT_SMT,
+
+    // PC and instruction decoding
+    input   uint$addr_width$ PC,
+    input   uint32  instruction,
+    input   uint1   compressed,
+    output  uint5   opCode,
+    output  uint3   function3,
+    output  uint7   function7,
+    output  uint5   rs1,
+    output  uint5   rs2,
+    output  uint64  immediateValue,
+    output  uint1   IS_AUIPCLUI,
+    output  uint1   IS_JAL,
+    output  uint1   IS_ALUM,
+    output  uint1   IS_CSR,
+    output  uint1   IS_ATOMIC,
+    output  uint1   IS_FPU,
+    output  uint1   IS_LOAD,
+    output  uint1   IS_STORE,
+    output  uint1   IS_FENCE,
+    output  uint1   IS_ALU,
+    output  uint1   IS_FAST,
+    output  uint1   IS_FASTFPU,
+    output  uint1   IS_ALU32,
+
+    // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
+    input   uint1   frd,
+    input   uint1   write,
+    input   uint64  result,
+    output  uint64  sourceReg1,
+    output  uint32  S1_abs32,
+    output  uint64  S1_abs64,
+    output  uint64  sourceReg2,
+    output  uint32  S2_abs32,
+    output  uint64  S2_abs64,
+    output  uint64  sourceReg1F,
+    output  uint64  sourceReg2F,
+    output  uint64  sourceReg3F,
+    output  uint4   typeAF,
+    output  uint4   typeAS,
+    output  uint4   typeAD,
+    output  uint4   typeBF,
+    output  uint4   typeCF,
+    output  uint1   writeRegisterF,
+    output  uint1   writeRegister,
+
+    // REGISTER COMPARISONS
+    output  uint1   LT,
+    output  uint1   LTU,
+    output  uint1   EQ,
+
+    // ADDRESS GENERATION
+    output  uint64  AUIPCLUI,
+    output  uint$addr_width$  loadAddress,
+    output  uint$addr_width$  storeAddress,
+    output  uint$addr_width$  nextPC,
+    output  uint$addr_width$  newPC
+) <reginputs> {
+    // INSTRUCTION CLASSIFICATION AND CPU CONTROL FLAGS
+    controlflags FLAGS(
+        opCode <: opCode,
+        function3 <: function3,
+        function7 <: function7,
+        IS_AUIPCLUI :> IS_AUIPCLUI,
+        IS_JAL :> IS_JAL,
+        IS_ALUM :> IS_ALUM,
+        IS_CSR :> IS_CSR,
+        IS_ATOMIC :> IS_ATOMIC,
+        IS_LOAD :> IS_LOAD,
+        IS_STORE :> IS_STORE,
+        IS_FENCE :> IS_FENCE,
+        writeRegister :> writeRegister,
+        writeRegisterF :> writeRegisterF,
+        IS_FPU :> IS_FPU,
+        IS_ALU :> IS_ALU,
+        IS_ALU32 :> IS_ALU32,
+        IS_FAST :> IS_FAST,
+        IS_FASTFPU :> IS_FASTFPU
+    );
+    uint1   takeBranch = uninitialized;
+
+    // REGISTERS I integer x 2, F float x 3, 0 for main thread, 1 for SMT thread
+    // Duplication is to allow for parallel read
+    $$for i=0,1 do
+        simple_dualport_bram int64 I1_$i$[32] = { 0, pad(uninitialized) };
+        simple_dualport_bram int64 I2_$i$[32] = { 0, pad(uninitialized) };
+        simple_dualport_bram int64 F1_$i$[32] = uninitialized;
+        simple_dualport_bram int64 F2_$i$[32] = uninitialized;
+        simple_dualport_bram int64 F3_$i$[32] = uninitialized;
+    $$end
+
+    // REGISTER WRITE SWITCHES
+    uint1   Iwrite <:: write & ~frd & |Rtype(instruction).destReg;
+    uint1   Fwrite <:: write & frd;
+
+    regR I1R( SMT <: SMT, regfile0 <:> I1_0, regfile1 <:> I1_1, addr0 <: Rtype(instruction).sourceReg1, rdata0 :> sourceReg1 );
+    regR I2R( SMT <: SMT, regfile0 <:> I2_0, regfile1 <:> I2_1, addr0 <: Rtype(instruction).sourceReg2, rdata0 :> sourceReg2 );
+    regR F1R( SMT <: SMT, regfile0 <:> F1_0, regfile1 <:> F1_1, addr0 <: R4type(instruction).sourceReg1, rdata0 :> sourceReg1F );
+    regR F2R( SMT <: SMT, regfile0 <:> F2_0, regfile1 <:> F2_1, addr0 <: R4type(instruction).sourceReg2, rdata0 :> sourceReg2F );
+    regR F3R( SMT <: SMT, regfile0 <:> F3_0, regfile1 <:> F3_1, addr0 <: R4type(instruction).sourceReg3, rdata0 :> sourceReg3F );
+    regW I1W( SMT <: COMMIT_SMT, regfile0 <:> I1_0, regfile1 <:> I1_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );
+    regW I2W( SMT <: COMMIT_SMT, regfile0 <:> I2_0, regfile1 <:> I2_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );
+    regW F1W( SMT <: COMMIT_SMT, regfile0 <:> F1_0, regfile1 <:> F1_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+    regW F2W( SMT <: COMMIT_SMT, regfile0 <:> F2_0, regfile1 <:> F2_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+    regW F3W( SMT <: COMMIT_SMT, regfile0 <:> F3_0, regfile1 <:> F3_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+
+    // ABSOLUTE VALUES OF sourceReg1 and sourceReg2
+    abs3264 S1_abs( sourceReg <: I1R.rdata0, abs32 :> S1_abs32, abs64 :> S1_abs64 ); abs3264 S2_abs( sourceReg <: I2R.rdata0, abs32 :> S2_abs32, abs64 :> S2_abs64 );
+
+    // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
+    typeF class1F( df <: function7[0,1], a <: F1R.rdata0, type :> typeAF );
+    typeF class2F( df <: function7[0,1], a <: F2R.rdata0, type :> typeBF );
+    typeF class3F( df <: function7[0,1], a <: F3R.rdata0, type :> typeCF );
+    typeF class1D( a <: F1R.rdata0, type :> typeAD );  // FORCE CLASSIFICATION OF DOUBLE
+    typeF class1S( a <: F1R.rdata0, type :> typeAS );  // FORCE CLASSIFICATION OF SINGLE
+
+    // JUMP AND BRANCH DESTINATIONS
+    uint$addr_width$ jumpAddress <:: { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
+    uint$addr_width$ branchAddress <:: { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
+
+    // 2ND OPERAND FOR COMPARISONS
+    int64   operand2 <:: opCode[3,1] ? I2R.rdata0 : immediateValue;
+
+    // FLAGS FOR BRANCH
+    uint4   flags <:: { LTU, LT, 1b0, EQ };
+
+    // FORCE CLASSIFICATION OF sourceReg1F AS DOUBLE AND SINGLE FLOATING POINT FORMAT
+    class1D.df := 1; class1S.df := 0;
+
+    always_after {
+        // EXTRACT BITFIELDS FROM INSTRUCTION
+        { opCode = instruction[2,5]; }
+        { function3 = Rtype(instruction).function3; }
+        { function7 = Rtype(instruction).function7; }
+        { immediateValue = { {52{instruction[31,1]}}, Itype(instruction).immediate }; }
+
+        // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
+        { rs1 = Rtype(instruction).sourceReg1; }
+        { rs2 = Rtype(instruction).sourceReg2; }
+
+        // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32 ELSE BY function3
+        { accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? function3[0,2] : 2b10; }
+
+        // BRANCH UNIT
+        { takeBranch = function3[0,1] ^ flags[ function3[1,2], 1 ]; }
+
+        // ADDRESS GENRATION
+        { AUIPCLUI = { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC ); }
+        { loadAddress = ( FLAGS.IS_ATOMIC ? 0 : immediateValue ) + I1R.rdata0[0,$addr_width$]; }
+        { storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R.rdata0[0,$addr_width$]; }
+        { nextPC = PC + ( compressed ? 2 : 4 ); }
+        { newPC = ( FLAGS.incPC ) ? ( FLAGS.IS_BRANCH & takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress ); }
+
+        // COMPARISON
+        { LT = __signed( I1R.rdata0 ) < __signed( operand2 ); }
+        { LTU = __unsigned( I1R.rdata0 ) < __unsigned( operand2 ); }
+        { EQ = I1R.rdata0 == ( operand2 ); }
+    }
+}
+
+// REGISTER READ AND WRITE BLOCKS
+unit regR(
+    input   uint1   SMT,
+    simple_dualport_bram_port0 regfile0,
+    simple_dualport_bram_port0 regfile1,
+    input   uint5   addr0,
+    output  uint64  rdata0
+) <reginputs> {
+    regfile0.addr0 := addr0; regfile1.addr0 := addr0; rdata0 := SMT ? regfile1.rdata0 : regfile0.rdata0;
+}
+unit regRI(
+    input   uint1   SMT,
+    simple_dualport_bram_port0 regfile0,
+    simple_dualport_bram_port0 regfile1,
+    input   uint5   addr0,
+    output! uint64  rdata0
+) <reginputs> {
+    regfile0.addr0 := addr0; regfile1.addr0 := addr0; rdata0 := SMT ? regfile1.rdata0 : regfile0.rdata0;
+}
+unit regW(
+    input   uint1   SMT,
+    simple_dualport_bram_port1 regfile0,
+    simple_dualport_bram_port1 regfile1,
+    input   uint5   addr1,
+    input   uint1   wenable1,
+    input   uint64  wdata1
+) <reginputs> {
+    regfile0.addr1 := addr1; regfile0.wdata1 := wdata1; regfile0.wenable1 := ~SMT & wenable1;
+    regfile1.addr1 := addr1; regfile1.wdata1 := wdata1; regfile1.wenable1 := SMT & wenable1;
+}
+
+// ABSOLUTE VALUES FOR 32 AND 64 BIT REGISTER CONTENTS
+unit abs3264(
+    input   uint64  sourceReg,
+    output  uint32  abs32,
+    output  uint64  abs64
+) <reginputs> {
+    always_after {
+        abs32 = sourceReg[31,1] ? -sourceReg[0,32] : sourceReg[0,32];
+        abs64 = sourceReg[63,1] ? -sourceReg : sourceReg;
+    }
+}
+
+// CLASSIFY INSTRUCTION TYPE AND DETIMINE CPU CONTROL FLAGS
+unit controlflags(
+    input   uint5   opCode,
+    input   uint3   function3,
+    input   uint7   function7,
+    output  uint1   IS_AUIPCLUI,
+    output  uint1   IS_JAL,
+    output  uint1   IS_BRANCH,
+    output  uint1   IS_ALUM,
+    output  uint1   IS_CSR,
+    output  uint1   IS_ATOMIC,
+    output  uint1   IS_FPU,
+    output  uint1   IS_LOAD,
+    output  uint1   IS_STORE,
+    output  uint1   IS_FENCE,
+    output  uint1   writeRegister,
+    output  uint1   writeRegisterF,
+    output  uint1   incPC,
+    output  uint1   IS_ALU,
+    output  uint1   IS_FAST,
+    output  uint1   IS_FASTFPU,
+    output  uint1   IS_ALU32
+) <reginputs> {
+    // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
+    uint1   REGREG <:: ( opCode == 5b01100 ) | ( opCode == 5b01110 );
+
+    // SET DEFAULT CONTROL FLAGS - STANDARD "SINGLE CYCLE" INTEGER ALU OPERATION
+    writeRegisterF := 0; writeRegister := 1; incPC := 1;
+    IS_FAST := 1; IS_ALU := 0; IS_ALU32 := 0; IS_FPU := 0;
+    IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;
+
+    always_after {
+        // IDENTIFY FLOATING POINT, MULTIPLICATION AND CARRYLESS MULTIPLICATION
+        { IS_ALUM = REGREG & ( function7 == 7b0000001 ); }
+        {
+            // DETERMINE CPU CONTROL FLAGS
+            switch( opCode ) {
+                case 5b01101: { IS_AUIPCLUI = 1; }                                                  // LUI
+                case 5b00101: { IS_AUIPCLUI = 1; }                                                  // AUIPC
+                case 5b11011: { IS_JAL = 1; incPC = 0; }                                            // JAL
+                case 5b11001: { IS_JAL = 1; incPC = 0; }                                            // JALR
+                case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                 // BRANCH
+                case 5b00000: { IS_LOAD = 1; }                                                      // LOAD
+                case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                  // FLOAT LOAD
+                case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                  // STORE
+                case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                  // FLOAT STORE
+                case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                   // FENCE[I]
+                case 5b11100: { IS_CSR = 1; IS_FAST = 0; }                                          // CSR ECALL EBBREAK
+                case 5b00100: { IS_ALU = 1; }                                                       // REGISTER-IMMEDIATE ALU
+                case 5b01100: { IS_ALU = 1; IS_FAST = ~( IS_ALUM & function3[2,1] ); }              // REGISTER-REGISTER ALU ( FAST NOT DIVIDE )
+                case 5b00110: { IS_ALU = 1; IS_ALU32 = 1; }                                         // REGISTER-IMMEDIATE ALU 32BIT
+                case 5b01110: { IS_ALU = 1; IS_ALU32 = 1; IS_FAST = ~( IS_ALUM & function3[2,1] ); }// REGISTER-REGISTER ALU 32BIT ( FAST NOT DIVIDE )
+                case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                       // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
+                case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }           // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
+                default: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = 0; }                                               // FUSED-FPU
+            }
+        }
+    }
+}
+
+// COMPRESSED INSTRUCTION EXPANSION
+unit compressed00(
+    input   uint16  i16,
+    output  uint30  i32
+) <reginputs> {
+    always_after {
+        switch( i16[13,3] ) {
+            default: {
+                // ADDI4SPN -> addi rd', x2, nzuimm[9:2] { 000, nzuimm[5:4|9:6|2|3] rd' 00 } -> { imm[11:0] rs1 000 rd 0010011 }
+                i32 = { 2b0, CIu94(i16).ib_9_6, CIu94(i16).ib_5_4, CIu94(i16).ib_3, CIu94(i16).ib_2, 2b00, 5h2, 3b000, {2b01,CIu94(i16).rd_alt}, 5b00100 };
+            }
+            case 3b001: {
+                // FLD -> flw rd', offset[7:3](rs1') { 001 uimm[5:3] rs1' uimm[7:6] rd' 00 } -> { imm[11:0] rs1 011 rd 0000111 }
+                i32 = { 4b0, i16[5,2], i16[10,3], 3b000, {2b01,CL(i16).rs1_alt}, 3b011, {2b01,CL(i16).rd_alt}, 5b00001 };
+            }
+            case 3b010: {
+                // LW -> lw rd', offset[6:2](rs1') { 010 uimm[5:3] rs1' uimm[2][6] rd' 00 } -> { imm[11:0] rs1 010 rd 0000011 }
+                i32 = { 5b0, CL(i16).ib_6, CL(i16).ib_5_3, CL(i16).ib_2, 2b00, {2b01,CL(i16).rs1_alt}, 3b010, {2b01,CL(i16).rd_alt}, 5b00000 };
+            }
+            case 3b011: {
+                // LD -> ld rd', offset[7:3](rs1') { 011 uimm[5:3] rs1' uimm[7:6] rd' 00 } -> { imm[11:0] rs1 011 rd 0000011 }
+                i32 = { 4b0, i16[5,2], i16[10,3], 3b000, {2b01,CL(i16).rs1_alt}, 3b011, {2b01,CL(i16).rd_alt}, 5b00000 };
+            }
+            case 3b101: {
+                // FSD -> fsd rs2', offset[7:3](rs1') { 101 uimm[5:3] rs1' uimm[7:6] rs2' 00 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
+                i32 = { 4b0, i16[5,2], i16[12,1], {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b011, i16[10,2], 3b0, 5b01001 };
+            }
+            case 3b110: {
+                // SW -> sw rs2', offset[6:2](rs1') { 110 uimm[5:3] rs1' uimm[2][6] rs2' 00 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
+                i32 = { 5b0, CS(i16).ib_6, CS(i16).ib_5, {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b010, CS(i16).ib_4_3, CS(i16).ib_2, 2b0, 5b01000 };
+            }
+            case 3b111: {
+                // SD -> sd rs2', offset[7:3](rs1') { 111 uimm[5:3] rs1' uimm[7:6] rs2' 00 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100011 }
+                i32 = { 4b0, i16[5,2], i16[12,1], {2b01,CS(i16).rs2_alt}, {2b01,CS(i16).rs1_alt}, 3b011, i16[10,2], 3b0, 5b01000 };
+            }
+        }
+    }
+}
+unit compressed01(
+    input   uint16  i16,
+    output  uint30  i32
+) <reginputs> {
+    always_after {
+        switch( i16[13,3] ) {
+            case 3b000: {
+                // ADDI -> addi rd, rd, nzimm[5:0] { 000 nzimm[5] rs1/rd!=0 nzimm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
+                // NOP if rd == 0 and nzimm == 5b000000
+                i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, CI50(i16).rd, 3b000, CI50(i16).rd, 5b00100 };
+            }
+            case 3b001: {
+                // 3b001 -> ADDIW -> addiw rd,rd,imm[5:0] { 001, imm[5], rd, imm[4:0], 01 } -> { imm[11:0] rd 000 rd 0011011 }
+                i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, CI50(i16).rd, 3b000,  CI50(i16).rd, 5b00110 };
+            }
+            case 3b010: {
+                // LI -> addi rd, x0, imm[5:0] { 010 imm[5] rd!=0 imm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
+                i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, 5h0, 3b000, CI(i16).rd, 5b00100 };
+            }
+            case 3b011: {
+                if( CI(i16).rd == 2 ) {
+                    // ADDI16SP -> addi x2, x2, nzimm[9:4] { 011 nzimm[9] 00010 nzimm[4|6|8:7|5] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
+                    i32 = { {3{CI94(i16).ib_9}}, CI94(i16).ib_8_7, CI94(i16).ib_6, CI94(i16).ib_5, CI94(i16).ib_4, 4b0000, 5h2, 3b000, 5h2, 5b00100 };
+                } else {
+                    // LUI -> lui rd, nzuimm[17:12] { 011 nzimm[17] rd!={0,2} nzimm[16:12] 01 } -> { imm[31:12] rd 0110111 }
+                    i32 = { {15{CIlui(i16).ib_17}}, CIlui(i16).ib_16_12, CIlui(i16).rd, 5b01101 };
+                }
+            }
+            case 3b100: {
+                // MISC-ALU
+                switch( CBalu(i16).function2 ) {
+                    case 2b00: {
+                        // 1b0 -> SRLI -> srli rd', rd', shamt[5:0] { 100 nzuimm[5] 00 rs1'/rd' nzuimm[4:0] 01 } -> { 000000 shamt rs1 101 rd 0010011 }
+                        i32 = { 6b000000, i16[12,1], CBalu50(i16).ib_4_0, { 2b01, CBalu50(i16).rd_alt }, 3b101, { 2b01, CBalu50(i16).rd_alt }, 5b00100 };
+                    }
+                    case 2b01: {
+                        // 1b1 -> SRAI -> srai rd', rd', shamt[5:0] { 100 nzuimm[5] 01 rs1'/rd' nzuimm[4:0] 01 } -> { 010000 shamt rs1 101 rd 0010011 }
+                        i32 = { 6b010000, i16[12,1], CBalu50(i16).ib_4_0, { 2b01, CBalu50(i16).rd_alt }, 3b101, { 2b01, CBalu50(i16).rd_alt }, 5b00100 };
+                    }
+                    case 2b10: {
+                        // ANDI -> andi rd', rd', imm[5:0] { 100 imm[5], 10 rs1'/rd' imm[4:0] 01 } -> { imm[11:0] rs1 111 rd 0010011 }
+                        i32 = { {7{CBalu50(i16).ib_5}}, CBalu50(i16).ib_4_0, { 2b01, CBalu50(i16).rd_alt }, 3b111, { 2b01, CBalu50(i16).rd_alt }, 5b00100 };
+                    }
+                    case 2b11: {
+                        // 2b00 -> SUB -> sub rd', rd', rs2' { 100 0 11 rs1'/rd' 00 rs2' 01 } -> { 0100000 rs2 rs1 000 rd 0110011 }
+                        // 2b01 -> XOR -> xor rd', rd', rs2' { 100 0 11 rs1'/rd' 01 rs2' 01 } -> { 0000000 rs2 rs1 100 rd 0110011 }
+                        // 2b10 -> OR  -> or  rd', rd', rd2' { 100 0 11 rs1'/rd' 10 rs2' 01 } -> { 0000000 rs2 rs1 110 rd 0110011 }
+                        // 2b11 -> AND -> and rd', rd', rs2' { 100 0 11 rs1'/rd' 11 rs2' 01 } -> { 0000000 rs2 rs1 111 rd 0110011 }
+                        if( i16[12,1] ) {
+                            // SUBW ADDW
+                            i32 = { 1b0, ~CBalu(i16).logical2[0,1], 5b00000, { 2b01, CBalu(i16).rs2_alt }, { 2b01, CBalu(i16).rd_alt },
+                                    3b000, { 2b01, CBalu(i16).rd_alt }, 5b01110 };
+                        } else {
+                            i32 = { { 1b0, ~|CBalu(i16).logical2, 5b00000 }, { 2b01, CBalu(i16).rs2_alt }, { 2b01, CBalu(i16).rd_alt },
+                                    ( ^CBalu(i16).logical2 ) ? { 1b1, CBalu(i16).logical2[1,1], 1b0 } : {3{CBalu(i16).logical2[0,1]}}, { 2b01, CBalu(i16).rd_alt }, 5b01100 };
+                        }
+                    }
+                }
+            }
+            case 3b101: {
+                // 3b101 -> J -> jal, x0, offset[11:1] { 101, imm[11|4|9:8|10|6|7|3:1|5] 01 } -> { imm[20|10:1|11|19:12] rd 1101111 }
+                i32 = { CJ(i16).ib_11, CJ(i16).ib_10, CJ(i16).ib_9_8, CJ(i16).ib_7, CJ(i16).ib_6, CJ(i16).ib_5, CJ(i16).ib_4, CJ(i16).ib_3_1, {9{CJ(i16).ib_11}}, 5h0, 5b11011 };
+            }
+            default: {
+                // 3b110 -> BEQZ -> beq rs1', x0, offset[8:1] { 110, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011 }
+                // 3b111 -> BNEZ -> bne rs1', x0, offset[8:1] { 111, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011 }
+                i32 = { {4{CB(i16).offset_8}}, CB(i16).offset_7_6, CB(i16).offset_5, 5h0, {2b01,CB(i16).rs1_alt}, { 2b00, i16[13,1] }, CB(i16).offset_4_3, CB(i16).offset_2_1, CB(i16).offset_8, 5b11000 };
+            }
+        }
+    }
+}
+unit compressed10(
+    input   uint16  i16,
+    output  uint30  i32
+) <reginputs> {
+    always_after {
+        switch( i16[13,3] ) {
+            case 3b000: {
+                // SLLI -> slli rd, rd, shamt[5:0] { 000, nzuimm[5], rs1/rd!=0 nzuimm[4:0] 10 } -> { 000000 shamt rs1 001 rd 0010011 }
+                i32 = { 6b000000, CI50(i16).ib_5, CI50(i16).ib_4_0, CI50(i16).rd, 3b001, CI50(i16).rd, 5b00100 };
+            }
+            case 3b001: {
+                // FLDSP -> fld rd, offset[8:3](x2) { 001 uimm[5] rd uimm[4:3|8:6] 10 } -> { imm[11:0] rs1 011 rd 0000111 }
+                i32 = { 3b0, i16[2,3], i16[12,1], i16[5,2], 3b0, 5h2, 3b011, CI(i16).rd, 5b00001 };
+            }
+            case 3b010: {
+                // LWSP -> lw rd, offset[7:2](x2) { 010 uimm[5] rd uimm[4:2|7:6] 10 } -> { imm[11:0] rs1 010 rd 0000011 }
+                i32 = { 4b0, CI(i16).ib_7_6, CI(i16).ib_5, CI(i16).ib_4_2, 2b0, 5h2 , 3b010, CI(i16).rd, 5b00000 };
+            }
+            case 3b011: {
+                // LDSP -> ld rd, offset[8:3](x2) { 011 uimm[5] rd uimm[4:3|8:6] 10 } -> { imm[11:0] rs1 011 rd 0000011 }
+                i32 = { 3b0, i16[2,3], i16[12,1], i16[5,2], 3b0, 5h2, 3b011, CI(i16).rd, 5b00000 };
+            }
+            case 3b100: {
+                // J[AL]R / MV / ADD
+                if( ~|CR(i16).rs2 ) {
+                    // JR   -> jalr x0, rs1, 0 { 100 0 rs1 00000 10 } -> { imm[11:0] rs1 000 rd 1100111 }
+                    // JALR -> jalr x1, rs1, 0 { 100 1 rs1 00000 10 } -> { imm[11:0] rs1 000 rd 1100111 }
+                    i32 = { 12b0, CR(i16).rs1, 3b000, { 4b0000, i16[12,1]}, 5b11001 };
+                } else {
+                    // MV  -> add rd, x0, rs2 { 100 0 rd!=0 rs2!=0 10 }     -> { 0000000 rs2 rs1 000 rd 0110011 }
+                    // ADD -> add rd, rd, rs2 { 100 1 rs1/rd!=0 rs2!=0 10 } -> { 0000000 rs2 rs1 000 rd 0110011 }
+                    i32 = { 7b0000000, CR(i16).rs2, i16[12,1] ? CR(i16).rs1 : 5h0, 3b000, CR(i16).rs1, 5b01100 };
+                }
+            }
+            case 3b101: {
+                // FSDSP -> fsd rs2, offset[8:3](x2) { 101 uimm[5:3][8:6] rs2 10 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
+                i32 = { 3b0, i16[7,3], i16[12,1], CSS(i16).rs2, 5h2, 3b011, i16[10,2], 3b000, 5b01001 };
+            }
+            case 3b110: {
+                // SWSP -> sw rs2, offset[7:2](x2) { 110 uimm[5][4:2][7:6] rs2 10 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
+                i32 = { 4b0, CSS(i16).ib_7_6, CSS(i16).ib_5, CSS(i16).rs2, 5h2, 3b010, CSS(i16).ib_4_2, 2b00, 5b01000 };
+            }
+            case 3b111: {
+                // SDSP -> sd rs2, offset[8:3](x2) { 111 uimm[5:3][8:6] rs2 10 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
+                i32 = { 3b0, i16[7,3], i16[12,1], CSS(i16).rs2, 5h2, 3b011, i16[10,2], 3b000, 5b01000 };
+            }
+        }
+    }
+}
+
+// RISC-V MANDATORY CSR REGISTERS
+unit csrf(
+    output  uint8   CSRf(0),
+    input   uint2   csr,
+    input   uint8   writevalue,
+    input   uint2   writetype,
+    input   uint1   update,
+    input   uint5   newflags
+) <reginputs> {
+    always_after {
+        if( update ) {
+            CSRf = { CSRf[5,3], newflags };
+        } else {
+            switch( csr ) {
+                case 0: {}
+                case 1: {
+                    // CSRRW / CSRRWI
+                    switch( writetype ) {
+                        case 1: { CSRf[0,5] = writevalue[0,5]; }
+                        case 2: { CSRf[5,3] = writevalue[0,3]; }
+                        case 3: { CSRf = writevalue[0,8]; }
+                        default: {}
+                    }
+                }
+                case 2: {
+                    // CSRRS / CSRRSI
+                    switch( writetype ) {
+                        case 1: { CSRf[0,5] = CSRf[0,5] | writevalue[0,5]; }
+                        case 2: { CSRf[5,3] = CSRf[5,3] | writevalue[0,3]; }
+                        case 3: { CSRf = CSRf | writevalue[0,8]; }
+                        default: {}
+                    }
+                }
+                case 3: {
+                    // CSRRC / CSRRCI
+                    switch( writetype ) {
+                        case 1: { CSRf[0,5] = CSRf[0,5] & ~writevalue[0,5]; }
+                        case 2: { CSRf[5,3] = CSRf[5,3] & ~writevalue[0,3]; }
+                        case 3: { CSRf = CSRf & ~writevalue[0,8]; }
+                        default: {}
+                    }
+                }
+            }
+        }
+    }
+}
+unit CSRblock(
+    input   uint1   start,
+    input   uint1   SMT,
+    input   uint12  csrRegister,
+    input   uint3   function3,
+    input   uint5   rs1,
+    input   uint8  sourceReg1,
+    input   uint1   incCSRinstret,
+    input   uint1   updateFPUflags,
+    input   uint5   FPUnewflags,
+    output  uint8   FPUflags,
+    output  uint64  result
+) <reginputs> {
+    uint$CWIDTH$  TIMER(0);                                                                             // CYCLES SINCE BOOT
+    uint$CWIDTH$  CYCLE0(0);                        uint$CWIDTH$  CYCLE1(0);                            // CYCLES HART ACTIVE
+    uint$CWIDTH$  INSTRET0(0);                      uint$CWIDTH$  INSTRET1(0);                          // INSTRUCTIONS RETIRED PER HARY
+
+    // SWITCH BETWEEN IMMEDIATE OR REGISTER VALUE TO WRITE TO CSR
+    uint32  writevalue <: function3[2,1] ? rs1 : sourceReg1;
+
+    // FLOATING-POINT CSR FOR BOTH THREADS
+    csrf CSRF0( csr <: csrRegister[0,2], writevalue <: writevalue );                                   // MAIN CSRf ( csrRegister[0,2] )
+    csrf CSRF1( csr <: csrRegister[0,2], writevalue <: writevalue );                                   // SMT CSRf  ( csrRegister[0,2] )
+
+    // UPDATE FLAGS FOR TIMERS, COUNTERS AND FPU-FLAGS
+    CSRF0.writetype := 0; CSRF1.writetype := 0; CSRF0.update := updateFPUflags & ~SMT;  CSRF1.update := updateFPUflags & SMT;
+
+    always_after {
+        { TIMER = TIMER + 1; }
+        { if( SMT ) { CYCLE1 = CYCLE1 + 1; INSTRET1 = INSTRET1 + incCSRinstret; } else { CYCLE0 = CYCLE0 + 1; INSTRET0 = INSTRET0 + incCSRinstret; } }
+        {
+            if( start & ~|csrRegister[4,8] ) {
+                switch( function3[0,2] ) {
+                    case 2b00: {} // ECALL / EBBREAK
+                    case 2b01: {
+                        // CSRRW / CSRRWI
+                        switch( { ~|rs1, function3[2,1] } ) {
+                            case 2b10: {}
+                            default: { if( SMT ) { CSRF1.writetype = 1; } else { CSRF0.writetype = 1; } }
+                        }
+                    }
+                    default: { if( |rs1 ) { if( SMT ) { CSRF1.writetype = function3[0,2]; } else { CSRF0.writetype = function3[0,2]; } } }
+                }
+            }
+        }
+        {
+
+            if( start ) {
+                result = 0;
+                switch( csrRegister[8,4] ) {
+                    case 4h0: {
+                        switch( csrRegister[0,2] ) {
+                            case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                        // frflags
+                            case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                         // frrm
+                            case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                   // frcsr
+                            default: {}
+                        }
+                    }
+                    case 4h3: { result = $CPUISA$; }
+                    case 4hc: {
+                        switch( { csrRegister[7,1], csrRegister[0,2] } ) {
+                            case 3h0: { result = SMT ? CYCLE1 : CYCLE0; }
+                            case 3h1: { result = TIMER; }
+                            case 3h2: { result = SMT ? INSTRET1 : INSTRET0; }
+                            default: {}
+                        }
+                        }
+                    case 4hf: { result = SMT; }                                                                     // HART ID
+                    default: {}
+                }
+            }
+        }
+        {
+            // PASS PRESENT FPU FLAGS TO THE FPU
+            FPUflags = SMT ? CSRF1.CSRf : CSRF0.CSRf;
+        }
+    }
+}

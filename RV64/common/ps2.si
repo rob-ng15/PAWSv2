@@ -1,0 +1,146 @@
+// OUTPUT KEY PRESS AND KEY RELEASE EVENTS - RETURNS { press, extended keycode, keycode }
+// TO OBTAIN ASCII, NEEDS DECODING IN THE LIBRARY
+unit ps2ascii(
+    input   uint1   us2_bd_dp,
+    input   uint1   us2_bd_dn,
+    input   uint1   outputkeycodes,
+    output  uint10  keycode,
+    output  uint1   keycodevalid,
+    output  uint16  joystick(0)
+) <reginputs> {
+    // PS2 KEYBOARD CODE READER
+    ps2 PS2( ps2clk_ext <: us2_bd_dp, ps2data_ext <: us2_bd_dn );
+
+    uint1   startbreak = 0;                         uint1   startmulti = 0;                             uint4   button = uninitialised;
+    keycodevalid := 0;
+
+    always_after {
+        {
+            if( PS2.valid ) {
+                switch( PS2.data ) {
+                    case 8he0: { startmulti = 1; }
+                    case 8hf0: { startbreak = 1; }
+                    default: {
+                        switch( PS2.data ) {
+                            case 8h11: { button = startmulti ? 8 : 7; }
+                            case 8h14: { button = startmulti ? 10 : 1; }
+                            case 8h1f: { button = 2; }
+                            case 8h27: { button = 9; }
+                            case 8h2f: { button = 15; }
+                            case 8h6b: { button = 5; }
+                            case 8h72: { button = 4; }
+                            case 8h74: { button = 6; }
+                            case 8h75: { button = 3; }
+                            default: { button = 0; }
+                        }
+                    }
+                }
+            }
+        }
+
+        {
+            if( PS2.valid ) {
+                switch( PS2.data ) {
+                    case 8he0: {}
+                    case 8hf0: {}
+                    default: {
+                        keycode = { ~startbreak, startmulti, PS2.data }; keycodevalid = outputkeycodes;
+                        joystick[ button, 1 ] = ~startbreak;
+                        if( startmulti ) { startmulti = 0; }
+                        if( startbreak ) { startbreak = 0; }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// PS/2 PORT - READS KEYCODE FROM PS/2 KEYBOARD
+// MODIFIED FROM ORIGINAL CODE https://github.com/hoglet67/Ice40Beeb converted to Silice by @lawrie, optimised and simplified by @rob-ng15
+//  ZX Spectrum for Altera DE1
+//
+//  Copyright (c) 2009-2011 Mike Stirling
+//
+//  All rights reserved
+//
+//  Redistribution and use in source and synthezised forms, with or without
+//  modification, are permitted provided that the following conditions are met:
+//
+//  * Redistributions of source code must retain the above copyright notice,
+//    this list of conditions and the following disclaimer.
+//
+//  * Redistributions in synthesized form must reproduce the above copyright
+//    notice, this list of conditions and the following disclaimer in the
+//    documentation and/or other materials provided with the distribution.
+//
+//  * Neither the name of the author nor the names of other contributors may
+//    be used to endorse or promote products derived from this software without
+//    specific prior written agreement from the author.
+//
+//  * License is granted for non-commercial use only.  A fee may not be charged
+//    for redistributions as source code or in synthesized/hardware form without
+//    specific prior written agreement from the author.
+//
+//  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+//  AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+//  THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+//  PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE
+//  LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+//  CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+//  SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+//  INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+//  CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+//  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+//  POSSIBILITY OF SUCH DAMAGE.
+//
+//  PS/2 interface (input only)
+//  Based loosely on ps2_ctrl.vhd (c) ALSE. http://www.alse-fr.com
+
+unit ps2(
+    input   uint1   ps2data_ext,
+    input   uint1   ps2clk_ext,
+    output  uint1   valid,
+    output  uint1   error,
+    output  uint8   data
+) < reginputs> {
+    uint1   clk_edge(0);                            uint4   clk(4b1111);
+
+    valid := 0; error := 0; clk_edge := 0;
+
+    always_after {
+        {
+            // BUFFER THE CLOCK ACROSS THE CLOCK DOMAINS
+            clk = { ps2clk_ext, clk[1,3] };
+        }
+
+        {
+            // SET THE CLK_EDGE ACCORDING TO THE FILTERED CLOCK
+            uint1   ps2_clk_in(1);
+            switch( clk ) {
+                case 4b1100: { ps2_clk_in = 1; }
+                case 4b0011: { if( ps2_clk_in ) { clk_edge = 1; } ps2_clk_in = 0; }
+                default: {}
+            }
+        }
+
+        {
+            // Process the PS/2 data bit
+            uint4   bit_count(0);
+            uint9   shift_reg(0);
+            uint1   parity(0);
+            if( clk_edge ) {
+                switch( bit_count ) {
+                    case 0: { parity = 0; if( ~ps2data_ext ) { bit_count = 1; } }                                                           // Start bit
+                    default: { shift_reg = { ps2data_ext, shift_reg[1,8] }; parity = parity ^ ps2data_ext; bit_count = bit_count + 1; }     // Data bit;
+                    case 10: {
+                        if( ps2data_ext ) {                                                                                                 // Data complete
+                            if( parity ) { data = shift_reg[0,8]; valid = 1; } else { error = 1; }
+                            bit_count = 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
