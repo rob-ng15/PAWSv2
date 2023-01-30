@@ -876,10 +876,10 @@ extern void *paws_tmpfile(void);
 #define fscanf paws_fscanf
 #define vfscanf paws_vfscanf
 
-extern int paws_printf(const char *restrict format, ... );
-extern int paws_fprintf( void *fd, const char *restrict format, ... );
-extern int paws_vfprintf( void *stream, const char *format, va_list ap);
-extern int paws_fscanf( void *fd, const char *restrict format, ... );
-extern int paws_vfscanf( void *stream, const char *format, va_list ap);
+extern int paws_printf(const char *restrict, ... );
+extern int paws_fprintf( void *fd, const char *restrict, ... );
+extern int paws_vfprintf( void *stream, const char *, va_list );
+extern int paws_fscanf( void *fd, const char *restrict, ... );
+extern int paws_vfscanf( void *stream, const char *, va_list );
 
 #endif /* _STDIO_H_ */

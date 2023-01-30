@@ -23,9 +23,6 @@ extern int errno;
 #define FENCEALL asm volatile ("fence iorw, iorw");
 #define NOFENCE asm volatile ("fence.i");
 
-// TOP OF SDRAM MEMORY
-unsigned char *MEMORYTOP = (unsigned char *)0x8000000;;
-
 // RISC-V CSR FUNCTIONS
 unsigned int CSRisa() {
    unsigned int isa;
@@ -83,8 +80,8 @@ void SMTSTOP( void ) {
     *SMTSTATUS = 0;
 }
 
-void SMTSTART( unsigned int code ) {
-    *SMTPC = code; *SMTSTATUS = 1;
+void SMTSTART( void *code ) {
+    *SMTPC = (unsigned int)code; *SMTSTATUS = 1;
 }
 
 unsigned char SMTSTATE( void ) {
@@ -93,8 +90,7 @@ unsigned char SMTSTATE( void ) {
 
 // DMA CONTROLLER
 void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
-    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    DMA_REGS[0] = (int)source; DMA_REGS[1] = (int)destination; DMA_REGS[2] = count; DMA_REGS_B[0x0c] = mode;
+    *DMASOURCE = (unsigned int)source; *DMADEST = (unsigned int)destination; *DMACOUNT = count; *DMAMODE = mode;
 }
 
 // PAWS MEMCPY USING THE DMA ENGINE - MODE 3 IS READ INCREMENT TO WRITE INCREMENT
@@ -104,36 +100,41 @@ void *paws_memcpy( void *restrict destination, const void *restrict source, size
 }
 
 void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd ) {
-    DMA_REGS_ALT[0] = sourceadd; DMA_REGS_ALT[1] = destadd;
+    *DMASOURCEADD = sourceadd; *DMADESTADD = destadd;
     DMASTART( source, (void *restrict)destination, count, 6 );
 }
 
 void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles ) {
-    unsigned char volatile *DMA_REGS_ALT_B = (unsigned char volatile *)DMA_REGS_ALT;
-    DMA_REGS_ALT[0] = sourceadd; DMA_REGS_ALT[1] = destadd; DMA_REGS_ALT_B[0x08] = cycles;
+    *DMASOURCEADD = sourceadd; *DMADESTADD = destadd; *DMACYCLES = cycles;
     DMASTART( source, (void *restrict)destination, count, 8 );
 }
 
 // PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
 void *paws_memset( void *restrict destination, int value, size_t count ) {
-    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    DMA_REGS_B[0x0e] = (unsigned char)value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    *DMASET = (unsigned char)value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
     return( destination );
 }
 
 void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
-    unsigned char volatile *DMA_REGS_B = (unsigned char volatile *)DMA_REGS;
-    unsigned char volatile *DMA_REGS_ALT_B = (unsigned char volatile *)DMA_REGS_ALT;
-    DMA_REGS_B[0x0e] = (unsigned char)value; DMA_REGS_ALT[1] = destadd; DMA_REGS_ALT_B[0x08] = cycles;
+    *DMASET = (unsigned char)value; *DMADESTADD = destadd; *DMACYCLES = cycles;
+    DMASTART( (const void *restrict)DMASET, destination, count, 9 );
+}
+
+// PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
+void *paws_memset_RGB( void *restrict destination, int RGB, size_t count ) {
+    *DMASETRGB = (unsigned char)RGB; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    return( destination );
+}
+
+void paws_memset_rectangle_RGB( void *restrict destination, int RGB, size_t count, int destadd, unsigned char cycles ) {
+    *DMASETRGB = (unsigned char)RGB; *DMADESTADD = destadd; *DMACYCLES = cycles;
     DMASTART( (const void *restrict)DMASET, destination, count, 9 );
 }
 
 // OUTPUT TO UART
 // OUTPUT INDIVIDUAL CHARACTER/STRING TO THE UART
 void uart_outputcharacter(char c) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS;
-
-    while( IO_REGS_B[ 0x02 ] & 2 ) {} IO_REGS_B[ 0x00 ] = c;
+    while( *UART_STATUS & 2 ) {} *UART_DATA = c;
     if( c == '\n' ) uart_outputcharacter('\r');
 }
 void uart_outputstring( const char *s ) {
@@ -142,16 +143,12 @@ void uart_outputstring( const char *s ) {
 // INPUT FROM UART
 // RETURN 1 IF UART CHARACTER AVAILABLE, OTHERWISE 0
 unsigned char uart_character_available( void ) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS;
-
-    return( IO_REGS_B[ 0x02 ] & 1 );
+    return( *UART_STATUS & 1 );
 }
 // RETURN CHARACTER FROM UART
 char uart_inputcharacter( void ) {
-    unsigned char volatile *IO_REGS_B = (unsigned char volatile *)IO_REGS;
-
     while( !uart_character_available() ) {}
-    return IO_REGS_B[ 0x00 ];
+    return *UART_DATA;
 }
 
 // TIMER AND PSEUDO RANDOM NUMBER GENERATOR
@@ -159,24 +156,29 @@ char uart_inputcharacter( void ) {
 // PSEUDO RANDOM NUMBER GENERATOR
 // RETURN FLOAT IN RANGE 0 <= frng < 1.0
 float frng( void ) {
-    return( TIMER_REGS[ 0x01 ] );
+    return( *FRNG );
 }
 
 // RETURN PSEUDO RANDOM NUMBER 0 <= RNG < RANGE ( effectively 0 to range - 1 )
 unsigned short rng( unsigned short range ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
     unsigned short trial, mask;
 
     switch( range ) {
         case 0: trial = 0; break;
-
         case 1:
-        case 2: trial = TIMER_REGS_H[ 0x01 ] & 1; break;
+        case 2: trial = *RNG & 1; break;
+        case 4: trial = *RNG & 3; break;
+        case 8: trial = *RNG & 7; break;
+        case 16: trial = *RNG & 15; break;
+        case 32: trial = *RNG & 31; break;
+        case 64: trial = *RNG & 63; break;
+        case 128: trial = *RNG & 127; break;
+        case 256: trial = *RNG & 255; break;
+        case 512: trial = *RNG & 511; break;
+        case 1024: trial = *RNG & 1023; break;
 
         default:
-            if( _rv32_cpop( range ) == 1 ) return( TIMER_REGS_H[ 0x01 ] & ( range - 1 ) );          // POWER OF 2
-            mask = ( 1 << ( _rv32_clz( range ) - 14 ) ) - 1;                                        // SET MASK TO -1 POWER OF 2 THAT COVERS RANGE
-            do { trial = TIMER_REGS_H[ 0x00 ] & mask; } while ( trial >= range );                   // SELECT RNG UNTIL WITHIN RANGE
+            do { trial = *RNG; } while ( trial >= range );                   // SELECT RNG UNTIL WITHIN RANGE
     }
 
     return( trial );
@@ -184,38 +186,32 @@ unsigned short rng( unsigned short range ) {
 
 // SLEEP FOR counter milliseconds
 void sleep1khz( unsigned short counter, unsigned char timer ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    TIMER_REGS_H[ 0x0c + timer ] = counter; while( TIMER_REGS_H[ 0x0c + timer ] );
+    TIMER_REGS[ 0x0c + timer ] = counter; while( TIMER_REGS[ 0x0c + timer ] );
 }
 
 // SET THE 1khz COUNTDOWN TIMER
 void set_timer1khz( unsigned short counter, unsigned char timer ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    TIMER_REGS_H[ 0x0a + timer ] = counter;
+    TIMER_REGS[ 0x0a + timer ] = counter;
 }
 
 // READ THE 1khz COUNTDOWN TIMER
 unsigned short get_timer1khz( unsigned char timer  ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    return( TIMER_REGS_H[ 0x0a + timer ] );
+    return( TIMER_REGS[ 0x0a + timer ] );
 }
 
 // WAIT FOR THE 1khz COUNTDOWN TIMER
 void wait_timer1khz( unsigned char timer  ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    while( TIMER_REGS_H[ 0x0a + timer ] );
+    while( TIMER_REGS[ 0x0a + timer ] );
 }
 
 // READ THE 1hz TIMER
 unsigned short get_timer1hz( unsigned char timer  ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    return( TIMER_REGS_H[ 0x08 + timer ] );
+    return( TIMER_REGS[ 0x08 + timer ] );
 }
 
 // RESET THE 1hz TIMER
 void reset_timer1hz( unsigned char timer  ) {
-    unsigned short volatile *TIMER_REGS_H = (unsigned short volatile *)TIMER_REGS;
-    TIMER_REGS_H[ 0x08 + timer ] = 0;
+    TIMER_REGS[ 0x08 + timer ] = 0;
 }
 
 // SYSTEM CLOCK, SECONDS SINCE RESET
@@ -239,20 +235,20 @@ unsigned long get_systemrtc( void ){
 // 97 = C 6 or Soprano C
 // 121 = C 7 or Double High C
 void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
-    AUDIO_REGS[ 0x00 ] = _rv32_pack( waveform, note );
-    AUDIO_REGS[ 0x01 ] = _rv32_pack( duration, channel_number );
+    *AUDIO_WAVEFORM = waveform;
+    *AUDIO_FREQUENCY = note;
+    *AUDIO_DURATION = duration;
+    *AUDIO_START = channel_number;
 }
 void set_volume( unsigned char left, unsigned char right ) {
     *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
 }
 void await_beep( unsigned char channel_number ) {
-    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
-    while( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) ) {}
+    while( ( ( channel_number & 1) & *AUDIO_L_ACTIVE ) | ( ( channel_number & 2) & *AUDIO_R_ACTIVE ) ) {}
 }
 
 unsigned short get_beep_active( unsigned char channel_number ) {
-    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
-    return( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) );
+    return( ( ( channel_number & 1) & *AUDIO_L_ACTIVE ) | ( ( channel_number & 2) & *AUDIO_R_ACTIVE ) );
 }
 
 // USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
@@ -533,58 +529,40 @@ unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char act
 
 // SET GPU DITHER MODE AND ALTERNATIVE COLOUR
 void gpu_dither( unsigned char mode, unsigned char colour ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    //*GPU_COLOUR_ALT = colour; *GPU_DITHERMODE = mode;
-    wait_gpu(); GPU_REGS_B[0x12] = colour; GPU_REGS_B[0x14] = mode;
+    wait_gpu(); *GPU_COLOUR_ALT = colour; *GPU_DITHERMODE = mode;
 }
 
 // SET GPU CROPPING RECTANGLE
 void gpu_crop( short left, short top, short right, short bottom ) {
-    // *CROP_LEFT = left < 0 ? 0 : left; *CROP_RIGHT = right > 319 ? 319 : right; *CROP_TOP = top < 0 ? 0 : top; *CROP_BOTTOM = bottom > 239 ? 239 : bottom;
     wait_gpu();
-    GPU_REGS[0x38] = _rv32_pack( left < 0 ? 0 : left, right > 319 ? 319 : right );
-    GPU_REGS[0x39] = _rv32_pack( top < 0 ? 0 : top, bottom > 239 ? 239 : bottom );
+    *CROP_LEFT = left < 0 ? 0 : left; *CROP_RIGHT = right > 319 ? 319 : right; *CROP_TOP = top < 0 ? 0 : top; *CROP_BOTTOM = bottom > 239 ? 239 : bottom;
 }
 
 // SET THE PIXEL at (x,y) to colour
 void gpu_pixel( unsigned char colour, short x, short y ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // *GPU_COLOUR = colour; *GPU_X = x; *GPU_Y = y;
-    GPU_REGS_B[0x10] = colour;  GPU_REGS[0x00] = _rv32_pack( x, y ); wait_gpu();
-
-    // *GPU_WRITE = 1;
-    GPU_REGS_B[0x16] = 1;
+    *GPU_COLOUR = colour; *GPU_X = x; *GPU_Y = y;
+    *GPU_WRITE = 1;
+}
+void gpu_pixel_RGB( unsigned int colour, short x, short y ) {
+    *GPU_COLOURRGB = colour; *GPU_X = x; *GPU_Y = y;
+    *GPU_WRITE = 1;
 }
 
 // DRAW A LINE FROM (x1,y1) to (x2,y2) in colour - uses Bresenham's Line Drawing Algorithm - single pixel width
 void gpu_line( unsigned char colour, short x1, short y1, short x2, short y2 ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // *GPU_COLOUR = colour;
-    // *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = 1;
-    GPU_REGS_B[0x10] = colour; GPU_REGS_B[0x08] = 1;
-    GPU_REGS[0x00] = _rv32_pack( x1, y1 ); GPU_REGS[0x01] = _rv32_pack( x2, y2 );
+    *GPU_COLOUR = colour;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = 1;
     wait_gpu();
-
-    // *GPU_WRITE = 2;
-    GPU_REGS_B[0x16] = 2;
+    *GPU_WRITE = 2;
 }
 
 // DRAW A LINE FROM (x1,y1) to (x2,y2) in colour - uses Bresenham's Line Drawing Algorithm - pixel width
 void gpu_wideline( unsigned char colour, short x1, short y1, short x2, short y2, unsigned char width ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
     if( width ) {
-        // *GPU_COLOUR = colour;
-        // *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = width;
-        GPU_REGS_B[0x10] = colour; GPU_REGS_B[0x08] = width;
-        GPU_REGS[0x00] = _rv32_pack( x1, y1 ); GPU_REGS[0x01] = _rv32_pack( x2, y2 );
+        *GPU_COLOUR = colour;
+        *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = width;
         wait_gpu();
-
-        // *GPU_WRITE = 2;
-        GPU_REGS_B[0x16] = 2;
+        *GPU_WRITE = 2;
     }
 }
 
@@ -598,16 +576,10 @@ void gpu_box( unsigned char colour, short x1, short y1, short x2, short y2, unsi
 
 // DRAW AN FILLED RECTANGLE from (x1,y1) to (x2,y2) in colour
 void gpu_rectangle( unsigned char colour, short x1, short y1, short x2, short y2 ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // *GPU_COLOUR = colour;
-    // *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
-    GPU_REGS_B[0x10] = colour;
-    GPU_REGS[0x00] = _rv32_pack( x1, y1 ); GPU_REGS[0x01] = _rv32_pack( x2, y2 );
+    *GPU_COLOUR = colour;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
     wait_gpu();
-
-    // *GPU_WRITE = 3;
-    GPU_REGS_B[0x16] = 3;
+    *GPU_WRITE = 3;
 }
 
 // CLEAR THE BITMAP by drawing a transparent rectangle from (0,0) to (319,239) and resetting the dither pattern
@@ -618,64 +590,40 @@ void gpu_cs( void ) {
 
 // DRAW A (optional filled) CIRCLE at centre (x1,y1) of radius
 void gpu_circle( unsigned char colour, short x1, short y1, short radius, unsigned char drawsectors, unsigned char filled ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
     if( radius ) {
-        // *GPU_COLOUR = colour;
-        // *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = radius; *GPU_PARAM1 = drawsectors;
-        GPU_REGS_B[0x10] = colour;
-        GPU_REGS[0x00] = _rv32_pack( x1, y1 ); GPU_REGS[0x01] = _rv32_pack( radius, drawsectors );
+        *GPU_COLOUR = colour;
+        *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = radius; *GPU_PARAM1 = drawsectors;
         wait_gpu();
-
-        // *GPU_WRITE = 4 + filled;
-        GPU_REGS_B[0x16] = 4 + filled;
+        *GPU_WRITE = 4 + filled;
     }
 }
 
 // BLIT A 16 x 16 ( blit_size == 1 doubled to 32 x 32 ) TILE ( from tile 0 to 31 ) to (x1,y1) in colour
 // REFLECT { y, x }
 void gpu_blit( unsigned char colour, short x1, short y1, short tile, unsigned char blit_size, unsigned char action ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // *GPU_COLOUR = colour;  GPU_PARAM2 = action;
-    // *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
-    GPU_REGS_B[0x10] = colour; GPU_REGS_B[0x08] = action;
-    GPU_REGS[0x00] = _rv32_pack( x1, y1 ); GPU_REGS[0x01] = _rv32_pack( tile, blit_size );
+    *GPU_COLOUR = colour;  *GPU_PARAM2 = action;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = tile; *GPU_PARAM1 = blit_size;
     wait_gpu();
-
-    // *GPU_WRITE = 7;
-    GPU_REGS_B[0x16] = 7;
+    *GPU_WRITE = 7;
 }
 
 // BLIT AN 8 x8  ( blit_size == 1 doubled to 16 x 16, blit_size == 1 doubled to 32 x 32 ) CHARACTER ( from tile 0 to 255 ) to (x1,y1) in colour
 // REFLECT { y, x }
 void gpu_character_blit( unsigned char colour, short x1, short y1, unsigned short tile, unsigned char blit_size, unsigned char action ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // *GPU_COLOUR = colour;  GPU_PARAM2 = action;
-    // *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
-    GPU_REGS_B[0x10] = colour; GPU_REGS_B[0x08] = action;
-    GPU_REGS[0x00] = _rv32_pack( x1, y1 ); GPU_REGS[0x01] = _rv32_pack( tile, blit_size );
+    *GPU_COLOUR = colour;  *GPU_PARAM2 = action;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = tile; *GPU_PARAM1 = blit_size;
     wait_gpu();
-
-    // *GPU_WRITE = 8;
-    GPU_REGS_B[0x16] = 8;
+    *GPU_WRITE = 8;
 }
 
 // COLOURBLIT A 16 x 16 ( blit_size == 1 doubled to 32 x 32 ) TILE ( from tile 0 to 31 ) to (x1,y1)
 // { rotate/reflect, ACTION } ROTATION == 4 0 == 5 90 == 6 180 == 7 270
 // == 1 REFLECT X, == 2 REFLECT Y
 void gpu_colourblit( short x1, short y1, short tile, unsigned char blit_size, unsigned char action ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // GPU_PARAM2 = action;
-    // *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
-    GPU_REGS_B[0x08] = action;
-    GPU_REGS[0x00] = _rv32_pack( x1, y1 ); GPU_REGS[0x01] = _rv32_pack( tile, blit_size );
+    *GPU_PARAM2 = action;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = tile; *GPU_PARAM1 = blit_size;
     wait_gpu();
-
-    // *GPU_WRITE = 9;
-    GPU_REGS_B[0x16] = 9;
+    *GPU_WRITE = 9;
 }
 
 // SET THE BLITTER TILE to the 16 x 16 pixel bitmap
@@ -705,35 +653,21 @@ void set_colourblitter_bitmap( unsigned char tile, unsigned char *bitmap ) {
 // DRAW A FILLED TRIANGLE with vertices (x1,y1) (x2,y2) (x3,y3) in colour
 // VERTICES SHOULD BE PRESENTED CLOCKWISE FROM THE TOP ( minimal adjustments made to the vertices to comply )
 void gpu_triangle( unsigned char colour, short x1, short y1, short x2, short y2, short x3, short y3 ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // *GPU_COLOUR = colour;
-    // *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
-    // *GPU_PARAM2 = x3; *GPU_PARAM3 = y3;
-    GPU_REGS_B[0x10] = colour;
-    GPU_REGS[0x00] = _rv32_pack( x1, y1 ); GPU_REGS[0x01] = _rv32_pack( x2, y2 );
-    GPU_REGS[0x02] = _rv32_pack( x3, y3 );
+    *GPU_COLOUR = colour;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
+    *GPU_PARAM2 = x3; *GPU_PARAM3 = y3;
     wait_gpu();
-
-    // *GPU_WRITE = 6;
-    GPU_REGS_B[0x16] = 6;
+    *GPU_WRITE = 6;
 }
 
 // DRAW A FILLED QUADRILATERAL with vertices (x1,y1) (x2,y2) (x3,y3) (x4,y4) in colour BY DRAWING TWO FILLED TRIANGLES
 // VERTICES SHOULD BE PRESENTED CLOCKWISE FROM THE TOP ( minimal adjustments made to the vertices to comply )
 void gpu_quadrilateral( unsigned char colour, short x1, short y1, short x2, short y2, short x3, short y3, short x4, short y4 ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // *GPU_COLOUR = colour;
-    // *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
-    // *GPU_PARAM2 = x3; *GPU_PARAM3 = y3; *GPU_PARAM4 = x4; *GPU_PARAM5 = y4;
-    GPU_REGS_B[0x10] = colour;
-    GPU_REGS[0x00] = _rv32_pack( x1, y1 ); GPU_REGS[0x01] = _rv32_pack( x2, y2 );
-    GPU_REGS[0x02] = _rv32_pack( x3, y3 ); GPU_REGS[0x03] = _rv32_pack( x4, y4 );
+    *GPU_COLOUR = colour;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
+    *GPU_PARAM2 = x3; *GPU_PARAM3 = y3; *GPU_PARAM4 = x4; *GPU_PARAM5 = y4;
     wait_gpu();
-
-    // *GPU_WRITE = 15;
-    GPU_REGS_B[0x16] = 15;
+    *GPU_WRITE = 15;
 }
 
 // OUTPUT A STRING TO THE GPU
@@ -821,82 +755,89 @@ void gpu_print_centre( unsigned char colour, short x, short y, unsigned char bol
 // PB_MODE = 0 COPY A ARRGGBB BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
 // PB_MODE = 1 COPY A 256 COLOUR BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK AND REMAPPER
 void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsigned char transparent, unsigned char *buffer ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
     wait_gpu_finished();
-    // *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_PARAM1 = transparent; *GPU_WRITE = 10;
-    GPU_REGS[0x00] = _rv32_pack( x, y ); GPU_REGS[0x01] = _rv32_pack( w, transparent ); GPU_REGS_B[0x16] = 10;
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_PARAM1 = transparent; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    if( ( (int)buffer & 1 ) || ( ( w*h ) & 1 ) ) {
+    if( ( (unsigned int)buffer & 1 ) || ( ( w*h ) & 1 ) ) {
         DMASTART( buffer, (void *)PB_COLOUR, w*h, 1 );      // UNALIGNED, ODD NUMBER OF PIXELS USE 8 BIT MODE
     } else {
         DMASTART( buffer, (void *)PB_COLOUR, w*h/2, 7 );    // ALIGNED, EVEN PIXELS USE 16 BIT MODE
     }
 
-    // *PB_STOP = 0;
-    GPU_REGS_B[0x78] = 0;
+    *PB_STOP = 0;
 }
 
 // PB_MODE = 0 COPY A { RRRRRRRR GGGGGGGG BBBBBBBB } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
 // PB_MODE = 1 SAME BUT CONVERT TO GREYSCALE
-void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, unsigned char *buffer  ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-    unsigned short volatile *GPU_REGS_H = (unsigned short volatile *)GPU_REGS;
-
+void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, unsigned char *buffer ) {
     wait_gpu_finished();
-    // *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
-    GPU_REGS[0x00] = _rv32_pack( x, y ); GPU_REGS_H[0x02] = w; GPU_REGS_B[0x16] = 10;
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
     DMASTART( buffer, (void *)PB_COLOUR8R, 3*w*h, 2 );
 
-    // *PB_STOP = 0;
-    GPU_REGS_B[0x78] = 0;
+    *PB_STOP = 0;
+}
+
+// PB_MODE = 0 COPY A { AAAAAAAA RRRRRRRR GGGGGGGG BBBBBBBB } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
+// PB_MODE = 1 SAME BUT CONVERT TO GREYSCALE
+void gpu_pixelblockARGB( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer ) {
+    wait_gpu_finished();
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
+
+    // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
+    DMASTART( buffer, (void *)PB_ARGB, 4*w*h, 1 );
+
+    *PB_STOP = 0;
+}
+
+// PB_MODE = 0 COPY A { RRRRRRRR GGGGGGGG BBBBBBBB AAAAAAAA } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
+// PB_MODE = 1 SAME BUT CONVERT TO GREYSCALE
+void gpu_pixelblockRGBA( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer ) {
+    wait_gpu_finished();
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
+
+    // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
+    DMASTART( buffer, (void *)PB_RGBA, 4*w*h, 1 );
+
+    *PB_STOP = 0;
 }
 
 // SET GPU TO RECEIVE A PIXEL BLOCK, SEND INDIVIDUAL PIXELS, STOP
 void gpu_pixelblock_start( short x,  short y, unsigned short w ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
     wait_gpu_finished();
-    // *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_PARAM1 = transparent; *GPU_WRITE = 10;
-    GPU_REGS[0x00] = _rv32_pack( x, y ); GPU_REGS[0x01] = _rv32_pack( w, TRANSPARENT ); GPU_REGS_B[0x16] = 10;
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 }
 
 void gpu_pixelblock_pixel( unsigned char pixel ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // *PB_COLOUR = pixel;
-    GPU_REGS_B[0x70] = pixel;
+    *PB_COLOUR = pixel;
 }
 
 void gpu_pixelblock_pixel24( unsigned char red, unsigned char green, unsigned char blue ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
+    *PB_COLOUR8R = red; *PB_COLOUR8G = green; *PB_COLOUR8B = blue;
+}
 
-    // *PB_COLOUR8R = red; *PB_COLOUR8G = green; *PB_COLOUR8B = blue;
-    GPU_REGS_B[0x72] = red; GPU_REGS[0x1d] = _rv32_pack( green, blue );
+void gpu_pixelblock_pixelARGB( unsigned int ARGB ) {
+    *PB_ARGB = ARGB;
+}
+
+void gpu_pixelblock_pixelRGBA( unsigned int RGBA ) {
+    *PB_RGBA = RGBA;
 }
 
 void gpu_pixelblock_stop( void ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // *PB_STOP = 0;
-    GPU_REGS_B[0x78] = 0;
+    *PB_STOP = 0;
 }
 
 // SWITCH BETWEEN PAWSv2 COLOURS AND THE REMAPPER, OR GRRGGBB OR GREYSCALE
 void gpu_pixelblock_mode( unsigned char mode ) {
-    unsigned char volatile *GPU_REGS_B = (unsigned char volatile *)GPU_REGS;
-
-    // *PB_MODE = mode;
-    GPU_REGS_B[0x7a] = mode;
+    *PB_MODE = mode;
 }
 
 // SET AN ENTRY IN THE REMAPPER
 void gpu_pixelblock_remap( unsigned char from, unsigned char to ) {
-    // *PB_CMNUMBER = from; *PB_CMENTRY = to;
-    GPU_REGS[0x1f] = _rv32_pack( from, to );
+    *PB_CMNUMBER = from; *PB_CMENTRY = to;
 }
 
 // GPU VECTOR BLOCK
@@ -926,65 +867,41 @@ void set_vector_vertex( unsigned char block, unsigned char vertex, unsigned char
     *VECTOR_WRITER_DELTAY = deltay;
 }
 
-// SOFTWARE VECTORS AND DRAWLISTS - FAST SINE. COSINE, TANGENT VIA LOOKUP TABLES FOR INTEGER ANGLES
-float sint[720], cost[720], tant[720];
-int trigt_init = 0;
-
-void paws_triginit( void ) {
-    for( int x = -359; x < 360; x++ ) {
-        float radx = x*0.01745329252;
-        sint[ x + 359 ] = sinf( radx );
-        cost[ x + 359 ] = cosf( radx );
-        tant[ x + 359 ] = tanf( radx );
-    }
-    trigt_init = 1;
-}
-
-float paws_sin( short angle ) {
-    return( sint[ angle + 359 ] );
-}
-float paws_cos( short angle ) {
-    return( cost[ angle + 359 ] );
-}
-float paws_tan( short angle ) {
-    return( tant[ angle + 359 ] );
-}
-
+// SOFTWARE VECTORS AND DRAWLISTS
 // SCALE A POINT AND MOVE TO CENTRE POINT
-union Point2D Scale2D( union Point2D point, short xc, short yc, float scale ) {
+union Point2D Scale2D( union Point2D point, int xc, int yc, float scale ) {
     union Point2D newpoint;
-    newpoint.packed = _rv32_pack( point.dx * scale + xc, point.dy * scale + yc );
+    newpoint.dx = point.dx * scale + xc;
+    newpoint.dy = point.dy * scale + yc;
     return( newpoint );
 }
-union Point2D Rotate2D( union Point2D point, short xc, short yc, short angle, float scale ) {
-    union Point2D newpoint; if( !trigt_init ) paws_triginit();
-
-    float sine = paws_sin(angle), cosine = paws_cos(angle);
-
-    newpoint.packed = _rv32_pack( ( (point.dx * scale)*cosine-(point.dy * scale)*sine ) + xc,
-                                  ( (point.dx * scale)*sine+(point.dy * scale)*cosine ) + yc );
+union Point2D Rotate2D( union Point2D point, int xc, int yc, int angle, float scale ) {
+    union Point2D newpoint;
+    float sine = sinf(angle*0.01745329252), cosine = cosf(angle*0.01745329252);
+    newpoint.dx = ( (point.dx * scale)*cosine-(point.dy * scale)*sine ) + xc;
+    newpoint.dy = ( (point.dx * scale)*sine+(point.dy * scale)*cosine ) + yc;
     return( newpoint );
 }
 
-union Point2D MakePoint2D( short x, short y ) {
+union Point2D MakePoint2D( int x, int y ) {
     union Point2D newpoint;
-    newpoint.packed = _rv32_pack( x, y );
+    newpoint.dx = x; newpoint.dy = y;
     return( newpoint );
 }
 
 // PROCESS A SOFTWARE VECTOR BLOCK AFTER SCALING AND ROTATION
-void DrawVectorShape2D( unsigned char colour, union Point2D *points, short numpoints, short xc, short yc, short angle, float scale ) {
+void DrawVectorShape2D( unsigned char colour, union Point2D *points, int numpoints, int xc, int yc, int angle, float scale ) {
     union Point2D *NewShape  = (union Point2D *)0x1800;
-    for( short vertex = 0; vertex < numpoints; vertex++ ) {
+    for( int vertex = 0; vertex < numpoints; vertex++ ) {
         NewShape[ vertex ] = Rotate2D( points[vertex], xc, yc, angle, scale );
     }
-    for( short vertex = 0; vertex < numpoints; vertex++ ) {
+    for( int vertex = 0; vertex < numpoints; vertex++ ) {
         gpu_line( colour, NewShape[ vertex ].dx, NewShape[ vertex ].dy, NewShape[ ( vertex == ( numpoints - 1 ) ) ? 0 : vertex + 1 ].dx, NewShape[ vertex == ( numpoints - 1 ) ? 0 : vertex + 1 ].dy );
     }
 }
 
 // PROCESS A DRAWLIST DRAWING SHAPES AFTER SCALING, ROTATING AND MOVING TO CENTRE POINT
-void DoDrawList2D( struct DrawList2D *list, short numentries, short xc, short yc, short angle, float scale ) {
+void DoDrawList2D( struct DrawList2D *list, int numentries, int xc, int yc, int angle, float scale ) {
     union Point2D XY1, XY2, XY3, XY4;
     for( int i = 0; i < numentries; i++ ) {
         gpu_dither( list[i].dithermode, list[i].alt_colour );
@@ -1030,7 +947,7 @@ void DoDrawList2D( struct DrawList2D *list, short numentries, short xc, short yc
 }
 
 // PROCESS A DRAWLIST DRAWING SHAPES AFTER SCALING AND MOVING TO CENTRE POINT
-void DoDrawList2Dscale( struct DrawList2D *list, short numentries, short xc, short yc, float scale ) {
+void DoDrawList2Dscale( struct DrawList2D *list, int numentries, int xc, int yc, float scale ) {
     union Point2D XY1, XY2, XY3, XY4;
     for( int i = 0; i < numentries; i++ ) {
         gpu_dither( list[i].dithermode, list[i].alt_colour );
@@ -1292,7 +1209,7 @@ unsigned short tpu_read_cell( unsigned char x, unsigned char y ) {
 // READ THE COLOUR AT (x,y)
 unsigned short tpu_read_colour( unsigned char x, unsigned char y ) {
     tpu_move( x, y );
-    return( _rv32_packh( *TPUREAD_FOREGROUND, *TPUREAD_FOREGROUND ) );
+    return( (*TPUREAD_BACKGROUND<<8)+*TPUREAD_FOREGROUND);
 }
 void tpu_write( short c ) {
      while( *TPU_COMMIT );
@@ -1448,10 +1365,7 @@ void readfile( unsigned int starting_cluster, unsigned char *copyAddress ) {
 
     do {
         readcluster( nextCluster, CLUSTERBUFFER );
-        for( i = 0; i < FAT32clustersize * 512; i++ ) {
-            *copyAddress = CLUSTERBUFFER[i];
-            copyAddress++;
-        }
+        memcpy( copyAddress, CLUSTERBUFFER, FAT32clustersize * 512 ); copyAddress += FAT32clustersize * 512;
         nextCluster = getnextcluster( nextCluster);
     } while( nextCluster < 0xffffff8 );
 }
@@ -1507,7 +1421,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
             for( int i = 0; i < 16 * FAT32clustersize; i++ ) {
                 if( ( fileentry[i].filename[0] != 0x00 ) && ( fileentry[i].filename[0] != 0xe5 ) ) {
                     // LOG ITEM INTO directorynames, if appropriate
-                    if( fileentry[i].attributes &  0x10 ) {
+                    if( fileentry[i].attributes & 0x10 ) {
                         // DIRECTORY, IGNORING "." and ".."
                         if( fileentry[i].filename[0] != '.' ) {
                             entries++;
@@ -2511,7 +2425,7 @@ int bcdtobin( int bcd ) {
 }
 // CONVERT ULX3S BCD RTC TO LINUX EPOCH TIME
 void paws_settime( void ) {
-    struct tm calendar; uint64_t rtc = *((uint64_t *)RTC), sinceepoch;
+    struct tm calendar; uint64_t rtc = *RTC, sinceepoch;
 
     calendar.tm_sec = bcdtobin( ( rtc & 0x00000000000000ff ) >> 0 );
     calendar.tm_min = bcdtobin( ( rtc & 0x000000000000ff00 ) >> 8 );
@@ -2521,7 +2435,7 @@ void paws_settime( void ) {
     calendar.tm_year = 2000 + bcdtobin( ( rtc & 0x00ff000000000000 ) >> 48 ) - 1900;
     calendar.tm_wday = 0; calendar.tm_yday = 0; calendar.tm_isdst = 0;
     sinceepoch = mktime( &calendar );
-    TIMER_REGS[8] = (int)(sinceepoch & 0xffffffff); TIMER_REGS[9] = (int)(sinceepoch >> 32); TIMER_REGS[10] = 0xffffffff;
+    *SET_RTC_TIME = sinceepoch; *SET_RTC = 1;;
 }
 int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
     int *storage = (int *)tv;
@@ -2545,14 +2459,6 @@ unsigned int paws_sleep( unsigned int seconds ) {
     while( *SLEEPTIMER0 && *SLEEPTIMER1 );
     sleep1khz( 1000 * seconds, ( !*SLEEPTIMER0 ) ? 0 : 1 );
     return(0);
-}
-
-// PAWS FIXED POINT DIVISION 16.16 ACCELERATOR
-int fixed_divide( int numerator, int denominator ) {
-    unsigned char volatile *FIXED_REGS_B = (unsigned char volatile *)FIXED_REGS;                 // BYTE ACCESS TO START / STATUS REGISTER
-
-    FIXED_REGS[0] = numerator; FIXED_REGS[1] = denominator; FIXED_REGS_B[0x08] = 1; while( FIXED_REGS_B[0x08] );
-    return( FIXED_REGS[0] );
 }
 
 // PAWS RISC-V B EXTENSION OPTIMISED strcmp strlen

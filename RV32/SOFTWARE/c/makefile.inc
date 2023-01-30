@@ -6,27 +6,39 @@ everything: all
 ARCH=riscv64
 AR=$(ARCH)-elf-ar
 CC=$(ARCH)-elf-gcc
+CXX=$(ARCH)-elf-g++
 LD=$(ARCH)-elf-ld.bfd
 NM=$(ARCH)--elf-nm
 RANLIB=$(ARCH)--elf-ranlib
 
 GCCVER=12.1.0
+COMPILER=$(CC)
 
 BUILD_DIR=build
 OUTPUT_DIR=../../PAWS/
 
-CFLAGS=-march=rv32imafc_zba_zbb_zbc_zbs_zbkb_zbkx_zifencei -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib
+ifndef CFLAGSEXTRA
+CFLAGSEXTRA=
+endif
+ifndef INCLUDEEXTRA
+INCLUDEEXTRA=
+endif
+
+CFLAGS=-march=rv32imafc_zba_zbb_zbc_zbs_zbkb_zbkx_zifencei -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
+CXXFLAGS=-march=rv32imafc_zba_zbb_zbc_zbs_zbkb_zbkx_zifencei -mabi=ilp32f -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib -fno-builtin
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf32lriscv -Wl,-belf32-littleriscv
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 
 PAWSBASE=../
-INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I/usr/riscv32-elf/include/
+INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I$(PAWSBASE)/library/imgui/ -I$(INCLUDEEXTRA) -I/usr/riscv64-elf/include/
 
-LIBRARY=/usr/riscv64-elf/lib/rv32imafc/ilp32f/libc.a \
-	/usr/riscv64-elf/lib/rv32imafc/ilp32f/libm.a \
-	/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv32imafc/ilp32f/libgcc.a \
+LIBRARY=	/usr/riscv64-elf/lib/rv32imafc/ilp32f/libc.a \
+		/usr/riscv64-elf/lib/rv32imafc/ilp32f/libm.a \
+		/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv32imafc/ilp32f/libgcc.a \
+		/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv32imafc/ilp32f/crtbegin.o \
+		/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv32imafc/ilp32f/crtend.o
 
-CRT0SOURCE=	$(PAWSBASE)library/crt0.c
+CRT0SOURCE=	$(PAWSBASE)library/crt0.s
 CRT0OBJ=	$(PAWSBASE)library/build/crt0.o
 
 LIBPAWSSOURCE=	$(PAWSBASE)library/PAWS.h $(PAWSBASE)library/PAWSdefinitions.h $(PAWSBASE)library/PAWSlibrary.c
@@ -38,6 +50,14 @@ PAWSPS2OBJ=	$(PAWSBASE)library/$(BUILD_DIR)/PAWSPS2driver.o
 NANOJPEGSOURCE= $(PAWSBASE)library/nanojpeg/nanojpeg.c
 NANOJPEGOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/nanojpeg.o
 
+IMGUISOURCE=	$(wildcard $(PAWSBASE)library/imgui/*.cpp) $(wildcard $(PAWSBASE)library/imgui/*.h)
+IMGUIOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/imgui_draw.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_sw.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_tables.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_widgets.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_demo.o
+
 FATIOLIBSOURCE= $(wildcard $(PAWSBASE)library/fat_io_lib/*.c) $(wildcard $(PAWSBASE)library/fat_io_lib/*.h)
 FATIOLIBOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o \
 		$(PAWSBASE)library/$(BUILD_DIR)/fat_access.o \
@@ -48,7 +68,9 @@ FATIOLIBOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o \
 		$(PAWSBASE)library/$(BUILD_DIR)/fat_cache.o \
 		$(PAWSBASE)library/$(BUILD_DIR)/fat_format.o
 
-LIBPAWS= $(LIBPAWSOBJ) $(PAWSPS2OBJ) $(NANOJPEGOBJ) $(FATIOLIBOBJ)
+LIBPAWS= $(LIBPAWSOBJ) $(PAWSPS2OBJ) $(NANOJPEGOBJ) $(FATIOLIBOBJ) $(IMGUIOBJ)
+
+PRJSRC=
 
 $(LIBPAWSOBJ) : $(LIBPAWSSOURCE) $(CRT0OBJ)
 	$(CC) $(CFLAGS) -c $(PAWSBASE)library/PAWSlibrary.c -o $@
@@ -58,6 +80,14 @@ $(PAWSPS2OBJ) : $(PAWSP2SOURCE)
 
 $(NANOJPEGOBJ) : $(NANOJPEGSOURCE)
 	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
+
+$(IMGUIOBJ) : $(IMGUISOURCE)
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_draw.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_draw.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -I$(PAWSBASE)/library/ -c $(PAWSBASE)library/imgui/imgui_sw.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_sw.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_tables.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_tables.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_widgets.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_widgets.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_demo.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_demo.o
 
 $(FATIOLIBOBJ) : $(FATIOLIBSOURCE)
 	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_filelib.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o
@@ -71,3 +101,10 @@ $(FATIOLIBOBJ) : $(FATIOLIBSOURCE)
 
 $(CRT0OBJ) : $(CRT0SOURCE)
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(PRJOBJ)%.o : $(PRJSRC)%.c
+	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
+
+$(PRJOBJ)%.o : $(PRJSRC)%.cpp
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -o $@
+

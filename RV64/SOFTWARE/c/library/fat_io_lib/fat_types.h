@@ -1,28 +1,12 @@
 #ifndef __FAT_TYPES_H__
 #define __FAT_TYPES_H__
 
-// Detect 64-bit compilation on GCC
-#if defined(__GNUC__) && defined(__SIZEOF_LONG__)
-    #if __SIZEOF_LONG__ == 8
-        #define FATFS_DEF_UINT32_AS_INT
-    #endif
-#endif
-
 //-------------------------------------------------------------
 // System specific types
 //-------------------------------------------------------------
-#ifndef FATFS_NO_DEF_TYPES
-    typedef unsigned char uint8;
-    typedef unsigned short uint16;
-
-    // If compiling on a 64-bit machine, use int as 32-bits
-    #ifdef FATFS_DEF_UINT32_AS_INT
-        typedef unsigned int uint32;
-    // Else for 32-bit machines & embedded systems, use long...
-    #else
-        typedef unsigned long uint32;
-    #endif
-#endif
+typedef unsigned char uint8;
+typedef unsigned short uint16;
+typedef unsigned int uint32;
 
 #ifndef NULL
     #define NULL 0

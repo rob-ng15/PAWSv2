@@ -229,7 +229,7 @@ void init_scene(Sphere* spheres, Light* lights) {
 
 int main( int argc, char **argv ) {
     Sphere spheres[NB_SPHERES]; Light lights[NB_LIGHTS]; init_scene(spheres, lights);
-    gpu_pixelblock_mode( PB_WRITEALL ); bitmap_256( TRUE );
+    bitmap_256( TRUE );
 
     // CYCLE THROUGH COLOUR AND GREY
     for( unsigned char mode = 0; mode <2; mode++ ) {

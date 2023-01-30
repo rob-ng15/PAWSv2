@@ -1,7 +1,9 @@
+CFLAGSEXTRA=
 include ../makefile.inc
 
 PROJECT=TEMPLATE
 PROJECTTYPE=TEST
-SOURCE=template.c
+PRJSRC=$(wildcard *.c) $(wildcard *.cpp) $(wildcard *.s) $(wildcard *.h)
+PRJOBJ=template.o
 
 include ../makefile-paws.inc

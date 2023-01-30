@@ -1,7 +1,8 @@
-include ../makefile-fast-lto.inc
+include ../makefile-lto.inc
 
 PROJECT=MANDEL
 PROJECTTYPE=DEMO
-SOURCE=mandelbrot.c
+PRJSRC=$(wildcard *.c) $(wildcard *.cpp) $(wildcard *.s) $(wildcard *.h)
+PRJOBJ=mandelbrot.o
 
 include ../makefile-paws.inc

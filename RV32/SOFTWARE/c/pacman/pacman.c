@@ -658,10 +658,10 @@ static void input() {
     if (state.input.enabled) {
         unsigned short joystick = get_buttons() & 0xfffe;
         state.input.anykey = ( joystick != 0 );
-        state.input.up = _rv32_bext( joystick, 3 );
-        state.input.down = _rv32_bext( joystick, 4 );
-        state.input.right = _rv32_bext( joystick, 6 );
-        state.input.left = _rv32_bext( joystick, 5 );
+        state.input.up = ( joystick & 8 ) != 0;
+        state.input.down = ( joystick & 16 ) != 0;
+        state.input.right = ( joystick & 64 ) != 0;
+        state.input.left = ( joystick & 32 ) != 0;
     } else {
         state.input.anykey = state.input.up = state.input.down = state.input.right = state.input.left = 0;
     }

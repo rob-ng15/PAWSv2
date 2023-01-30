@@ -2,6 +2,7 @@ include ../makefile-lto.inc
 
 PROJECT=ASTROIDS
 PROJECTTYPE=GAMES
-SOURCE=asteroids.c
+PRJSRC=$(wildcard *.c) $(wildcard *.cpp) $(wildcard *.s) $(wildcard graphics/*.h)
+PRJOBJ=asteroids.o
 
 include ../makefile-paws.inc

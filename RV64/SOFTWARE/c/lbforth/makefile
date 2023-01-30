@@ -2,6 +2,7 @@ include ../makefile-lto.inc
 
 PROJECT=LBFORTH
 PROJECTTYPE=COMPUTER
-SOURCE=lbforth.c
+PRJSRC=$(wildcard *.c) $(wildcard *.cpp) $(wildcard *.s) $(wildcard *.h)
+PRJOBJ=lbforth.o
 
 include ../makefile-paws.inc

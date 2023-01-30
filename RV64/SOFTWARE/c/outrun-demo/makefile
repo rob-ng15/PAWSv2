@@ -2,6 +2,7 @@ include ../makefile-lto.inc
 
 PROJECT=OUTRUN
 PROJECTTYPE=DEMO
-SOURCE=outrun.c
+PRJSRC=$(wildcard *.c) $(wildcard *.cpp) $(wildcard *.s) $(wildcard graphics/*.h)
+PRJOBJ=outrun.o
 
 include ../makefile-paws.inc

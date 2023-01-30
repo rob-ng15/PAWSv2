@@ -2,6 +2,7 @@ include ../makefile-lto.inc
 
 PROJECT=MEMTEST
 PROJECTTYPE=TEST
-SOURCE=memtest.c
+PRJSRC=$(wildcard *.c) $(wildcard *.cpp) $(wildcard *.s) $(wildcard *.h)
+PRJOBJ=memtest.o
 
 include ../makefile-paws.inc

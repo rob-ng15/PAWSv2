@@ -2,6 +2,7 @@ include ../makefile-lto.inc
 
 PROJECT=KEYBOARD
 PROJECTTYPE=TEST
-SOURCE=keyboard.c
+PRJSRC=$(wildcard *.c) $(wildcard *.cpp) $(wildcard *.s) $(wildcard *.h)
+PRJOBJ=keyboard.o
 
 include ../makefile-paws.inc

@@ -230,7 +230,7 @@ unit PAWSCPU(
                 ICACHEUPDATE = 1; cacheselect = 1; ++:                                                                              // SWITCH TO DATA CACHE, UPDATE ICACHE
 
                 switch( { RV64CONTROL.IS_LOAD, RV64CONTROL.IS_FAST, RV64CONTROL.IS_STORE } ) {
-                    case 3b000: { EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                         // DIVISION, CLMUL, FLOATING POINT, CSR
+                    case 3b000: { ++: EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} }                                         // DIVISION, CLMUL, FLOATING POINT, CSR
                     case 3b010: {}                                                                                                  // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
                     case 3b011: {
                         STORE.start = ~MEM64; STORE64.start = MEM64;                                            // INTEGER + FLOAT/DOUBLE STORE
@@ -325,11 +325,10 @@ unit cpuexecuteSLOWPATH(
 ) <reginputs> {
     // Classify the instruction
     uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( ( function7[2,5] == 5b11010 ) | ( function7[2,5] == 5b11000 ) | ( function7[2,5] == 5b01000 ) );
-    uint4   converttype <:: {
+    uint3   converttype <:: {
                                 ( function7[2,5] == 5b11000 ),                                                                  // FD2IL
-                                ( function7[2,5] == 7b11010 ),                                                                  // IL2FD
-                                ( function7 == 7b0100001 ),                                                                     // F2D
-                                ( function7 == 7b0100000 )                                                                      // D2F
+                                ( function7[2,5] == 5b11010 ),                                                                  // IL2FD
+                                ( function7[2,5] == 5b01000 )                                                                   // F2D or D2F
                             };
     uint1   fpufast <:: ( isFPU & isFASTFPU ) | fpuconvert;
     uint1   fpucalc <:: isFPU & ~fpufast;
@@ -355,21 +354,18 @@ unit cpuexecuteSLOWPATH(
         typeAF <: typeAF, typeBF <: typeBF, typeCF <: typeCF
     );
 
-    // FLOATING POINT FAST OPERATIONS
-
+    // FLOATING POINT CONVERSIONS
     intlong2floatdouble FPUIL2FD( rm <: function3, dounsigned <: rs2[0,1], il <: rs2[1,1], df <: function7[0,1], sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64, FPUflags <: CSR.FPUflags );
     floatdouble2intlong FPUFD2IL( rm <: function3, dounsigned <: rs2[0,1], il <: rs2[1,1], df <: function7[0,1], sourceReg1F <: sourceReg1F, typeAF <: typeAF, FPUflags <: CSR.FPUflags );
-    float2double FPUF2D( sourceReg1F <: sourceReg1F[0,32], typeAF <: typeAS, FPUflags <: CSR.FPUflags );
-    double2float FPUD2F( sourceReg1F <: sourceReg1F, typeAF <: typeAD, FPUflags <: CSR.FPUflags );
-    uint64  convertresult <:: converttype[3,1] ? FPUFD2IL.result :
-                              converttype[2,1] ? FPUIL2FD.result :
-                              converttype[1,1] ? FPUF2D.result :
-                                                 FPUD2F.result;
-    uint5   convertflags  <:: converttype[3,1] ? FPUFD2IL.FPUnewflags :
-                              converttype[2,1] ? FPUIL2FD.FPUnewflags :
-                              converttype[1,1] ? FPUF2D.FPUnewflags :
-                                                 FPUD2F.FPUnewflags;
+    changeprecision FPUF2D_D2F( df <: function7[0,1], sourceReg1F <: sourceReg1F, typeAS <: typeAS, typeAD <: typeAD, FPUflags <: CSR.FPUflags );
+    uint64  convertresult <:: converttype[2,1] ? FPUFD2IL.result :
+                              converttype[1,1] ? FPUIL2FD.result :
+                                                 FPUF2D_D2F.result;
+    uint5   convertflags  <:: converttype[2,1] ? FPUFD2IL.FPUnewflags :
+                              converttype[1,1] ? FPUIL2FD.FPUnewflags :
+                                                 FPUF2D_D2F.FPUnewflags;
 
+    // FLOATING POINT FAST OPERATIONS
     fpuSINGLECYCLE FPUFAST(
         df <: function7[0,1],
         FPUflags <: CSR.FPUflags,
@@ -438,7 +434,7 @@ unit cpuexecuteSLOWPATH(
                 }
             }
         }
-        { frd = fpuconvert ? ( |converttype[0,3] ) : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
+        { frd = fpuconvert ? ( |converttype[0,2] ) : fpufast ? FPUFAST.frd : fpucalc ? 1 : 0; }
     }
 }
 

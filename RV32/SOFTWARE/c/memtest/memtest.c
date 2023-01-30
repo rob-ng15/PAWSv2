@@ -37,9 +37,9 @@ int main( void ) {
         while( membyte < (unsigned char *)last ) { *membyte++ = byte; count++; byte = byte ^ count; }
         memword = (unsigned int *)start;
         while( memword < (unsigned int *)lastprint ) {
-            if( ( (int)memword & 0xc ) == 0 ) printw( "0x%7x : ",(int)memword );
+            if( ( (long)memword & 0xc ) == 0 ) printw( "0x%7x : ",(long)memword );
             printw("%08x ",*memword);
-            if( ( (int)memword & 0xc ) == 0xc ) printw( "\n" );
+            if( ( (long)memword & 0xc ) == 0xc ) printw( "\n" );
             memword++;
         }
         membyte = (unsigned char *)start; byte = 0x11; count = 0;
@@ -57,9 +57,9 @@ int main( void ) {
         while( memhalf < (unsigned short *)last ) { *memhalf++ = half; count++; half = half ^ count ^ ( count << 8 ); }
         memword = (unsigned int *)start;
         while( memword < (unsigned int *)lastprint ) {
-            if( ( (int)memword & 0xc ) == 0 ) printw( "0x%7x : ",(int)memword );
+            if( ( (long)memword & 0xc ) == 0 ) printw( "0x%7x : ",(long)memword );
             printw("%08x ",*memword);
-            if( ( (int)memword & 0xc ) == 0xc ) printw( "\n" );
+            if( ( (long)memword & 0xc ) == 0xc ) printw( "\n" );
             memword++;
         }
         memhalf = (unsigned short *)start; half = 0x2211; count = 0;
@@ -77,16 +77,16 @@ int main( void ) {
         while( memword < (unsigned int *)last ) { *memword++ = word; count++; word = word ^ count ^ ( count << 8 ) ^ ( count << 16 ) ^ ( count << 24 ); }
         membyte = (unsigned char *)start;
         while( membyte < (unsigned char *)lastprint ) {
-            if( ( (int)membyte & 0xf ) == 0 ) printw( "0x%7x : ",(int)membyte );
+            if( ( (long)membyte & 0xf ) == 0 ) printw( "0x%7x : ",(long)membyte );
             printw("%02x ",*membyte);
-            if( ( (int)membyte & 0xf ) == 0xf ) printw( "\n" );
+            if( ( (long)membyte & 0xf ) == 0xf ) printw( "\n" );
             membyte++;
         }
         memword = (unsigned int *)start;
         while( memword < (unsigned int *)lastprint ) {
-            if( ( (int)memword & 0xc ) == 0 ) printw( "0x%7x : ",(int)memword );
+            if( ( (long)memword & 0xc ) == 0 ) printw( "0x%7x : ",(long)memword );
             printw("%08x ",*memword);
-            if( ( (int)memword & 0xc ) == 0xc ) printw( "\n" );
+            if( ( (long)memword & 0xc ) == 0xc ) printw( "\n" );
             memword++;
         }
         memword = (unsigned int *)start; word = 0x44332211; count = 0;

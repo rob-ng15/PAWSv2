@@ -13,7 +13,7 @@ extern unsigned long CSRtime( void );
 
 // SMT START AND STOP
 extern void SMTSTOP( void );
-extern void SMTSTART( unsigned int );
+extern void SMTSTART( void * );
 extern unsigned char SMTSTATE( void );
 
 // UART INPUT / OUTPUT
@@ -43,7 +43,11 @@ extern void wait_timer1khz( unsigned char );
 extern unsigned short get_timer1hz( unsigned char );
 extern void reset_timer1hz( unsigned char );
 extern unsigned long systemclock( void );
+#ifdef __cplusplus
+extern int paws_gettimeofday( struct paws_timeval *, void * );
+#else
 extern int paws_gettimeofday( struct paws_timeval *restrict tv, void *tz );
+#endif
 extern unsigned long get_systemrtc( void );
 
 // AUDIO
@@ -87,6 +91,7 @@ extern unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned c
 extern void gpu_dither( unsigned char , unsigned char );
 extern void gpu_crop( unsigned short, unsigned short, unsigned short, unsigned short );
 extern void gpu_pixel( unsigned char, short, short );
+extern void gpu_pixel_RGB( unsigned int colour, short x, short y );
 extern void gpu_rectangle( unsigned char, short, short, short, short );
 extern void gpu_box( unsigned char, short, short, short, short, unsigned short );
 extern void gpu_cs( void );
@@ -107,12 +112,16 @@ extern void set_blitter_chbitmap( unsigned char, unsigned char *);
 extern void set_colourblitter_bitmap( unsigned char, unsigned char *);
 extern void gpu_pixelblock( short , short , unsigned short, unsigned short, unsigned char, unsigned char *);
 extern void gpu_pixelblock24( short , short , unsigned short, unsigned short, unsigned char *);
-void gpu_pixelblock_start( short , short , unsigned short );
-void gpu_pixelblock_mode( unsigned char mode );
-void gpu_pixelblock_pixel( unsigned char );
-void gpu_pixelblock_pixel24( unsigned char, unsigned char, unsigned char );
-void gpu_pixelblock_stop( void );
-void gpu_pixelblock_remap( unsigned char from, unsigned char to );
+extern void gpu_pixelblockARGB( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer );
+extern void gpu_pixelblockRGBA( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer );
+extern void gpu_pixelblock_start( short , short , unsigned short );
+extern void gpu_pixelblock_mode( unsigned char mode );
+extern void gpu_pixelblock_pixel( unsigned char );
+extern void gpu_pixelblock_pixel24( unsigned char, unsigned char, unsigned char );
+extern void gpu_pixelblock_pixelARGB( unsigned int ARGB );
+extern void gpu_pixelblock_pixelRGBA( unsigned int RGBA );
+extern void gpu_pixelblock_stop( void );
+extern void gpu_pixelblock_remap( unsigned char from, unsigned char to );
 
 extern void gpu_printf( unsigned char, short, short, unsigned char, unsigned char, unsigned char, const char *,...  );
 extern void gpu_printf_centre( unsigned char, short, short, unsigned char, unsigned char, unsigned char, const char *,...  );
@@ -124,11 +133,11 @@ extern void gpu_print_vertical( unsigned char, short, short, unsigned char, unsi
 extern void gpu_print_centre_vertical( unsigned char, short, short, unsigned char, unsigned char, unsigned char, char *);
 
 // SOFTWARE VECTOR SHAPES
-extern void DrawVectorShape2D( unsigned char, union Point2D *, short, short, short, short, float );
+extern void DrawVectorShape2D( unsigned char, union Point2D *, int, int, int, int, float );
 
 // SOFTWARE DRAW LISTS
-extern void DoDrawList2D( struct DrawList2D *, short, short, short, short, float );
-extern void DoDrawList2Dscale( struct DrawList2D *, short, short, short, float );
+extern void DoDrawList2D( struct DrawList2D *, int, int, int, int, float );
+extern void DoDrawList2Dscale( struct DrawList2D *, int, int, int, float );
 
 // SPRITES - MAIN ACCESS
 extern void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes );
@@ -175,9 +184,6 @@ extern unsigned char *sdcard_selectfile( char *, char *, unsigned int *, char *)
 // ALLOCATION OF FAST BRAM MEMORY
 extern void *malloc_bram( int size );
 
-// FIXED POINT DIVISION 16.16 ACCELERATOR
-extern int fixed_divide( int a, int b );
-
 // HARDWARE REGISTER BASES
 extern int volatile *IO_REGS;
 extern int volatile *DMA_REGS;
@@ -188,9 +194,20 @@ extern int volatile *AUDIO_REGS;
 extern int volatile *FIXED_REGS;
 extern int volatile *TIMER_REGS;
 
+// EXTRA DMA MEMCPY MEMSET OPERATIONS
+#ifdef __cplusplus
+extern void paws_memcpy_step( const void *, const void *, size_t, int, int );
+extern void paws_memcpy_rectangle( const void *, const void *, size_t, int, int, unsigned char );
+extern void paws_memset_rectangle( void *, int, size_t, int, unsigned char );
+extern void *paws_memset_RGB( void *, int, size_t );
+extern void paws_memset_rectangle_RGB( void *, int, size_t, int, unsigned char );
+#else
 extern void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd );
 extern void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles );
 extern void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles );
+extern void *paws_memset_RGB( void *restrict destination, int RGB, size_t count );
+extern void paws_memset_rectangle_RGB( void *restrict destination, int RGB, size_t count, int destadd, unsigned char cycles );
+#endif
 
 #define __PAWSLIBRARY__
 #endif

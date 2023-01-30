@@ -200,3 +200,4 @@ unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
 unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
+unsigned int volatile *DMASETRGB = (unsigned int volatile *) 0xfe0c;

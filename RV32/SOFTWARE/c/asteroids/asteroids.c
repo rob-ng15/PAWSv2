@@ -239,7 +239,7 @@ unsigned char find_asteroid_space( void ) {
     return( ( spaces_free == 1 ) ? 0xff : asteroid_space );
 }
 
-void move_asteroids( void ) {
+__attribute__((used)) void move_asteroids( void ) {
     while(1) {
         await_vblank();
 
@@ -654,9 +654,8 @@ void check_crash( void ) {
 // MAIN GAME LOOP STARTS HERE
 void smt_thread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp ,0x4000");
-
-    while(1) move_asteroids();
+    asm volatile ("li sp, 0x4000");
+    asm volatile ("j move_asteroids");
 }
 
 int main( void ) {
@@ -666,7 +665,7 @@ int main( void ) {
 
     // INITIALISE ALL VARIABLES AND START THE ASTEROID MOVING THREAD
     setup_game();
-    SMTSTART( (unsigned int )smt_thread );
+    SMTSTART( smt_thread );
 
     while(1) {
         last_fire = ( last_fire > 0 ) ? last_fire - 1 : 0;

@@ -38,10 +38,7 @@ typedef int fixed_t;
 
 static inline fixed_t FixedMul (fixed_t a, fixed_t b)
 {
-    // USE PAWS BIT MANIPULATION EXTENSION
-    fixed_t hi = _rv32_mulh (a, b);
-    fixed_t lo = ((unsigned)(a * b)) >> FRACBITS;
-    return _rv32_pack (lo, hi);
+    return ((long long) a * (long long) b) >> FRACBITS;
 }
 
 //
