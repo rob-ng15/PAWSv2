@@ -47,5 +47,5 @@ bool show_options(SwOptions* io_options);
 void show_stats();
 
 void show_stats_in_terminal();
-   
+
 } // namespace imgui_sw

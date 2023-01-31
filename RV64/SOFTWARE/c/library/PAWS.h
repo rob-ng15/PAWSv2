@@ -195,6 +195,7 @@ unsigned int volatile *SMTPC = (unsigned int volatile *) 0xff00;
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
 int volatile *DMADESTADD = (int volatile *) 0xfd04;
 unsigned char volatile *DMACYCLES = (unsigned char volatile *) 0xfd08;
+unsigned int volatile *DMASET32 = (unsigned int volatile *) 0xfd0c;
 unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xfe00;
 unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
 unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;

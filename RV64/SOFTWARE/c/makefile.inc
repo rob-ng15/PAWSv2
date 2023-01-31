@@ -83,7 +83,7 @@ $(NANOJPEGOBJ) : $(NANOJPEGSOURCE)
 
 $(IMGUIOBJ) : $(IMGUISOURCE)
 	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_draw.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_draw.o
-	$(CXX) $(CXXFLAGS) $(INCLUDE) -I$(PAWSBASE)/library/ -c $(PAWSBASE)library/imgui/imgui_sw.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_sw.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_sw.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_sw.o
 	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_tables.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_tables.o
 	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_widgets.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_widgets.o
 	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui.o

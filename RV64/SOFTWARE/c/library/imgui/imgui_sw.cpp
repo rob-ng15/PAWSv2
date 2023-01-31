@@ -9,6 +9,26 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <cstdlib>
+
+extern int volatile *DMASOURCEADD;
+extern int volatile *DMADESTADD;
+extern unsigned char volatile *DMACYCLES;
+extern unsigned int volatile *DMASOURCE;
+extern unsigned int volatile *DMADEST;
+extern unsigned int volatile *DMACOUNT;
+extern unsigned char volatile *DMAMODE;
+extern unsigned char volatile *DMASET;
+extern unsigned int volatile *DMASET32;
+extern void cpp_DMASTART( void *source, void *destination, unsigned int count, unsigned char mode );
+void *cpp_paws_memset32( void *destination, int value, size_t count ) {
+    *DMASET32 = value; cpp_DMASTART( (void *)DMASET, destination, count, 4 );
+    return( destination );
+}
+void cpp_paws_memset_rectangle32( void *destination, int value, size_t count, int destadd, unsigned char cycles ) {
+    *DMASET32 = value; *DMADESTADD = destadd; *DMACYCLES = cycles;
+    cpp_DMASTART( (void *)DMASET, destination, count, 9 );
+}
 
 namespace imgui_sw {
 namespace {

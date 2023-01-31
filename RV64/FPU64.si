@@ -17,11 +17,11 @@ unit fpuSINGLECYCLE(
     floatcompare FPUlteq( df <: df, a <: sourceReg1F, b <: sourceReg2F, typeAF <: typeAF, typeBF <: typeBF );
 
     uint1   NAN <:: |( typeAF[1,2] | typeBF[1,2] );
-    uint1   TRUEZERO <:: ~|( df ? fp64( sourceReg1F ).fraction : fp32( sourceReg1F ).fraction );
     uint3   LTEQ <:: { FPUlteq.equal, FPUlteq.less, FPUlteq.less | FPUlteq.equal };
 
     uint1   sign1F <:: df ? fp64( sourceReg1F ).sign : fp32( sourceReg1F ).sign;
     uint1   sign2F <:: df ? fp64( sourceReg2F ).sign : fp32( sourceReg2F ).sign;
+    uint1   TRUEZERO <:: ~|( df ? fp64( sourceReg1F ).fraction : fp32( sourceReg1F ).fraction );
     uint1   SIGNBIT <:: function3[1,1] ? sign1F ^ sign2F : function3[0,1] ^ sign2F;
 
     uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;
@@ -87,8 +87,17 @@ unit floatcalc(
     // CLASSIFY THE RESULT OF MULTIPLICATION
     typeF typeMF( df <: df, a <: FPUmultiply.result );
 
-    // ADD/SUB/MULT have changeable inputs due to 2 input and 3 input fused operations
-    floataddsub FPUaddsub( df <: df, OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined );
+    // ADD/SUB have changeable inputs due to 2 input and 3 input fused operations
+    // SET INPUTS TO ADDSUB FOR SINGLE AND FUSED OPERATIONS
+    uint64  a <:: opCode[2,1] ? sourceReg1F :
+                                df ? { opCode[1,1] ^ FPUmultiply.result[63,1], FPUmultiply.result[0,63] } :
+                                        { 32hffffffff, opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };
+    uint64  b <:: opCode[2,1] ? df ? { function7[0,1] ^ sourceReg2F[63,1], sourceReg2F[0,63] } : { 32hffffffff, function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] }:
+                                df ? { opCode[0,1] ^ sourceReg3F[63,1], sourceReg3F[0,63] } : { 32hffffffff, opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] };
+
+    uint4   typea <:: opCode[2,1] ? typeAF : typeMF.type;
+    uint4   typeb <:: opCode[2,1] ? typeBF : typeCF;
+    floataddsub FPUaddsub( df <: df, a <: a, b <: b, typeAF <: typea, typeBF <: typeb, OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined );
     floatmultiply FPUmultiply( df <: df, a <: sourceReg1F, b <: sourceReg2F, typeAF <: typeAF, typeBF <: typeBF, OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined );
     floatdivide FPUdivide( df <: df, a <: sourceReg1F, b <: sourceReg2F, typeAF <: typeAF, typeBF <: typeBF, OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined );
     floatsqrt FPUsqrt( df <: df, a <: sourceReg1F, typeAF <: typeAF, OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined );
@@ -154,19 +163,6 @@ unit floatcalc(
             }
         }
         { if( isbusy ) { MAKERESULT.sign = |( { 1b0, FPUdivide.quotientsign, FPUmultiply.productsign, FPUaddsub.resultsign } & unitbusy ); } }
-
-        // SET INPUTS TO ADDSUB FOR SINGLE AND FUSED OPERATIONS
-        {
-            FPUaddsub.a = opCode[2,1] ? sourceReg1F :
-                                        df ? { opCode[1,1] ^ FPUmultiply.result[63,1], FPUmultiply.result[0,63] } :
-                                             { 32hffffffff, opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };
-        }
-        {
-            FPUaddsub.b = opCode[2,1] ? df ? { function7[0,1] ^ sourceReg2F[63,1], sourceReg2F[0,63] } : { 32hffffffff, function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] }:
-                                        df ? { opCode[0,1] ^ sourceReg3F[63,1], sourceReg3F[0,63] } : { 32hffffffff, opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] };
-        }
-        { FPUaddsub.typeAF = opCode[2,1] ? typeAF : typeMF.type; }
-        { FPUaddsub.typeBF = opCode[2,1] ? typeBF : typeCF; }
 
         // SELECT RESULT
         {

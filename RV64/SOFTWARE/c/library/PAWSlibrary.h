@@ -184,29 +184,19 @@ extern unsigned char *sdcard_selectfile( char *, char *, unsigned int *, char *)
 // ALLOCATION OF FAST BRAM MEMORY
 extern void *malloc_bram( int size );
 
-// HARDWARE REGISTER BASES
-extern int volatile *IO_REGS;
-extern int volatile *DMA_REGS;
-extern int volatile *DMA_REGS_ALT;
-extern int volatile *GPU_REGS;
-extern int volatile *DISPLAY_REGS;
-extern int volatile *AUDIO_REGS;
-extern int volatile *FIXED_REGS;
-extern int volatile *TIMER_REGS;
-
 // EXTRA DMA MEMCPY MEMSET OPERATIONS
 #ifdef __cplusplus
 extern void paws_memcpy_step( const void *, const void *, size_t, int, int );
 extern void paws_memcpy_rectangle( const void *, const void *, size_t, int, int, unsigned char );
 extern void paws_memset_rectangle( void *, int, size_t, int, unsigned char );
-extern void *paws_memset_RGB( void *, int, size_t );
-extern void paws_memset_rectangle_RGB( void *, int, size_t, int, unsigned char );
+extern void *paws_memset32( void *, int, size_t );
+extern void paws_memset_rectangle32( void *, int, size_t, int, unsigned char );
 #else
 extern void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd );
 extern void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles );
 extern void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles );
-extern void *paws_memset_RGB( void *restrict destination, int RGB, size_t count );
-extern void paws_memset_rectangle_RGB( void *restrict destination, int RGB, size_t count, int destadd, unsigned char cycles );
+extern void *paws_memset32( void *restrict destination, int value, size_t count );
+extern void paws_memset_rectangle32( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles );
 #endif
 
 #define __PAWSLIBRARY__

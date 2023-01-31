@@ -100,13 +100,13 @@ void paws_memset_rectangle( void *restrict destination, int value, size_t count,
 }
 
 // PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
-void *paws_memset_RGB( void *restrict destination, int RGB, size_t count ) {
-    *DMASETRGB = (unsigned char)RGB; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+void *paws_memset32( void *restrict destination, int value, size_t count ) {
+    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
     return( destination );
 }
 
-void paws_memset_rectangle_RGB( void *restrict destination, int RGB, size_t count, int destadd, unsigned char cycles ) {
-    *DMASETRGB = (unsigned char)RGB; *DMADESTADD = destadd; *DMACYCLES = cycles;
+void paws_memset_rectangle32( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
+    *DMASET32 = value; *DMADESTADD = destadd; *DMACYCLES = cycles;
     DMASTART( (const void *restrict)DMASET, destination, count, 9 );
 }
 
