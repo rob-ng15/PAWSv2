@@ -266,10 +266,8 @@ void paint_uniform_rectangle(
 	   uint32_t* p_line = target.pixels + min_y_i*target.width + min_x_i;
 	   for (int y = min_y_i; y < max_y_i; ++y) {
 	      uint32_t* p = p_line;
-	      for (int x = min_x_i; x < max_x_i; ++x) {
-		 *p = c;
-		 ++p;
-	      }
+		  cpp_paws_memset32( p_line, c, ( max_x_i - min_x_i  - 1 ) * 4 );
+//	      for (int x = min_x_i; x < max_x_i; ++x) { *p = c; ++p; }
 	      p_line += target.width;
 	   }
 	   return;
@@ -346,10 +344,8 @@ void paint_uniform_textured_rectangle(
 	   uint32_t* p_line = target.pixels + min_y_i*target.width + min_x_i;
 	   for (int y = min_y_i; y < max_y_i; ++y) {
 	      uint32_t* p = p_line;
-	      for (int x = min_x_i; x < max_x_i; ++x) {
-		 *p = c;
-		 ++p;
-	      }
+		  cpp_paws_memset32( p_line, c, ( max_x_i - min_x_i - 1 ) * 4 );
+//	      for (int x = min_x_i; x < max_x_i; ++x) { *p = c; ++p; }
 	      p_line += target.width;
 	   }
 	   return;

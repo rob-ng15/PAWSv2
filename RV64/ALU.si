@@ -19,13 +19,14 @@ unit alushift(
 unit aluaddsub(
     input   uint1   size32,
     input   uint1   dosub,
+    input   uint1   douw,
     input   int64   sourceReg1,
     input   int64   operand2,
     output  int64   addsub
 ) <reginputs> {
     always_after {
-        addsub = dosub ? ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) - ( size32 ? operand2[0,32] : operand2 ) ) :
-                         ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) + ( size32 ? operand2[0,32] : operand2 ) );
+        addsub = dosub ? ( ( size32         ? sourceReg1[0,32] : sourceReg1 ) - ( size32 ? operand2[0,32] : operand2 ) ) :
+                         ( ( size32 & ~douw ? sourceReg1[0,32] : sourceReg1 ) + ( size32 ? operand2[0,32] : operand2 ) );
     }
 }
 // CALCULATES AND/ANDN OR/ORN XOR/XNOR
@@ -64,6 +65,7 @@ unit alumultiply(
 
 // DECODE ALU INSTRUCTIONS
 unit aludecode(
+    input   uint1   size32,
     input   uint1   regreg,
     input   uint7   function7,
     input   uint3   function3,
@@ -71,9 +73,11 @@ unit aludecode(
 
     output  uint1   domul,
     output  uint1   doalt,
+    output  uint1   douw,
     output  uint1   dosra,
 ) <reginputs> {
     uint1   f70000100 <:: ( function7 == 7b0000100 );
+    uint1   f70010000 <:: ( function7 == 7b0010000 );
     uint1   f70110100 <:: ( function7 == 7b0110100 );
     uint1   f70110000 <:: ( function7 == 7b0110000 );
     uint1   f70100000 <:: ( function7 == 7b0100000 );
@@ -81,6 +85,7 @@ unit aludecode(
 
     always_after {
         { doalt = regreg & f70100000; }                                             // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
+        { douw = size32 & ( ( regreg & f70000100 & ( function3 == 3b000 ) ) | ( regreg & f70010000 & ( ( function3 == 3b010 ) | ( function3 == 3b100 ) | ( function3 == 3b110 ) ) ) ); }
         { dosra = function7[1,6] == 6b010000; }                                     // SRA SRAI
         { domul = regreg & ( function7 == 7b0000001 ); }                            // MULTIPLICATION
     }
@@ -105,9 +110,9 @@ unit alu(
     uint64  operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;
 
     // DECODE THE ALU OPERATION
-    aludecode AD( regreg <: opCode[3,1], function7 <: function7, function3 <: function3, rs2 <: rs2 );
+    aludecode AD( size32 <: size32, regreg <: opCode[3,1], function7 <: function7, function3 <: function3, rs2 <: rs2 );
 
-    aluaddsub ADDSUB( size32 <: size32, dosub <: AD.doalt, sourceReg1 <: sourceReg1, operand2 <: operand2 );
+    aluaddsub ADDSUB( size32 <: size32, dosub <: AD.doalt, douw <: AD.douw, sourceReg1 <: sourceReg1, operand2 <: operand2 );
     alulogic LOGIC( sourceReg1 <: sourceReg1, operand2 <: operand2 );
     alumultiply MULT( size32 <: size32, function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
     alushift SHIFTS( size32 <: size32, sourceReg1 <: sourceReg1, shiftcount <: shiftcount );

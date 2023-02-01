@@ -2,6 +2,9 @@
 unsigned char volatile *UART_DATA = (unsigned char volatile *) 0xf000;
 unsigned char volatile *UART_STATUS = (unsigned char volatile *) 0xf002;
 unsigned short volatile *BUTTONS = (unsigned short volatile *) 0xf200;
+unsigned short volatile *MOUSE_X = (unsigned short volatile *) 0xf202;
+unsigned short volatile *MOUSE_Y = (unsigned short volatile *) 0xf204;
+unsigned short volatile *MOUSE_BUTTONS = (unsigned short volatile *) 0xf206;
 unsigned char volatile *LEDS = (unsigned char volatile *) 0xf300;
 
 // SDCARD

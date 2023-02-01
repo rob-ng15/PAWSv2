@@ -32,6 +32,7 @@ extern void ps2_keyboardmode( unsigned char mode );
 // BASIC I/O
 extern void set_leds( unsigned char );
 extern unsigned short get_buttons( void );
+extern void get_mouse( short *x, short *y, short *buttons );
 
 // TIMERS AND PSEUDO RANDOM NUMBER GENERATOR
 extern float frng( void );

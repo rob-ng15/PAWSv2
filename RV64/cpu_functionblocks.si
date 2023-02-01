@@ -31,6 +31,7 @@ unit control(
     output  uint1   IS_FAST,
     output  uint1   IS_FASTFPU,
     output  uint1   IS_ALU32,
+    output  uint1   IS_ALU32SIGNX,
 
     // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
     input   uint1   frd,
@@ -80,10 +81,11 @@ unit control(
         IS_FENCE :> IS_FENCE,
         writeRegister :> writeRegister,
         writeRegisterF :> writeRegisterF,
-        IS_FPU :> IS_FPU,
         IS_ALU :> IS_ALU,
         IS_ALU32 :> IS_ALU32,
+        IS_ALU32SIGNX :> IS_ALU32SIGNX,
         IS_FAST :> IS_FAST,
+        IS_FPU :> IS_FPU,
         IS_FASTFPU :> IS_FASTFPU
     );
     uint1   takeBranch = uninitialized;
@@ -231,14 +233,15 @@ unit controlflags(
     output  uint1   IS_ALU,
     output  uint1   IS_FAST,
     output  uint1   IS_FASTFPU,
-    output  uint1   IS_ALU32
+    output  uint1   IS_ALU32,
+    output  uint1   IS_ALU32SIGNX
 ) <reginputs> {
     // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
     uint1   REGREG <:: ( opCode == 5b01100 ) | ( opCode == 5b01110 );
 
     // SET DEFAULT CONTROL FLAGS - STANDARD "SINGLE CYCLE" INTEGER ALU OPERATION
     writeRegisterF := 0; writeRegister := 1; incPC := 1;
-    IS_FAST := 1; IS_ALU := 0; IS_ALU32 := 0; IS_FPU := 0;
+    IS_FAST := 1; IS_ALU := 0; IS_ALU32 := 1; IS_FPU := 0;
     IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;
 
     always_after {
@@ -260,8 +263,20 @@ unit controlflags(
                 case 5b11100: { IS_CSR = 1; IS_FAST = 0; }                                          // CSR ECALL EBBREAK
                 case 5b00100: { IS_ALU = 1; }                                                       // REGISTER-IMMEDIATE ALU
                 case 5b01100: { IS_ALU = 1; IS_FAST = ~( IS_ALUM & function3[2,1] ); }              // REGISTER-REGISTER ALU ( FAST NOT DIVIDE )
-                case 5b00110: { IS_ALU = 1; IS_ALU32 = 1; }                                         // REGISTER-IMMEDIATE ALU 32BIT
-                case 5b01110: { IS_ALU = 1; IS_ALU32 = 1; IS_FAST = ~( IS_ALUM & function3[2,1] ); }// REGISTER-REGISTER ALU 32BIT ( FAST NOT DIVIDE )
+                case 5b00110: {                                                                     // REGISTER-IMMEDIATE ALU 32BIT
+                    IS_ALU = 1; IS_ALU32 = 1;
+                    IS_ALU32SIGNX = ~( ( function3 == 3b001 ) & function7[1,6] == 6b000010 );       // DETECT SLLI.UW
+                }
+                case 5b01110: {                                                                     // REGISTER-REGISTER ALU 32BIT ( FAST NOT DIVIDE )
+                    IS_ALU = 1; IS_ALU32 = 1; IS_FAST = ~( IS_ALUM & function3[2,1] );
+                    switch( function3 ) {
+                        case 3b000: { IS_ALU32SIGNX = ~( function7 == 7b0000100 ); }                // DETECT ADD.UW
+                        case 3b010: { IS_ALU32SIGNX = ~( function7 == 7b0010000 ); }                // DETECT SH1ADD.UW
+                        case 3b100: { IS_ALU32SIGNX = ~( function7 == 7b0010000 ); }                // DETECT SH2ADD.UW
+                        case 3b110: { IS_ALU32SIGNX = ~( function7 == 7b0010000 ); }                // DETECT SH3ADD.UW
+                        default: {}
+                    }
+                }
                 case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                       // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
                 case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }           // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
                 default: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = 0; }                                               // FUSED-FPU

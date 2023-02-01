@@ -63,6 +63,7 @@ unit PAWSCPU(
     // EXECUTE SINGLE CYLE INSTRUCTIONS, MOST OF BASE PLUS INTEGER MULTIPLICATION
     cpuexecuteFASTPATH EXECUTEFAST(
         size32 <: RV64CONTROL.IS_ALU32,
+        size32extend <: RV64CONTROL.IS_ALU32SIGNX,
         opCode <: RV64CONTROL.opCode,
         function3 <: RV64CONTROL.function3,
         function7 <: RV64CONTROL.function7,
@@ -307,6 +308,7 @@ unit PAWSCPU(
 
 unit cpuexecuteFASTPATH(
     input   uint1   size32,
+    input   uint1   size32extend,
     input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
@@ -343,7 +345,7 @@ unit cpuexecuteFASTPATH(
         { result = isAUIPCLUI ? AUIPCLUI :                                                                                      // LUI AUIPC
                    isJAL ? nextPC :                                                                                             // JAL[R]
                    isLOAD ? ( ( opCode == 5b00001 ) & ~&function3[0,2] ) ? { 32hffffffff, memoryinput[0,32] } : memoryinput :   // [FLOAT]LOAD ( NAN BOX 32 BIT FLOAD LOADS )
-                   size32  ? { {32{ALU.result[31,1]}}, ALU.result[0,32] } : ALU.result; }                                       // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
+                   size32 & size32extend ? { {32{ALU.result[31,1]}}, ALU.result[0,32] } : ALU.result; }                         // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
         { if( isFENCE ) { fenceACTIVE = { |function7[1,2], ~function3[0,1] }; } }                                               // SET FENCE ACTIVE { IO, MEM }
                                                                                                                                 // IO STOPS THREAD SWITCHING, MEM RESETS L0CACHE (after load)
     }
@@ -516,8 +518,8 @@ unit cpuexecuteFPU(
         while(1) {
             if( start ) {
                 onehot( operation ) {
-                    case 0: { ++: }                                                                                             // FPU COMPARE, MIN/MAX, CLASS, MOVE,
-                    case 1: { ++: }                                                                                             // FPU CONVERT
+                    case 0: {}                                                                                                  // FPU COMPARE, MIN/MAX, CLASS, MOVE,
+                    case 1: {}                                                                                                  // FPU CONVERT
                     case 2: { FPUCALC.start = 1; while( FPUCALC.busy ) {} }                                                     // FPU CALCULATIONS
                 }
                 busy = 0;
@@ -530,12 +532,10 @@ unit cpuexecuteFPU(
     always_after {
         { if( start ) { busy = 1; } }
         {
-            if( busy ) {
-                onehot( operation ) {
-                    case 0: { result = FPUFAST.result; }
-                    case 1: { result = convertresult; }
-                    case 2: { result = FPUCALC.result; }
-                }
+            onehot( operation ) {
+                case 0: { result = FPUFAST.result; }
+                case 1: { result = convertresult; }
+                case 2: { result = FPUCALC.result; }
             }
         }
         { frd = fpuconvert ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd; }

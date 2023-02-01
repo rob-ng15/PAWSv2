@@ -9,6 +9,8 @@ unit io_memmap(
 
 $$if not SIMULATION then
     input   uint$NUM_BTNS$ btns,
+    output  uint10   mouse_x(320),
+    output  uint9   mouse_y(240),
 
     // GPIO
     input   uint28  gn,
@@ -86,6 +88,15 @@ $$end
     rtc RTC( clk <: clock, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );              // EMARD verilog version
     //mcp7940n RTC <@clock_25mhz> ( sda <:> gpdi_sda, scl <:> gpdi_scl );                             // Silice translation (not yet working)
 
+    // UNLOCK VALUE ( write to sector 0 )
+    uint1 MAGICVALUE(0);                                                                // WRITE 32h50415357 { 'P', 'A', 'W', 'S' } TO ALLOW WRITING TO SDCARD SECTOR 0
+
+    // MOUSE LATCH AFTER MOVE
+    uint20  mouse_latch = uninitialised;
+
+    // RTC LATCH
+    uint64  LATCHrtc = uninitialised;
+
 $$if not SIMULATION then
     // I/O FLAGS
     UART_IN.inread := 0; UART_OUT.outwrite := 0; PS2.inread := 0;
@@ -94,9 +105,6 @@ $$end
     RTC.wr := 0; RESETSTATUS := 0;
 
     always_after {
-        // UNLOCK VALUE ( write to sector 0 )
-        uint1 MAGICVALUE(0);                                                                // WRITE 32h50415357 { 'P', 'A', 'W', 'S' } TO ALLOW WRITING TO SDCARD SECTOR 0
-
         {
             // DISBLE SMT ON STARTUP AND SWITCH KEYBOARD TO JOYSTICK MODE, RTC to read mode
             if( reset ) {
@@ -109,8 +117,26 @@ $$end
         }
 
         {
-            uint64  LATCHrtc = uninitialised;
+            $$if not SIMULATION then
+                if( |mouse_latch ) {
+                    mouse_latch = mouse_latch - 1;
+                } else {
+                    switch( btns[3,2] ) {
+                        case 2b01: { mouse_y = mouse_y - ( |mouse_y ); }
+                        case 2b10: {  mouse_y = mouse_y + ( mouse_y != 479 ); }
+                        default: {}
+                    }
+                    switch( btns[5,2] ) {
+                        case 2b01: { mouse_x = mouse_x - ( |mouse_x ); }
+                        case 2b10: { mouse_x = mouse_x + ( mouse_x != 639 ); }
+                        default: {}
+                    }
+                    mouse_latch = |btns[3,4] ? 20h80000 : 0;
+                }
+            $$end
+        }
 
+        {
             // READ IO Memory
             if( memoryRead ) {
                 switch( memoryAddress[8,4] ) {
@@ -133,7 +159,14 @@ $$end
                             readData = PS2.inavailable;
                         }
                     }
-                    case 4h2: { readData = PS2.outputkeycodes ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
+                    case 4h2: {
+                        switch( memoryAddress[1,2] ) {
+                            case 2b00: { readData = PS2.outputkeycodes ? { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } : { $16-NUM_BTNS$b0, btns[0,$NUM_BTNS$] } | PS2.joystick; }
+                            case 2b01: { readData = mouse_x; }
+                            case 2b10: { readData = mouse_y; }
+                            case 2b11: { readData = btns[1,2]; }
+                        }
+                    }
                     case 4h4: { readData = SDCARD.ready; if( SDCARD.ready ) { sdcardlightcolour = 0; RESETSTATUS = 1; } }
                     case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = buffer_in.addr0 + 1; }
                     $$end

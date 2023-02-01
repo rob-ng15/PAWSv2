@@ -13,6 +13,9 @@ extern "C" {
 
 uint32_t *fb_base;
 
+unsigned char mouse_sprite[] = {
+#include "mouse_sprite.h"
+};
 
 void* operator new(size_t size) {
    return ImGui::MemAlloc(size);
@@ -157,13 +160,17 @@ static ImGuiKey ImGui_ImplPAWS_KeycodeToImGuiKey(short keycode)
 
 int main(int, char**)
 {
+    short mouse_x, mouse_y, mouse_btns;
+    set_sprite_bitmaps( UPPER_LAYER, 15, mouse_sprite );
+
     fb_base = (uint32_t*)malloc( 320 * 240 * 4); cpp_paws_memset( fb_base, 0, (uint32_t)320*240*4 );
     bitmap_256( TRUE ); bitmap_display( 1 ); bitmap_draw( 1 ); gpu_cs(); gpu_pixelblock_mode( PB_WRITEALL );
     ps2_keyboardmode( TRUE );
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO(); io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NoMouseCursorChange;
 
     imgui_sw::bind_imgui_painting();
     imgui_sw::make_style_fast();
@@ -173,6 +180,8 @@ int main(int, char**)
         ++n;
         io.DisplaySize = ImVec2(320, 240);
         io.DeltaTime = 1.0f / 60.0f;
+
+        // PROCESS KEYBOARD INPUTS
         if( ps2_event_available ) {
             short keycode = ps2_event_get();
             ImGuiKey thiskey = ImGui_ImplPAWS_KeycodeToImGuiKey( keycode );
@@ -186,15 +195,22 @@ int main(int, char**)
                 io.KeySuper = ( __modifiers & ImGuiKeyModFlags_Super ) != 0;
             }
         }
+
+        // SHOW MOUSE CURSOR
+        get_mouse( &mouse_x, &mouse_y, &mouse_btns ); set_sprite( UPPER_LAYER, 15, SPRITE_SHOW, mouse_x, mouse_y, 0, SPRITE_DOUBLE );
+        io.MousePos = ImVec2( ( mouse_x >> 1 ), ( mouse_y >> 1 ) );             // set the mouse position
+        io.MouseDown[ImGuiMouseButton_Left] = ( mouse_btns & 2 ) != 0;  // set the mouse button states
+        io.MouseDown[ImGuiMouseButton_Right] = ( mouse_btns & 4 ) != 0;
+
         ImGui::NewFrame();
 
         ImGui::ShowDemoWindow(NULL);
 
-        //ImGui::SetNextWindowSize(ImVec2(150, 100));
-        //ImGui::Begin("Test");
-        //ImGui::Text("Hello, world!");
-        //ImGui::Text("Frame: %d",n);
-        //ImGui::End();
+        ImGui::SetNextWindowSize(ImVec2(150, 100));
+        ImGui::Begin("Test");
+        ImGui::Text("Hello, world!");
+        ImGui::Text("Frame: %d",n);
+        ImGui::End();
 
         //static float f = 0.0f;
         //ImGui::Text("Hello, world!");
@@ -207,9 +223,10 @@ int main(int, char**)
         gpu_pixelblockARGB( 0, 0, 320, 240, fb_base );
         cpp_paws_memset( fb_base, 0, 320*240*4 );
 
-        if( get_buttons() != 1 ) break;
+        if( get_buttons() == 7 ) break;
     }
 
+    while( get_buttons() != 1 );
     printf("DestroyContext()\n");
     ImGui::DestroyContext();
     return 0;

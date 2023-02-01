@@ -281,6 +281,11 @@ unsigned short get_buttons( void ) {
     return( *BUTTONS );
 }
 
+// READ THE ULX3S SIMULATED MOUSE USING THE JOYSTICK BUTTONS x 0 - 639, y = 0 - 479, buttons = { right, left }
+void get_mouse( short *x, short *y, short *buttons ) {
+    *x = *MOUSE_X; *y = *MOUSE_Y; *buttons = *MOUSE_BUTTONS;
+}
+
 // DISPLAY FUNCTIONS
 // FUNCTIONS ARE IN LAYER ORDER: BACKGROUND, TILEMAP, SPRITES (for LOWER ), BITMAP & GPU, ( UPPER SPRITES ), CHARACTERMAP & TPU
 // colour is in the form { Arrggbb } { ALPHA - show layer below, RED, GREEN, BLUE } or { rrggbb } { RED, GREEN, BLUE } giving 64 colours + transparent
