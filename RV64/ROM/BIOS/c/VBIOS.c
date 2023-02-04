@@ -499,7 +499,7 @@ void main( void ) {
     draw_paws_logo();
 
     gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 70, 34, "Risc-V RV64GC CPU", 0 );
+    gpu_outputstring( WHITE, 70, 34, "Risc-V RV64GC+ CPU", 0 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
@@ -528,6 +528,21 @@ void main( void ) {
         set_sprite_attribute( 1, 1, 1, ( j & 128 ) >> 7 );
         set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
         j++;
+        tpu_set( 0, 17, TRANSPARENT, WHITE );
+        long rtc = *RTC + 0x2000000000000000;
+        for( int i = 0; i < 16; i++ ) {
+            switch(i) {
+                case 8: case 9: break;
+                default: tpu_output_character( 48 + ( ( rtc & 0xf000000000000000 ) >> 60 ) );
+            }
+            rtc = rtc << 4;
+            switch(i) {
+                case 3: case 5: tpu_output_character('-'); break;
+                case 7: tpu_output_character(' '); break;
+                case 11: case 13: tpu_output_character(':'); break;
+            }
+        }
+
         await_vblank_finish();
     }
 }

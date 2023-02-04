@@ -441,19 +441,19 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
             unsigned short buttons = get_buttons();
             while( buttons == 1 ) { buttons = get_buttons(); }
             while( get_buttons() != 1 ) {} sleep( 100 );
-            if( buttons & 64 ) {
+            if( ( buttons & 64 ) >> 6 ) {
                 // MOVE RIGHT
                 if( present_entry == entries ) { present_entry = 0; } else { present_entry++; }
             }
-            if( buttons & 32 ) {
+            if( ( buttons & 32 ) >> 5 ) {
                 // MOVE LEFT
                 if( present_entry == 0 ) { present_entry = entries; } else { present_entry--; }
            }
-            if( buttons & 8 ) {
+            if( ( buttons & 8 ) >> 3 ) {
                 // MOVE UP
                 if( startdirectorycluster != rootdirectorycluster ) { return(0); }
            }
-            if( buttons & 2 ) {
+            if( ( buttons & 2 ) >> 1 ) {
                 // SELECTED
                 switch( directorynames[present_entry].type ) {
                     case 1:
@@ -556,7 +556,7 @@ int main( void ) {
     SMTSTART( smtthread );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV64GC CPU", 0 );
+    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV64GC+ CPU", 0 );
     gpu_outputstringcentre( UK_BLUE, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS

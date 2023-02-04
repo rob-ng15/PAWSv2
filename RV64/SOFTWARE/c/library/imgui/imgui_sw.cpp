@@ -7,6 +7,8 @@
 #include "imgui_sw.h"
 #include "imgui.h"
 
+#include <PAWSintrinsics.h>
+
 #include <math.h>
 #include <stdio.h>
 #include <cstdlib>
@@ -18,17 +20,8 @@ extern unsigned int volatile *DMASOURCE;
 extern unsigned int volatile *DMADEST;
 extern unsigned int volatile *DMACOUNT;
 extern unsigned char volatile *DMAMODE;
-extern unsigned char volatile *DMASET;
+extern unsigned int volatile *DMASET;
 extern unsigned int volatile *DMASET32;
-extern void cpp_DMASTART( void *source, void *destination, unsigned int count, unsigned char mode );
-void *cpp_paws_memset32( void *destination, int value, size_t count ) {
-    *DMASET32 = value; cpp_DMASTART( (void *)DMASET, destination, count, 4 );
-    return( destination );
-}
-void cpp_paws_memset_rectangle32( void *destination, int value, size_t count, int destadd, unsigned char cycles ) {
-    *DMASET32 = value; *DMADESTADD = destadd; *DMACYCLES = cycles;
-    cpp_DMASTART( (void *)DMASET, destination, count, 9 );
-}
 
 namespace imgui_sw {
 namespace {
@@ -78,7 +71,11 @@ struct ColorInt
 
 	uint32_t toUint32() const
 	{
-		return (a << 24u) | (b << 16u) | (g << 8u) | r;
+#ifdef IMGUI_USE_BGRA_PACKED_COLOR
+		return( _rv64_packw( _rv64_packh( b, g ), _rv64_packh( r, a ) ) );
+#else
+		return( _rv64_packw( _rv64_packh( r, g ), _rv64_packh( b, a ) ) );
+#endif
 	}
 };
 
@@ -170,12 +167,17 @@ ImVec4 color_convert_u32_to_float4(ImU32 in)
 
 ImU32 color_convert_float4_to_u32(const ImVec4& in)
 {
-	ImU32 out;
-	out  = uint32_t(in.x * 255.0f + 0.5f) << IM_COL32_R_SHIFT;
-	out |= uint32_t(in.y * 255.0f + 0.5f) << IM_COL32_G_SHIFT;
-	out |= uint32_t(in.z * 255.0f + 0.5f) << IM_COL32_B_SHIFT;
-	out |= uint32_t(in.w * 255.0f + 0.5f) << IM_COL32_A_SHIFT;
-	return out;
+#ifdef IMGUI_USE_BGRA_PACKED_COLOR
+		return( _rv64_packw( _rv64_packh( uint32_t(in.z * 255.0f + 0.5f), uint32_t(in.y * 255.0f + 0.5f) ), _rv64_packh( uint32_t(in.x * 255.0f + 0.5f), uint32_t(in.w * 255.0f + 0.5f) ) ) );
+#else
+		return( _rv64_packw( _rv64_packh( uint32_t(in.x * 255.0f + 0.5f), uint32_t(in.y * 255.0f + 0.5f) ), _rv64_packh( uint32_t(in.z * 255.0f + 0.5f), uint32_t(in.w * 255.0f + 0.5f) ) ) );
+#endif
+//	ImU32 out;
+//	out  = uint32_t(in.x * 255.0f + 0.5f) << IM_COL32_R_SHIFT;
+//	out |= uint32_t(in.y * 255.0f + 0.5f) << IM_COL32_G_SHIFT;
+//	out |= uint32_t(in.z * 255.0f + 0.5f) << IM_COL32_B_SHIFT;
+//	out |= uint32_t(in.w * 255.0f + 0.5f) << IM_COL32_A_SHIFT;
+//	return out;
 }
 
 // ----------------------------------------------------------------------------
@@ -238,6 +240,16 @@ inline uint8_t sample_texture(const Texture& texture, const ImVec2& uv)
 	return texture.pixels[ty * texture.width + tx];
 }
 
+void dma_rectangle( const PaintTarget& target, int c, int minx, int maxx, int miny, int maxy ) {
+	int bytes_wide = ( maxx - minx -1 ) * 4;
+	int lines = ( maxy - miny - 1 );
+	uint32_t* p_line = target.pixels + miny*target.width + minx;
+
+    *DMASET32 = c; *DMADESTADD = target.width * 4; *DMACYCLES = lines;
+	*DMASOURCE = (unsigned long)DMASET; *DMADEST = (unsigned long)p_line; *DMACOUNT = bytes_wide;
+	*DMAMODE = ( ( bytes_wide > 0 ) && ( lines > 0 ) ) ? 9 : 0;
+}
+
 void paint_uniform_rectangle(
 	const PaintTarget& target,
 	const ImVec2&      min_f,
@@ -263,13 +275,7 @@ void paint_uniform_rectangle(
 	if(color.a == 255) {
 	   uint32_t  c = color.toUint32();
 
-	   uint32_t* p_line = target.pixels + min_y_i*target.width + min_x_i;
-	   for (int y = min_y_i; y < max_y_i; ++y) {
-	      uint32_t* p = p_line;
-		  cpp_paws_memset32( p_line, c, ( max_x_i - min_x_i  - 1 ) * 4 );
-//	      for (int x = min_x_i; x < max_x_i; ++x) { *p = c; ++p; }
-	      p_line += target.width;
-	   }
+	   dma_rectangle( target, c, min_x_i, max_x_i, min_y_i, max_y_i );
 	   return;
 	}
 
@@ -341,13 +347,7 @@ void paint_uniform_textured_rectangle(
 	   if(texel == 0) { return; }
 	   uint32_t  c = min_v.col;
 
-	   uint32_t* p_line = target.pixels + min_y_i*target.width + min_x_i;
-	   for (int y = min_y_i; y < max_y_i; ++y) {
-	      uint32_t* p = p_line;
-		  cpp_paws_memset32( p_line, c, ( max_x_i - min_x_i - 1 ) * 4 );
-//	      for (int x = min_x_i; x < max_x_i; ++x) { *p = c; ++p; }
-	      p_line += target.width;
-	   }
+	   dma_rectangle( target, c, min_x_i, max_x_i, min_y_i, max_y_i );
 	   return;
 	}
 

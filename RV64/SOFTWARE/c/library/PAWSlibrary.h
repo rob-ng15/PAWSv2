@@ -115,12 +115,16 @@ extern void gpu_pixelblock( short , short , unsigned short, unsigned short, unsi
 extern void gpu_pixelblock24( short , short , unsigned short, unsigned short, unsigned char *);
 extern void gpu_pixelblockARGB( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer );
 extern void gpu_pixelblockRGBA( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer );
+extern void gpu_pixelblockABGR( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer );
+extern void gpu_pixelblockBGRA( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer );
 extern void gpu_pixelblock_start( short , short , unsigned short );
 extern void gpu_pixelblock_mode( unsigned char mode );
 extern void gpu_pixelblock_pixel( unsigned char );
 extern void gpu_pixelblock_pixel24( unsigned char, unsigned char, unsigned char );
 extern void gpu_pixelblock_pixelARGB( unsigned int ARGB );
 extern void gpu_pixelblock_pixelRGBA( unsigned int RGBA );
+extern void gpu_pixelblock_pixelABGR( unsigned int ABGR );
+extern void gpu_pixelblock_pixelBGRA( unsigned int BGRA );
 extern void gpu_pixelblock_stop( void );
 extern void gpu_pixelblock_remap( unsigned char from, unsigned char to );
 

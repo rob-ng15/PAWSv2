@@ -170,7 +170,7 @@ int main(int, char**)
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NoMouseCursorChange;
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     imgui_sw::bind_imgui_painting();
     imgui_sw::make_style_fast();
@@ -183,24 +183,26 @@ int main(int, char**)
 
         // PROCESS KEYBOARD INPUTS
         if( ps2_event_available ) {
-            short keycode = ps2_event_get();
-            ImGuiKey thiskey = ImGui_ImplPAWS_KeycodeToImGuiKey( keycode );
+            short keycode = ps2_event_get(); ImGuiKey thiskey = ImGui_ImplPAWS_KeycodeToImGuiKey( keycode );
             if( thiskey >= 0 ) {
-                io.KeyMap[thiskey] = ( keycode & 0x200) != 0; io.KeysDown[thiskey]= (keycode & 0x200) != 0;
+                io.KeyMap[thiskey] = io.KeysDown[thiskey] = ( keycode & 0x200 ) >> 9;
             } else {
                 io.KeyMods = __modifiers;
-                io.KeyCtrl = ( __modifiers & ImGuiKeyModFlags_Ctrl ) != 0;
-                io.KeyShift = ( __modifiers & ImGuiKeyModFlags_Shift ) != 0;
-                io.KeyAlt = ( __modifiers & ImGuiKeyModFlags_Alt ) != 0;
-                io.KeySuper = ( __modifiers & ImGuiKeyModFlags_Super ) != 0;
+                io.KeyCtrl = ( __modifiers & ImGuiKeyModFlags_Ctrl );
+                io.KeyShift = ( __modifiers & ImGuiKeyModFlags_Shift ) >> 1;
+                io.KeyAlt = ( __modifiers & ImGuiKeyModFlags_Alt ) >> 2;
+                io.KeySuper = ( __modifiers & ImGuiKeyModFlags_Super ) >> 3;
             }
         }
 
         // SHOW MOUSE CURSOR
-        get_mouse( &mouse_x, &mouse_y, &mouse_btns ); set_sprite( UPPER_LAYER, 15, SPRITE_SHOW, mouse_x, mouse_y, 0, SPRITE_DOUBLE );
+        int mouse_cursor = ImGui::GetMouseCursor();
+        get_mouse( &mouse_x, &mouse_y, &mouse_btns );
         io.MousePos = ImVec2( ( mouse_x >> 1 ), ( mouse_y >> 1 ) );             // set the mouse position
-        io.MouseDown[ImGuiMouseButton_Left] = ( mouse_btns & 2 ) != 0;  // set the mouse button states
-        io.MouseDown[ImGuiMouseButton_Right] = ( mouse_btns & 4 ) != 0;
+        io.MouseDown[ImGuiMouseButton_Left] = ( mouse_btns & 2 ) >> 1;          // set the mouse button states
+        io.MouseDown[ImGuiMouseButton_Right] = ( mouse_btns & 4 ) >> 2;
+        if( mouse_cursor != 0 ) { mouse_x -= 16; mouse_y -= 16; }               // adjust if focus point is not top left
+        set_sprite( UPPER_LAYER, 15, ( mouse_cursor != ImGuiMouseCursor_None ), mouse_x, mouse_y, mouse_cursor, SPRITE_DOUBLE );
 
         ImGui::NewFrame();
 
@@ -212,18 +214,16 @@ int main(int, char**)
         ImGui::Text("Frame: %d",n);
         ImGui::End();
 
-        //static float f = 0.0f;
-        //ImGui::Text("Hello, world!");
-        //ImGui::SliderFloat("float", &f, 0.0f, 1.0f);
-        //ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / io.Framerate, io.Framerate);
-
         ImGui::Render();
         imgui_sw::paint_imgui((uint32_t*)fb_base,320,240);
-
+#ifdef IMGUI_USE_BGRA_PACKED_COLOR
         gpu_pixelblockARGB( 0, 0, 320, 240, fb_base );
+#else
+        gpu_pixelblockABGR( 0, 0, 320, 240, fb_base );
+#endif
         cpp_paws_memset( fb_base, 0, 320*240*4 );
 
-        if( get_buttons() == 7 ) break;
+        if( mouse_btns == 3 ) break;
     }
 
     while( get_buttons() != 1 );

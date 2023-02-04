@@ -144,20 +144,14 @@ unsigned short rng( unsigned short range ) {
 
     switch( range ) {
         case 0: trial = 0; break;
+
         case 1:
         case 2: trial = *RNG & 1; break;
-        case 4: trial = *RNG & 3; break;
-        case 8: trial = *RNG & 7; break;
-        case 16: trial = *RNG & 15; break;
-        case 32: trial = *RNG & 31; break;
-        case 64: trial = *RNG & 63; break;
-        case 128: trial = *RNG & 127; break;
-        case 256: trial = *RNG & 255; break;
-        case 512: trial = *RNG & 511; break;
-        case 1024: trial = *RNG & 1023; break;
 
         default:
-            do { trial = *RNG; } while ( trial >= range );                   // SELECT RNG UNTIL WITHIN RANGE
+            if( _rv64_cpopw( range ) == 1 ) return( *RNG & ( range - 1 ) );                                                     // POWER OF 2
+            mask = ( 1 << ( _rv64_clzw( range ) - 14 ) ) - 1;                                                                   // SET MASK TO -1 POWER OF 2 THAT COVERS RANGE
+            do { trial = *RNG & mask; } while ( trial >= range );                                                               // SELECT RNG UNTIL WITHIN RANGE
     }
 
     return( trial );
@@ -788,6 +782,30 @@ void gpu_pixelblockRGBA( short x, short y, unsigned short w, unsigned short h, u
     *PB_STOP = 0;
 }
 
+// PB_MODE = 0 COPY A { AAAAAAAA BBBBBBBB GGGGGGGG RRRRRRRR } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
+// PB_MODE = 1 SAME BUT CONVERT TO GREYSCALE
+void gpu_pixelblockABGR( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer ) {
+    wait_gpu_finished();
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
+
+    // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
+    DMASTART( buffer, (void *)PB_ABGR, 4*w*h, 1 );
+
+    *PB_STOP = 0;
+}
+
+// PB_MODE = 0 COPY A { BBBBBBBB GGGGGGGG RRRRRRRR AAAAAAAA } BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
+// PB_MODE = 1 SAME BUT CONVERT TO GREYSCALE
+void gpu_pixelblockBGRA( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer ) {
+    wait_gpu_finished();
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
+
+    // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
+    DMASTART( buffer, (void *)PB_BGRA, 4*w*h, 1 );
+
+    *PB_STOP = 0;
+}
+
 // SET GPU TO RECEIVE A PIXEL BLOCK, SEND INDIVIDUAL PIXELS, STOP
 void gpu_pixelblock_start( short x,  short y, unsigned short w ) {
     wait_gpu_finished();
@@ -808,6 +826,12 @@ void gpu_pixelblock_pixelARGB( unsigned int ARGB ) {
 
 void gpu_pixelblock_pixelRGBA( unsigned int RGBA ) {
     *PB_RGBA = RGBA;
+}
+void gpu_pixelblock_pixelABGR( unsigned int ABGR ) {
+    *PB_ABGR = ABGR;
+}
+void gpu_pixelblock_pixelBGRA( unsigned int BGRA ) {
+    *PB_BGRA = BGRA;
 }
 
 void gpu_pixelblock_stop( void ) {

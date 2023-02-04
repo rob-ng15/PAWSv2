@@ -24,8 +24,8 @@ ifndef INCLUDEEXTRA
 INCLUDEEXTRA=
 endif
 
-CFLAGS=-march=rv64gc_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib $(CFLAGSEXTRA)
-CXXFLAGS=-march=rv64gc_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
+CFLAGS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib $(CFLAGSEXTRA)
+CXXFLAGS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleriscv,-nostdlib
 LCONFIG=-Wl,-T../config_c_SDRAM-lto.ld
 

@@ -111,6 +111,8 @@ unsigned char volatile *PB_CMNUMBER = (unsigned char volatile *) 0xd67c;
 unsigned char volatile *PB_CMENTRY = (unsigned char volatile *) 0xd67e;
 unsigned int volatile *PB_ARGB = (unsigned int volatile *) 0xd680;
 unsigned int volatile *PB_RGBA = (unsigned int volatile *) 0xd684;
+unsigned int volatile *PB_ABGR = (unsigned int volatile *) 0xd688;
+unsigned int volatile *PB_BGRA = (unsigned int volatile *) 0xd68c;
 
 unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e0;
 unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e2;

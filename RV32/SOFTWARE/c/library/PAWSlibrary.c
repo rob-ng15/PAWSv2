@@ -165,20 +165,14 @@ unsigned short rng( unsigned short range ) {
 
     switch( range ) {
         case 0: trial = 0; break;
+
         case 1:
         case 2: trial = *RNG & 1; break;
-        case 4: trial = *RNG & 3; break;
-        case 8: trial = *RNG & 7; break;
-        case 16: trial = *RNG & 15; break;
-        case 32: trial = *RNG & 31; break;
-        case 64: trial = *RNG & 63; break;
-        case 128: trial = *RNG & 127; break;
-        case 256: trial = *RNG & 255; break;
-        case 512: trial = *RNG & 511; break;
-        case 1024: trial = *RNG & 1023; break;
 
         default:
-            do { trial = *RNG; } while ( trial >= range );                   // SELECT RNG UNTIL WITHIN RANGE
+            if( _rv32_cpop( range ) == 1 ) return( *RNG & ( range - 1 ) );                                                      // POWER OF 2
+            mask = ( 1 << ( _rv32_clz( range ) - 14 ) ) - 1;                                                                   // SET MASK TO -1 POWER OF 2 THAT COVERS RANGE
+            do { trial = *RNG & mask; } while ( trial >= range );                                                               // SELECT RNG UNTIL WITHIN RANGE
     }
 
     return( trial );
