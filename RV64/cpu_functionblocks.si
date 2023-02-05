@@ -31,6 +31,7 @@ unit control(
     output  uint1   IS_FAST,
     output  uint1   IS_FASTFPU,
     output  uint1   IS_ALU32,
+    output  uint1   IS_ALU32SIGNX,
 
     // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
     input   uint1   frd,
@@ -67,9 +68,9 @@ unit control(
 ) <reginputs> {
     // INSTRUCTION CLASSIFICATION AND CPU CONTROL FLAGS
     controlflags FLAGS(
-        opCode <: opCode,
-        function3 <: function3,
-        function7 <: function7,
+        opCode <: Rtype(instruction).opCode,
+        function3 <: Rtype(instruction).function3,
+        function7 <: Rtype(instruction).function7,
         IS_AUIPCLUI :> IS_AUIPCLUI,
         IS_JAL :> IS_JAL,
         IS_ALUM :> IS_ALUM,
@@ -83,6 +84,7 @@ unit control(
         IS_FPU :> IS_FPU,
         IS_ALU :> IS_ALU,
         IS_ALU32 :> IS_ALU32,
+        IS_ALU32SIGNX :> IS_ALU32SIGNX,
         IS_FAST :> IS_FAST,
         IS_FASTFPU :> IS_FASTFPU
     );
@@ -128,7 +130,7 @@ unit control(
     uint$addr_width$ branchAddress <:: { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
 
     // 2ND OPERAND FOR COMPARISONS
-    int64   operand2 <:: opCode[3,1] ? I2R.rdata0 : immediateValue;
+    int64   operand2 <:: opCode[3,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate };
 
     // FLAGS FOR BRANCH
     uint4   flags <:: { LTU, LT, 1b0, EQ };
@@ -148,14 +150,14 @@ unit control(
         { rs2 = Rtype(instruction).sourceReg2; }
 
         // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32 ELSE BY function3
-        { accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? function3[0,2] : 2b10; }
+        { accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? Rtype(instruction).function3[0,2] : 2b10; }
 
         // BRANCH UNIT
-        { takeBranch = function3[0,1] ^ flags[ function3[1,2], 1 ]; }
+        { takeBranch = Rtype(instruction).function3[0,1] ^ flags[ Rtype(instruction).function3[1,2], 1 ]; }
 
         // ADDRESS GENRATION
         { AUIPCLUI = { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC ); }
-        { loadAddress = ( FLAGS.IS_ATOMIC ? 0 : immediateValue ) + I1R.rdata0[0,$addr_width$]; }
+        { loadAddress = ( FLAGS.IS_ATOMIC ? 0 : { {52{instruction[31,1]}}, Itype(instruction).immediate } ) + I1R.rdata0[0,$addr_width$]; }
         { storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R.rdata0[0,$addr_width$]; }
         { nextPC = PC + ( compressed ? 2 : 4 ); }
         { newPC = ( FLAGS.incPC ) ? ( FLAGS.IS_BRANCH & takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress ); }
@@ -212,7 +214,7 @@ unit abs3264(
 
 // CLASSIFY INSTRUCTION TYPE AND DETIMINE CPU CONTROL FLAGS
 unit controlflags(
-    input   uint5   opCode,
+    input   uint7   opCode,
     input   uint3   function3,
     input   uint7   function7,
     output  uint1   IS_AUIPCLUI,
@@ -231,14 +233,15 @@ unit controlflags(
     output  uint1   IS_ALU,
     output  uint1   IS_FAST,
     output  uint1   IS_FASTFPU,
-    output  uint1   IS_ALU32
+    output  uint1   IS_ALU32,
+    output  uint1   IS_ALU32SIGNX
 ) <reginputs> {
     // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
-    uint1   REGREG <:: ( opCode == 5b01100 ) | ( opCode == 5b01110 );
+    uint1   REGREG <:: ( opCode[2,5] == 5b01100 ) | ( opCode[2,5] == 5b01110 );
 
     // SET DEFAULT CONTROL FLAGS - STANDARD "SINGLE CYCLE" INTEGER ALU OPERATION
     writeRegisterF := 0; writeRegister := 1; incPC := 1;
-    IS_FAST := 1; IS_ALU := 0; IS_ALU32 := 0; IS_FPU := 0;
+    IS_FAST := 1; IS_ALU := 0; IS_ALU32 := 0; IS_ALU32SIGNX := 1; IS_FPU := 0;
     IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;
 
     always_after {
@@ -246,7 +249,7 @@ unit controlflags(
         { IS_ALUM = REGREG & ( function7 == 7b0000001 ); }
         {
             // DETERMINE CPU CONTROL FLAGS
-            switch( opCode ) {
+            switch( opCode[2,5] ) {
                 case 5b01101: { IS_AUIPCLUI = 1; }                                                  // LUI
                 case 5b00101: { IS_AUIPCLUI = 1; }                                                  // AUIPC
                 case 5b11011: { IS_JAL = 1; incPC = 0; }                                            // JAL
@@ -260,8 +263,23 @@ unit controlflags(
                 case 5b11100: { IS_CSR = 1; IS_FAST = 0; }                                          // CSR ECALL EBBREAK
                 case 5b00100: { IS_ALU = 1; }                                                       // REGISTER-IMMEDIATE ALU
                 case 5b01100: { IS_ALU = 1; IS_FAST = ~( IS_ALUM & function3[2,1] ); }              // REGISTER-REGISTER ALU ( FAST NOT DIVIDE )
-                case 5b00110: { IS_ALU = 1; IS_ALU32 = 1; }                                         // REGISTER-IMMEDIATE ALU 32BIT
-                case 5b01110: { IS_ALU = 1; IS_ALU32 = 1; IS_FAST = ~( IS_ALUM & function3[2,1] ); }// REGISTER-REGISTER ALU 32BIT ( FAST NOT DIVIDE )
+                case 5b00110: {
+                    IS_ALU = 1; IS_ALU32 = 1;                                                       // REGISTER-IMMEDIATE ALU 32BIT
+                    switch( function3 ) {
+                        case 3b001: { IS_ALU32SIGNX = ( function7[1,6] != 6b000010 ); }
+                        default: {}
+                    }
+                }
+                case 5b01110: {                                                                     // REGISTER-REGISTER ALU 32BIT ( FAST NOT DIVIDE )
+                    IS_ALU = 1; IS_ALU32 = 1; IS_FAST = ~( IS_ALUM & function3[2,1] );
+                    switch( function3 ) {
+                        case 3b000: { IS_ALU32SIGNX = ( function7 != 7b0000100 ); }
+                        case 3b010: { IS_ALU32SIGNX = ( function7 != 7b0010000 ); }
+                        case 3b100: { IS_ALU32SIGNX = ( function7 != 7b0010000 ); }
+                        case 3b110: { IS_ALU32SIGNX = ( function7 != 7b0010000 ); }
+                        default: {}
+                    }
+                }
                 case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                       // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
                 case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }           // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
                 default: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = 0; }                                               // FUSED-FPU

@@ -193,18 +193,18 @@ void set_pixel(float r, float g, float b) {
    r = max(0.0f, min(1.0f, r));
    g = max(0.0f, min(1.0f, g));
    b = max(0.0f, min(1.0f, b));
-   gpu_pixelblock_pixel24( 255.0f * r, 255.0f * g, 255.0f * b );
+   gpu_pixelblock_pixelARGB( PACKRGB(255.0f * r, 255.0f * g, 255.0f * b ) );
 }
 
 void render(Sphere* spheres, short nb_spheres, Light* lights, short nb_lights) {
    const float fov  = M_PI/3.;
    for (register short j = 0; j<GL_height; j++) { // actual rendering loop
-      for (register short i = 0; i<GL_width; i++) {
-	 float dir_x =  (i + 0.5) - GL_width/2.;
-	 float dir_y = -(j + 0.5) + GL_height/2.;    // this flips the image at the same time
-	 float dir_z = -GL_height/(2.*tanf(fov/2.));
-     vec3 C = cast_ray(make_vec3(0,0,0), vec3_normalize(make_vec3(dir_x, dir_y, dir_z)), spheres, nb_spheres, lights, nb_lights, 0);
-	 set_pixel(C.x,C.y,C.z);
+        for (register short i = 0; i<GL_width; i++) {
+        float dir_x =  (i + 0.5) - GL_width/2.;
+        float dir_y = -(j + 0.5) + GL_height/2.;    // this flips the image at the same time
+        float dir_z = -GL_height/(2.*tanf(fov/2.));
+        vec3 C = cast_ray(make_vec3(0,0,0), vec3_normalize(make_vec3(dir_x, dir_y, dir_z)), spheres, nb_spheres, lights, nb_lights, 0);
+        set_pixel(C.x,C.y,C.z);
       }
    }
 }

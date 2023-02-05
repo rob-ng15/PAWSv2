@@ -2,6 +2,9 @@
 unsigned char volatile *UART_DATA = (unsigned char volatile *) 0xf000;
 unsigned char volatile *UART_STATUS = (unsigned char volatile *) 0xf002;
 unsigned short volatile *BUTTONS = (unsigned short volatile *) 0xf200;
+unsigned short volatile *MOUSE_X = (unsigned short volatile *) 0xf202;
+unsigned short volatile *MOUSE_Y = (unsigned short volatile *) 0xf204;
+unsigned short volatile *MOUSE_BUTTONS = (unsigned short volatile *) 0xf206;
 unsigned char volatile *LEDS = (unsigned char volatile *) 0xf300;
 
 // SDCARD
@@ -108,6 +111,8 @@ unsigned char volatile *PB_CMNUMBER = (unsigned char volatile *) 0xd67c;
 unsigned char volatile *PB_CMENTRY = (unsigned char volatile *) 0xd67e;
 unsigned int volatile *PB_ARGB = (unsigned int volatile *) 0xd680;
 unsigned int volatile *PB_RGBA = (unsigned int volatile *) 0xd684;
+unsigned int volatile *PB_ABGR = (unsigned int volatile *) 0xd688;
+unsigned int volatile *PB_BGRA = (unsigned int volatile *) 0xd68c;
 
 unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e0;
 unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e2;
@@ -195,6 +200,7 @@ unsigned int volatile *SMTPC = (unsigned int volatile *) 0xff00;
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
 int volatile *DMADESTADD = (int volatile *) 0xfd04;
 unsigned char volatile *DMACYCLES = (unsigned char volatile *) 0xfd08;
+unsigned int volatile *DMASET32 = (unsigned int volatile *) 0xfd0c;
 unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xfe00;
 unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
 unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;

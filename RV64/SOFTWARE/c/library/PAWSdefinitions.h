@@ -36,6 +36,14 @@
 #define BKG_HSTRIPE 15
 
 // BACKGROUND COPPER COMMANDS
+struct copper_command {
+    unsigned int command:3;
+    unsigned int condition:3;
+    unsigned int coordinate:11;
+    unsigned int mode:4;
+    unsigned int altcolour:7;
+    unsigned int colour:7;
+};
 #define COPPER_JUMP 0
 #define COPPER_JUMP_ALWAYS 0
 #define COPPER_JUMP_ON_VBLANK_EQUAL 1
@@ -340,6 +348,10 @@ typedef void WINDOW;
 
 #define COLS 80
 #define LINES 60
+
+// PACK RGB MACRO
+#define PACKRGB(r,g,b) \
+    _rv64_packw( _rv64_packh( b, g ), _rv64_packh( r, 0 ) )
 
 // MIN MAX MACROS
 #ifndef min

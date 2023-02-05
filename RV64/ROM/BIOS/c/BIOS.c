@@ -175,7 +175,7 @@ void gpu_outputstringcentre( unsigned char colour, short y, char bold, char *s, 
     gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1) , y, bold, s, size );
 }
 
-// SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as is halfed by dma engine)
+// SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as DMA engine uses bytes for count )
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
     DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, 1 );
@@ -441,19 +441,19 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
             unsigned short buttons = get_buttons();
             while( buttons == 1 ) { buttons = get_buttons(); }
             while( get_buttons() != 1 ) {} sleep( 100 );
-            if( buttons & 64 ) {
+            if( ( buttons & 64 ) >> 6 ) {
                 // MOVE RIGHT
                 if( present_entry == entries ) { present_entry = 0; } else { present_entry++; }
             }
-            if( buttons & 32 ) {
+            if( ( buttons & 32 ) >> 5 ) {
                 // MOVE LEFT
                 if( present_entry == 0 ) { present_entry = entries; } else { present_entry--; }
            }
-            if( buttons & 8 ) {
+            if( ( buttons & 8 ) >> 3 ) {
                 // MOVE UP
                 if( startdirectorycluster != rootdirectorycluster ) { return(0); }
            }
-            if( buttons & 2 ) {
+            if( ( buttons & 2 ) >> 1 ) {
                 // SELECTED
                 switch( directorynames[present_entry].type ) {
                     case 1:
@@ -474,6 +474,8 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 
 extern int _bss_start, _bss_end;
 unsigned char chime[] = { 75, 83, 89, 0 };
+
+static inline long _rv64_rol(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
 
 // SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
 __attribute__((used)) void scrollbars( void ) {
@@ -499,11 +501,11 @@ __attribute__((used)) void scrollbars( void ) {
                 tpu_set( 0, 17, TRANSPARENT, WHITE );
                 rtc = *RTC + 0x2000000000000000;
                 for( int i = 0; i < 16; i++ ) {
+                    rtc = _rv64_rol( rtc, 4 );
                     switch(i) {
                         case 8: case 9: break;
-                        default: tpu_output_character( 48 + ( ( rtc & 0xf000000000000000 ) >> 60 ) );
+                        default: tpu_output_character( 48 + ( rtc & 0xf ) );
                     }
-                    rtc = rtc << 4;
                     switch(i) {
                         case 3: case 5: tpu_output_character('-'); break;
                         case 7: tpu_output_character(' '); break;
@@ -556,7 +558,7 @@ int main( void ) {
     SMTSTART( smtthread );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV64GC CPU", 0 );
+    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV64GC+ CPU", 0 );
     gpu_outputstringcentre( UK_BLUE, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS

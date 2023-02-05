@@ -114,6 +114,10 @@ unsigned char ps2_character_available() {
                     case 0x171: availablecharacter = 0x133; break; // DELETE
                     case 0x169: availablecharacter = 0x134; break; // END
                     case 0x17a: availablecharacter = 0x136; break; // PGDN
+                    case 0x175:  availablecharacter = 0x141; break; // UP
+                    case 0x16b:  availablecharacter = 0x144; break; // LEFT
+                    case 0x174:  availablecharacter = 0x143; break; // RIGHT
+                    case 0x172:  availablecharacter = 0x142; break; // DOWN
 
                     // KEYPAD
                     case 0x70:  availablecharacter = numlock ? '0' : 0x132; break;

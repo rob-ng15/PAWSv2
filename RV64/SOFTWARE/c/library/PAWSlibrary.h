@@ -1,5 +1,6 @@
 #ifndef __PAWSLIBRARY__
 #include <stddef.h>
+#include <PAWSintrinsics.h>
 #include "PAWSdefinitions.h"
 
 // MEMORY
@@ -32,6 +33,7 @@ extern void ps2_keyboardmode( unsigned char mode );
 // BASIC I/O
 extern void set_leds( unsigned char );
 extern unsigned short get_buttons( void );
+extern void get_mouse( short *x, short *y, short *buttons );
 
 // TIMERS AND PSEUDO RANDOM NUMBER GENERATOR
 extern float frng( void );
@@ -114,12 +116,16 @@ extern void gpu_pixelblock( short , short , unsigned short, unsigned short, unsi
 extern void gpu_pixelblock24( short , short , unsigned short, unsigned short, unsigned char *);
 extern void gpu_pixelblockARGB( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer );
 extern void gpu_pixelblockRGBA( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer );
+extern void gpu_pixelblockABGR( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer );
+extern void gpu_pixelblockBGRA( short x, short y, unsigned short w, unsigned short h, unsigned int *buffer );
 extern void gpu_pixelblock_start( short , short , unsigned short );
 extern void gpu_pixelblock_mode( unsigned char mode );
 extern void gpu_pixelblock_pixel( unsigned char );
 extern void gpu_pixelblock_pixel24( unsigned char, unsigned char, unsigned char );
 extern void gpu_pixelblock_pixelARGB( unsigned int ARGB );
 extern void gpu_pixelblock_pixelRGBA( unsigned int RGBA );
+extern void gpu_pixelblock_pixelABGR( unsigned int ABGR );
+extern void gpu_pixelblock_pixelBGRA( unsigned int BGRA );
 extern void gpu_pixelblock_stop( void );
 extern void gpu_pixelblock_remap( unsigned char from, unsigned char to );
 
@@ -184,29 +190,19 @@ extern unsigned char *sdcard_selectfile( char *, char *, unsigned int *, char *)
 // ALLOCATION OF FAST BRAM MEMORY
 extern void *malloc_bram( int size );
 
-// HARDWARE REGISTER BASES
-extern int volatile *IO_REGS;
-extern int volatile *DMA_REGS;
-extern int volatile *DMA_REGS_ALT;
-extern int volatile *GPU_REGS;
-extern int volatile *DISPLAY_REGS;
-extern int volatile *AUDIO_REGS;
-extern int volatile *FIXED_REGS;
-extern int volatile *TIMER_REGS;
-
 // EXTRA DMA MEMCPY MEMSET OPERATIONS
 #ifdef __cplusplus
 extern void paws_memcpy_step( const void *, const void *, size_t, int, int );
 extern void paws_memcpy_rectangle( const void *, const void *, size_t, int, int, unsigned char );
 extern void paws_memset_rectangle( void *, int, size_t, int, unsigned char );
-extern void *paws_memset_RGB( void *, int, size_t );
-extern void paws_memset_rectangle_RGB( void *, int, size_t, int, unsigned char );
+extern void *paws_memset32( void *, int, size_t );
+extern void paws_memset_rectangle32( void *, int, size_t, int, unsigned char );
 #else
 extern void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd );
 extern void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles );
 extern void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles );
-extern void *paws_memset_RGB( void *restrict destination, int RGB, size_t count );
-extern void paws_memset_rectangle_RGB( void *restrict destination, int RGB, size_t count, int destadd, unsigned char cycles );
+extern void *paws_memset32( void *restrict destination, int value, size_t count );
+extern void paws_memset_rectangle32( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles );
 #endif
 
 #define __PAWSLIBRARY__
