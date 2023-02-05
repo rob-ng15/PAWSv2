@@ -1,5 +1,6 @@
 #ifndef __PAWSLIBRARY__
 #include <stddef.h>
+#include <PAWSintrinsics.h>
 #include "PAWSdefinitions.h"
 
 // MEMORY

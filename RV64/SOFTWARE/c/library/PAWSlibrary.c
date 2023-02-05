@@ -363,15 +363,6 @@ void copper_startstop( unsigned char status ) {
     *BACKGROUND_COPPER_STARTSTOP = status;
 }
 
-struct copper_command {
-    unsigned int command:3;
-    unsigned int condition:3;
-    unsigned int coordinate:11;
-    unsigned int mode:4;
-    unsigned int altcolour:7;
-    unsigned int colour:7;
-};
-
 void copper_program( unsigned char address, unsigned char command, unsigned char condition, unsigned short coordinate, unsigned char mode, unsigned char altcolour, unsigned char colour ) {
     *BACKGROUND_COPPER_ADDRESS = address;
     *BACKGROUND_COPPER_COMMAND = command;
@@ -519,10 +510,12 @@ void gpu_crop( short left, short top, short right, short bottom ) {
 // SET THE PIXEL at (x,y) to colour
 void gpu_pixel( unsigned char colour, short x, short y ) {
     *GPU_COLOUR = colour; *GPU_X = x; *GPU_Y = y;
+    wait_gpu();
     *GPU_WRITE = 1;
 }
 void gpu_pixel_RGB( unsigned int colour, short x, short y ) {
     *GPU_COLOURRGB = colour; *GPU_X = x; *GPU_Y = y;
+    wait_gpu();
     *GPU_WRITE = 1;
 }
 
@@ -607,10 +600,7 @@ void gpu_colourblit( short x1, short y1, short tile, unsigned char blit_size, un
 // SET THE BLITTER TILE to the 16 x 16 pixel bitmap
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
-
-    for( int i = 0; i < 16; i ++ ) {
-        *BLIT_WRITER_BITMAP = bitmap[i];
-    }
+    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, 1 );
 }
 
 // SET THE BLITTER CHARACTER TILE to the 8 x 8 pixel bitmap
@@ -730,6 +720,7 @@ void gpu_print_centre( unsigned char colour, short x, short y, unsigned char bol
         y = y - ( 8 << size );
     }
 }
+
 // PB_MODE = 0 COPY A ARRGGBB BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK
 // PB_MODE = 1 COPY A 256 COLOUR BITMAP STORED IN MEMORY TO THE BITMAP USING THE PIXEL BLOCK AND REMAPPER
 void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsigned char transparent, unsigned char *buffer ) {
@@ -816,10 +807,6 @@ void gpu_pixelblock_pixel( unsigned char pixel ) {
     *PB_COLOUR = pixel;
 }
 
-void gpu_pixelblock_pixel24( unsigned char red, unsigned char green, unsigned char blue ) {
-    *PB_COLOUR8R = red; *PB_COLOUR8G = green; *PB_COLOUR8B = blue;
-}
-
 void gpu_pixelblock_pixelARGB( unsigned int ARGB ) {
     *PB_ARGB = ARGB;
 }
@@ -832,6 +819,9 @@ void gpu_pixelblock_pixelABGR( unsigned int ABGR ) {
 }
 void gpu_pixelblock_pixelBGRA( unsigned int BGRA ) {
     *PB_BGRA = BGRA;
+}
+void gpu_pixelblock_pixel24( unsigned char red, unsigned char green, unsigned char blue ) {
+   gpu_pixelblock_pixelARGB( PACKRGB(255.0f * red, 255.0f * green, 255.0f * blue ) );
 }
 
 void gpu_pixelblock_stop( void ) {
@@ -879,21 +869,20 @@ void set_vector_vertex( unsigned char block, unsigned char vertex, unsigned char
 // SCALE A POINT AND MOVE TO CENTRE POINT
 union Point2D Scale2D( union Point2D point, int xc, int yc, float scale ) {
     union Point2D newpoint;
-    newpoint.dx = point.dx * scale + xc;
-    newpoint.dy = point.dy * scale + yc;
+    newpoint.packed = _rv64_pack( point.dx * scale + xc, point.dy * scale + yc );
     return( newpoint );
 }
+
 union Point2D Rotate2D( union Point2D point, int xc, int yc, int angle, float scale ) {
     union Point2D newpoint;
     float sine = sinf(angle*0.01745329252), cosine = cosf(angle*0.01745329252);
-    newpoint.dx = ( (point.dx * scale)*cosine-(point.dy * scale)*sine ) + xc;
-    newpoint.dy = ( (point.dx * scale)*sine+(point.dy * scale)*cosine ) + yc;
+    newpoint.packed = _rv64_pack( ( (point.dx * scale)*cosine-(point.dy * scale)*sine ) + xc, ( (point.dx * scale)*sine+(point.dy * scale)*cosine ) + yc );
     return( newpoint );
 }
 
 union Point2D MakePoint2D( int x, int y ) {
     union Point2D newpoint;
-    newpoint.dx = x; newpoint.dy = y;
+    newpoint.packed = _rv64_pack( x, y );
     return( newpoint );
 }
 
@@ -1604,11 +1593,8 @@ void netppm_display( unsigned char *netppmimagefile, unsigned char transparent )
         if( depth == 255 ) {
             for( unsigned short y = 0; y < height; y++ ) {
                 for( unsigned short x = 0; x < width; x++ ) {
-                    colour = ( netppmimagefile[ location++ ] & 0xc0 ) >> 2;
-                    colour = colour + ( ( netppmimagefile[ location++ ] & 0xc0 ) >> 4 );
-                    colour = colour + ( ( netppmimagefile[ location++ ] & 0xc0 ) >> 6 );
                     if( colour != transparent )
-                        gpu_pixel( colour, x, y );
+                        gpu_pixel_RGB( PACKRGB( netppmimagefile[ location++ ], netppmimagefile[ location++ ], netppmimagefile[ location++ ] ), x, y );
                 }
             }
         }
@@ -1655,10 +1641,10 @@ void netppm_decoder( unsigned char *netppmimagefile, unsigned char *buffer ) {
         if( depth == 255 ) {
             for( unsigned short y = 0; y < height; y++ ) {
                 for( unsigned short x = 0; x < width; x++ ) {
-                    colour = ( netppmimagefile[ location++ ] & 0xc0 ) >> 2;
-                    colour = colour + ( ( netppmimagefile[ location++ ] & 0xc0 ) >> 4 );
-                    colour = colour + ( ( netppmimagefile[ location++ ] & 0xc0 ) >> 6 );
-                    buffer[ bufferpos++ ] = colour;
+                    unsigned char r = netppmimagefile[ location++ ];
+                    unsigned char g = netppmimagefile[ location++ ];
+                    unsigned char b = netppmimagefile[ location++ ];
+                    buffer[ bufferpos++ ] = ( r & 0xc0 ) + ( ( g & 0xe0 ) >> 2 ) + ( ( b & 0xc0 ) >> 5 ) + ( ( ( ( r & 0x20 ) != 0 ) && ( ( b & 0x20 ) != 0 ) ) ? 1 : 0 );
                 }
             }
         }
@@ -2478,3 +2464,49 @@ size_t paws_strlen ( const char *string ) {
 
 #include "akavel_gostdc/vfscanf.c"
 #include "akavel_gostdc/fscanf.c"
+
+// OVERRIDE GCC BUILTINS
+void *__wrap_memcpy( void *restrict destination, const void *restrict source, size_t count ) {
+    return( paws_memcpy( destination, source, count ) );
+}
+
+int __wrap___clzsi2  (unsigned int a) {
+    return( _rv64_clzw( a ) );
+}
+
+int __wrap___clzdi2  (unsigned long a) {
+    return( _rv64_clz( a ) );
+}
+
+int __wrap___ctzsi2  (unsigned int a) {
+    return( _rv64_ctzw( a ) );
+}
+
+int __wrap___ctzdi2  (unsigned long a) {
+    return( _rv64_ctz( a ) );
+}
+
+int __wrap___popcountsi2  (unsigned int a) {
+    return( _rv64_cpopw( a ) );
+}
+
+int __wrap___popcountdi2  (unsigned long a) {
+    return( _rv64_cpop( a ) );
+}
+
+int __wrap___paritysi2  (unsigned int a) {
+    return( _rv64_cpopw( a ) & 1 );
+}
+
+int __wrap___paritydi2  (unsigned long a) {
+    return( _rv64_cpop( a ) & 1 );
+}
+
+int __wrap___bswapsi2  (unsigned int a) {
+    return( _rv64_rev8( a ) >> 32 );
+}
+
+int __wrap___bswapdi2  (unsigned long a) {
+    return( _rv64_rev8( a ) );
+}
+

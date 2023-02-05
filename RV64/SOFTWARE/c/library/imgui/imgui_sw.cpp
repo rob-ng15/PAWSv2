@@ -172,12 +172,6 @@ ImU32 color_convert_float4_to_u32(const ImVec4& in)
 #else
 		return( _rv64_packw( _rv64_packh( uint32_t(in.x * 255.0f + 0.5f), uint32_t(in.y * 255.0f + 0.5f) ), _rv64_packh( uint32_t(in.z * 255.0f + 0.5f), uint32_t(in.w * 255.0f + 0.5f) ) ) );
 #endif
-//	ImU32 out;
-//	out  = uint32_t(in.x * 255.0f + 0.5f) << IM_COL32_R_SHIFT;
-//	out |= uint32_t(in.y * 255.0f + 0.5f) << IM_COL32_G_SHIFT;
-//	out |= uint32_t(in.z * 255.0f + 0.5f) << IM_COL32_B_SHIFT;
-//	out |= uint32_t(in.w * 255.0f + 0.5f) << IM_COL32_A_SHIFT;
-//	return out;
 }
 
 // ----------------------------------------------------------------------------

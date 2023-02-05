@@ -175,7 +175,7 @@ void gpu_outputstringcentre( unsigned char colour, short y, char bold, char *s, 
     gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1) , y, bold, s, size );
 }
 
-// SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as is halfed by dma engine)
+// SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as DMA engine uses bytes for count )
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
     DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, 1 );
@@ -475,6 +475,8 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 extern int _bss_start, _bss_end;
 unsigned char chime[] = { 75, 83, 89, 0 };
 
+static inline long _rv64_rol(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
 // SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
 __attribute__((used)) void scrollbars( void ) {
     unsigned char leds = 1;
@@ -499,11 +501,11 @@ __attribute__((used)) void scrollbars( void ) {
                 tpu_set( 0, 17, TRANSPARENT, WHITE );
                 rtc = *RTC + 0x2000000000000000;
                 for( int i = 0; i < 16; i++ ) {
+                    rtc = _rv64_rol( rtc, 4 );
                     switch(i) {
                         case 8: case 9: break;
-                        default: tpu_output_character( 48 + ( ( rtc & 0xf000000000000000 ) >> 60 ) );
+                        default: tpu_output_character( 48 + ( rtc & 0xf ) );
                     }
-                    rtc = rtc << 4;
                     switch(i) {
                         case 3: case 5: tpu_output_character('-'); break;
                         case 7: tpu_output_character(' '); break;

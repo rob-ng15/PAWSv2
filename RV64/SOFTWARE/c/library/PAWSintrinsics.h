@@ -33,5 +33,6 @@ static inline long _rv64_pack(long rs1, long rs2) { long rd; __asm__ ("pack  %0,
 static inline long _rv64_packh(long rs1, long rs2) { long rd; __asm__ ("packh  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
 static inline int _rv64_packw(int rs1, int rs2) { int rd; __asm__ ("packw  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
 
+static inline long _rv64_rev8(long rs1) { long rd; __asm__ ("rev8     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
 #define __PAWSINTRINSICS__
 #endif
