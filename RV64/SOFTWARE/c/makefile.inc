@@ -27,11 +27,15 @@ endif
 CFLAGS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
 CXXFLAGS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleriscv \
-	-Wl,--wrap=memcpy \
-	-Wl,--wrap=__clzsi2 -Wl,--wrap=memcpy -Wl,--wrap=__clzdi2 \
-	-Wl,--wrap=__ctzsi2 -Wl,--wrap=memcpy -Wl,--wrap=__ctzdi2 \
-	-Wl,--wrap=__popcountsi2 -Wl,--wrap=memcpy -Wl,--wrap=__popcountdi2 \
-	-Wl,--wrap=__paritysi2 -Wl,--wrap=memcpy -Wl,--wrap=__paritydi2
+	-Wl,--wrap=memcpy -Wl,--wrap=memset \
+	-Wl,--wrap=__clzsi2 -Wl,--wrap=__clzdi2 \
+	-Wl,--wrap=__ctzsi2 -Wl,--wrap=__ctzdi2 \
+	-Wl,--wrap=__popcountsi2 -Wl,--wrap=__popcountdi2 \
+	-Wl,--wrap=__builtin_clz -Wl,--wrap=__builtin_clzl \
+	-Wl,--wrap=__builtin_ctz -Wl,--wrap=__builtin_ctzl \
+	-Wl,--wrap=__builtin_popcount -Wl,--wrap=__builtin_popcountl \
+	-Wl,--wrap=__builtin_parity -Wl,--wrap=__builtin_parityl \
+	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 
 PAWSBASE=../

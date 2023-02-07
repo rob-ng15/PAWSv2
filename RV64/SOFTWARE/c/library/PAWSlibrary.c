@@ -2462,51 +2462,9 @@ int paws_strcmp ( const char *string1, const char *string2 ) {
 size_t paws_strlen ( const char *string ) {
 }
 
+// IMPLEMENTATIONS OF fscanf and vfscanf
 #include "akavel_gostdc/vfscanf.c"
 #include "akavel_gostdc/fscanf.c"
 
-// OVERRIDE GCC BUILTINS
-void *__wrap_memcpy( void *restrict destination, const void *restrict source, size_t count ) {
-    return( paws_memcpy( destination, source, count ) );
-}
-
-int __wrap___clzsi2  (unsigned int a) {
-    return( _rv64_clzw( a ) );
-}
-
-int __wrap___clzdi2  (unsigned long a) {
-    return( _rv64_clz( a ) );
-}
-
-int __wrap___ctzsi2  (unsigned int a) {
-    return( _rv64_ctzw( a ) );
-}
-
-int __wrap___ctzdi2  (unsigned long a) {
-    return( _rv64_ctz( a ) );
-}
-
-int __wrap___popcountsi2  (unsigned int a) {
-    return( _rv64_cpopw( a ) );
-}
-
-int __wrap___popcountdi2  (unsigned long a) {
-    return( _rv64_cpop( a ) );
-}
-
-int __wrap___paritysi2  (unsigned int a) {
-    return( _rv64_cpopw( a ) & 1 );
-}
-
-int __wrap___paritydi2  (unsigned long a) {
-    return( _rv64_cpop( a ) & 1 );
-}
-
-int __wrap___bswapsi2  (unsigned int a) {
-    return( _rv64_rev8( a ) >> 32 );
-}
-
-int __wrap___bswapdi2  (unsigned long a) {
-    return( _rv64_rev8( a ) );
-}
-
+// WRAPPERS FOR VARIOUS BUILTIN FUNCTIONS TO USE OPTIMISED BIT MANIPULATION INSTRUCTIONS
+#include "PAWSoverrides.h"
