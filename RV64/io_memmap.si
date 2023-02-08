@@ -72,8 +72,8 @@ $$if not SIMULATION then
     ps2buffer PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn );
 
     // SDCARD AND BUFFER
-    simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                          // READ FROM SDCARD
-    simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                         // WRITE TO SDCARD
+    simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                                                  // READ FROM SDCARD
+    simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                                                 // WRITE TO SDCARD
     sdcardcontroller SDCARD(
         sd_clk :> sd_clk,
         sd_mosi :> sd_mosi,
@@ -85,11 +85,11 @@ $$if not SIMULATION then
 $$end
 
     // I2C FOR RTC
-    rtc RTC( clk <: clock, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );              // EMARD verilog version
-    //mcp7940n RTC <@clock_25mhz> ( sda <:> gpdi_sda, scl <:> gpdi_scl );                             // Silice translation (not yet working)
+    rtc RTC( clk <: clock, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );                                                // EMARD verilog version
+    //mcp7940n RTC <@clock_25mhz> ( sda <:> gpdi_sda, scl <:> gpdi_scl );                                                       // Silice translation (not yet working)
 
     // UNLOCK VALUE ( write to sector 0 )
-    uint1 MAGICVALUE(0);                                                                // WRITE 32h50415357 { 'P', 'A', 'W', 'S' } TO ALLOW WRITING TO SDCARD SECTOR 0
+    uint1 MAGICVALUE(0);                                                                                                        // WRITE 32h50415357 { 'P', 'A', 'W', 'S' } TO ALLOW WRITING TO SDCARD SECTOR 0
 
     // MOUSE LATCH AFTER MOVE
     uint20  mouse_latch = uninitialised;
@@ -269,6 +269,9 @@ unit timers_memmap(
     // TIMERS and RNG
     timers_rng timers <@clock_25mhz> ( seconds :> cursor, g_noise_out :> static16bit );
 
+    uint32  floatrng <:: { 1b0, 1b0, timers.u_noise_out[0,7], timers.g_noise_out[0,16], timers.u_noise_out[7,7] };
+    uint3   timernumber <:: memoryAddress[1,3] + 1;
+
     always_after {
         {
             // LATCH TIME OF DAY
@@ -289,7 +292,7 @@ unit timers_memmap(
                         // RNG ( 2 interger, 1 float 0 <= fng < 1 ) and TIMERS
                         case 4h0: { readData = timers.g_noise_out; }
                         case 4h1: { readData = timers.u_noise_out; }
-                        case 4h2: { readData = { 1b0, 1b0, timers.u_noise_out[0,7], timers.g_noise_out[0,16], timers.u_noise_out[7,7] }; }
+                        case 4h2: { readData = floatrng; }
                         case 4h8: { readData = timers.timer1hz0; }
                         case 4h9: { readData = timers.timer1hz1; }
                         case 4ha: { readData = timers.timer1khz0; }
@@ -316,7 +319,7 @@ unit timers_memmap(
                             default: { timers.resetcounter = 7; }
                         }
                     } else {
-                        timers.counter = writeData; timers.resetcounter = memoryAddress[1,3] + 1;
+                        timers.counter = writeData; timers.resetcounter = timernumber;
                     }
                 }
                 case 2b00: { timers.resetcounter = 0; }
@@ -427,28 +430,15 @@ unit audio_memmap(
             switch( { memoryWrite, LATCHmemoryWrite } ) {
                 case 2b10: {
                     switch( memoryAddress[1,4] ) {
-                        case 4h0: {                                                                                                             // SET APU FROM CPU
-                            if( accesssize[1,1] ) {
-                                apu_processor.waveform = writeData[0,5]; apu_processor.frequency = writeData[16,7];
-                            } else { apu_processor.waveform = writeData; }
-                        }
+                        case 4h0: { apu_processor.waveform = writeData; }                                                       // SET APU FROM CPU
                         case 4h1: { apu_processor.frequency = writeData; }
-                        case 4h2: {
-                            if( accesssize[1,1] ) {
-                                apu_processor.duration = writeData[0,16]; apu_processor.apu_write = writeData[16,2];
-                            } else { apu_processor.duration = writeData; }
-                        }
+                        case 4h2: { apu_processor.duration = writeData; }
                         case 4h3: { apu_processor.apu_write = writeData; }
-                        case 4h4: { if( writeData[0,1] ) { maxSL = 0; }  if( writeData[1,1] ) { maxSR = 0; } }                                  // RESET SAMPLES
-                        case 4h5: { samples_left.addr1 = maxSL; samples_left.wdata1 = writeData; maxSL = maxSL + 1; }                           // WRITE TO LEFT SAMPLE MEMORY
-                        case 4h6: { samples_right.addr1 = maxSR; samples_right.wdata1 = writeData; maxSR = maxSR + 1; }                         // WRITE TO RIGHT SAMPLE MEMORY
-                        case 4h8: {                                                                                                             // SET VOLUME LEFT ( OR BOTH )
-                            if( accesssize[1,1] ) {
-                                apu_processor.volume_l = writeData[0,3]; apu_processor.volume_r = writeData[16,3];
-                            } else { apu_processor.volume_l = writeData; }
-
-                        }
-                        case 4h9: { apu_processor.volume_r = writeData; }                                                                       // SET VOLUME RIGHT
+                        case 4h4: { if( writeData[0,1] ) { maxSL = 0; } if( writeData[1,1] ) { maxSR = 0; } }                   // RESET SAMPLES
+                        case 4h5: { samples_left.addr1 = maxSL; samples_left.wdata1 = writeData; maxSL = maxSL + 1; }           // WRITE TO LEFT SAMPLE MEMORY
+                        case 4h6: { samples_right.addr1 = maxSR; samples_right.wdata1 = writeData; maxSR = maxSR + 1; }         // WRITE TO RIGHT SAMPLE MEMORY
+                        case 4h8: { apu_processor.volume_l = writeData; }                                                       // SET VOLUME LEFT
+                        case 4h9: { apu_processor.volume_r = writeData; }                                                       // SET VOLUME RIGHT
                         default: {}
                     }
                 }
