@@ -1,67 +1,144 @@
 // FMIN FMAX FSGNJ FSGNJN FSGNJX FEQ FLT FLE FCLASS FMV
-unit fpuSINGLECYCLE(
-    input   uint1   df,
-    input   uint2   function3,
-    input   uint5   function7,
-    input   uint64  sourceReg1,
-    input   uint64  sourceReg1F,
-    input   uint64  sourceReg2F,
-    input   uint4   typeAF,
-    input   uint4   typeBF,
-
-    output  uint64  result,
-    output  uint1   frd,
-    input   uint5   FPUflags,
-    output  uint5   FPUnewflags
+unit floatclass(                                                                                                                // CLASSIFY FLOATING POINT INPUT ( FCLASS.S FCLASS.D )
+    input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
+    input   uint64  sourceReg1F,                                                                                                // REGISTER INPUT TO CLASSIFY
+    input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF REGISTER INPUT
+    input   uint1   sign1F,                                                                                                     // SIGN OF REGISTER INPUT
+    output  uint10  FCLASS                                                                                                      // 10 bit INTEGER CLASSIFICATION OF REGISTER INPUT
 ) <reginputs> {
-    floatcompare FPUlteq( df <: df, a <: sourceReg1F, b <: sourceReg2F, typeAF <: typeAF, typeBF <: typeBF );
+    uint1   TRUEZERO <:: ~|( df ? fp64( sourceReg1F ).fraction : fp32( sourceReg1F ).fraction );                                // CHECK FRACTION == 0 ( NOT SUBNORMAL )
 
-    uint1   NAN <:: |( typeAF[1,2] | typeBF[1,2] );
-    uint3   LTEQ <:: { FPUlteq.equal, FPUlteq.less, FPUlteq.less | FPUlteq.equal };
+    always_after {
+        FCLASS = {  typeAF[1,1],                                                                                                // 512  qNAN
+                    typeAF[2,1],                                                                                                // 256  sNAN
+                    typeAF[3,1] & ~sign1F,                                                                                      // 128  +INF
+                    ~|typeAF & ~sign1F,                                                                                         // 64   +NORMAL
+                    typeAF[0,1] & ~sign1F & ~TRUEZERO,                                                                          // 32   +SUBNORMAL
+                    typeAF[0,1] & ~sign1F & TRUEZERO,                                                                           // 16   +0
+                    typeAF[0,1] & sign1F & TRUEZERO,                                                                            // 8    -0
+                    typeAF[0,1] & sign1F & ~TRUEZERO,                                                                           // 4    -SUBNORMAL
+                    ~|typeAF & sign1F,                                                                                          // 2    -NORMAL
+                    typeAF[3,1] & sign1F                                                                                        // 1    -INF
+        };
+   }
+}
+unit floateqltle(                                                                                                               // FLOATING POINT COMPARISONS ( uses base comparison less/equal generator )
+    input   uint2   function3,                                                                                                  // COMPARISON TYPE SWITCH
+    input   uint1   EQUAL,                                                                                                      // IS EQUAL FLAG A == B
+    input   uint1   LESS,                                                                                                       // IS LESS FLAG A < B
+    input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF A
+    input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } OF B
+    output  uint1   COMPARE,                                                                                                    // RESULT OF COMPARISON
+    output  uint5   flags                                                                                                       // FLOATING POINT FLAGS FOR COMPARISON
+) <reginputs> {
+    uint1   NAN <:: |( typeAF[1,2] | typeBF[1,2] );                                                                             // DETECT NAN INPUT
+    uint3   LTEQ <:: { EQUAL, LESS, LESS | EQUAL };                                                                             // BIT ARRAY FOR COMPARISON FLAGS
 
-    uint1   sign1F <:: df ? fp64( sourceReg1F ).sign : fp32( sourceReg1F ).sign;
-    uint1   sign2F <:: df ? fp64( sourceReg2F ).sign : fp32( sourceReg2F ).sign;
-    uint1   TRUEZERO <:: ~|( df ? fp64( sourceReg1F ).fraction : fp32( sourceReg1F ).fraction );
-    uint1   SIGNBIT <:: function3[1,1] ? sign1F ^ sign2F : function3[0,1] ^ sign2F;
+    always_after {
+        { COMPARE = ~NAN & LTEQ[ function3, 1 ]; }                                                                              // 0 IF NAN ELSE COMPARISON FLAG
+        { flags = { function3[1,1] ? ( typeAF[2,1] | typeBF[2,1] ) : NAN, 4b0000 }; }                                           // RETURN NV FLAG IF FLT OR FLE AND NAN IS AN INPUT
+    }
+}
+unit floatminmax(                                                                                                               // FLOATING POINT MIN / MAX
+    input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
+    input   uint1   function3,                                                                                                  // MIN == 0, MAX == 1
+    input   uint64  sourceReg1F,                                                                                                // REGISTER INPUT A
+    input   uint64  sourceReg2F,                                                                                                // REGISTER INPUT B
+    input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF A
+    input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } OF B
+    input   uint1   LESS,                                                                                                       // IS LESS FLAG A < B
+    output  uint64  MINMAX,                                                                                                     // RESULT OF MIN/MAX(a,b)
+    output  uint5   flags                                                                                                       // FLOATING POINT FLAGS FOR MIN/MAX
+) <reginputs> {
+    uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
+    uint1   NAN <:: |( typeAF[1,2] | typeBF[1,2] );                                                                             // DETECT NAN INPUT
 
-    uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;
+    always_after {
+        { MINMAX = NAN ? qNAN : ( function3[0,1] ^ LESS ) ? ( df ? sourceReg1F : { 32hffffffff, sourceReg1F[0,32] } ) :         // EITHER INPUT NAN RETURN qNAN ELSE DO MIN MAX AND SELECT REGISTER
+                                                            ( df ? sourceReg2F : { 32hffffffff, sourceReg2F[0,32] } ); }        // ( NAN boxed if float )
+        { flags = { NAN, 4b0000 }; }                                                                                            // FLAGS SIGNALLING NAN INPUT
+    }
+}
+unit floatsign(                                                                                                                 // FLOATING POINT FSGNJ FSGNJN FSGNJX SIGN INJECTION
+    input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
+    input   uint2   function3,                                                                                                  // SWITCH FSGNJ == 00, FSGNJN == 01, FSGNJX == 10
+    input   uint64  sourceReg1F,                                                                                                // REGISTER INPUT 1
+    input   uint1   sign1F,                                                                                                     // SIGN OF REGISTER INPUT 1
+    input   uint1   sign2F,                                                                                                     // SIGN OF REGISTER INPUT 2
+    output  uint64  SIGN                                                                                                        // RESULT OF SIGN INJECTION
+) <reginputs> {
+    uint1   SIGNBIT <:: function3[1,1] ? sign1F ^ sign2F : function3[0,1] ^ sign2F;                                             // DETERMINE SIGN FOR INJECTION XOR FOR JX OPPOSITE FOR JN COPY FOR J
 
-    uint10  FCLASS <:: {    typeAF[1,1],                                                                                        // 512  qNAN
-                            typeAF[2,1],                                                                                        // 256  sNAN
-                            typeAF[3,1] & ~sign1F,                                                                              // 128  +INF
-                            ~|typeAF & ~sign1F,                                                                                 // 64   +NORMAL
-                            typeAF[0,1] & ~sign1F & ~TRUEZERO,                                                                  // 32   +SUBNORMAL
-                            typeAF[0,1] & ~sign1F & TRUEZERO,                                                                   // 16   +0
-                            typeAF[0,1] & sign1F & TRUEZERO,                                                                    // 8    -0
-                            typeAF[0,1] & sign1F & ~TRUEZERO,                                                                   // 4    -SUBNORMAL
-                            ~|typeAF & sign1F,                                                                                  // 2    -NORMAL
-                            typeAF[3,1] & sign1F                                                                                // 1    -INF
-            };
-    uint64  MINMAX <:: NAN ? qNAN : typeAF[1,1] ? ( typeBF[1,1] ? qNAN : ( df ? sourceReg2F : { 32hffffffff, sourceReg2F[0,32] } ) ) :
-                                    typeBF[1,1] | ( function3[0,1] ^ FPUlteq.less ) ? ( df ? sourceReg1F : { 32hffffffff, sourceReg1F[0,32] } ) : ( df ? sourceReg2F : { 32hffffffff, sourceReg2F[0,32] } );
+    always_after {
+        SIGN = df ? { SIGNBIT, sourceReg1F[0,63] } : { 32hffffffff, SIGNBIT, sourceReg1F[0,31] };                               // INJECT SIGN ( NAN boxed if float )
+   }
+}
+unit fpuSINGLECYCLE(
+    input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
+    input   uint2   function3,                                                                                                  // SWITCH FOR COMPARE MINMAX AND SIGN OPERATIONS
+    input   uint5   function7,                                                                                                  // SWITCH TO DETERMINE WHICH OPERATIONS
+    input   uint64  sourceReg1,                                                                                                 // INTEGER REGISTER FOR FMV
+    input   uint64  sourceReg1F,                                                                                                // INPUT FLOAT REGISTER 1
+    input   uint64  sourceReg2F,                                                                                                // INPUT FLOAT REGISTER 2
+    input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1
+    input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 2
+    input   uint5   FPUflags,                                                                                                   // PRESENT FPU FLAGS
+    output  uint5   FPUnewflags,                                                                                                // NEW FPU FLAGS
+    output  uint64  result,                                                                                                     // RESULT ( NAN boxed if float, sign extended if int )
+    output  uint1   frd                                                                                                         // IS RESULT FLOAT/DOUBLE OR INT/LONG
+) <reginputs> {
+    uint1   sign1F <:: df ? fp64( sourceReg1F ).sign : fp32( sourceReg1F ).sign;                                                // EXTRACT SIGN OF sourceReg1F
+    uint1   sign2F <:: df ? fp64( sourceReg2F ).sign : fp32( sourceReg2F ).sign;                                                // EXTRACT SIGN OF sourceReg2F
+    floatcompare FPUcompare( df <: df, a <: sourceReg1F, b <: sourceReg2F, typeAF <: typeAF, typeBF <: typeBF );                // GENERATE LESS AND EQUAL FLAGS
 
-    uint5   flagsMINMAX <:: { NAN, 4b0000 };
-    uint1   COMPARE <:: ~NAN & LTEQ[ function3, 1 ];
-    uint5   flagsCOMPARE <:: { function3[1,1] ? ( typeAF[2,1] | typeBF[2,1] ) : NAN, 4b0000 };
-    uint64  SIGN <:: df ? { SIGNBIT, sourceReg1F[0,63] } : { 32hffffffff, SIGNBIT, sourceReg1F[0,31] };
+    floatclass FPUclass(                                                                                                        // GENERATE FCLASS
+        df <: df,
+        sourceReg1F <: sourceReg1F,
+        typeAF <: typeAF,
+        sign1F <: sign1F
+    );
+    floateqltle FPUeqltle(                                                                                                      // GENERATE FEQ FLT FLE
+        function3 <: function3,
+        EQUAL <: FPUcompare.equal,
+        LESS <: FPUcompare.less,
+        typeAF <: typeAF,
+        typeBF <: typeBF
+    );
+    floatminmax FPUminmax(                                                                                                      // GENERATE FMIN FMAX
+        df <: df,
+        function3 <: function3[0,1],
+        sourceReg1F <: sourceReg1F,
+        sourceReg2F <: sourceReg2F,
+        typeAF <: typeAF,
+        typeBF <: typeBF,
+        LESS <: FPUcompare.less
+    );
+    floatsign FPUsign(                                                                                                          // GENERATE SGNJ FSGNJN FSGNJX
+        df <: df,
+        function3 <: function3,
+        sourceReg1F <: sourceReg1F,
+        sign1F <: sign1F,
+        sign2F <: sign2F
+    );
 
     always_after {
         {
             switch( function7[3,2] ) {                                                                                          // RESULT
-                case 2b00: { result = function7[0,1] ? MINMAX : SIGN; }                                                         // FMIN FMAX FSGNJ FSGNJN FSGNJX ( NAN BOXED FOR FLOAT )
-                case 2b10: { result = COMPARE; }                                                                                // FEQ FLT FLE
+                case 2b00: { result = function7[0,1] ? FPUminmax.MINMAX : FPUsign.SIGN; }                                       // FMIN FMAX FSGNJ FSGNJN FSGNJX ( NAN BOXED FOR FLOAT )
+                case 2b10: { result = FPUeqltle.COMPARE; }                                                                      // FEQ FLT FLE
                 default: { result = function7[1,1] ? df ? sourceReg1 : { 32hffffffff, sourceReg1[0,32] } :                      // FCLASS FMV.X.W FMV.W.X
-                                    function3[0,1] ? FCLASS : df ? sourceReg1F : { {32{sourceReg1F[31,1]}}, sourceReg1F[0,32] }; }
+                                    function3[0,1] ? FPUclass.FCLASS :
+                                                     df ? sourceReg1F : { {32{sourceReg1F[31,1]}}, sourceReg1F[0,32] }; }
             }
         }
         {
             switch( function7[3,2] ) {                                                                                          // FLAGS
-                case 2b00: { FPUnewflags = FPUflags | ( function7[0,1] ? flagsMINMAX : 0 ); }                                   // FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S
-                case 2b10: { FPUnewflags = FPUflags | flagsCOMPARE; }                                                           // FEQ.S FLT.S FLE.S
-                default: { FPUnewflags = FPUflags; }                                                                            // FCLASS.S FMV.X.W FMV.W,X
+                case 2b00: { FPUnewflags = FPUflags | ( function7[0,1] ? FPUminmax.flags : 0 ); }                               // FMIN FMAX FSGNJ FSGNJN FSGNJX
+                case 2b10: { FPUnewflags = FPUflags | FPUeqltle.flags; }                                                        // FEQ FLT FLE
+                default: { FPUnewflags = FPUflags; }                                                                            // FCLASS FMV.X.W FMV.W,X
             }
         }
-        { frd = function7[3,1] ? function7[1,1] : ~|function7[3,2]; }                                                           // FRD for FMIN.S FMAX.S FSGNJ.S FSGNJN.S FSGNJX.S AND FMV.W.X
+        { frd = function7[3,1] ? function7[1,1] : ~|function7[3,2]; }                                                           // FRD for FMIN FMAX FSGNJ FSGNJN FSGNJX AND FMV.W.X
     }
 }
 
@@ -84,33 +161,31 @@ unit floatcalc(
     output  uint5   FPUnewflags,
     output  uint64  result
 ) <reginputs> {
-    // CLASSIFY THE RESULT OF MULTIPLICATION
-    typeF typeMF( df <: df, a <: FPUmultiply.result );
+    typeF typeMF( df <: df, a <: FPUmultiply.result );                                                                          // CLASSIFY THE RESULT FROM MULTIPLICATION FOR FUSED OPERATIONS
 
-    // ADD/SUB have changeable inputs due to 2 input and 3 input fused operations
-    // SET INPUTS TO ADDSUB FOR SINGLE AND FUSED OPERATIONS
-    uint64  a <:: opCode[2,1] ? sourceReg1F :
-                                df ? { opCode[1,1] ^ FPUmultiply.result[63,1], FPUmultiply.result[0,63] } :
-                                        { 32hffffffff, opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };
-    uint64  b <:: opCode[2,1] ? df ? { function7[0,1] ^ sourceReg2F[63,1], sourceReg2F[0,63] } : { 32hffffffff, function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] }:
-                                df ? { opCode[0,1] ^ sourceReg3F[63,1], sourceReg3F[0,63] } : { 32hffffffff, opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] };
+    uint64  a <:: opCode[2,1] ? sourceReg1F :                                                                                   // SELECT A FOR ADDSUB FROM SOURCEREG1F OR RESULT OF MULTIPLICATION FOR FUSED
+                                df ? { opCode[1,1] ^ FPUmultiply.result[63,1], FPUmultiply.result[0,63] } :                     // SWITCHING SIGN IF A NEGATED MULTIPLY
+                                     { 32hffffffff, opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };
+    uint64  b <:: opCode[2,1] ? df ? { function7[0,1] ^ sourceReg2F[63,1], sourceReg2F[0,63] } :                                // SELECT B FOR ADDSUB FROM SOURCEREG2F OR SOURCEREG3F FOR FUSED
+                                     { 32hffffffff, function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] }:                    // SWITCHING SIGN IF SUBTRACTION
+                                df ? { opCode[0,1] ^ sourceReg3F[63,1], sourceReg3F[0,63] } :
+                                     { 32hffffffff, opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] };
+    uint4   typea <:: opCode[2,1] ? typeAF : typeMF.type;                                                                       // SELECT TYPE OF A FOR ADDSUB
+    uint4   typeb <:: opCode[2,1] ? typeBF : typeCF;                                                                            // SELECT TYPE OF B FOR ADDSUB
 
-    uint4   typea <:: opCode[2,1] ? typeAF : typeMF.type;
-    uint4   typeb <:: opCode[2,1] ? typeBF : typeCF;
     floataddsub FPUaddsub( df <: df, a <: a, b <: b, typeAF <: typea, typeBF <: typeb, OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined );
     floatmultiply FPUmultiply( df <: df, a <: sourceReg1F, b <: sourceReg2F, typeAF <: typeAF, typeBF <: typeBF, OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined );
     floatdivide FPUdivide( df <: df, a <: sourceReg1F, b <: sourceReg2F, typeAF <: typeAF, typeBF <: typeBF, OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined );
     floatsqrt FPUsqrt( df <: df, a <: sourceReg1F, typeAF <: typeAF, OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined );
 
-    // NORMALISE RESULT OF ADD SUB DIV
-    donormal DONORMAL( exp <: FPUaddsub.tonormaliseexp );
+    uint106 bitstream <:: opCode[2,1] & ( &function7[0,2] ) ? FPUdivide.tonormalisebitstream : FPUaddsub.tonormalisebitstream;  // SELECT ADDSUB OR DIVISION RESULT BITSTREAM
+    donormal DONORMAL( exp <: FPUaddsub.tonormaliseexp, bitstream <: bitstream );                                               // NORMALISE ADDSUB OR DIVISION RESULT
 
-    // ROUNDING AND COMBINING OF FINAL RESULTS
-    doroundcombine MAKERESULT( df <: df );
+    uint3   rm <:: &FPUflags[5,3] ? function3 : FPUflags[5,3];                                                                  // SET ROUNDING FLAG ( ONLY RNE AND RTZ SUPPORTED )
+    doroundcombine MAKERESULT( df <: df, rm <: rm );                                                                            // DO ROUNDING AND COMBINING
 
-    // UNIT BUSY FLAG
-    uint4   unitbusy <:: { FPUsqrt.busy, FPUdivide.busy, FPUmultiply.busy, FPUaddsub.busy };
-    uint1   isbusy <:: |unitbusy;
+    uint4   unitbusy <:: { FPUsqrt.busy, FPUdivide.busy, FPUmultiply.busy, FPUaddsub.busy };                                    // UNIT BUSY FLAGS
+    uint1   isbusy <:: |unitbusy;                                                                                               // WAIT FOR CALCULATIONS TO FINISH
 
     FPUaddsub.start := 0; FPUmultiply.start := 0; FPUdivide.start := 0; FPUsqrt.start := 0;
 
@@ -119,15 +194,15 @@ unit floatcalc(
             if( start ) {
                 busy = 1;
                 if( opCode[2,1] ) {
-                    switch( function7[0,2] ) {                                                                          // START 2 REGISTER FPU OPERATIONS
-                        default: { FPUaddsub.start = 1; }                                                               // FADD.S FSUB.S
-                        case 2b10: { FPUmultiply.start = 1; }                                                           // FMUL.S
-                        case 2b11: { FPUsqrt.start = function7[3,1]; FPUdivide.start = ~function7[3,1]; }               // FSQRT.S // FDIV.S
+                    switch( function7[0,2] ) {                                                                                  // START 2 REGISTER FPU OPERATIONS
+                        default: { FPUaddsub.start = 1; }                                                                       // FADD FSUB
+                        case 2b10: { FPUmultiply.start = 1; }                                                                   // FMUL
+                        case 2b11: { FPUsqrt.start = function7[3,1]; FPUdivide.start = ~function7[3,1]; }                       // FSQRT / FDIV
                     }
-                    while( isbusy ) {}                                                                                  // WAIT FOR FINISH
+                    while( isbusy ) {}                                                                                          // WAIT FOR FINISH
                 } else {
-                    FPUmultiply.start = 1; while( isbusy ) {}                                                           // START 3 REGISTER FUSED FPU OPERATION - MULTIPLY
-                    FPUaddsub.start = 1; while( isbusy ) {}                                                             //                                        ADD / SUBTRACT
+                    FPUmultiply.start = 1; while( isbusy ) {}                                                                   // START 3 REGISTER FUSED FPU OPERATION - MULTIPLY
+                    FPUaddsub.start = 1; while( isbusy ) {}                                                                     //                                        ADD / SUBTRACT
                 }
                 busy = 0;
             }
@@ -135,17 +210,10 @@ unit floatcalc(
     }
 
     always_after {
-        // UNIT RESULT FLAGS
-        uint5   flags = uninitialised;
-
-        // PASS ADDSUB OR DIVIDE BITSTREAM TO NORMALISATION UNIT
-        { DONORMAL.bitstream = opCode[2,1] & ( &function7[0,2] ) ? FPUdivide.tonormalisebitstream : FPUaddsub.tonormalisebitstream; }
-
-        // CONTROL INPUTS TO ROUNDING AND COMBINING
-        { if( &FPUflags[5,3] ) { MAKERESULT.rm = function3; } else { MAKERESULT.rm = FPUflags[5,3]; } }                         // SET ROUNDING FLAG ( ONLY RNE AND RTZ SUPPORTED )
+        uint5   flags = uninitialised;                                                                                          // UNIT RESULT FLAGS
         {
             if( isbusy ) {
-                onehot( unitbusy ) {
+                onehot( unitbusy ) {                                                                                            // SELECT EXPONENT FOR ROUNDING AND COMBINING
                     case 0: { MAKERESULT.exponent = DONORMAL.newexponent; }
                     case 1: { MAKERESULT.exponent = FPUmultiply.productexp; }
                     case 2: { MAKERESULT.exponent = FPUdivide.quotientexp; }
@@ -155,7 +223,7 @@ unit floatcalc(
         }
         {
             if( isbusy ) {
-                onehot( unitbusy ) {
+                onehot( unitbusy ) {                                                                                            // SELECT NORMALISED FRACTION FOR ROUNDING AND COMBINING
                     case 0: { MAKERESULT.bitstream = DONORMAL.normalfraction; }                                                 // ADDSUBE
                     case 1: { MAKERESULT.bitstream = FPUmultiply.normalfraction; }
                     case 2: { MAKERESULT.bitstream = DONORMAL.normalfraction; }                                                 // DIVIDE
@@ -163,10 +231,12 @@ unit floatcalc(
                 }
             }
         }
-        { if( isbusy ) { MAKERESULT.sign = |( { 1b0, FPUdivide.quotientsign, FPUmultiply.productsign, FPUaddsub.resultsign } & unitbusy ); } }
-
-        // SELECT RESULT
         {
+            if( isbusy ) {                                                                                                      // SELECT RESULT SIGN FOR ROUNDING AND COMBINING
+                MAKERESULT.sign = |( { 1b0, FPUdivide.quotientsign, FPUmultiply.productsign, FPUaddsub.resultsign } & unitbusy );
+            }
+        }
+        {                                                                                                                       // SELECT RESULT
             if( opCode[2,1] ) {                                                                                                 // SINGLE OPERATION
                 switch( function7[0,2] ) {
                     default: { result = FPUaddsub.result; }                                                                     // FADD FSUB
@@ -177,8 +247,8 @@ unit floatcalc(
                 result = FPUaddsub.result;
             }
         }
-        // SELECT FLAGS
-        {
+        { FPUnewflags = FPUflags[0,5] | flags; }                                                                                // RETURN NEW FLAGS
+        {                                                                                                                       // SELECT FLAGS
             if( opCode[2,1] ) {                                                                                                 // SINGLE OPERATION
                 switch( function7[0,2] ) {
                     default: { flags = FPUaddsub.flags & 5b00110; }                                                             // FADD FSUB
@@ -189,7 +259,6 @@ unit floatcalc(
                 flags = ( FPUmultiply.flags & 5b10110 ) | ( FPUaddsub.flags & 5b00110 );
             }
         }
-        { FPUnewflags = FPUflags[0,5] | flags; }                                                                                // RETURN NEW FLAGS
     }
 }
 
@@ -248,10 +317,8 @@ unit typeF(
     }
 }
 
-// CONVERSIONS FCVT.dest.source
-
-// 32/64 BIT INTEGER TO 32/64 BIT FLOATING POINT, NAN BOXED FOR 32 BIT FLOATING POINT
-unit intlong2floatdouble(
+// CONVERSIONS TO HANDLE FCVT.dest.source
+unit intlong2floatdouble(                                                                                                       // 32/64 BIT INTEGER TO 32/64 BIT FLOATING POINT, NAN BOXED FOR 32 BIT FLOATING POINT
     input   uint3   rm,                                                                                                         // ROUDNING MODE
     input   uint1   dounsigned,                                                                                                 // UNSIGNED CONVERSION FLAG
     input   uint1   il,                                                                                                         // FROM INTEGER == 0 OR LONG == 1
@@ -281,8 +348,7 @@ unit intlong2floatdouble(
     }
 }
 
-// 32/64 BIT FLOATING POINT TO 32/64 BIT INTEGER, SIGN EXTENSION FOR SIGNED CONVERSIONS
-unit floatdouble2intlong(
+unit floatdouble2intlong(                                                                                                       // 32/64 BIT FLOATING POINT TO 32/64 BIT INTEGER, SIGN EXTENSION FOR SIGNED CONVERSIONS
     input   uint3   rm,                                                                                                         // ROUDNING MODE
     input   uint1   dounsigned,                                                                                                 // UNSINGED CONVERSION FLAG
     input   uint1   il,                                                                                                         // TO INTEGER == 0 OR LONG == 1
@@ -336,8 +402,7 @@ unit floatdouble2intlong(
     }
 }
 
-// FLOAT <-> DOUBLE ( EXTEND OR TRUNCATE )
-unit changeprecision(
+unit changeprecision(                                                                                                           // FLOAT <-> DOUBLE ( EXTEND OR TRUNCATE )
     input   uint1   df,                                                                                                         // TO DOUBLE == 1 OR FLOAT == 0
     input   uint64  sourceReg1F,                                                                                                // REGISTER VALUE TO EXTEND / TRUNCATE
     input   uint4   typeAS,                                                                                                     // { INF sNAN qNAN ZERO } ASSUMING FLOAT
@@ -637,13 +702,33 @@ unit floatmultiply(
 }
 
 // DIVIDE TWO FLOATING POINT NUMBERS
+unit prepfdiv(
+    input   uint1   df,                                                                                                         // DOUBLE OR FLOAT
+    input   uint64  a,                                                                                                          // A INPUT FOR A/B
+    input   uint64  b,                                                                                                          // B INPUT FOR A/B
+    output  uint1   powTWO,
+    output  uint1   quotientsign,                                                                                               // RESULT SIGN
+    output  int13   quotientexp,                                                                                                // RESULT EXPONENT
+    output  uint108 sigA,                                                                                                       // DIVIDEND LEFT ALIGNED
+    output  uint106 sigB                                                                                                        // DIVISOR RIGHT ALIGNED
+) <reginputs> {
+    always_after {
+        { quotientsign = ( df ? fp64( a ).sign : fp32( a ).sign ) ^ ( df ? fp64( b ).sign : fp32( b ).sign ); }                 // GENERATE QUOTIENT SIGN
+        { quotientexp = ( df ? fp64( a ).exponent : fp32( a ).exponent ) - ( df ? fp64( b ).exponent : fp32( b ).exponent )     // SUBTRACT EXPONENTS FOR RESULT EXPONENT
+                      - ( ( df ? fp64(b).fraction : fp32(b).fraction ) > ( df ? fp64(a).fraction : fp32(a).fraction ) ); }      //      ( -1 if b fraction > a fraction )
+        { sigA = df ? { 1b1, fp64(a).fraction, 55b0 } : { 1b1, fp32(a).fraction, 26b0 }; }                                      // DIVIDEND LEFT ALIGNED
+        { sigB = df ? { 1b1, fp64(b).fraction } : { 1b1, fp32(b).fraction }; }                                                  // DIVISOR RIGHT ALIGNED
+
+       { powTWO = ~|( df ? fp64(b).fraction : fp32(b).fraction ); }                                                             // DETECT FRACTION OF B IS 0 ( B is power of 2, no division required )
+    }
+}
 unit dofloatdivide(
     input   uint1   df,
     input   uint1   start,
     output  uint1   busy(0),
     input   uint108 sigA,
     input   uint108 sigB,
-    input   uint1   sigBZERO,
+    input   uint1   powTWO,
     output  uint108 quotient(0)
 ) <reginputs> {
     uint7   bit(127);
@@ -658,7 +743,7 @@ unit dofloatdivide(
         if( &bit ) {
             if( start ) {
                 busy = 1;
-                if( sigBZERO ) {                                                                                                // DETECT DIVISION BY POWER OF 2
+                if( powTWO ) {                                                                                                  // DETECT DIVISION BY POWER OF 2
                     quotient = sigA;                                                                                            //      RETURN DIVIDEND
                 } else {
                     bit = df ? 107 : 49; quotient = 0; remainder = 0;                                                           // ZERO quotient and remainder SELECT STARTING BIT
@@ -690,7 +775,6 @@ unit floatdivide(
     output  uint4   flags,                                                                                                      // OPERATION FLAGS
     output  uint64  result                                                                                                      // RESULT OF CALCULATION
 ) <reginputs> {
-    uint1   sigBZERO <:: ~|( df ? fp64(b).fraction : fp32(b).fraction );                                                        // DETECT FRACTION OF B IS 0 ( B is power of 2, no division required )
     uint1   IF <:: ( typeAF[3,1] | typeBF[3,1] );                                                                               // DETECT INFINITY
     uint1   NN <:: |typeAF[1,2] | |typeBF[1,2];                                                                                 // DETECT NAN
     uint2   ACTION <:: { IF | NN, typeAF[0,1] | typeBF[0,1] };                                                                  // DO DIVISION IF NOT INFINITY, NAN OR ZERO
@@ -699,21 +783,23 @@ unit floatdivide(
     uint64  xINF <:: df ? { quotientsign, 63h7FF0000000000000 } : { 32hffffffff, quotientsign, 31h7f800000 };                   // RETURN SIGNED INFINITY FOR 32/64 bit
     uint64  xZERO <:: df ? { quotientsign, 63h0 } : { 32hffffffff, quotientsign, 31h0 };                                        // RETURN SIGNED ZERO FOR 32/64 bit
 
-    uint108 sigA <:: df ? { 1b1, fp64(a).fraction, 55b0 } : { 1b1, fp32(a).fraction, 26b0 };                                    // DIVIDEND LEFT ALIGNED
-    uint108 sigB <:: df ? { 1b1, fp64(b).fraction } : { 1b1, fp32(b).fraction };                                                // DIVISOR RIGHT ALIGNED
-    dofloatdivide DODIVIDE( df <: df, sigA <: sigA, sigB <: sigB, sigBZERO <: sigBZERO, quotient :> tonormalisebitstream );     // DO THE DIVISION PASS QUOTIENT FOR NORMALISATION
+    prepfdiv PREP( df <: df, a <: a, b <: b, quotientsign :> quotientsign, quotientexp :> quotientexp );                        // // PREPARE THE DIVISION INPUTS
+    dofloatdivide DODIVIDE(                                                                                                     // DO THE DIVISION PASS QUOTIENT FOR NORMALISATION
+        df <: df,
+        sigA <: PREP.sigA,
+        sigB <: PREP.sigB,
+        powTWO <: PREP.powTWO,
+        quotient :> tonormalisebitstream
+    );
     DODIVIDE.start := start & ~|ACTION; busy := start | DODIVIDE.busy;                                                          // START AND BUSY FLAGS
 
     always_after {
-        { quotientsign = ( df ? fp64( a ).sign : fp32( a ).sign ) ^ ( df ? fp64( b ).sign : fp32( b ).sign ); }                 // GENERATE QUOTIENT SIGN
-        { quotientexp = ( df ? fp64( a ).exponent : fp32( a ).exponent ) - ( df ? fp64( b ).exponent : fp32( b ).exponent )     // SUBTRACT EXPONENTS FOR RESULT EXPONENT
-                      - ( ( df ? fp64(b).fraction : fp32(b).fraction ) > ( df ? fp64(a).fraction : fp32(a).fraction ) ); }      //      ( -1 if b fraction > a fraction )
         {
             switch( ACTION ) {
                 case 2b00: { result = combined; }                                                                               // DIVISION IS VALID
                 case 2b01: { result = ( typeAF[0,1] & typeBF[0,1] ) ? qNAN : typeBF[0,1] ? xINF : xZERO; }                      // ZERO INPUT, NAN IF BOTH ZERO, INF IF B ZERO, ZERO IF A ZERO
-                default: { result = ( typeAF[3,1] & typeBF[3,1] ) | NN | typeBF[0,1] ?
-                                    qNAN : ( typeAF[0,1] | typeBF[3,1] ) ? xZERO : xINF; }                                      // qNAN IF INVALID, ZERO IF A IS ZERO OR B IS INF, INF IF INF / OTHER
+                default: { result = ( typeAF[3,1] & typeBF[3,1] ) | NN | typeBF[0,1] ? qNAN :                                   // qNAN IF INVALID,
+                                    ( typeAF[0,1] | typeBF[3,1] ) ? xZERO : xINF; }                                             // ZERO IF A IS ZERO OR B IS INF, INF IF INF / OTHER
             }
         }
         { flags = { typeBF[0,1], ~|ACTION & OF, ~|ACTION & UF, 1b0}; }                                                          // RETURN FLAGS
@@ -744,13 +830,35 @@ unit floatdivide(
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 //
+unit prepfsqrt(
+    input   uint1   df,                                                                                                         // DOUBLE OR FLOAT
+    input   uint64  a,                                                                                                          // A INPUT FOR SQRT(A)
+    output  uint1   powTWO,
+    output  uint1   expODD,
+    output  int13   squarerootexp,
+    output  uint108 start_ac,
+    output  uint106 start_x
+) <reginputs> {
+    int13   expA  <:: ( df ? fp64( a ).exponent : fp32( a ).exponent ) - ( df ? 1023 : 127 );                                   // EXTRACT EXPONENT AND REMOVE BIAS
+
+    always_after {
+        { squarerootexp = expA >>> 1; }                                                                                         // RESULT EXPONENT IS HALF OF INPUT EXPONENT
+        { start_ac = expA[0,1] ? { 106b0, 1b1, a[ df ? 51 : 22, 1 ] } : 1; }                                                    // STARTING ACCUMULATOR ( depends if exp is odd / even )
+        { start_x = expA[0,1] ? df ? { a[0,51], 55b0 } : { a[0,22], 84b0 } :                                                    // STARTING FRACTION ( depends if exp is odd / even )
+                                df ? { fp64( a ).fraction, 54b0 } : { fp32( a ).fraction, 83b0 }; }
+        { powTWO = ~|( df ? fp64(a).fraction : fp32(a).fraction ); }                                                            // DETECT FRACTION OF A IS 0 ( A is power of 2, no squareroot required )
+        { expODD = expA[0,1]; }                                                                                                 // IS EXP ODD, RETURN SQRT(2) OR 1 FOR POWER OF 2 SQUAREROOTS
+    }
+}
 unit dofloatsqrt(
-    input   uint1   df,
     input   uint1   start,
     output  uint1   busy(0),
+    input   uint1   df,
+    input   uint1   powTWO,
+    input   uint1   expODD,
     input   uint108 start_ac,
     input   uint106 start_x,
-    output  uint64  squareroot
+    output  uint54  squareroot
 ) <reginputs> {
     uint108 test_res <:: ac - { squareroot, 2b01 };
     uint108 ac = uninitialised;
@@ -761,10 +869,16 @@ unit dofloatsqrt(
 
     always_after {
         if( &i ) {
-            if( start ) { i = df ? 53 : 24; squareroot = 0; ac = start_ac; x = start_x; }                                       // SELECT STARTING BIT ( counter for number of bits to process )
+            if( start ) {
+                if( powTWO ) {
+                    squareroot = expODD ? 54h2D413CCCFE7799 : 1;                                                                // DETECT POWER OF 2 SQUARE ROOT, RETURN ROOT 2 OR 1 IF EXP ODD / EVEN
+                } else {
+                    i = df ? 53 : 24; squareroot = 0; ac = start_ac; x = start_x;                                               // SELECT STARTING BIT ( counter for number of bits to process )
+                }
+            }
         } else {
             ac = { test_res[107,1] ? ac[0,105] : test_res[0,105], x[104,2] };                                                   // FIND NEW ACCUMULATOR
-            squareroot = { squareroot[0,105], ~test_res[107,1] };                                                               // ADD NEXT BIT TO SQUAREROOT ( shift in from right )
+            squareroot = { squareroot[0,53], ~test_res[107,1] };                                                                // ADD NEXT BIT TO SQUAREROOT ( shift in from right )
             x = { x[0,104], 2b00 };                                                                                             // MOVE 2 PLACES ALONG REMAINING FRACTION
             i = i - 1;                                                                                                          // MOVE TO NEXT BIT
         }
@@ -789,17 +903,19 @@ unit floatsqrt(
     uint1   NV <:: typeAF[3,1] | NN | signA;                                                                                    // INVALID IF INFINITY, NAN OR NEGATIVE
     uint1   ACTION <:: ~|{ typeAF[3,1] | NN, typeAF[0,1] | signA };                                                             // CALCULATION VALID IF NORMAL POSITIVE NUMBER ( ZERO IS SPECIAL )
     uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
-    int13   expA  <:: ( df ? fp64( a ).exponent : fp32( a ).exponent ) - ( df ? 1023 : 127 );                                   // EXTRACT EXPONENT AND REMOVE BIAS
-    uint108 start_ac <:: expA[0,1] ? { 106b0, 1b1, a[ df ? 51 : 22, 1 ] } : 1;                                                  // STARTING ACCUMULATOR ( depends if exp is odd / even )
-    uint106 start_x <:: expA[0,1] ? df ? { a[0,51], 55b0 } : { a[0,22], 84b0 } :                                                // STARTING FRACTION ( depends if exp is odd / even )
-                                    df ? { fp64( a ).fraction, 54b0 } : { fp32( a ).fraction, 83b0 };
 
-    dofloatsqrt DOSQRT( df <: df, start_ac <: start_ac, start_x <: start_x );                                                   // CALCULATE SQUARE ROOT
+    prepfsqrt PREP( df <: df, a <: a, squarerootexp :> squarerootexp );                                                         // PREPARE THE SQUAREROOT INPUTS
+    dofloatsqrt DOSQRT(                                                                                                         // CALCULATE SQUARE ROOT
+        df <: df,
+        powTWO <: PREP.powTWO,
+        expODD <: PREP.expODD,
+        start_ac <: PREP.start_ac,
+        start_x <: PREP.start_x
+    );
     donormal NORMAL( bitstream <: DOSQRT.squareroot, normalfraction :> normalfraction );                                        // NORMALISE THE SQUARE ROOT
     DOSQRT.start := start & ACTION; busy := start | DOSQRT.busy;                                                                // START AND BUSY FLAGS
 
     always_after {
-        { squarerootexp = expA >>> 1; }                                                                                         // RESULT EXPONENT IS HALF OF INPUT EXPONENT
         {
             if( ACTION ) {
                 result = combined;                                                                                              // CALCULATION VALID

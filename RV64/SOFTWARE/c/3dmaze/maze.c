@@ -16,8 +16,8 @@
 #include <PAWSlibrary.h>
 
 // MAZE SIZES
-#define MAXWIDTH 80
-#define MAXHEIGHT 60
+#define MAXWIDTH 40
+#define MAXHEIGHT 30
 #define MAXLEVEL 6
 
 // DRAWING VARIABLES
@@ -46,8 +46,8 @@ short directiony[] = { -1, 0, 1, 0 }, leftdirectiony[] = { 0, -1, 0, 1 }, rightd
 
 // STORAGE FOR MAZE and MAP PLUS ACCESS FUNCTIONS USING A BIT ARRAY
 // WALLS WILL BE '#' '*' GAPS ' ' ENTRANCE 'E' EXIT 'X'
-unsigned int maze[ MAXWIDTH >> 5 ][MAXHEIGHT];
-unsigned int map[ MAXWIDTH >> 5 ][MAXHEIGHT];
+unsigned long maze[MAXHEIGHT];
+unsigned long map[MAXHEIGHT];
 
 // POSITION AND DIRECTION OF THE GOST
 unsigned short ghostx[4], ghosty[4], ghostdirection[4];
@@ -121,9 +121,9 @@ unsigned char whatisat( unsigned short x, unsigned short y, unsigned char mapmaz
     if( ( x < MAXWIDTH ) && ( y < MAXHEIGHT ) ) {
         switch( mapmaze ) {
             case 0:
-                return( ( maze[ x >> 5 ][ y ] >> ( x & 0x1f ) ) & 1 ? '#' : ' ' );
+                return( _rv64_bext( maze[ y ], x ) ? '#' : ' ' );
             case 1:
-                return( ( map[ x >> 5 ][ y ] >> ( x & 0x1f ) ) & 1 ? '#' : ' ' );
+                return( _rv64_bext( map[ y ], x ) ? '#' : ' ' );
             default:
                 return( '?' );
         }
@@ -138,20 +138,20 @@ void setat( unsigned short x, unsigned short y, unsigned char value, unsigned ch
         case 0:
             switch( value ) {
                 case ' ':
-                    maze[ x >> 5 ][ y ] &= ~( 1 << ( x & 0x1f ) );
+                    maze[ y ] = _rv64_bclr( maze[ y ], x );
                     break;
                 case '#':
-                    maze[ x >> 5 ][ y ] |= ( 1 << ( x & 0x1f ) );
+                    maze[ y ] = _rv64_bset( maze[ y ], x );
                     break;
             }
             break;
         case 1:
             switch( value ) {
                 case ' ':
-                    map[ x >> 5 ][ y ] &= ~( 1 << ( x & 0x1f ) );
+                    map[ y ] = _rv64_bclr( map[ y ], x );
                     break;
                 case '#':
-                    map[ x >> 5 ][ y ] |= ( 1 << ( x & 0x1f ) );
+                    map[ y ] = _rv64_bset( map[ y ], x );
                     break;
             }
             break;
