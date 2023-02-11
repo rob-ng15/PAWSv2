@@ -24,8 +24,10 @@ ifndef INCLUDEEXTRA
 INCLUDEEXTRA=
 endif
 
-CFLAGS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib $(CFLAGSEXTRA)
-CXXFLAGS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
+CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax
+
+CFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib $(CFLAGSEXTRA)
+CXXFLAGS=-$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleriscv \
 	-Wl,--wrap=memcpy -Wl,--wrap=memset \
 	-Wl,--wrap=__clzsi2 -Wl,--wrap=__clzdi2 \
@@ -35,7 +37,8 @@ LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleris
 	-Wl,--wrap=__builtin_ctz -Wl,--wrap=__builtin_ctzl \
 	-Wl,--wrap=__builtin_popcount -Wl,--wrap=__builtin_popcountl \
 	-Wl,--wrap=__builtin_parity -Wl,--wrap=__builtin_parityl \
-	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64
+	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64 \
+	-Wl,--wrap=powf -Wl,--wrap=sinf -Wl,--wrap=cos -Wl,--wrap=tanf -Wl,--wrap=scalbnf
 LCONFIG=-Wl,-T../config_c_SDRAM-lto.ld
 
 PAWSBASE=../

@@ -1,4 +1,4 @@
-# PAWSv2 a Risc-V ( 32bit RV32IMAFC+B or 64bit RV64GC )
+# PAWSv2 a Risc-V ( 32bit RV32IMAFC+B or 64bit RV64GC+B )
 
 * Written in Silice
     * Inspired by ICE-V by [ICE-V](https://github.com/sylefeb/Silice/tree/master/projects/ice-v) by @sylefeb
@@ -31,20 +31,40 @@ fujprog PAWSv2-64.bit
 
 This will initialise the BIOS and allow the selection of a .PAW or .P64 file to load and run.
 
-
 # Example Program Screenshots
 
-## 3D MAZE
+## 3DMAZE
 Based upon the ZX-81 3D MONSTER MAZE using PacMan Ghosts instead of the dinorsaur, as I don't have graphics for a Tyrannosaurus Rex.
 <br>
 ![3D MAZE](Reference/Graphics/MAZE-1.jpg)
 
 ![3D MAZE](Reference/Graphics/MAZE-2.jpg)
 
+## ASTROIDS
+An implementation of the arcade games Asteroids, written from scratch, using the PAWSv2 sprites.
+<br>
+![3D MAZE](Reference/Graphics/ASTEROIDS-1.jpg)
+
+![3D MAZE](Reference/Graphics/ASTEROIDS-2.jpg)
+
+## DOOM
+A conversion of https://github.com/mbitsnbites/mc1-doom to the PAWSv2 graphics, sound and input system.
+<br>
+![3D MAZE](Reference/Graphics/DOOM-1.jpg)
+
+![3D MAZE](Reference/Graphics/DOOM-2.jpg)
+
 ## IMGUI
 A test running the IMGUI DEMO to check PAWSv2 against other people's code.
 <br>
 ![IMGUI Test](Reference/Graphics/IMGUI.jpg)
+
+## INVADERS
+An implementation of the arcade games Space Invaders. Written after reading http://nicktasios.nl/posts/space-invaders-from-scratch-part-1.html
+<br>
+![3D MAZE](Reference/Graphics/INVADERS-1.jpg)
+
+![3D MAZE](Reference/Graphics/INVADERS-2.jpg)
 
 ## PACMAN
 A conversion of https://github.com/floooh/pacman.c to the PAWSv2 graphics, sound and input system.

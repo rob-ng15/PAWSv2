@@ -2467,4 +2467,4 @@ size_t paws_strlen ( const char *string ) {
 #include "akavel_gostdc/fscanf.c"
 
 // WRAPPERS FOR VARIOUS BUILTIN FUNCTIONS TO USE OPTIMISED BIT MANIPULATION INSTRUCTIONS
-#include "PAWSoverrides.h"
+#include "PAWSoverrides.c"
