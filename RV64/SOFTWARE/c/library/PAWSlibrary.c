@@ -293,6 +293,9 @@ void wait_gpu_finished( void ) {
 }
 
 // WAIT FOR VBLANK TO START/FINISH
+int is_vblank( void ) {
+    return( *VBLANK );
+}
 void await_vblank( void ) {
     while( !*VBLANK );
 }

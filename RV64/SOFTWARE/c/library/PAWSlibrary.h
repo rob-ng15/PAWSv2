@@ -60,8 +60,9 @@ extern unsigned short get_beep_active( unsigned char );
 extern void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
 
 // DISPLAY
- void await_vblank( void );
- void await_vblank_finish( void );
+extern int is_vblank( void );
+extern void await_vblank( void );
+extern void await_vblank_finish( void );
 extern void screen_mode( unsigned char, unsigned char, unsigned char );
 extern void screen_dimmer( unsigned char dimmerlevel );
 extern void bitmap_display( unsigned char );
