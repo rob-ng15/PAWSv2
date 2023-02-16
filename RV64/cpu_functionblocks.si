@@ -43,14 +43,6 @@ unit control(
     output  uint64  sourceReg2,
     output  uint32  S2_abs32,
     output  uint64  S2_abs64,
-    output  uint64  sourceReg1F,
-    output  uint64  sourceReg2F,
-    output  uint64  sourceReg3F,
-    output  uint4   typeAF,
-    output  uint4   typeAS,
-    output  uint4   typeAD,
-    output  uint4   typeBF,
-    output  uint4   typeCF,
     output  uint1   writeRegisterF,
     output  uint1   writeRegister,
 
@@ -58,8 +50,6 @@ unit control(
     output  uint1   LT,
     output  uint1   LTU,
     output  uint1   EQ,
-    output  uint1   FLT,
-    output  uint1   FEQ,
 
     // ADDRESS GENERATION
     output  uint64  AUIPCLUI,
@@ -92,43 +82,23 @@ unit control(
     );
     uint1   takeBranch = uninitialized;
 
-    // REGISTERS I integer x 2, F float x 3, 0 for main thread, 1 for SMT thread
+    // REGISTERS I integer x 2 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
     $$for i=0,1 do
         simple_dualport_bram int64 I1_$i$[32] = { 0, pad(uninitialized) };
         simple_dualport_bram int64 I2_$i$[32] = { 0, pad(uninitialized) };
-        simple_dualport_bram int64 F1_$i$[32] = uninitialized;
-        simple_dualport_bram int64 F2_$i$[32] = uninitialized;
-        simple_dualport_bram int64 F3_$i$[32] = uninitialized;
     $$end
 
     // REGISTER WRITE SWITCHES
     uint1   Iwrite <:: write & ~frd & |Rtype(instruction).destReg;
-    uint1   Fwrite <:: write & frd;
 
     regR I1R( SMT <: SMT, regfile0 <:> I1_0, regfile1 <:> I1_1, addr0 <: Rtype(instruction).sourceReg1, rdata0 :> sourceReg1 );
     regR I2R( SMT <: SMT, regfile0 <:> I2_0, regfile1 <:> I2_1, addr0 <: Rtype(instruction).sourceReg2, rdata0 :> sourceReg2 );
-    regR F1R( SMT <: SMT, regfile0 <:> F1_0, regfile1 <:> F1_1, addr0 <: R4type(instruction).sourceReg1, rdata0 :> sourceReg1F );
-    regR F2R( SMT <: SMT, regfile0 <:> F2_0, regfile1 <:> F2_1, addr0 <: R4type(instruction).sourceReg2, rdata0 :> sourceReg2F );
-    regR F3R( SMT <: SMT, regfile0 <:> F3_0, regfile1 <:> F3_1, addr0 <: R4type(instruction).sourceReg3, rdata0 :> sourceReg3F );
     regW I1W( SMT <: COMMIT_SMT, regfile0 <:> I1_0, regfile1 <:> I1_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );
     regW I2W( SMT <: COMMIT_SMT, regfile0 <:> I2_0, regfile1 <:> I2_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );
-    regW F1W( SMT <: COMMIT_SMT, regfile0 <:> F1_0, regfile1 <:> F1_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
-    regW F2W( SMT <: COMMIT_SMT, regfile0 <:> F2_0, regfile1 <:> F2_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
-    regW F3W( SMT <: COMMIT_SMT, regfile0 <:> F3_0, regfile1 <:> F3_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
 
     // ABSOLUTE VALUES OF sourceReg1 and sourceReg2
     abs3264 S1_abs( sourceReg <: I1R.rdata0, abs32 :> S1_abs32, abs64 :> S1_abs64 ); abs3264 S2_abs( sourceReg <: I2R.rdata0, abs32 :> S2_abs32, abs64 :> S2_abs64 );
-
-    // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
-    typeF class1F( df <: function7[0,1], a <: F1R.rdata0, type :> typeAF );
-    typeF class2F( df <: function7[0,1], a <: F2R.rdata0, type :> typeBF );
-    typeF class3F( df <: function7[0,1], a <: F3R.rdata0, type :> typeCF );
-    typeF class1D( a <: F1R.rdata0, type :> typeAD );  // FORCE CLASSIFICATION OF DOUBLE
-    typeF class1S( a <: F1R.rdata0, type :> typeAS );  // FORCE CLASSIFICATION OF SINGLE
-
-    // FLOATING POINT COMPARISONS
-    floatcompare FPUcompare( df <: function7[0,1], a <: F1R.rdata0, b <: F2R.rdata0, typeAF <: class1F.type, typeBF <: class2F.type, less :> FLT, equal :> FEQ );
 
     // JUMP AND BRANCH DESTINATIONS
     uint$addr_width$ jumpAddress <:: { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
@@ -139,9 +109,6 @@ unit control(
 
     // FLAGS FOR BRANCH
     uint4   flags <:: { LTU, LT, 1b0, EQ };
-
-    // FORCE CLASSIFICATION OF sourceReg1F AS DOUBLE AND SINGLE FLOATING POINT FORMAT
-    class1D.df := 1; class1S.df := 0;
 
     always_after {
         // EXTRACT BITFIELDS FROM INSTRUCTION
@@ -172,6 +139,67 @@ unit control(
         { LTU = __unsigned( I1R.rdata0 ) < __unsigned( operand2 ); }
         { EQ = I1R.rdata0 == ( operand2 ); }
     }
+}
+
+unit float_control(
+    // INSTRUCTION AND THREAD
+    input   uint32  instruction,
+    input   uint1   SMT,
+    input   uint1   COMMIT_SMT,
+
+    // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
+    input   uint1   frd,
+    input   uint1   write,
+    input   uint64  result,
+    output  uint64  sourceReg1F,
+    output  uint64  sourceReg2F,
+    output  uint64  sourceReg3F,
+    output  uint4   typeAF,
+    output  uint4   typeAS,
+    output  uint4   typeAD,
+    output  uint4   typeBF,
+    output  uint4   typeCF,
+
+    // FLOAT REGISTER COMPARISONS
+    output  uint1   FLT,
+    output  uint1   FEQ
+) <reginputs> {
+    // REGISTERS F float x 3, 0 for main thread, 1 for SMT thread
+    // Duplication is to allow for parallel read
+    $$for i=0,1 do
+        simple_dualport_bram int64 F1_$i$[32] = uninitialized;
+        simple_dualport_bram int64 F2_$i$[32] = uninitialized;
+        simple_dualport_bram int64 F3_$i$[32] = uninitialized;
+    $$end
+
+    // REGISTER WRITE SWITCHES
+    uint1   Fwrite <:: write & frd;
+
+    regR F1R( SMT <: SMT, regfile0 <:> F1_0, regfile1 <:> F1_1, addr0 <: R4type(instruction).sourceReg1, rdata0 :> sourceReg1F );
+    regR F2R( SMT <: SMT, regfile0 <:> F2_0, regfile1 <:> F2_1, addr0 <: R4type(instruction).sourceReg2, rdata0 :> sourceReg2F );
+    regR F3R( SMT <: SMT, regfile0 <:> F3_0, regfile1 <:> F3_1, addr0 <: R4type(instruction).sourceReg3, rdata0 :> sourceReg3F );
+    regW F1W( SMT <: COMMIT_SMT, regfile0 <:> F1_0, regfile1 <:> F1_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+    regW F2W( SMT <: COMMIT_SMT, regfile0 <:> F2_0, regfile1 <:> F2_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+    regW F3W( SMT <: COMMIT_SMT, regfile0 <:> F3_0, regfile1 <:> F3_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+
+    // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
+    uint1   F(0);
+    uint1   D(1);
+    typeF class1F( df <: instruction[25,1], a <: F1R.rdata0, type :> typeAF );
+    typeF class2F( df <: instruction[25,1], a <: F2R.rdata0, type :> typeBF );
+    typeF class3F( df <: instruction[25,1], a <: F3R.rdata0, type :> typeCF );
+    typeF class1D( df <: D, a <: F1R.rdata0, type :> typeAD );                                                                  // FORCE CLASSIFICATION OF DOUBLE
+    typeF class1S( df <: F, a <: F1R.rdata0, type :> typeAS );                                                                  // FORCE CLASSIFICATION OF SINGLE
+
+    floatcompare FPUcompare(                                                                                                    // FLOATING POINT COMPARISONS
+        df <: instruction[25,1],
+        a <: F1R.rdata0,
+        b <: F2R.rdata0,
+        typeAF <: class1F.type,
+        typeBF <: class2F.type,
+        less :> FLT,
+        equal :> FEQ
+    );
 }
 
 // REGISTER READ AND WRITE BLOCKS

@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdarg.h>
+#include <stdio.h>
 
 // LOAD THE SPRITES
 unsigned char sprites[] = {
@@ -13,9 +15,13 @@ unsigned char sprites[] = {
 // MACRO TO SAFELY ADD TO AN ADDRESS WITH 12-bit MASKING
 #define ADDRESS(x,y) ( ( x + y ) & 0xfff )
 
-enum MODES { CHIP8, SCHIP, XOCHIP };                                                                                                   // MODELS SUPPORTED
+// MACRO TO FETCH TWO BYTES AND COMBINE TO ONE HALF-WORD
+#define FETCH(x) ( machine.MEMORY[ ADDRESS(x,0) ] << 8 ) | machine.MEMORY[ ADDRESS(x,1) ]
+
+enum MODES { CHIP8, CHIP48, SCHIP, XOCHIP };                                                                                                   // MODELS SUPPORTED
 unsigned char *modes[] = {
     "CHIP-8 ",
+    "CHIP-48",
     "S-CHIP ",
     "XO-CHIP"
 };
@@ -51,7 +57,7 @@ unsigned char *fkeys[] = {
 };
 
 unsigned char *factions[] = {
-    "CHIP-8", "S-CHIP", "XOCHIP", "      ", "      ", "      ", "      ", "LIMIT ", "QUIT  ", "      ", "RESET ", "LOAD  "
+    "CHIP-8", "CHIP48", "S-CHIP", "XOCHIP", "      ", "      ", "      ", "LIMIT ", "QUIT  ", "      ", "RESET ", "LOAD  "
 };
 
 // NUMBER OF BYTES IN THE DISPLAY BUFFER UNSIGNED LONG * 2 PER ROW * 64 ROWS
@@ -78,6 +84,7 @@ struct C8 {                                                                     
     int running;                                                                                                                // MACHINE IS RUNNING
     int loading;                                                                                                                // LOAD REQUESTED
     int limit;                                                                                                                  // LIMIT TO 1000 ISNS PER SECOND
+    int debug;                                                                                                                  // OUTPUT DEBUG INFORMATION
     enum CRASHES crashed;                                                                                                       // CRASHED, ENCODES REASON
     uint16_t lastPC;                                                                                                            // PC OF LAST INSTRUCTION
     uint16_t lastinstruction;                                                                                                   // LAST INSTRUCTION
@@ -187,9 +194,9 @@ void draw_screen_hires( void ) {
 void display_state( void ) {
     // DISPLAY STATE
     set_sprite32( UPPER_LAYER, 0, SPRITE_SHOW, 544, 64, machine.MODE, SPRITE_DOUBLE );
-    set_sprite32( UPPER_LAYER, 4, SPRITE_SHOW, 608, 64, machine.crashed ? 0 : machine.running, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 4, machine.crashed ? ( systemclock() & 1 ) : SPRITE_SHOW, 608, 64, machine.crashed ? 0 : machine.running, SPRITE_DOUBLE );
     set_sprite32( UPPER_LAYER, 8, SPRITE_SHOW, 544, 128, machine.limit, SPRITE_DOUBLE );
-    set_sprite32( UPPER_LAYER, 12, SPRITE_SHOW, 608, 128, machine.crashed, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 12, ( machine.crashed == 0 ) ? SPRITE_SHOW : ( systemclock() & 1 ), 608, 128, machine.crashed, SPRITE_DOUBLE );
 
     tpu_set( 1, 5, TRANSPARENT, BLACK ); tpu_printf( 0, "PC[%03x] I[%03x]", machine.PC, machine.I );
     tpu_set( 17, 5, TRANSPARENT, machine.timer ? GREEN : GREY3 ); tpu_printf( 0, "T[%02x]", machine.timer );
@@ -248,9 +255,11 @@ __attribute__((used)) void interactivity( void ) {
             int keypressed = -1;
             switch( keycode & 0x1ff ) {
                 case 0x05: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = CHIP8; } break;                          // F1
-                case 0x06: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = SCHIP; } break;                          // F2
-                case 0x04: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = XOCHIP; } break;                         // F3
+                case 0x06: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = CHIP48; } break;                         // F2
+                case 0x04: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = SCHIP; } break;                          // F3
+                case 0x0c: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = XOCHIP; } break;                         // F4
 
+                case 0x83: if( keycode & 0x200 ) { machine.debug = 1 - machine.debug; }; break;                                 // F7
                 case 0x0a: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 2 ) ? 0 : machine.limit + 1; } break;     // F8
 
                 case 0x01: if( keycode & 0x200 ) { machine.running = 0; machine.quit = 1; pass_control = 1; } break;            // F9
@@ -312,10 +321,13 @@ int set_pixel( int x, int y ) {
 
 int drawsprite( uint8_t xc, uint8_t yc, uint16_t i, uint8_t n ) {
     int pixelflag, pixelerased = 0, rowpixelerased, hirescount = 0;
+    int max_x = ( 64 << machine.HIRES ) - 1;
     int max_y = ( 32 << machine.HIRES ) - 1;
 
+    xc = xc & max_x; yc = yc & max_y;                                                                                           // WRAP COORDINATES IF REQUIRED
+
     if( n ) {
-        for( int y = 0; ( y < n ) ; y++ ) {                                                                                     // N != 0, DRAW STANDARD 8 x n SPRITE
+        for( int y = 0; ( y < n ); y++ ) {                                                                                     // N != 0, DRAW STANDARD 8 x n SPRITE
             rowpixelerased = 0;
             for( int x = 0; ( x < 8 ); x++ ) {
                 if( _rv64_bext( machine.MEMORY[ i ], 7 - x ) ) {
@@ -329,10 +341,9 @@ int drawsprite( uint8_t xc, uint8_t yc, uint16_t i, uint8_t n ) {
         }
     } else {                                                                                                                    // N == 0, DRAW 16 HEIGHT SPRITE
         for( int y = 0; ( y < 16 ); y++ ) {
-            uint16_t spritedata = ( machine.MEMORY[ ADDRESS( i, 0 ) ] << 8 ) |
-                                    machine.MEMORY[ ADDRESS( i, 1 ) ];
+            uint16_t spritedata = FETCH( i );
             rowpixelerased = 0;
-            for( int x = 0; x < 16; x++ ) {                                                                                     // ONLY DRAW 8 WIDE IF IN LORES
+            for( int x = 0; ( x < 16 ); x++ ) {                                                                                     // ONLY DRAW 8 WIDE IF IN LORES
                 if( _rv64_bext( spritedata, 15 - x ) ) {
                     pixelflag = set_pixel( xc + x, yc + y );
                     pixelerased |= pixelflag;
@@ -387,9 +398,20 @@ void scroll_down( uint8_t n ) {
     }
 }
 
+void DEBUG( const char *fmt,... ) {
+    if( machine.debug ) {
+        static char buffer[1024];
+        va_list args;
+        va_start (args, fmt);
+        vsnprintf( buffer, 80, fmt, args);
+        va_end(args);
+
+        fprintf(stderr,buffer);
+    }
+}
+
 void execute( void ) {
-    uint16_t instruction = ( machine.MEMORY[ ADDRESS( machine.PC, 0 ) ] << 8 ) |                                                // EXTRACT INSTRUCTION ( wrap PC if required )
-                           ( machine.MEMORY[ ADDRESS( machine.PC, 1 ) ] );
+    uint16_t instruction = FETCH( machine.PC );                                                                                 // EXTRACT INSTRUCTION ( wrap PC if required )
     uint8_t O = ( instruction & 0xf000 ) >> 12;                                                                                 // EXTARCT FIRST NIBBLE, OPERAND
     uint8_t Xn = ( instruction & 0x0f00 ) >> 8;                                                                                 // EXTRACT X REGISTER NUMBER
     uint8_t X = machine.V[ Xn ];                                                                                                // EXTRACT X REGISTER
@@ -398,18 +420,24 @@ void execute( void ) {
     uint8_t N = instruction & 0x000f;                                                                                           // EXTRACT LOW NIBBLE
     uint8_t NN = instruction & 0x00ff;                                                                                          // EXTRACT LOW BYTE
     uint16_t NNN = instruction & 0x0fff;                                                                                        // EXTRACT ADDRESS ( LOWER 12 BITS )
+    uint16_t I = machine.I;                                                                                                     // CURRENT I VALUE
     uint16_t temp;
+
+    DEBUG( "%03x : %04x : ", machine.PC, instruction );
 
     machine.lastPC = machine.PC; machine.lastinstruction = instruction;                                                         // STORE PC AND INSTRUCTION INCASE OF CRASH
     machine.PC = ADDRESS( machine.PC, 2 );                                                                                      // INCREMENT PC, WRAP AROUND IF REQUIRED
+
 
     switch( O ) {
         case 0x0:
             switch( instruction ) {
                 case 0x00E0:                                                                                                    // CLEAR THE DISPLAY
                     memset( machine.DISPLAY, 0, DISPLAYSIZE );
+                    DEBUG( "cls");
                     break;
                 case 0x00EE:                                                                                                    // RETURN USE STACKTOP ENTRY
+                    DEBUG("return");
                     if( machine.STACKTOP == -1 ) {
                         machine.crashed = STACKUFLOW;                                                                           // CHECK FOR STACK UNDERFLOW
                     } else {
@@ -417,8 +445,10 @@ void execute( void ) {
                     }
                     break;
                 case 0xFB:                                                                                                      // SCROLL DISPLAY RIGHT 4 PIXELS IN SCHIP / XOCHIP MODE
+                    DEBUG("scroll(R)");
                     switch( machine.MODE ) {
                         case CHIP8:
+                        case CHIP48:
                             machine.crashed = WRONGMODE;
                             break;
                         case SCHIP:
@@ -428,8 +458,10 @@ void execute( void ) {
                     }
                     break;
                 case 0xFC:                                                                                                      // SCROLL DISPLAY LEFT 4 PIXELS IN SCHIP / XOCHIP MODE
+                    DEBUG("scroll(L)");
                     switch( machine.MODE ) {
                         case CHIP8:
+                        case CHIP48:
                             machine.crashed = WRONGMODE;
                             break;
                         case SCHIP:
@@ -439,10 +471,12 @@ void execute( void ) {
                     }
                     break;
                 case 0xFE:                                                                                                      // SWITCH TO LORES IF IN SCHIP / XOCHIP MODE
+                    DEBUG("display(L)");
                     switch( machine.MODE ) {
                         case CHIP8:
                             machine.crashed = WRONGMODE;
                             break;
+                        case CHIP48:
                         case SCHIP:
                         case XOCHIP:
                             machine.HIRES = 0;
@@ -450,10 +484,12 @@ void execute( void ) {
                     }
                     break;
                 case 0xFF:                                                                                                      // SWITCH TO HIRES IF IN SCHIP / XOCHIP MODE
+                    DEBUG("display(H)");
                     switch( machine.MODE ) {
                         case CHIP8:
                             machine.crashed = WRONGMODE;
                             break;
+                        case CHIP48:
                         case SCHIP:
                         case XOCHIP:
                             machine.HIRES = 1;
@@ -462,8 +498,10 @@ void execute( void ) {
                     break;
                 default:
                     if( ( instruction & 0xfff0 ) == 0x00c0 ) {                                                                  // SCROLL DISPLAY N DOWN IF IN SCHIP / XOCHIP MODE
+                        DEBUG("scroll(D by %x)",N );
                         switch( machine.MODE ) {
                             case CHIP8:
+                            case CHIP48:
                                 machine.crashed = WRONGMODE;
                                 break;
                             case SCHIP:
@@ -479,6 +517,7 @@ void execute( void ) {
             break;
         case 0x1:                                                                                                               // GOTO NNN
             machine.PC = NNN;
+            DEBUG("jump %03x",NNN);
             break;
         case 0x2:                                                                                                               // CALL NNN
             if( machine.STACKTOP == 15 ) {
@@ -487,70 +526,109 @@ void execute( void ) {
                 machine.STACK[ ++machine.STACKTOP ] = machine.PC;                                                               // PUSH PC
                 machine.PC = NNN;                                                                                               // GOTO NNN
             }
+            DEBUG("call %03x",NNN);
             break;
         case 0x3:                                                                                                               // SKIP X == NN
-            if( X == NN )
+            DEBUG("V%01x == NN ( %02x == %02x ) ?",Xn,X,NN);
+            if( X == NN ) {
+                DEBUG(" Y");
                 machine.PC = ADDRESS( machine.PC, 2 );
+            } else {
+                DEBUG(" N");
+            }
             break;
         case 0x4:                                                                                                               // SKIP X != NN
-            if( X != NN )
+            DEBUG("V%01x != NN ( %02x != %02x ) ?",Xn,X,NN);
+            if( X != NN ) {
+                DEBUG(" Y");
                 machine.PC = ADDRESS( machine.PC, 2 );
+            } else {
+                DEBUG(" N");
+            }
             break;
         case 0x5:                                                                                                               // SKIP X == Y
-            if( X == Y )
+            DEBUG("V%01x == V%01x ( %02x == %02x ) ?",Xn,Yn,X,Y);
+            if( X == Y ) {
+                DEBUG(" Y");
                 machine.PC = ADDRESS( machine.PC, 2 );
+            } else {
+                DEBUG(" N");
+            }
             break;
         case 0x6:
             machine.V[ Xn ] = NN;                                                                                               // SET REGISTER VX TO NN
+            DEBUG("V%01x = %02x",Xn,NN);
             break;
         case 0x7:
             machine.V[ Xn ] += NN;                                                                                              // ADD NN TO X ( DOES NOT CHANGE VF )
+            DEBUG("V%01x += %02x ( %02x + %02X = %02x )",Xn,NN,X,NN,machine.V[ Xn ]);
             break;
         case 0x8:
             switch( N ) {
                 case 0x0:
-                    machine.V[ Xn ] = machine.V[ Yn ];                                                                          // SET VX TO VY
+                    VF = 0; machine.V[ Xn ] = machine.V[ Yn ];                                                                          // SET VX TO VY
+                    DEBUG("V%01x = V%01x ( %02x )",Xn,Yn,Y);
                     break;
                 case 0x1:
-                    machine.V[ Xn ] = X | Y;                                                                                    // SET VX TO VX | VY
+                    VF = 0; machine.V[ Xn ] = X | Y;                                                                                    // SET VX TO VX | VY
+                    DEBUG("V%01x |= V%01x ( %02x | %02x = %02x )",Xn,Yn,X,Y,machine.V[ Xn ]);
                     break;
                 case 0x2:
-                    machine.V[ Xn ] = X & Y;                                                                                    // SET VX TO VX & VY
+                    VF = 0; machine.V[ Xn ] = X & Y;                                                                                    // SET VX TO VX & VY
+                    DEBUG("V%01x &= V%01x ( %02x & %02x = %02x )",Xn,Yn,X,Y,machine.V[ Xn ]);
                     break;
                 case 0x3:
-                    machine.V[ Xn ] = X ^ Y;                                                                                    // SET VX TO VX ^ VY
+                    VF = 0; machine.V[ Xn ] = X ^ Y;                                                                                    // SET VX TO VX ^ VY
+                    DEBUG("V%01x ^= V%01x ( %02x ^ %02x = %02x )",Xn,Yn,X,Y,machine.V[ Xn ]);
                     break;
                 case 0x4:
                     temp = X + Y;
-                    machine.V[ Xn ] = temp & 0xff;                                                                              // SET VX TO VX + VY
-                    VF = _rv64_bext( temp, 9 );                                                                                  // SET CARRY FLAG
+                    machine.V[ Xn ] = temp & 0xff;                                                                               // SET VX TO VX + VY
+                    VF = _rv64_bext( temp, 8 );                                                                                  // SET CARRY FLAG
+                    DEBUG("V%01x += V%01x ( %02x + %02x = (%01x)%02x )",Xn,Yn,X,Y,VF,machine.V[ Xn ]);
                     break;
                 case 0x5:
-                    temp = ( 512 + X ) - Y;
+                    temp = X - Y;
                     machine.V[ Xn ] = temp & 0xff;                                                                              // SET VX TO VX - VY
-                    VF = _rv64_bext( temp, 9 );                                                                                 // SET CARRY FLAG
+                    VF = ( X > Y ) ? 1 : 0;                                                                                     // SET CARRY FLAG
+                    DEBUG("V%01x -= V%01x ( %02x - %02x = (%01x)%02x )",Xn,Yn,X,Y,VF,machine.V[ Xn ]);
                     break;
                 case 0x6:                                                                                                       // SHIFT 1 RIGHT
-                    if( machine.MODE == CHIP8 ) {
-                        machine.V[ Xn ] = Y >> 1;                                                                               // CHIP8 MODE SHIFTS Y THEN PUTS INTO X
-                        VF = _rv64_bext( Y, 0 );
-                    } else {
-                        machine.V[ Xn ] = X >> 1;                                                                               // OTHER MODES SHIFTS X THEN PUTS INTO X
-                        VF = _rv64_bext( X, 0 );
+                    switch( machine.MODE ) {
+                        case CHIP8:
+                        case CHIP48:
+                            machine.V[ Xn ] = ( Y >> 1 );                                                                               // CHIP8 MODE SHIFTS Y THEN PUTS INTO X
+                            VF = _rv64_bext( Y, 0 );
+                            DEBUG("V%01x = V%01x << 1 ( %02x << 1 = (%01x)%02x )",Xn,Yn,Y,VF,machine.V[ Xn ]);
+                            break;
+                        case SCHIP:
+                        case XOCHIP:
+                            machine.V[ Xn ] = ( X >> 1 );                                                                               // OTHER MODES SHIFTS X THEN PUTS INTO X
+                            VF = _rv64_bext( X, 0 );
+                            DEBUG("V%01x = V%01x << 1 ( %02x << 1 = (%01x)%02x )",Xn,Xn,X,VF,machine.V[ Xn ]);
+                            break;
                     }
                     break;
                 case 0x7:
-                    temp = ( 512 + Y ) - X;
+                    temp = Y - X;
                     machine.V[ Xn ] = temp & 0xff;                                                                              // SET VX TO VY - VX
-                    VF = _rv64_bext( temp, 9 );                                                                                 // SET CARRY FLAG
+                    VF = ( Y > X ) ? 1 : 0;                                                                                     // SET CARRY FLAG
+                    DEBUG("V%01x = V%01x - V%01x ( %02x - %02x = (%01x)%02x )",Xn,Yn,Xn,Y,X,VF,machine.V[ Xn ]);
                     break;
                 case 0xe:                                                                                                       // SHIFT 1 LEFT
-                    if( machine.MODE == CHIP8 ) {
-                        machine.V[ Xn ] = Y << 1;                                                                               // CHIP8 MODE SHIFTS Y THEN PUTS INTO X
-                        VF = _rv64_bext( Y, 7 );
-                    } else {
-                        machine.V[ Xn ] = X << 1;                                                                               // OTHER MODES SHIFTS X THEN PUTS INTO X
-                        VF = _rv64_bext( X, 7 );
+                    switch( machine.MODE ) {
+                        case CHIP8:
+                        case CHIP48:
+                            machine.V[ Xn ] = ( Y << 1 );                                                                               // CHIP8 MODE SHIFTS Y THEN PUTS INTO X
+                            VF = _rv64_bext( Y, 7 );
+                            DEBUG("V%01x = V%01x >> 1 ( %02x >> 1 = (%01x)%02x )",Xn,Yn,Y,VF,machine.V[ Xn ]);
+                            break;
+                        case SCHIP:
+                        case XOCHIP:
+                            machine.V[ Xn ] = ( X << 1 );                                                                               // OTHER MODES SHIFTS X THEN PUTS INTO X
+                            VF = _rv64_bext( X, 7 );
+                            DEBUG("V%01x = V%01x >> 1 ( %02x >> 1 = (%01x)%02x )",Xn,Xn,X,VF,machine.V[ Xn ]);
+                            break;
                     }
                     break;
                 default:
@@ -559,30 +637,43 @@ void execute( void ) {
             }
             break;
         case 0x9:                                                                                                               // SKIP X != Y
-            if( X != Y )
+            DEBUG("V%01x != V%01x ( %02x != %02x ) ?",Xn,Yn,X,Y);
+            if( X != Y ) {
+                DEBUG(" Y");
                 machine.PC = ADDRESS( machine.PC, 2 );
+            } else {
+                DEBUG(" N");
+            }
             break;
         case 0xa:
             machine.I = NNN;                                                                                                    // SET I TO NNN
+            DEBUG("I = %03x",NNN);
             break;
         case 0xb:
             switch( machine.MODE ) {
                 case CHIP8:
-                    machine.PC = ADDRESS( NNN, machine.V[0] );                                                                 // CHIP8 MODE NNN + V[0]
-                    break;
-                case SCHIP:
                 case XOCHIP:
+                    machine.PC = ADDRESS( NNN, machine.V[0] );                                                                 // CHIP8 MODE NNN + V[0]
+                    DEBUG("branch V0 + %03x ( %02x + %03x = %03x )",NNN,machine.V[0],NNN,machine.PC);
+                    break;
+                case CHIP48:
+                case SCHIP:
                     machine.PC = ADDRESS( NNN, X );                                                                            // OTHER MODES NNN + VX
+                    DEBUG("branch V%01x + %03x ( %02x + %03x = %03x )",Xn,NNN,X,NNN,machine.PC);
                     break;
             }
             break;
         case 0xc:
             machine.V[ Xn ] = rng( 256 ) & NN;                                                                                  // RANDOM 0 - 255 ANDED
+            DEBUG("V%01x = RAND & %02x ( %02x )",Xn,NN,machine.V[ Xn ]);
             break;
         case 0xd:
-            if( N || ( machine.MODE == SCHIP ) || ( machine.MODE == XOCHIP ) ) {
+            if( N || ( machine.MODE != CHIP8 ) ) {
                 VF = drawsprite( X, Y, machine.I, N );
+            } else {
+                VF = 0;
             }
+            DEBUG("draw %03x @ ( %02x, %02x ) X %02x -> %02x",machine.I,X,Y,(N == 0) ? 16 : N,VF);
             break;
         case 0xe:
             switch( NN ) {
@@ -611,9 +702,10 @@ void execute( void ) {
                     machine.audio_timer = X; beep( 3, 0, 49, (short)(X * 1000/60) );
                     break;
                 case 0x1e:
-                    temp = machine.I + X;
-                    VF = ( temp > 0xfff ) ? 1 : 0;
+                    temp = I + X;
                     machine.I = ADDRESS( temp, 0 );
+                    VF = _rv64_bext( temp, 12 );
+                    DEBUG("I += V%01x ( %03x + %02x = (%01x)%03x )",Xn,I,X,VF,machine.I);
                     break;
                 case 0x0a:
                     if( machine.KEYS == 0 ) {
@@ -633,33 +725,40 @@ void execute( void ) {
                     }
                     break;
                 case 0x33:
-                    machine.MEMORY[ ADDRESS( machine.I, 0 ) ] = X / 100;
-                    machine.MEMORY[ ADDRESS( machine.I, 1 ) ] = ( X % 100 ) / 10;
-                    machine.MEMORY[ ADDRESS( machine.I, 2 ) ] = ( X % 10 );
+                    machine.MEMORY[ ADDRESS( I, 0 ) ] = X / 100;
+                    machine.MEMORY[ ADDRESS( I, 1 ) ] = ( X % 100 ) / 10;
+                    machine.MEMORY[ ADDRESS( I, 2 ) ] = ( X % 10 );
+                    DEBUG("bcd V%01x [ %02x -> %02x %02x %02x ]",Xn,X,machine.MEMORY[ ADDRESS( I, 0 ) ],machine.MEMORY[ ADDRESS( I, 1 ) ],machine.MEMORY[ ADDRESS( I, 2 ) ]);
                     break;
                 case 0x55:
                     for( int n = 0; n <= Xn; n++ )
-                        machine.MEMORY[ ADDRESS( machine.I, n ) ] = machine.V[ n ];
+                        machine.MEMORY[ ADDRESS( I, n ) ] = machine.V[ n ];
                     switch( machine.MODE ) {
                         case CHIP8:
-                            machine.I =  ADDRESS( machine.I, Xn + 1 );
+                            machine.I =  ADDRESS( I, Xn + 1 );
                             break;
+                        case CHIP48:
+                            machine.I = ADDRESS( I, Xn );
                         case SCHIP:
                         case XOCHIP:
                             break;
                     }
+                    DEBUG("save V0 -> V%01x @ %03x ( I = %03x )",Xn,I,machine.I);
                     break;
                 case 0x65:
                     for( int n = 0; n <= Xn; n++ )
-                        machine.V[ n ] = machine.MEMORY[ ADDRESS( machine.I, n ) ];
+                        machine.V[ n ] = machine.MEMORY[ ADDRESS( I, n ) ];
                     switch( machine.MODE ) {
                         case CHIP8:
-                            machine.I =  ADDRESS( machine.I, Xn + 1 );
+                            machine.I =  ADDRESS( I, Xn + 1 );
                             break;
+                        case CHIP48:
+                            machine.I = ADDRESS( I, Xn );
                         case SCHIP:
                         case XOCHIP:
                             break;
                     }
+                    DEBUG("load V0 -> V%01x @ %03x ( I = %03x )",Xn,I,machine.I);
                     break;
                 case 0x75:
                     if( machine.MODE != CHIP8 ) {
@@ -683,6 +782,7 @@ void execute( void ) {
             }
             break;
     }
+    DEBUG("\n");
 }
 
 void restart_machine( void ) {
@@ -700,7 +800,7 @@ void reset_machine( void ) {
     memset( machine.DISPLAY, 0, DISPLAYSIZE );                                                                                   // CLEAR DISPLAY
     machine.HIRES = 0; machine.PLANES = 1;                                                                                      // SET DISPLAY FLAGS
     machine.STACKTOP = -1;                                                                                                      // EMPTY THE STACK
-    machine.PC = 0x200; machine.crashed = NONE; machine.limit = 1;                                                              // SET PC TO START OF PROGRAM
+    machine.PC = 0x200; machine.debug = 0; machine.crashed = NONE; machine.limit = 1;                                                              // SET PC TO START OF PROGRAM
 }
 
 int main( void ) {
