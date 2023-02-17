@@ -13,7 +13,7 @@ unsigned char sprites[] = {
 };
 
 // MACRO TO SAFELY ADD TO AN ADDRESS WITH 12-bit MASKING
-#define ADDRESS(x,y) ( ( x + y ) & 0xfff )
+#define ADDRESS(x,y) ( ( x + y ) & ( ( machine.MODE == XOCHIP ) ? 0xffff : 0xfff ) )
 
 // MACRO TO FETCH TWO BYTES AND COMBINE TO ONE HALF-WORD
 #define FETCH(x) ( machine.MEMORY[ ADDRESS(x,0) ] << 8 ) | machine.MEMORY[ ADDRESS(x,1) ]
@@ -60,8 +60,9 @@ unsigned char *factions[] = {
     "CHIP-8", "CHIP48", "S-CHIP", "XOCHIP", "      ", "      ", "      ", "LIMIT ", "QUIT  ", "      ", "RESET ", "LOAD  "
 };
 
-// NUMBER OF BYTES IN THE DISPLAY BUFFER UNSIGNED LONG * 2 PER ROW * 64 ROWS
-#define DISPLAYSIZE 8 * 2 * 64
+// NUMBER OF BYTES IN THE DISPLAY BUFFER UNSIGNED LONG * 2 PER ROW * 64 ROWS * 2 BUFFERS
+#define PLANESIZE 8 * 2 * 64
+#define DISPLAYSIZE 2 * PLANESIZE
 
 struct C8 {                                                                                                                     // STRUCTURE FOR THE CHIP 8 CPU AND MEMORY
     enum MODES MODE;                                                                                                            // OPERATING MODE ( CHIP8 SCHIP XOCHIP )
@@ -70,7 +71,7 @@ struct C8 {                                                                     
     uint8_t V[16], FLAGS[16];                                                                                                   // REGISTERS AND STORAGE SPACE FOR COPIES
     uint8_t MEMORY[ 4096 ];                                                                                                     // MACHINE RAM
     uint16_t KEYS;                                                                                                              // KEY PRESSEED BITMAP
-    uint64_t DISPLAY[ 64 ][ 2 ];                                                                                                // DISPLAY 128(bits) x 64(lines)
+    uint64_t DISPLAY[ 2 ][ 64 ][ 2 ];                                                                                           // DISPLAY 128(bits) x 64(lines) x 2(planes)
     uint8_t HIRES;                                                                                                              // HI RESOLUTION SWITCH
     uint8_t PLANES;                                                                                                             // BITMASK OF PLANES TO DRAW ON
     uint8_t timer;                                                                                                              // 60Hz timer
@@ -155,10 +156,10 @@ uint32_t colourmap32[] = {
 //      LORES will draw 64 x 32 pixels as a 4x4 PAWSv2 pixel giving 256 x 128 display
 //      HIRES will draw 128 x 64 pixels as a 2x2 PAWSv2 pixel giving 256 x 128 display
 int get_pixel( int x, int y ) {
-    int max_x = ( 64 << machine.HIRES ) - 1;
-    int max_y = ( 32 << machine.HIRES ) - 1;
-
-    return( _rv64_bext( machine.DISPLAY[ y & max_y ][ _rv64_bext( x & max_x, 6 ) ], 64 - ( x & 63 ) ) );
+    return(
+        _rv64_bext( machine.DISPLAY[ 0 ][ y ][ _rv64_bext( x , 6 ) ], 64 - ( x & 63 ) ) |
+        ( _rv64_bext( machine.DISPLAY[ 1 ][ y ][ _rv64_bext( x , 6 ) ], 64 - ( x & 63 ) ) << 1 )
+    );
 }
 
 void draw_screen_lores( void ) {
@@ -166,9 +167,9 @@ void draw_screen_lores( void ) {
     uint32_t *L, *P;                                                                                                            // PRESENT LINE AND PRESENT PIXEL
 
     L = TL;
-    for( int y = 0; y < 32; y++ ) {
+    for( int y = 0; y < 64; y+=2 ) {
         P = L;
-        for( int x = 0; x < 64; x++ ) {
+        for( int x = 0; x < 128; x+=2 ) {
             P[ 0 ] = P[ 80 ] = P[ 160 ] = P[ 240 ] = colourmap32[ get_pixel( x, y ) ];
             P++;
         }
@@ -308,14 +309,30 @@ void smt_thread( void ) {
 }
 
 // DISPLAY FUNCTIONS
-int set_pixel( int x, int y ) {
-    int max_x = ( 64 << machine.HIRES ) - 1;
-    int max_y = ( 32 << machine.HIRES ) - 1;
+int set_pixel( int p, int x, int y ) {
+    int max_x = ( 64 << machine.HIRES ) - 1;                                                                                    // MAX COORDINATE MASK FOR WRAPPING
+    int max_y = ( 32 << machine.HIRES ) - 1;                                                                                    // MAX COORDINATE MASK FOR WRAPPING
 
-    if( ( x > max_x ) || ( y > max_y ) ) return( 0 );
+    if( ( machine.MODE != XOCHIP ) && ( ( x > max_x ) || ( y > max_y ) ) ) {
+        return( 0 );                                                                                                            // OUT OF RANGE AND NOT XO-CHIP, NO ACTION
+    } else {
+        x = ( x & max_x ) << ( 1 - machine.HIRES );                                                                             // WRAP AND ADJUST IF LORES
+        y = ( y & max_y ) << ( 1 - machine.HIRES );
+    }
 
-    int temp = get_pixel( x, y );
-    machine.DISPLAY[ y & max_y ][ _rv64_bext( x & max_x, 6 ) ] = _rv64_binv( machine.DISPLAY[ y & max_y ][ _rv64_bext( x & max_x, 6 ) ], 64 - ( x & 63 ) );
+    int temp = _rv64_bext( machine.DISPLAY[ p ][ y ][ _rv64_bext( x, 6 ) ], 64 - ( x & 63 ) );                                  // SAVE CURRENT PIXEL
+
+    switch( machine.HIRES ) {
+        case 0:                                                                                                                 // HIRES SET 2x2 PIXELS
+            machine.DISPLAY[ p ][ y ][ _rv64_bext( x, 6 ) ] = _rv64_binv( machine.DISPLAY[ p ][ y ][ _rv64_bext( x, 6 ) ], 64 - ( x ) );
+            machine.DISPLAY[ p ][ y ][ _rv64_bext( x + 1, 6 ) ] = _rv64_binv( machine.DISPLAY[ p ][ y ][ _rv64_bext( x + 1, 6 ) ], 64 - ( x + 1 ) );
+            machine.DISPLAY[ p ][ y + 1 ][ _rv64_bext( x, 6 ) ] = _rv64_binv( machine.DISPLAY[ p ][ y + 1 ][ _rv64_bext( x, 6 ) ], 64 - ( x ) );
+            machine.DISPLAY[ p ][ y + 1 ][ _rv64_bext( x + 1, 6 ) ] = _rv64_binv( machine.DISPLAY[ p ][ y + 1 ][ _rv64_bext( x + 1, 6 ) ], 64 - ( x + 1 ) );
+            break;
+        case 1:                                                                                                                 // HIRES SET 1 PIXEL
+            machine.DISPLAY[ p ][ y ][ _rv64_bext( x, 6 ) ] = _rv64_binv( machine.DISPLAY[ p ][ y ][ _rv64_bext( x, 6 ) ], 64 - ( x ) );
+            break;
+    }
     return( temp );
 }
 
@@ -326,32 +343,44 @@ int drawsprite( uint8_t xc, uint8_t yc, uint16_t i, uint8_t n ) {
 
     xc = xc & max_x; yc = yc & max_y;                                                                                           // WRAP COORDINATES IF REQUIRED
 
+    int min_p, max_p;
+    switch( machine.PLANES ) {
+        case 0: min_p = 0; max_p = 0; break;
+        case 1: min_p = 0; max_p = 1; break;
+        case 2: min_p = 1; max_p = 2; break;
+        case 3: min_p = 0; max_p = 2; break;
+    }
+
     if( n ) {
-        for( int y = 0; ( y < n ); y++ ) {                                                                                     // N != 0, DRAW STANDARD 8 x n SPRITE
-            rowpixelerased = 0;
-            for( int x = 0; ( x < 8 ); x++ ) {
-                if( _rv64_bext( machine.MEMORY[ i ], 7 - x ) ) {
-                    pixelflag = set_pixel( xc + x, yc + y );
-                    pixelerased |= pixelflag;
-                    rowpixelerased |= pixelflag;
+        for( int p = min_p; p < max_p; p++ ) {
+            for( int y = 0; ( y < n ); y++ ) {                                                                                     // N != 0, DRAW STANDARD 8 x n SPRITE
+                rowpixelerased = 0;
+                for( int x = 0; ( x < 8 ); x++ ) {
+                    if( _rv64_bext( machine.MEMORY[ i ], 7 - x ) ) {
+                        pixelflag = set_pixel( p, xc + x, yc + y );
+                        pixelerased |= pixelflag;
+                        rowpixelerased |= pixelflag;
+                    }
                 }
+                hirescount += rowpixelerased;
+                i = ADDRESS( i, 1 );
             }
-            hirescount += rowpixelerased;
-            i = ADDRESS( i, 1 );
         }
     } else {                                                                                                                    // N == 0, DRAW 16 HEIGHT SPRITE
-        for( int y = 0; ( y < 16 ); y++ ) {
-            uint16_t spritedata = FETCH( i );
-            rowpixelerased = 0;
-            for( int x = 0; ( x < 16 ); x++ ) {                                                                                     // ONLY DRAW 8 WIDE IF IN LORES
-                if( _rv64_bext( spritedata, 15 - x ) ) {
-                    pixelflag = set_pixel( xc + x, yc + y );
-                    pixelerased |= pixelflag;
-                    rowpixelerased |= pixelflag;
+        for( int p = min_p; p < max_p; p++ ) {
+            for( int y = 0; ( y < 16 ); y++ ) {
+                uint16_t spritedata = FETCH( i );
+                rowpixelerased = 0;
+                for( int x = 0; ( x < 16 ); x++ ) {                                                                                     // ONLY DRAW 8 WIDE IF IN LORES
+                    if( _rv64_bext( spritedata, 15 - x ) ) {
+                        pixelflag = set_pixel( p, xc + x, yc + y );
+                        pixelerased |= pixelflag;
+                        rowpixelerased |= pixelflag;
+                    }
                 }
+                hirescount += rowpixelerased;
+                i = ADDRESS( i, 2 );
             }
-            hirescount += rowpixelerased;
-            i = ADDRESS( i, 2 );
         }
     }
 
@@ -363,38 +392,80 @@ int drawsprite( uint8_t xc, uint8_t yc, uint16_t i, uint8_t n ) {
 }
 
 void scroll_left( void ) {
-    if( machine.HIRES ) {
+    int min_p, max_p;
+    switch( machine.PLANES ) {
+        case 0: min_p = 0; max_p = 0; break;
+        case 1: min_p = 0; max_p = 1; break;
+        case 2: min_p = 1; max_p = 2; break;
+        case 3: min_p = 0; max_p = 2; break;
+    }
+
+    for( int p = min_p; p < max_p; p++ ) {
         for( int y = 0; y < 64; y++ ) {
-            int temp = _rv64_rol( machine.DISPLAY[ y ][ 1 ], 4 ) & 0xf;                                                         // EXTRACT PIXELS 64, 65, 66, 67
-            machine.DISPLAY[ y ][ 0 ] = ( machine.DISPLAY[ y ][ 0 ] << 4 ) | temp;                                              // SHIFT LEFT PIXELS 0 - 63 AND OR IN PIXELS 64, 65, 66, 67
-            machine.DISPLAY[ y ][ 1 ] = machine.DISPLAY[ y ][ 1 ] << 4;                                                         // SHIFT LEFT PIXELS 64 - 127
+            int temp = _rv64_rol( machine.DISPLAY[ p ][ y ][ 1 ], 4 ) & 0xf;                                                         // EXTRACT PIXELS 64, 65, 66, 67
+            machine.DISPLAY[ p ][ y ][ 0 ] = ( machine.DISPLAY[ p ][ y ][ 0 ] << 4 ) | temp;                                              // SHIFT LEFT PIXELS 0 - 63 AND OR IN PIXELS 64, 65, 66, 67
+            machine.DISPLAY[ p ][ y ][ 1 ] = machine.DISPLAY[ p ][ y ][ 1 ] << 4;                                                         // SHIFT LEFT PIXELS 64 - 127
         }
-    } else {
     }
 }
 
 void scroll_right( void ) {
-    if( machine.HIRES ) {
+    int min_p, max_p;
+    switch( machine.PLANES ) {
+        case 0: min_p = 0; max_p = 0; break;
+        case 1: min_p = 0; max_p = 1; break;
+        case 2: min_p = 1; max_p = 2; break;
+        case 3: min_p = 0; max_p = 2; break;
+    }
+
+    for( int p = min_p; p < max_p; p++ ) {
         for( int y = 0; y < 64; y++ ) {
-            int temp = _rv64_ror( machine.DISPLAY[ y ][ 0 ] & 0xf, 4 );                                                         // EXTRACT PIXELS 60, 61, 62, 63
-            machine.DISPLAY[ y ][ 0 ] = machine.DISPLAY[ y ][ 0 ] >> 4;                                                         // SHIFT RIGHT PIXELS 0 - 63 AND OR IN PIXELS 64, 65, 66, 67
-            machine.DISPLAY[ y ][ 1 ] = ( machine.DISPLAY[ y ][ 1 ] >> 4 ) | temp;                                              // SHIFT LEFT PIXELS 64 - 127
+            int temp = _rv64_ror( machine.DISPLAY[ p ][ y ][ 0 ] & 0xf, 4 );                                                         // EXTRACT PIXELS 60, 61, 62, 63
+            machine.DISPLAY[ p ][ y ][ 0 ] = machine.DISPLAY[ p ][ y ][ 0 ] >> 4;                                                         // SHIFT RIGHT PIXELS 0 - 63 AND OR IN PIXELS 64, 65, 66, 67
+            machine.DISPLAY[ p ][ y ][ 1 ] = ( machine.DISPLAY[ p ][ y ][ 1 ] >> 4 ) | temp;                                              // SHIFT LEFT PIXELS 64 - 127
         }
-    } else {
     }
 }
 
 void scroll_down( uint8_t n ) {
-    if( machine.HIRES ) {
+    int min_p, max_p;
+    switch( machine.PLANES ) {
+        case 0: min_p = 0; max_p = 0; break;
+        case 1: min_p = 0; max_p = 1; break;
+        case 2: min_p = 1; max_p = 2; break;
+        case 3: min_p = 0; max_p = 2; break;
+    }
+
+    for( int p = min_p; p < max_p; p++ ) {
         for( int y = 63; y >= 0; y-- ) {
             if( y >= n ) {
-                machine.DISPLAY[ y ][ 0 ] = machine.DISPLAY[ y - n ][ 0 ];
-                machine.DISPLAY[ y ][ 1 ] = machine.DISPLAY[ y - n ][ 1 ];
+                machine.DISPLAY[ p ][ y ][ 0 ] = machine.DISPLAY[ p ][ y - n ][ 0 ];
+                machine.DISPLAY[ p ][ y ][ 1 ] = machine.DISPLAY[ p ][ y - n ][ 1 ];
             } else {
-                machine.DISPLAY[ y ][ 0 ] = machine.DISPLAY[ y ][ 1 ] = 0;
+                machine.DISPLAY[ p ][ y ][ 0 ] = machine.DISPLAY[ p ][ y ][ 1 ] = 0;
             }
         }
-    } else {
+    }
+}
+
+void scroll_up( uint8_t n ) {
+    int min_p, max_p;
+    switch( machine.PLANES ) {
+        case 0: min_p = 0; max_p = 0; break;
+        case 1: min_p = 0; max_p = 1; break;
+        case 2: min_p = 1; max_p = 2; break;
+        case 3: min_p = 0; max_p = 2; break;
+    }
+
+    for( int p = min_p; p < max_p; p++ ) {
+        for( int y = 0; y < 64; y++) {
+            if( y < ( 64 - n ) ) {
+                machine.DISPLAY[ p ][ y ][ 0 ] = machine.DISPLAY[ p ][ y + n ][ 0 ];
+                machine.DISPLAY[ p ][ y ][ 1 ] = machine.DISPLAY[ p ][ y + n ][ 1 ];
+            } else {
+                machine.DISPLAY[ p ][ y ][ 0 ] = machine.DISPLAY[ p ][ y ][ 1 ] = 0;
+            }
+        }
     }
 }
 
@@ -428,12 +499,16 @@ void execute( void ) {
     machine.lastPC = machine.PC; machine.lastinstruction = instruction;                                                         // STORE PC AND INSTRUCTION INCASE OF CRASH
     machine.PC = ADDRESS( machine.PC, 2 );                                                                                      // INCREMENT PC, WRAP AROUND IF REQUIRED
 
-
     switch( O ) {
         case 0x0:
             switch( instruction ) {
                 case 0x00E0:                                                                                                    // CLEAR THE DISPLAY
-                    memset( machine.DISPLAY, 0, DISPLAYSIZE );
+                    switch( machine.PLANES ) {
+                        case 0: break;
+                        case 1: memset( &machine.DISPLAY[0][0][0], 0, PLANESIZE ); break;
+                        case 2: memset( &machine.DISPLAY[1][0][0], 0, PLANESIZE ); break;
+                        case 3: memset( machine.DISPLAY, 0, DISPLAYSIZE ); break;
+                    }
                     DEBUG( "cls");
                     break;
                 case 0x00EE:                                                                                                    // RETURN USE STACKTOP ENTRY
@@ -467,6 +542,18 @@ void execute( void ) {
                         case SCHIP:
                         case XOCHIP:
                             scroll_left();
+                            break;
+                    }
+                    break;
+                case 0xFD:                                                                                                      // EXIT
+                    switch( machine.MODE ) {
+                        case CHIP8:
+                        case CHIP48:
+                            machine.crashed = WRONGMODE;
+                            break;
+                        case SCHIP:
+                        case XOCHIP:
+                            machine.running = 0;
                             break;
                     }
                     break;
@@ -510,7 +597,21 @@ void execute( void ) {
                                 break;
                         }
                     } else {
-                        machine.crashed = INVALIDINSN;
+                        if( ( instruction & 0xfff0 ) == 0x00d0 ) {                                                                  // SCROLL DISPLAY N UP IF IN XOCHIP MODE
+                            DEBUG("scroll(D by %x)",N );
+                            switch( machine.MODE ) {
+                                case CHIP8:
+                                case CHIP48:
+                                case SCHIP:
+                                    machine.crashed = WRONGMODE;
+                                    break;
+                                case XOCHIP:
+                                    scroll_up( N );
+                                    break;
+                            }
+                        } else {
+                            machine.crashed = INVALIDINSN;
+                        }
                     }
                     break;
             }
@@ -527,33 +628,6 @@ void execute( void ) {
                 machine.PC = NNN;                                                                                               // GOTO NNN
             }
             DEBUG("call %03x",NNN);
-            break;
-        case 0x3:                                                                                                               // SKIP X == NN
-            DEBUG("V%01x == NN ( %02x == %02x ) ?",Xn,X,NN);
-            if( X == NN ) {
-                DEBUG(" Y");
-                machine.PC = ADDRESS( machine.PC, 2 );
-            } else {
-                DEBUG(" N");
-            }
-            break;
-        case 0x4:                                                                                                               // SKIP X != NN
-            DEBUG("V%01x != NN ( %02x != %02x ) ?",Xn,X,NN);
-            if( X != NN ) {
-                DEBUG(" Y");
-                machine.PC = ADDRESS( machine.PC, 2 );
-            } else {
-                DEBUG(" N");
-            }
-            break;
-        case 0x5:                                                                                                               // SKIP X == Y
-            DEBUG("V%01x == V%01x ( %02x == %02x ) ?",Xn,Yn,X,Y);
-            if( X == Y ) {
-                DEBUG(" Y");
-                machine.PC = ADDRESS( machine.PC, 2 );
-            } else {
-                DEBUG(" N");
-            }
             break;
         case 0x6:
             machine.V[ Xn ] = NN;                                                                                               // SET REGISTER VX TO NN
@@ -590,7 +664,7 @@ void execute( void ) {
                 case 0x5:
                     temp = X - Y;
                     machine.V[ Xn ] = temp & 0xff;                                                                              // SET VX TO VX - VY
-                    VF = ( X > Y ) ? 1 : 0;                                                                                     // SET CARRY FLAG
+                    VF = ( X >= Y ) ? 1 : 0;                                                                                     // SET CARRY FLAG
                     DEBUG("V%01x -= V%01x ( %02x - %02x = (%01x)%02x )",Xn,Yn,X,Y,VF,machine.V[ Xn ]);
                     break;
                 case 0x6:                                                                                                       // SHIFT 1 RIGHT
@@ -612,7 +686,7 @@ void execute( void ) {
                 case 0x7:
                     temp = Y - X;
                     machine.V[ Xn ] = temp & 0xff;                                                                              // SET VX TO VY - VX
-                    VF = ( Y > X ) ? 1 : 0;                                                                                     // SET CARRY FLAG
+                    VF = ( Y >= X ) ? 1 : 0;                                                                                     // SET CARRY FLAG
                     DEBUG("V%01x = V%01x - V%01x ( %02x - %02x = (%01x)%02x )",Xn,Yn,Xn,Y,X,VF,machine.V[ Xn ]);
                     break;
                 case 0xe:                                                                                                       // SHIFT 1 LEFT
@@ -634,15 +708,6 @@ void execute( void ) {
                 default:
                     machine.crashed = INVALIDINSN;
                     break;
-            }
-            break;
-        case 0x9:                                                                                                               // SKIP X != Y
-            DEBUG("V%01x != V%01x ( %02x != %02x ) ?",Xn,Yn,X,Y);
-            if( X != Y ) {
-                DEBUG(" Y");
-                machine.PC = ADDRESS( machine.PC, 2 );
-            } else {
-                DEBUG(" N");
             }
             break;
         case 0xa:
@@ -674,21 +739,6 @@ void execute( void ) {
                 VF = 0;
             }
             DEBUG("draw %03x @ ( %02x, %02x ) X %02x -> %02x",machine.I,X,Y,(N == 0) ? 16 : N,VF);
-            break;
-        case 0xe:
-            switch( NN ) {
-                case 0x9e:
-                    if( _rv64_bext( machine.KEYS, X & 0xf ) )
-                        machine.PC = ADDRESS( machine.PC, 2 );
-                    break;
-                case 0xa1:
-                    if( !_rv64_bext( machine.KEYS, X & 0xf ) )
-                        machine.PC = ADDRESS( machine.PC, 2 );
-                    break;
-                default:
-                    machine.crashed = INVALIDINSN;
-                    break;
-            }
             break;
         case 0xf:
             switch( NN ) {
@@ -779,6 +829,30 @@ void execute( void ) {
                 default:
                     machine.crashed = INVALIDINSN;
                     break;
+            }
+            break;
+        case 0x3:
+        case 0x4:
+        case 0x5:
+        case 0x9:
+        case 0xe:
+            switch( O ) {
+                case 0x3: DEBUG("V%01x == NN ( %02x == %02x ) ?",Xn,X,NN); temp = ( X == NN ); break;
+                case 0x4: DEBUG("V%01x != NN ( %02x != %02x ) ?",Xn,X,NN); temp = ( X != NN ); break;
+                case 0x5: DEBUG("V%01x == V%01x ( %02x == %02x ) ?",Xn,Yn,X,Y); temp = ( X == Y ); break;
+                case 0x9: DEBUG("V%01x != V%01x ( %02x != %02x ) ?",Xn,Yn,X,Y); temp = ( X != Y ); break;
+                case 0xe:
+                    switch( NN ) {
+                        case 0x9e: temp = _rv64_bext( machine.KEYS, X & 0xf ); break;
+                        case 0xa1: temp =  !_rv64_bext( machine.KEYS, X & 0xf ); break;
+                        default: machine.crashed = INVALIDINSN; break;
+                    }
+                    break;
+            }
+            if( temp ) {
+                DEBUG(" Y"); machine.PC = ADDRESS( machine.PC, 2 );
+            } else {
+                DEBUG(" N");
             }
             break;
     }

@@ -80,7 +80,6 @@ unit control(
         IS_FAST :> IS_FAST,
         IS_FASTFPU :> IS_FASTFPU
     );
-    uint1   takeBranch = uninitialized;
 
     // REGISTERS I integer x 2 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
@@ -104,11 +103,17 @@ unit control(
     uint$addr_width$ jumpAddress <:: { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 } + PC;
     uint$addr_width$ branchAddress <:: { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } + PC;
 
-    // 2ND OPERAND FOR COMPARISONS
-    int64   operand2 <:: opCode[3,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate };
-
-    // FLAGS FOR BRANCH
-    uint4   flags <:: { LTU, LT, 1b0, EQ };
+    // COMPARISONS AND BRANCHES
+    int64   operand2 <: opCode[3,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate };
+    uint4   flags <: { COMPARE.LTU, COMPARE.LT, 1b0, COMPARE.EQ };
+    uint1   takeBranch <: Rtype(instruction).function3[0,1] ^ flags[ Rtype(instruction).function3[1,2], 1 ];
+    integercomparisons COMPARE(
+        sourceReg1 <: I1R.rdata0,
+        operand2 <: operand2,
+        LT :> LT,
+        LTU :> LTU,
+        EQ :> EQ
+    );
 
     always_after {
         // EXTRACT BITFIELDS FROM INSTRUCTION
@@ -124,20 +129,12 @@ unit control(
         // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32 ELSE BY function3
         { accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? Rtype(instruction).function3[0,2] : 2b10; }
 
-        // BRANCH UNIT
-        { takeBranch = Rtype(instruction).function3[0,1] ^ flags[ Rtype(instruction).function3[1,2], 1 ]; }
-
         // ADDRESS GENRATION
         { AUIPCLUI = { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC ); }
         { loadAddress = ( FLAGS.IS_ATOMIC ? 0 : { {52{instruction[31,1]}}, Itype(instruction).immediate } ) + I1R.rdata0[0,$addr_width$]; }
         { storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R.rdata0[0,$addr_width$]; }
         { nextPC = PC + ( compressed ? 2 : 4 ); }
-        { newPC = ( FLAGS.incPC ) ? ( FLAGS.IS_BRANCH & takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress ); }
-
-        // COMPARISON
-        { LT = __signed( I1R.rdata0 ) < __signed( operand2 ); }
-        { LTU = __unsigned( I1R.rdata0 ) < __unsigned( operand2 ); }
-        { EQ = I1R.rdata0 == ( operand2 ); }
+        { newPC = FLAGS.incPC ? ( FLAGS.IS_BRANCH & takeBranch ? branchAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress ); }
     }
 }
 
