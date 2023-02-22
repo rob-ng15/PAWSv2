@@ -806,8 +806,6 @@ void opcode_F( uint16_t instruction ) {
             break;
         case 0x55:
             memcpy( &machine.MEMORY[ I ], machine.V, Xn + 1 );                                                                  // SAVE V0 - Vx TO MEMORY @ I
-            //for( int n = 0; n <= Xn; n++ )
-            //    machine.MEMORY[ IADDRESS( I, n ) ] = machine.V[ n ];
             switch( machine.MODE ) {
                 case CHIP8:
                 case XOCHIP:
@@ -823,8 +821,6 @@ void opcode_F( uint16_t instruction ) {
             break;
         case 0x65:
             memcpy( machine.V, &machine.MEMORY[ I ], Xn + 1 );                                                                  // LOAD V0 - Vx FROM MEMORY @ I
-            //for( int n = 0; n <= Xn; n++ )
-            //    machine.V[ n ] = machine.MEMORY[ IADDRESS( I, n ) ];
             switch( machine.MODE ) {
                 case CHIP8:
                 case XOCHIP:
@@ -850,8 +846,6 @@ void opcode_F( uint16_t instruction ) {
                     }
                 default:
                     memcpy( machine.FLAGS, machine.V, Xn + 1 );                                                                 // SAVE V0 - Vx TO FLAGS
-                    //for( int n = 0; n <= Xn; n++ )
-                    //    machine.FLAGS[ n ] = machine.V[ n ];
                     break;
             }
             break;
@@ -867,8 +861,6 @@ void opcode_F( uint16_t instruction ) {
                     }
                 default:
                     memcpy( machine.V, machine.FLAGS, Xn + 1 );                                                                 // LOAD V0 - Vx FROM FLAGS
-                    //for( int n = 0; n <= Xn; n++ )
-                    //    machine.V[ n ] = machine.FLAGS[ n ];
                     break;
             }
             break;

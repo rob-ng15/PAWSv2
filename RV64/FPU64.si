@@ -148,7 +148,7 @@ unit extract(
     input   uint1   df,
     input   uint64  a,
     output  uint1   sign,
-    output  int13   exp,
+    output  uint11  exp,
     output  uint52  fraction
 ) <reginputs> {
     sign := df ? fp64( a ).sign : fp32( a ).sign;
@@ -193,8 +193,8 @@ unit floatcalc(
     floataddsub FPUaddsub(
         df <: df,
         a <: a,
-        b <: b,
         typeAF <: typea,
+        b <: b,
         typeBF <: typeb,
         OF <: MAKERESULT.OF,
         UF <: MAKERESULT.UF,
@@ -203,8 +203,14 @@ unit floatcalc(
     floatmultiply FPUmultiply(
         df <: df,
         a <: sourceReg1F,
-        b <: sourceReg2F,
+        signA <: A.sign,
+        expA <: A.exp,
+        fractionA <: A.fraction,
         typeAF <: typeAF,
+        b <: sourceReg2F,
+        signB <: B.sign,
+        expB <: B.exp,
+        fractionB <: B.fraction,
         typeBF <: typeBF,
         OF <: MAKERESULT.OF,
         UF <: MAKERESULT.UF,
@@ -688,8 +694,14 @@ unit floatmultiply(
     output  uint1   busy(0),
     input   uint1   df,                                                                                                         // DOUBLE OR FLOAT
     input   uint64  a,                                                                                                          // A INPUT FOR A*B
-    input   uint64  b,                                                                                                          // B INPUT FOR A*B
+    input   uint1   signA,
+    input   uint11  expA,
+    input   uint52  fractionA,
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } FOR A
+    input   uint64  b,                                                                                                          // B INPUT FOR A*B
+    input   uint1   signB,
+    input   uint11  expB,
+    input   uint52  fractionB,
     input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } FOR B
     output  uint1   productsign,                                                                                                // RESULT SIGN
     output  int13   productexp,                                                                                                 // RESULT EXPONENT
@@ -700,6 +712,9 @@ unit floatmultiply(
     output  uint5   flags,                                                                                                      // OPERATION FLAGS
     output  uint64  result                                                                                                      // RESULT OF CALCULATION
 ) <reginputs> {
+    uint1   sign <:: signA ^ signB;                                                                                             // GENERATE PRODUCT SIGN BY XOR OF SIGNS
+    uint106  product <:: { 1b1, fractionA } * { 1b1, fractionB };                                                               // CALCULATE THE PRODUCT BY MUTLIPLYING LEFT ALIGNED FRACTIONS
+
     uint1   ZERO <:: (typeAF[0,1] | typeBF[0,1] );                                                                              // DETECT ZERO
     uint1   IF <:: ( typeAF[3,1] | typeBF[3,1] );                                                                               // DETECT INFINITY
     uint1   NN <:: ( |typeAF[1,2] | |typeBF[1,2] );                                                                             // DETECT NAN
@@ -707,11 +722,9 @@ unit floatmultiply(
     uint2   ACTION <:: { IF | NN, ZERO };
 
     uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
-    uint64  xINF <:: df ? { productsign, 63h7FF0000000000000 } : { 32hffffffff, productsign, 31h7f800000 };                     // RETURN SIGNED INFINITY FOR 32/64 bit
-    uint64  xZERO <:: df ? { productsign, 63h0 } : { 32hffffffff, productsign, 31h0 };                                          // RETURN SIGNED ZERO FOR 32/64 bit
+    uint64  xINF <:: df ? { sign, 63h7FF0000000000000 } : { 32hffffffff, sign, 31h7f800000 };                     // RETURN SIGNED INFINITY FOR 32/64 bit
+    uint64  xZERO <:: df ? { sign, 63h0 } : { 32hffffffff, sign, 31h0 };                                          // RETURN SIGNED ZERO FOR 32/64 bit
 
-    uint106  product <:: ( df ? { 1b1, fp64( a ).fraction } : { 1b1, fp32( a ).fraction, 29b0 } ) *                             // CALCULATE THE PRODUCT BY MUTLIPLYING LEFT ALIGNED FRACTIONS
-                         ( df ? { 1b1, fp64( b ).fraction } : { 1b1, fp32( b ).fraction, 29b0 } );
 
     algorithm <autorun> {
         while(1) {
@@ -722,9 +735,8 @@ unit floatmultiply(
     }
 
     always_after {
-        { productsign = ( df ? fp64( a ).sign : fp32( a ).sign ) ^ ( df ? fp64( b ).sign : fp32( b ).sign ); }                  // GENERATE PRODUCT SIGN
-        { productexp = ( df ? fp64( a ).exponent : fp32( a ).exponent ) + ( df ? fp64( b ).exponent : fp32( b ).exponent )      // ADD EXPONENTS FOR RESULT EXPONENT
-                       - ( df ? ( product[105,1] ? 2045 : 2046 ) : ( product[105,1] ? 253 : 254 ) ); }                          //      ( +1 if overflow )
+        { productsign = sign; }
+        { productexp = ( expA + expB ) - ( df ? ( product[105,1] ? 2045 : 2046 ) : ( product[105,1] ? 253 : 254 ) ); }          // ADD EXPONENTS FOR RESULT EXPONENT, REMOVE BIAS AND ( +1 if overflow )
         { normalfraction = product[ product[105,1] ? 52 : 51, 53 ]; }                                                           // EXTRACT 53 BITS ( 1 extra for rounding )
         {
             switch( ACTION ) {
