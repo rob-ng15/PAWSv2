@@ -27,13 +27,15 @@ struct C8 {                                                                     
     uint16_t PC;                                                                                                                // PC
     uint16_t I;                                                                                                                 // INDEX REGISTER
     uint8_t V[16], FLAGS[16];                                                                                                   // REGISTERS AND STORAGE SPACE FOR COPIES
-    uint8_t MEMORY[ 65536 ];                                                                                                     // MACHINE RAM
-    uint16_t KEYS;                                                                                                              // KEY PRESSEED BITMAP
+    uint8_t MEMORY[ 65536 ];                                                                                                    // MACHINE RAM
+    volatile uint16_t KEYS;                                                                                                     // KEY PRESSEED BITMAP
     uint64_t DISPLAY[ 2 ][ 64 ][ 2 ];                                                                                           // DISPLAY 128(bits) x 64(lines) x 2(planes)
     uint8_t HIRES;                                                                                                              // HI RESOLUTION SWITCH
     uint8_t PLANES;                                                                                                             // BITMASK OF PLANES TO DRAW ON
+    uint8_t COLOURSET;                                                                                                          // COLOUR SET 0 - MAXCOLOURSETS
     uint8_t timer;                                                                                                              // 60Hz timer
     uint8_t audio_timer;                                                                                                        // 60Hz audio timer
+    uint8_t PITCH;                                                                                                              // AUDIO PITCH
 
     int STACKTOP;                                                                                                               // POINTER TO TOP OF STACK - -1 == NOTHING
     uint16_t STACK[ 16 ];                                                                                                       // 16 STACK ENTRIES

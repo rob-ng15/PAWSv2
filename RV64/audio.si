@@ -1,5 +1,7 @@
 // Runs at 25MHz
 unit apu(
+    simple_dualport_bram_port0  bit_samples,
+    simple_dualport_bram_port0  wave_samples,
     input   uint3   waveform,
     input   uint12  frequency,
     input   uint16  duration,
@@ -10,7 +12,7 @@ unit apu(
     output  uint8   audio_output,
     output  uint8   point,
 ) <reginputs> {
-    waveform WAVEFORM( start <: apu_write, update <: COUNTER.updatepoint, selected_waveform <: waveform, staticGenerator <: staticGenerator, point :> point );
+    waveform WAVEFORM( active <: COUNTER.active, bit_samples <:> bit_samples, wave_samples <:> wave_samples, start <: apu_write, update <: COUNTER.updatepoint, selected_waveform <: waveform, staticGenerator <: staticGenerator, point :> point );
     audiocounter COUNTER( selected_frequency <: frequency, selected_duration <: duration, start <: apu_write, active :> audio_active );
 
     always_after {
@@ -19,12 +21,15 @@ unit apu(
 }
 
 unit waveform(
+    simple_dualport_bram_port0  bit_samples,
+    simple_dualport_bram_port0  wave_samples,
     input   uint1   start,
     input   uint1   update,
     input   uint3   selected_waveform,
     input   uint8   staticGenerator,
     output  uint8   audio_output,
     output  uint8   point,
+    input   uint1   active
 ) <reginputs> {
     brom uint8 sines[256] = {
         128,131,134,137,140,144,147,150,153,156,159,162,165,168,171,174,
@@ -44,8 +49,7 @@ unit waveform(
         40,43,45,47,50,52,55,57,60,63,65,68,71,74,77,79,
         82,85,88,91,94,97,100,103,106,109,112,116,119,122,125
     };
-
-    sines.addr := point;
+    sines.addr := point; bit_samples.addr0 := point[3,4]; wave_samples.addr0 := { selected_waveform == 6 ? 1b1 : 1b0, point };
 
     always_after {
         {
@@ -54,10 +58,12 @@ unit waveform(
                 case 1: { audio_output = point; }                                                                   // SAWTOOTH
                 case 2: { audio_output = ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ); }             // TRIANGLE
                 case 3: { audio_output = sines.rdata; }                                                             // SINE
-                default: { audio_output = staticGenerator; }                                                        // NOISE
+                case 4: { audio_output = staticGenerator; }                                                         // NOISE
+                default: { audio_output = wave_samples.rdata0; }                                                    // USER DEFINED UD1 = 5, UD2 = 6 ( UD1 in samples 0-255, UD2 in samples 256-511 )
+                case 7: { audio_output = {8{bit_samples.rdata0[ point[0,3], 1]}}; }                                 // 1 BIT SAMPLES, TRANSLATE TO SQUARE WAVE
             }
         }
-        { point = start ? 0 : point + update; }
+        { point = ~active ? 0 : point + update; }                                                                   // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE, ALLOWS BIT SAMPLES TO REPEAT
     }
 }
 

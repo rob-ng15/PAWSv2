@@ -58,6 +58,8 @@ extern void set_volume( unsigned char left, unsigned char right );
 extern void await_beep( unsigned char );
 extern unsigned short get_beep_active( unsigned char );
 extern void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
+extern void bitsample_upload( unsigned char channel_number, unsigned char *samples );
+extern void wavesample_upload( unsigned char channel_number, unsigned char wave, unsigned char *samples );
 
 // DISPLAY
 extern int is_vblank( void );

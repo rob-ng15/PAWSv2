@@ -445,10 +445,10 @@ void SMTSTART( unsigned int code ) {
 
 void smtmandel( void ) {
     const int graphwidth = 320, graphheight = 100;
-    double kt = 63, m = 4.0;
-    double xmin = -2.1, xmax = 0.6, ymin = -1.35, ymax = 1.35;
-    double dx = (xmax - xmin) / graphwidth, dy = (ymax - ymin) / graphheight;
-    double jx, jy, tx, ty, wx, wy, r;
+    float kt = 63, m = 4.0;
+    float xmin = -2.1, xmax = 0.6, ymin = -1.35, ymax = 1.35;
+    float dx = (xmax - xmin) / graphwidth, dy = (ymax - ymin) / graphheight;
+    float jx, jy, tx, ty, wx, wy, r;
     int k;
 
     gpu_pixelblock_start( 0, 122, 320 );
@@ -483,6 +483,7 @@ unsigned char ufo_sample[] = { 75, 83, 89, 0 };
 
 extern int _bss_start, _bss_end;
 static inline long _rv64_rol(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
 void main( void ) {
     unsigned int isa;
     unsigned short i,j = 0, x, y;

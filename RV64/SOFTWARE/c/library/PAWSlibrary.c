@@ -232,6 +232,22 @@ void sample_upload( unsigned char channel_number, unsigned short length, unsigne
     if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
 }
 
+// 127 x 1 BIT SAMPLES
+void bitsample_upload( unsigned char channel_number, unsigned char *samples ) {
+    beep( channel_number, 0, 0, 0 );
+    *AUDIO_NEW_BITSAMPLE = channel_number;
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 16, 1 ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 16, 1 ); }
+}
+
+// 256 ENTRY USER DEFINED WAVEFORMS ( 2 per channel )
+void wavesample_upload( unsigned char channel_number, unsigned char wave, unsigned char *samples ) {
+    beep( channel_number, 0, 0, 0 );
+    *AUDIO_NEW_WAVEFORM = channel_number + ( ( wave - 1 ) << 2 );
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_WAVESAMPLE, 256, 1 ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_WAVESAMPLE, 256, 1 ); }
+}
+
 // SDCARD FUNCTIONS
 // INTERNAL FUNCTION - WAIT FOR THE SDCARD TO BE READY
 void sdcard_wait( void ) {
@@ -1319,6 +1335,7 @@ void gpu_outputstring( unsigned char colour, short x, short y, unsigned char bol
         x = x + ( 8 << size );
     }
 }
+
 void gpu_outputstringcentre( unsigned char colour, short y, unsigned char bold, char *s, unsigned char size ) {
     gpu_rectangle( TRANSPARENT, 0, y, 319, y + ( 8 << size ) - 1 );
     gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1) , y, bold, s, size );
@@ -1392,7 +1409,10 @@ void sortdirectoryentries( unsigned short entries ) {
                 swapentries(i,i+1);
                 changes++;
             }
-            if( ( directorynames[i].type == directorynames[i+1].type ) && ( directorynames[i].filename[0] > directorynames[i+1].filename[0] ) ) {
+            if( ( directorynames[i].type == directorynames[i+1].type ) &&
+                ( ( directorynames[i].filename[0] > directorynames[i+1].filename[0] ) ||
+                ( ( directorynames[i].filename[0] == directorynames[i+1].filename[0] ) && ( directorynames[i].filename[1] > directorynames[i+1].filename[1] ) ) )
+            ) {
                 swapentries(i,i+1);
                 changes++;
             }

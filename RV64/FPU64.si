@@ -144,6 +144,17 @@ unit fpuSINGLECYCLE(
 }
 
 // FPU CALCULATION CONTROLLER FOR FUSED ADD SUB MUL DIV SQRT
+unit extract(
+    input   uint1   df,
+    input   uint64  a,
+    output  uint1   sign,
+    output  int13   exp,
+    output  uint52  fraction
+) <reginputs> {
+    sign := df ? fp64( a ).sign : fp32( a ).sign;
+    exp := df ? fp64(a).exponent : fp32(a).exponent;
+    fraction := df ? fp64(a).fraction : { fp32(a).fraction, 29b0 };
+}
 unit floatcalc(
     input   uint1   start,
     output  uint1   busy(0),
@@ -174,6 +185,11 @@ unit floatcalc(
     uint4   typea <:: opCode[2,1] ? typeAF : typeMF.type;                                                                       // SELECT TYPE OF A FOR ADDSUB
     uint4   typeb <:: opCode[2,1] ? typeBF : typeCF;                                                                            // SELECT TYPE OF B FOR ADDSUB
 
+    extract A( df <: df, a <: sourceReg1F );                                                                                    // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
+    extract B( df <: df, a <: sourceReg2F );                                                                                    // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
+    extract C( df <: df, a <: sourceReg3F );                                                                                    // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
+    extract M( df <: df, a <: FPUmultiply.result );                                                                             // BREAKDOWN FPUmultiply.result INTO SIGN, EXPONENT (with bias), FRACTION
+
     floataddsub FPUaddsub(
         df <: df,
         a <: a,
@@ -188,8 +204,8 @@ unit floatcalc(
         df <: df,
         a <: sourceReg1F,
         b <: sourceReg2F,
-        typeAF <: typeAF, typeBF <:
-        typeBF,
+        typeAF <: typeAF,
+        typeBF <: typeBF,
         OF <: MAKERESULT.OF,
         UF <: MAKERESULT.UF,
         combined <: MAKERESULT.combined
@@ -488,8 +504,8 @@ unit donormal(
     input   uint106 bitstream,                                                                                                  // RESULT FROM CALCULATION
     output  uint53  normalfraction                                                                                              // NORMALISED FRACTION 1.xxx
 ) <reginputs> {
-    clz106 CLZ106( bitstream <: bitstream );                                                                                    // COUNT LEADING ZEROS
-    uint106 temporary <:: ( bitstream << CLZ106.count );                                                                        // SHIFT FRACTION LEFT SO 1.xxxx
+    clz106 CLZ( bitstream <: bitstream );                                                                                    // COUNT LEADING ZEROS
+    uint106 temporary <:: ( bitstream << CLZ.count );                                                                        // SHIFT FRACTION LEFT SO 1.xxxx
 
     always_after {
         { normalfraction = temporary[ 52, 53 ]; }                                                                               // EXTRACT 53 BITS ( 1 extra for rounding )
@@ -501,12 +517,12 @@ unit donormalexp(
     output  int13   newexponent,                                                                                                // ADJUSTED EXPONENT FOR ADDITION / SUBTRACTION
     output  uint53  normalfraction                                                                                              // NORMALISED FRACTION 1.xxx
 ) <reginputs> {
-    clz106 CLZ106( bitstream <: bitstream );                                                                                    // COUNT LEADING ZEROS
-    uint106 temporary <:: ( bitstream << CLZ106.count );                                                                        // SHIFT FRACTION LEFT SO 1.xxxx
+    clz106 CLZ( bitstream <: bitstream );                                                                                    // COUNT LEADING ZEROS
+    uint106 temporary <:: ( bitstream << CLZ.count );                                                                        // SHIFT FRACTION LEFT SO 1.xxxx
 
     always_after {
         { normalfraction = temporary[ 52, 53 ]; }                                                                               // EXTRACT 53 BITS ( 1 extra for rounding )
-        { newexponent = exp - CLZ106.count; }                                                                                   // ADDSUB EXPONENT ADJUSTMENT
+        { newexponent = exp - CLZ.count; }                                                                                   // ADDSUB EXPONENT ADJUSTMENT
     }
 }
 
@@ -560,48 +576,36 @@ unit doroundcombine(
 }
 
 // ADDSUB ADD/SUBTRACT TWO FLOATING POINT NUMBERS ( SUBTRACT ACHIEVED BY ALTERING SIGN OF SECOND INPUT BY CALCULATION CONTROL UNIT ABOVE )
-unit equaliseexpaddsub(
-    input   uint1   df,
-    input   uint64  a,
-    input   uint64  b,
-    output  uint106 newsigA,
-    output  uint106 newsigB,
-    output  int13   resultexp,
-) <reginputs> {
-    // BREAK DOWN INITIAL float32 INPUTS - SWITCH SIGN OF B IF SUBTRACTION
-    uint106 sigA <:: df ? { 2b01, fp64(a).fraction, 52b0 } : { 2b01, fp32(a).fraction, 81b0 };                                  // LEFT ALIGN FRACTIONS
-    uint106 sigB <:: df ? { 2b01, fp64(b).fraction, 52b0 } : { 2b01, fp32(b).fraction, 81b0 };                                  // LEFT ALIGN FRACTIONS
-    uint1   AvB <:: ( df ? fp64(a).exponent : fp32(a).exponent ) < ( df ? fp64(b).exponent : fp32(b).exponent );                // FIND SMALLEST EXPONENT
-    uint106 aligned <:: ( AvB ? sigA : sigB ) >>                                                                                // SHIFT SMALLER INPUT RIGHT BY DIFFERENCE IN EXPONENTS
-                        ( ( AvB ? ( df ? fp64(b).exponent : fp32(b).exponent ) : ( df ? fp64(a).exponent : fp32(a).exponent ) ) -
-                          ( AvB ? ( df ? fp64(a).exponent : fp32(a).exponent ) : ( df ? fp64(b).exponent : fp32(b).exponent ) ) );
-
-    always_after {
-        { newsigA = AvB ? aligned : sigA; }                                                                                     // A BECOMES ALIGNED FRACTION IF SMALLER EXPONENT
-        { newsigB = AvB ? sigB : aligned;  }                                                                                    // B BECOMES ALIGNED FRACTION IF SMALLER EXPONENT
-        { resultexp = ( AvB ? ( df ? fp64(b).exponent : fp32(b).exponent ) : ( df ? fp64(a).exponent : fp32(a).exponent ) ) -   // RESULT EXPONENT IS LARGEST EXPONENT ( +1 FOR OVERFLOW )
-                              ( df ? 1022 : 126 ); }
-    }
-}
 unit dofloataddsub(
     input   uint1   df,
+    input   uint64  a,
     input   uint1   signA,
-    input   uint106 sigA,
+    input   uint11  expA,
+    input   uint64  b,
     input   uint1   signB,
-    input   uint106 sigB,
+    input   uint11  expB,
     output  uint1   resultsign,
+    output  int13   resultexp,
     output  uint106 resultfraction
 ) <reginputs> {
-    uint1   AvB <:: ( sigA > sigB );                                                                                            // FIND LARGEST FRACTION ( when exponents are equal )
+    uint1   expAvexpB <: ( expA < expB );                                                                                      // FIND SMALLEST EXPONENT
+    uint11  shift <: ( expAvexpB ? expB : expA ) - ( expAvexpB ? expA :expB );                                                 // FIND THE AMOUNT SMALLER NUMBER NEEDS TO BE SHIFTED FOR ALIGNMENT
+    uint106 sigA <:: ( df ? { 2b01, fp64(a).fraction, 52b0 } : { 2b01, fp32(a).fraction, 81b0 } ) >> ( expAvexpB ? shift : 0 ); // GENERATE A FROM FRACTION, ALIGN IF SMALLER
+    uint106 sigB <:: ( df ? { 2b01, fp64(b).fraction, 52b0 } : { 2b01, fp32(b).fraction, 81b0 } ) >> ( expAvexpB ? 0 : shift ); // GENERATE B FROM FRACTION, ALIGN IF SMALLER
+
+    uint1   AvB <:: ( sigA > sigB );                                                                                                // FIND LARGEST FRACTION ( when exponents are equal )
     uint1   sign <:: ( signA ^ signB ) ? ( signA ? AvB : ~AvB ) : signA;                                                        // DETERMINE RESULT SIGN
 
     always_after {
         { resultsign = sign; }                                                                                                  // GENERATE RESULT SIGN
+        { resultexp = ( expAvexpB ? expB : expA ) - ( df ? 1022 : 126 ); }                                                      // RESULT EXPONENT IS LARGEST EXPONENT ( +1 FOR OVERFLOW )
+
         { if( signA ^ signB ) {
             resultfraction = ( signA ^ sign ? sigB : sigA ) - ( signA ^ sign ? sigA : sigB );                                   // PERFORM SUBTRACTION
         } else {
-            resultfraction = sigA + sigB; }                                                                                     // PERFORM DIVISION
+            resultfraction = sigA + sigB; }                                                                                     // PERFORM ADDITION
         }
+
     }
 }
 unit floataddsub(
@@ -622,7 +626,10 @@ unit floataddsub(
     output  uint64  result                                                                                                      // RESULT OF CALCULATION
 ) <reginputs> {
     uint1   signA <:: df ? fp64( a ).sign : fp32( a ).sign;                                                                     // SIGN A
+    uint11  expA <:: ( df ? fp64(a).exponent : fp32(a).exponent );                                                              // EXP A ( with bias )
     uint1   signB <:: df ? fp64( b ).sign : fp32( b).sign;                                                                      // SIGN B
+    uint11  expB <:: ( df ? fp64(b).exponent : fp32(b).exponent );                                                              // EXP A ( with bias )
+
     uint1   IF <:: ( typeAF[3,1] | typeBF[3,1] );                                                                               // DETECT INFINITY
     uint1   NN <:: ( |typeAF[1,2] | |typeBF[1,2] );                                                                             // DETECT NAN
     uint1   NV <:: ( typeAF[3,1] & typeBF[3,1]) & ( signA ^ signB );                                                            // INVALID IF BOTH INFINITY WITH DIFFERING SIGNS
@@ -631,15 +638,14 @@ unit floataddsub(
     uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
     uint64  ZERO <:: df ? 0 : 64hffffffff00000000;                                                                              // RETURN ZERO FOR 32/64 bit
 
-    equaliseexpaddsub EQUALISEEXP( df <: df, a <: a, b <: b );                                                                  // EQUALISE THE EXPONENTS AND ALIGN THE FRACTIONS
     dofloataddsub ADDSUB(                                                                                                       // 1 IS ADDED TO THE EXPONENT IN CASE OF OVERFLOW, NORMALISING WILL ADJUST
         df <: df,
-        signA <: signA, sigA <: EQUALISEEXP.newsigA,                                                                            // PASS ALIGNED FRACTIONS AND SIGN FOR ADDITION / SUBTRACTION
-        signB <: signB, sigB <: EQUALISEEXP.newsigB,
-        resultsign :> sumsign                                                                                                   // PASS THE RESULT SIGN
+        a <: a, signA <: signA, expA <: expA,
+        b <: b, signB <: signB, expB <: expB,
+        resultsign :> sumsign
     );
     donormalexp NORMAL(
-        exp <: EQUALISEEXP.resultexp,
+        exp <: ADDSUB.resultexp,
         bitstream <: ADDSUB.resultfraction,
         newexponent :> sumexp,
         normalfraction :> normalfraction
@@ -648,13 +654,13 @@ unit floataddsub(
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1; if( ~|ACTION & |ADDSUB.resultfraction ) { ++: ++: busy = 0; } else { busy = 0; }                      // PROVIDE WAIT STATES
+                busy = 1; if( ~|ACTION & |ADDSUB.resultfraction ) { ++: busy = 0; } else { busy = 0; }                          // PROVIDE WAIT STATES
             }
         }
     }
 
     always_after {
-        {
+         {
             switch( ACTION ) {
                 case 2b00: { result = |ADDSUB.resultfraction ? combined : ZERO; }                                               // CALCULATION IS VALID, CHECK FOR ZERO RESULT
                 case 2b01: {

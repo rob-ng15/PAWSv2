@@ -11,6 +11,13 @@ unsigned char sprites[] = {
 #include "CHIP8-UI.h"
 };
 
+unsigned char tml[] = {
+#include "TML.h"
+};
+unsigned char tmu[] = {
+#include "TMU.h"
+};
+
 unsigned char *modes[] = {
     "CHIP-8 ",
     "CHIP-48",
@@ -54,13 +61,19 @@ extern struct C8 machine;                                                       
 // COLOUR MAPS 4 POSSIBLE COLOURS
 #define C32(x) ( ( x << 24 ) | ( x << 16 ) | ( x << 8 ) | x )
 #define C16(x ) ( ( x << 8 ) | x )
-
-uint16_t colourmap16[] = {
-    C16( TRANSPARENT), C16( BLACK ), C16( RED ), C16( GREEN )
+#define MAXCOLOURSETS 3
+uint16_t colourmap16[][ 4 ] = {
+    C16( BLACK ), C16( WHITE ), C16( RED ), C16( GREEN ),
+    C16( WHITE), C16( BLACK ), C16( RED ), C16( GREEN ),
+    C16( BLACK ), C16( WHITE ), C16( CYAN ), C16( MAGENTA ),
+    C16( STEELBLUE ), C16( DKBROWN ), C16( DKGREEN ), C16( WHITE )
 };
 
-uint32_t colourmap32[] = {
-    C32( TRANSPARENT), C32( BLACK ), C32( RED ), C32( GREEN )
+uint32_t colourmap32[][ 4 ] = {
+    C32( BLACK ), C32( WHITE ), C32( RED ), C32( GREEN ),
+    C32( WHITE), C32( BLACK ), C32( RED ), C32( GREEN ),
+    C32( BLACK ), C32( WHITE ), C32( CYAN ), C32( MAGENTA ),
+    C32( STEELBLUE ), C32( DKBROWN ), C32( DKGREEN ), C32( WHITE )
 };
 
 // SMT THREAD FUNCTIONS
@@ -71,9 +84,12 @@ uint32_t colourmap32[] = {
 //      LORES will draw 64 x 32 pixels as a 4x4 PAWSv2 pixel giving 256 x 128 display
 //      HIRES will draw 128 x 64 pixels as a 2x2 PAWSv2 pixel giving 256 x 128 display
 int get_pixel( int x, int y ) {
+    int section = ( x > 63 ) ? 1 : 0;
+    int bit = ( x & 63 );
+
     return(
-        _rv64_bext( machine.DISPLAY[ 0 ][ y ][ _rv64_bext( x , 6 ) ], 64 - ( x & 63 ) ) |
-        ( _rv64_bext( machine.DISPLAY[ 1 ][ y ][ _rv64_bext( x , 6 ) ], 64 - ( x & 63 ) ) << 1 )
+        _rv64_bext( machine.DISPLAY[ 0 ][ y ][ section ], bit ) |
+        ( _rv64_bext( machine.DISPLAY[ 1 ][ y ][ section ], bit ) << 1 )
     );
 }
 
@@ -82,10 +98,10 @@ void draw_screen_lores( void ) {
     uint32_t *L, *P;                                                                                                            // PRESENT LINE AND PRESENT PIXEL
 
     L = TL;
-    for( int y = 0; y < 64; y+=2 ) {
+    for( int y = 0; y < 64; y += 2 ) {
         P = L;
-        for( int x = 0; x < 128; x+=2 ) {
-            P[ 0 ] = P[ 80 ] = P[ 160 ] = P[ 240 ] = colourmap32[ get_pixel( x, y ) ];
+        for( int x = 0; x < 128; x += 2 ) {
+            P[ 0 ] = P[ 80 ] = P[ 160 ] = P[ 240 ] = colourmap32[ machine.COLOURSET ][ get_pixel( x, y ) ];
             P++;
         }
         L = &L[ 320 ];
@@ -100,7 +116,7 @@ void draw_screen_hires( void ) {
     for( int y = 0; y < 64; y++ ) {
         P = L;
         for( int x = 0; x < 128; x++ ) {
-            P[ 0 ] = P[ 160 ] = colourmap16[ get_pixel( x, y ) ];
+            P[ 0 ] = P[ 160 ] = colourmap16[ machine.COLOURSET ][ get_pixel( x, y ) ];
             P++;
         }
         L = &L[ 320 ];
@@ -109,26 +125,27 @@ void draw_screen_hires( void ) {
 
 void display_state( void ) {
     // DISPLAY STATE
-    set_sprite32( UPPER_LAYER, 0, SPRITE_SHOW, 544, 64, machine.MODE, SPRITE_DOUBLE );
-    set_sprite32( UPPER_LAYER, 4, machine.crashed ? ( systemclock() & 1 ) : SPRITE_SHOW, 608, 64, machine.crashed ? 0 : machine.running, SPRITE_DOUBLE );
-    set_sprite32( UPPER_LAYER, 8, SPRITE_SHOW, 544, 128, machine.limit, SPRITE_DOUBLE );
-    set_sprite32( UPPER_LAYER, 12, ( machine.crashed == 0 ) ? SPRITE_SHOW : ( systemclock() & 1 ), 608, 128, machine.crashed, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 0, SPRITE_SHOW, 608, 64, machine.MODE, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 4, machine.crashed ? ( systemclock() & 1 ) : SPRITE_SHOW, 608, 128, machine.crashed ? 0 : machine.running, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 8, SPRITE_SHOW, 608, 192, machine.limit, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 12, ( machine.crashed == 0 ) ? SPRITE_SHOW : ( systemclock() & 1 ), 608, 256, machine.crashed, SPRITE_DOUBLE );
+    set_sprite32( LOWER_LAYER, 0, SPRITE_SHOW, 608, 320, machine.debug, SPRITE_DOUBLE );
 
-    tpu_set( 1, 5, TRANSPARENT, BLACK ); tpu_printf( 0, "PC[%03x] I[%03x]", machine.PC, machine.I );
-    tpu_set( 17, 5, TRANSPARENT, machine.timer ? GREEN : GREY3 ); tpu_printf( 0, "T[%02x]", machine.timer );
-    tpu_set( 25, 5, TRANSPARENT, machine.audio_timer ? GREEN : GREY3 ); tpu_printf( 0, "A[%02x]", machine.audio_timer );
-    tpu_set( 33, 5, TRANSPARENT, machine.HIRES ? GREEN : GREY3 ); tpu_printf( 0, "H[%01x]", machine.HIRES );
-    tpu_set( 41, 5, TRANSPARENT, BLACK ); tpu_printf( 0, "P[%01x]", machine.PLANES );
-    tpu_set( 49, 5, TRANSPARENT, GREY4 ); tpu_printf( 0, "X[%04x] @[%03x]", machine.lastinstruction, machine.lastPC );
+    tpu_set( 1, 1, TRANSPARENT, BLACK ); tpu_printf( 0, "PC[%03x] I[%03x]", machine.PC, machine.I );
+    tpu_set( 17, 1, TRANSPARENT, machine.timer ? GREEN : GREY3 ); tpu_printf( 0, "T[%02x]", machine.timer );
+    tpu_set( 25, 1, TRANSPARENT, machine.audio_timer ? GREEN : GREY3 ); tpu_printf( 0, "A[%02x%02x]", machine.audio_timer, machine.PITCH );
+    tpu_set( 33, 1, TRANSPARENT, machine.HIRES ? GREEN : GREY3 ); tpu_printf( 0, "H[%01x]", machine.HIRES );
+    tpu_set( 41, 1, TRANSPARENT, BLACK ); tpu_printf( 0, "P[%01x%01x]", ( machine.PLANES >> 1 ) & 1, machine.PLANES & 1 );
+    tpu_set( 49, 1, TRANSPARENT, GREY4 ); tpu_printf( 0, "X[%04x] @[%03x]", machine.lastinstruction, machine.lastPC );
 
     for( int n = 0; n < 16; n++ ) {
-        if( n == 0 ) tpu_set( 1, 7, TRANSPARENT, BLACK );
-        if( n == 8 ) tpu_set( 1, 8, TRANSPARENT, BLACK );
+        if( n == 0 ) tpu_set( 1, 3, TRANSPARENT, BLACK );
+        if( n == 8 ) tpu_set( 1, 4, TRANSPARENT, BLACK );
         tpu_printf( 0, "V%1x[%02x]  ", n, machine.V[n] );
     }
 
     for( int n = 0; n < 16; n++ ) {
-        tpu_set( ( ( n < 8 ) ? n : n - 8 ) * 8 + 1, ( n < 8 ) ? 10 : 11, TRANSPARENT, ( n == machine.STACKTOP ) ? BLACK : GREY3 );
+        tpu_set( ( ( n < 8 ) ? n : n - 8 ) * 8 + 1, ( n < 8 ) ? 6 : 7, TRANSPARENT, ( n == machine.STACKTOP ) ? GREEN : GREY3 );
         tpu_printf( 0, "[%03x]",machine.STACK[ n ] );
     }
 
@@ -136,23 +153,25 @@ void display_state( void ) {
         for( int x = 0; x < 4; x++ ) {
             int number;
             if( keys[ y * 4 + x ] >= 'A' ) { number = keys[ y * 4 + x ] - 'A' + 10; } else { number = keys[ y * 4 + x ] - '0'; }
-            tpu_set( x * 3 + 1, 13 + y * 3, _rv64_bext( machine.KEYS, number ) ? GREY6 : GREY3, BLACK );
-                tpu_print( 1, "   " );
-                tpu_move( x * 3 + 1, 14 + y * 3 ); tpu_printf( 1, " %c ", keyboard[ y * 4 + x ] );
-                tpu_move( x * 3 + 1, 15 + y * 3 ); tpu_print( 1, "   " );
-            tpu_set( x * 3 + 17, 13 + y * 3, _rv64_bext( machine.KEYS, number ) ? GREY6 : GREY3, BLACK );
-                tpu_print( 1, "   " );
-                tpu_move( x * 3 + 17, 14 + y * 3 ); tpu_printf( 1, " %c ", keys[ y * 4 + x ] );
-                tpu_move( x * 3 + 17, 15 + y * 3 ); tpu_print( 1, "   " );
+            set_tilemap_tile( LOWER_LAYER, 1 + x, y + 3, _rv64_bext( machine.KEYS, number ) ? 1 : 2, 0 );
+            set_tilemap_tile( UPPER_LAYER, 1 + x, y + 3, y * 4 + x + 1, 0 );
+            set_tilemap_tile( LOWER_LAYER, 6 + x, y + 3, _rv64_bext( machine.KEYS, number ) ? 1 : 2, 0 );
+            set_tilemap_tile( UPPER_LAYER, 6 + x, y + 3, y*4 + x + 17, 0 );
         }
     }
 
     for( int y = 0; y < 3; y++ ) {
         for( int x = 0; x < 4; x++ ) {
-            tpu_set( 33 + x * 8, 13 + y * 4, BLUE, YELLOW ); tpu_print( 1, "      " );
-            tpu_set( 33 + x * 8, 14 + y * 4, BLUE, YELLOW ); tpu_print( 1, fkeys[ y * 4 + x ] );
-            tpu_set( 33 + x * 8, 15 + y * 4, BLUE, YELLOW ); tpu_print( 1, factions[ y * 4 + x ] );
-            tpu_set( 33 + x * 8, 16 + y * 4, BLUE, YELLOW ); tpu_print( 1, "      " );
+            set_tilemap_tile( LOWER_LAYER, 11 + x * 2, y + 4, 3, 0 );
+            set_tilemap_tile( LOWER_LAYER, 12 + x * 2, y + 4, 4, 0 );
+            int number = y * 4 + x;
+            if( number < 6 ) {
+                set_tilemap_tile( UPPER_LAYER, 11 + x * 2, y + 4, number + 33, 0 );
+                set_tilemap_tile( UPPER_LAYER, 12 + x * 2, y + 4, number + 41, 0 );
+            } else {
+                set_tilemap_tile( UPPER_LAYER, 11 + x * 2, y + 4, number + 43, 0 );
+                set_tilemap_tile( UPPER_LAYER, 12 + x * 2, y + 4, number + 51, 0 );
+            }
         }
     }
 }
@@ -175,6 +194,10 @@ __attribute__((used)) void interactivity( void ) {
                 case 0x04: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = SCHIP; } break;                          // F3
                 case 0x0c: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = XOCHIP; } break;                         // F4
 
+                case 0x03:                                                                                                      // F5
+                    if( keycode & 0x200 ) {
+                        machine.COLOURSET = ( machine.COLOURSET == MAXCOLOURSETS ) ? 0 : machine.COLOURSET + 1;
+                    } break;
                 case 0x83: if( keycode & 0x200 ) { machine.debug = 1 - machine.debug; }; break;                                 // F7
                 case 0x0a: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 2 ) ? 0 : machine.limit + 1; } break;     // F8
 
@@ -272,6 +295,7 @@ void restart_machine( void ) {
     machine.HIRES = 0; machine.PLANES = 1;                                                                                      // SET DISPLAY FLAGS
     machine.STACKTOP = -1;                                                                                                      // EMPTY THE STACK
     machine.PC = 0x200; machine.crashed = NONE;                                                                                 // SET PC TO START OF PROGRAM
+    beep( 3, 0, 0, 0 ); machine.audio_timer = 0; machine.PITCH = 49; machine.timer = 0;
 }
 
 void reset_machine( void ) {
@@ -280,14 +304,23 @@ void reset_machine( void ) {
     memset( machine.DISPLAY, 0, DISPLAYSIZE );                                                                                   // CLEAR DISPLAY
     machine.HIRES = 0; machine.PLANES = 1;                                                                                      // SET DISPLAY FLAGS
     machine.STACKTOP = -1;                                                                                                      // EMPTY THE STACK
-    machine.PC = 0x200; machine.debug = 0; machine.crashed = NONE; machine.limit = 1;                                                              // SET PC TO START OF PROGRAM
+    machine.PC = 0x200; machine.crashed = NONE; machine.limit = 1;                                                                                // SET PC TO START OF PROGRAM
+    beep( 3, 0, 0, 0 ); machine.audio_timer = 0; machine.PITCH = 49; machine.timer = 0;
 }
 
 extern void execute( void );
 
 int main( void ) {
+    screen_mode( 0, MODE_RGBM, LTM_LOW | UTM_LOW );
     set_background( WHITE, WHITE, BKG_SOLID );
-    set_sprite_bitamps_from_spritesheet32x32( UPPER_LAYER, &sprites[0] );                                                       // SET THE STATUS FLAG SPRITES
+    set_sprite_bitamps_from_spritesheet32x32( UPPER_LAYER, sprites );                                                       // SET THE STATUS FLAG SPRITES
+    set_sprite_bitamps_from_spritesheet32x32( LOWER_LAYER, &sprites[32768] );                                                       // SET THE STATUS FLAG SPRITES
+
+    set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, tml );
+    set_tilemap_bitamps_from_spritesheet( UPPER_LAYER, tmu );
+    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR ); tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+    tilemap_scrollwrapclear( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scrollwrapclear( UPPER_LAYER, TM_DOWN, 8 );
+
     reset_machine(); SMTSTART( smt_thread );                                                                                    // START THE KEYBOARD MONITOR
 
     set_timer1khz( (short)1000/60, 0 );
@@ -297,7 +330,11 @@ int main( void ) {
 
         if( machine.loading ) {
             set_background( BLACK, BLACK, BKG_SOLID );
-            gpu_cs(); tpu_cs(); reset_machine();
+            while( SMTSTATE() ); gpu_cs(); tpu_cs();
+            tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR ); tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+            tilemap_scrollwrapclear( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scrollwrapclear( UPPER_LAYER, TM_DOWN, 8 );
+
+            restart_machine();
             int filesize; uint8_t *filebuffer = sdcard_selectfile( "Please select a CH8", "CH8", &filesize, "Running" );    // LOAD A FILE
             if( filebuffer && ( filesize > 0 ) && ( filesize < 65536 ) ) {
                 gpu_cs();                                                                                                   // START EXECUTION
