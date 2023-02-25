@@ -271,20 +271,25 @@ typedef struct {
     unsigned short boot_sector_signature;
 } __attribute((packed)) Fat32VolumeID;
 
-typedef struct {
-    unsigned char filename[8];
-    unsigned char ext[3];
-    unsigned char attributes;
-    unsigned char reserved[8];
-    unsigned short starting_cluster_high;
-    unsigned short modify_time;
-    unsigned short modify_date;
-    unsigned short starting_cluster_low;
-    unsigned int file_size;
-} __attribute((packed)) FAT32DirectoryEntry;
+union fname {
+    unsigned char string[8];
+    long sortvalue;
+};
 
 typedef struct {
     unsigned char   filename[8];
+    unsigned char   ext[3];
+    unsigned char   attributes;
+    unsigned char   reserved[8];
+    unsigned short  starting_cluster_high;
+    unsigned short  modify_time;
+    unsigned short  modify_date;
+    unsigned short  starting_cluster_low;
+    unsigned int    file_size;
+} __attribute((packed)) FAT32DirectoryEntry;
+
+typedef struct {
+    union fname     filename;
     unsigned char   ext[3];
     unsigned char   type;
     unsigned int    starting_cluster;

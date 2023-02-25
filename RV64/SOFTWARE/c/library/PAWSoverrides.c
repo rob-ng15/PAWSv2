@@ -96,7 +96,7 @@ float __wrap_cosf(float x) {
     return paws_cosf(x);
 }
 float __wrap_sinf(float x) {
-    return paws_tanf(x);
+    return paws_sinf(x);
 }
 float __wrap_tanf(float x) {
     return paws_tanf(x);

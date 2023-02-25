@@ -3,7 +3,7 @@ all: $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).P64
 $(OUTPUT_DIR)$(PROJECTTYPE)/$(PROJECT).P64 : $(PROJECT).elf
 	$(ARCH)-elf-objcopy -O binary $< $@
 
-$(PROJECT).elf : $(LIBPAWS) $(PRJOBJ)
+$(PROJECT).elf : $(LIBPAWS) $(PRJOBJ) $(PRJSRC)
 	$(CC) $(CFLAGS) $(INCLUDE) $(LFLAGS) $(LCONFIG) -o $@ $(PRJOBJ) $(LIBPAWS) $(LIBRARY)
 
 tidy :

@@ -743,6 +743,15 @@ void opcode_F( uint16_t instruction ) {
             machine.V[ Xn ] = machine.timer;                                                                                    // COPY TIMER TO Vx
             DEBUG("V%1x = timer",Xn);
             break;
+        case 0x0a:
+            if( machine.KEYS == 0 ) {                                                                                           // WAIT FOR KEY PRESS AND RELEASE
+                machine.PC = PADDRESS( machine.PC, -2 );
+            } else {
+                machine.V[ Xn ] = _rv64_ctz( machine.KEYS );                                                                    // RETURNS LOWEST KEY PRESSED
+                while( machine.KEYS != 0 );
+            }
+            DEBUG("wait_key");
+            break;
         case 0x15:
             machine.timer = X;                                                                                                  // SET TIMER TO Vx
             DEBUG("timer = %02x",NN);
@@ -761,15 +770,6 @@ void opcode_F( uint16_t instruction ) {
             VF = ( machine.I < I ) ? 1 : 0;                                                                                     // SET CARRY FLAG
             DEBUG("I += V%01x ( %04x + %02x = (%01x)%04x )",Xn,I,X,VF,machine.I);
             break;
-        case 0x0a:
-            if( machine.KEYS == 0 ) {                                                                                           // WAIT FOR KEY PRESS AND RELEASE
-                machine.PC = PADDRESS( machine.PC, -2 );
-            } else {
-                machine.V[ Xn ] = _rv64_ctz( machine.KEYS );                                                                    // RETURNS LOWEST KEY PRESSED
-                while( machine.KEYS != 0 );
-            }
-            DEBUG("wait_key");
-            break;
         case 0x29:
             machine.I = IADDRESS( 0, 5 * ( X & 0xf ) );                                                                         // SET ADDRESS TO SMALL FONT
             DEBUG("load_font %01x ( %04x )",X&0xf, machine.I);
@@ -785,10 +785,10 @@ void opcode_F( uint16_t instruction ) {
             }
             DEBUG("load_big_font %01x ( %04x )",X&0xf, machine.I);
             break;
-        case 0x33:
-            machine.MEMORY[ IADDRESS( I, 0 ) ] = X / 100;                                                                       // STORE BINARY CODED DECIMAL TO I
-            machine.MEMORY[ IADDRESS( I, 1 ) ] = ( X % 100 ) / 10;
-            machine.MEMORY[ IADDRESS( I, 2 ) ] = ( X % 10 );
+        case 0x33:                                                                                                              // STORE BINARY CODED DECIMAL TO I
+            machine.MEMORY[ IADDRESS( I, 0 ) ] = ( X > 200 ) ? 2 : ( X > 100 ) ? 1 : 0;                                         // 100s
+            machine.MEMORY[ IADDRESS( I, 1 ) ] = ( X - 100 * machine.MEMORY[ IADDRESS( I, 0 ) ] ) / 10;                         // 10s
+            machine.MEMORY[ IADDRESS( I, 2 ) ] = ( X - 100 * machine.MEMORY[ IADDRESS( I, 0 ) ] - 10 * machine.MEMORY[ IADDRESS( I, 1 ) ] );
             DEBUG("bcd V%01x @ %04x[ %02x -> %02x %02x %02x ]",Xn,I,X,machine.MEMORY[ IADDRESS( I, 0 ) ],machine.MEMORY[ IADDRESS( I, 1 ) ],machine.MEMORY[ IADDRESS( I, 2 ) ]);
             break;
         case 0x3a:

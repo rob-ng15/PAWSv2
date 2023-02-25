@@ -189,21 +189,23 @@ __attribute__((used)) void interactivity( void ) {
             uint16_t keycode = ps2_event_get();
             int keypressed = -1;
             switch( keycode & 0x1ff ) {
-                case 0x05: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = CHIP8; } break;                          // F1
-                case 0x06: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = CHIP48; } break;                         // F2
-                case 0x04: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = SCHIP; } break;                          // F3
-                case 0x0c: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = XOCHIP; } break;                         // F4
+                case 0x05: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = CHIP8; } break;                          // F1 CHIP8 MODE
+                case 0x06: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = CHIP48; } break;                         // F2 CHIP48 MODE
+                case 0x04: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = SCHIP; } break;                          // F3 SCHIP1.1 MODE
+                case 0x0c: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = XOCHIP; } break;                         // F4 XOCHIP MODE
 
-                case 0x03:                                                                                                      // F5
+                case 0x03:                                                                                                      // F5 CYCLE COLOUR SETS
                     if( keycode & 0x200 ) {
                         machine.COLOURSET = ( machine.COLOURSET == MAXCOLOURSETS ) ? 0 : machine.COLOURSET + 1;
-                    } break;
-                case 0x83: if( keycode & 0x200 ) { machine.debug = 1 - machine.debug; }; break;                                 // F7
-                case 0x0a: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 2 ) ? 0 : machine.limit + 1; } break;     // F8
+                    }
+                    break;
+                case 0x0b: if( keycode & 0x200 ) { machine.debug = 1 - machine.debug; }; break;                                 // F6 TOGGLE DEBUG OUTPUT TO UART
+                case 0x83: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 2 ) ? 2 : machine.limit + 1; } break;     // F7 SLOW DOWN
+                case 0x0a: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 0 ) ? 0 : machine.limit - 1; } break;     // F8 SPEED UP
 
-                case 0x01: if( keycode & 0x200 ) { machine.running = 0; machine.quit = 1; pass_control = 1; } break;            // F9
-                case 0x78: if( keycode & 0x200 ) { machine.restart = 1; } break;                                                // F11
-                case 0x07: if( keycode & 0x200 ) { machine.running = 0; machine.loading = 1; pass_control = 1; } break;         // F12
+                case 0x01: if( keycode & 0x200 ) { machine.running = 0; machine.quit = 1; pass_control = 1; } break;            // F9 QUIT
+                case 0x78: if( keycode & 0x200 ) { machine.restart = 1; } break;                                                // F11 RESTART CHIP8 PROGRAM
+                case 0x07: if( keycode & 0x200 ) { machine.running = 0; machine.loading = 1; pass_control = 1; } break;         // F12 LOAD
 
                 case 0x16: keypressed = 1; break;                                                                               // 1 == 1
                 case 0x1e: keypressed = 2; break;                                                                               // 2 == 2
@@ -295,7 +297,7 @@ void restart_machine( void ) {
     machine.HIRES = 0; machine.PLANES = 1;                                                                                      // SET DISPLAY FLAGS
     machine.STACKTOP = -1;                                                                                                      // EMPTY THE STACK
     machine.PC = 0x200; machine.crashed = NONE;                                                                                 // SET PC TO START OF PROGRAM
-    beep( 3, 0, 0, 0 ); machine.audio_timer = 0; machine.PITCH = 49; machine.timer = 0;
+    beep( 3, 0, 0, 0 ); machine.audio_timer = 0; machine.PITCH = 24; machine.timer = 0;
 }
 
 void reset_machine( void ) {
@@ -305,7 +307,7 @@ void reset_machine( void ) {
     machine.HIRES = 0; machine.PLANES = 1;                                                                                      // SET DISPLAY FLAGS
     machine.STACKTOP = -1;                                                                                                      // EMPTY THE STACK
     machine.PC = 0x200; machine.crashed = NONE; machine.limit = 1;                                                                                // SET PC TO START OF PROGRAM
-    beep( 3, 0, 0, 0 ); machine.audio_timer = 0; machine.PITCH = 49; machine.timer = 0;
+    beep( 3, 0, 0, 0 ); machine.audio_timer = 0; machine.PITCH = 24; machine.timer = 0;
 }
 
 extern void execute( void );
@@ -335,7 +337,7 @@ int main( void ) {
             tilemap_scrollwrapclear( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scrollwrapclear( UPPER_LAYER, TM_DOWN, 8 );
 
             restart_machine();
-            int filesize; uint8_t *filebuffer = sdcard_selectfile( "Please select a CH8", "CH8", &filesize, "Running" );    // LOAD A FILE
+            int filesize; uint8_t *filebuffer = sdcard_selectfile( "", "Please select a CHIP-8 File", "CH8", &filesize, "Running" );    // LOAD A FILE
             if( filebuffer && ( filesize > 0 ) && ( filesize < 65536 ) ) {
                 gpu_cs();                                                                                                   // START EXECUTION
                 memcpy( &machine.MEMORY[0x200], filebuffer, filesize );
