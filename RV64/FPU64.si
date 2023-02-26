@@ -144,15 +144,6 @@ unit fpuSINGLECYCLE(
 }
 
 // FPU CALCULATION CONTROLLER FOR FUSED ADD SUB MUL DIV SQRT
-unit repackage(                                                                                                                 // REPACKAGE A FLOAT INTO THE BITFIELDS OF A DOUBLE (DOUBLES REMAIN UNCHANGED)
-    input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
-    input   uint64  a,                                                                                                          // FLOATING POINT SOURCE REGISTER
-    output  uint64  repack                                                                                                      // REPACKED FLOATING POINT REGISTER
-) <reginputs> {
-    always_after {
-        repack = df ? a : { fp32( a ).sign, 3b000, fp32(a).exponent, fp32(a).fraction, 29b0 };                                  // IF DOUBLE, RETURN DOUBLE< ELSE RETURN REPACKAGED FLOAT
-    }
-}
 unit floatcalc(
     input   uint1   start,
     output  uint1   busy(0),
@@ -212,7 +203,7 @@ unit floatcalc(
     );
     floatsqrt FPUsqrt(
         df <: df,
-        a <: sourceReg1F, typeAF <: typeAF,
+        aRET <: sourceReg1F, a <: sourceReg1Fx, typeAF <: typeAF,
         OF <: MAKERESULT.OF,
         UF <: MAKERESULT.UF,
         combined <: MAKERESULT.combined
@@ -354,6 +345,28 @@ unit typeF(
                       ~|( fp32(a).exponent ) } :                                                                                // ZERO / SUBNORMAL
                     4b0010;                                                                                                     // FLOAT NOT BOXED, ISSUE qNAN
 
+    }
+}
+
+// REPACKERS, ALL FLOATING POINT NUMBERS ARE PASSED TO CALCULATIONS AS IN THE BITFIELD OF A DOUBLE TO ALLOW EASIER EXTRACTION OF THE SIGN, EXPONENT AND FRACTIONS
+// _WIDE, copies double to double, float to the bitfields of a double
+// _ACTUAL, copies double to double, a repacked wide float to the bitfields of a float
+unit repackage_actual(                                                                                                          // REPACKAGE A FLOAT FROM THE BITFIELDS OF A DOUBLE (DOUBLES REMAIN UNCHANGED)
+    input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
+    input   uint64  a,                                                                                                          // FLOATING POINT SOURCE REGISTER
+    output  uint64  repack                                                                                                      // REPACKED FLOATING POINT REGISTER
+) <reginputs> {
+    always_after {
+        repack = df ? a : { 32hffffffff, fp64( a ).sign, fp64(a).exponent[0,8], fp64(a).fraction[29,23] };                      // IF DOUBLE, RETURN DOUBLE, ELSE RETURN REPACKAGED FLOAT ( NAN boxed )
+    }
+}
+unit repackage_wide(                                                                                                            // REPACKAGE A FLOAT INTO THE BITFIELDS OF A DOUBLE (DOUBLES REMAIN UNCHANGED)
+    input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
+    input   uint64  a,                                                                                                          // FLOATING POINT SOURCE REGISTER
+    output  uint64  repack                                                                                                      // REPACKED FLOATING POINT REGISTER
+) <reginputs> {
+    always_after {
+        repack = df ? a : { fp32( a ).sign, 3b000, fp32(a).exponent, fp32(a).fraction, 29b0 };                                  // IF DOUBLE, RETURN DOUBLE< ELSE RETURN REPACKAGED FLOAT
     }
 }
 
@@ -872,14 +885,13 @@ unit prepfsqrt(
     output  uint108 start_ac,
     output  uint106 start_x
 ) <reginputs> {
-    int13   expA  <:: ( df ? fp64( a ).exponent : fp32( a ).exponent ) - ( df ? 1023 : 127 );                                   // EXTRACT EXPONENT AND REMOVE BIAS
+    int13   expA  <:: ( fp64( a ).exponent ) - ( df ? 1023 : 127 );                                                             // EXTRACT EXPONENT AND REMOVE BIAS
 
     always_after {
         { squarerootexp = expA >>> 1; }                                                                                         // RESULT EXPONENT IS HALF OF INPUT EXPONENT
-        { start_ac = expA[0,1] ? { 106b0, 1b1, a[ df ? 51 : 22, 1 ] } : 1; }                                                    // STARTING ACCUMULATOR ( depends if exp is odd / even )
-        { start_x = expA[0,1] ? df ? { a[0,51], 55b0 } : { a[0,22], 84b0 } :                                                    // STARTING FRACTION ( depends if exp is odd / even )
-                                df ? { fp64( a ).fraction, 54b0 } : { fp32( a ).fraction, 83b0 }; }
-        { powTWO = ~|( df ? fp64(a).fraction : fp32(a).fraction ); }                                                            // DETECT FRACTION OF A IS 0 ( A is power of 2, no squareroot required )
+        { start_ac = expA[0,1] ? { 106b0, 1b1, a[ 51, 1 ] } : 1; }                                                              // STARTING ACCUMULATOR ( depends if exp is odd / even )
+        { start_x = expA[0,1] ? { a[0,51], 55b0 } : { fp64( a ).fraction, 54b0 }; }                                             // STARTING FRACTION ( depends if exp is odd / even )
+        { powTWO = ~|fp64(a).fraction; }                                                                                        // DETECT FRACTION OF A IS 0 ( A is power of 2, no squareroot required )
         { expODD = expA[0,1]; }                                                                                                 // IS EXP ODD, RETURN SQRT(2) OR 1 FOR POWER OF 2 SQUAREROOTS
     }
 }
@@ -922,6 +934,7 @@ unit floatsqrt(
     output  uint1   busy(0),
     input   uint1   df,                                                                                                         // DOUBLE OR FLOAT
     input   uint64  a,                                                                                                          // A INPUT FOR SQRT(A)
+    input   uint64  aRET,                                                                                                       // A INPUT FOR SQRT(A) RETURN VALUE IF ERROR
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } FOR A
     output  int13   squarerootexp,                                                                                              // RESULT EXPONENT
     output  uint53  normalfraction,                                                                                             // NORMALISED RESULT FRACTION
@@ -931,10 +944,12 @@ unit floatsqrt(
     output  uint5   flags,                                                                                                      // OPERATION FLAGS
     output  uint64  result                                                                                                      // RESULT OF CALCULATION
 ) <reginputs> {
-    uint1   signA <:: df ? fp64( a ).sign : fp32( a ).sign;                                                                     // EXTRACT SIGN
+    uint1   signA <:: fp64( a ).sign;                                                                                           // EXTRACT SIGN
+
     uint1   NN <:: |typeAF[1,2];                                                                                                // DETECT NAN INPUT
     uint1   NV <:: typeAF[3,1] | NN | signA;                                                                                    // INVALID IF INFINITY, NAN OR NEGATIVE
     uint1   ACTION <:: ~|{ typeAF[3,1] | NN, typeAF[0,1] | signA };                                                             // CALCULATION VALID IF NORMAL POSITIVE NUMBER ( ZERO IS SPECIAL )
+
     uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
 
     prepfsqrt PREP( df <: df, a <: a, squarerootexp :> squarerootexp );                                                         // PREPARE THE SQUAREROOT INPUTS
@@ -945,16 +960,15 @@ unit floatsqrt(
         start_ac <: PREP.start_ac,
         start_x <: PREP.start_x
     );
-    //donormal NORMAL( bitstream <: DOSQRT.squareroot, normalfraction :> normalfraction );                                        // NORMALISE THE SQUARE ROOT
     DOSQRT.start := start & ACTION; busy := start | DOSQRT.busy;                                                                // START AND BUSY FLAGS
 
     always_after {
-        { normalfraction = df ? DOSQRT.squareroot[0,53] : { DOSQRT.squareroot[0,24], 29b0 }; }
+        { normalfraction = df ? DOSQRT.squareroot[0,53] : { DOSQRT.squareroot[0,24], 29b0 }; }                                  // FAST NOIRMALISATION BY EXTRACTING RELEVANT BITS
         {
             if( ACTION ) {
                 result = combined;                                                                                              // CALCULATION VALID
             } else {
-                result = signA ? qNAN : a;                                                                                      // CALCULATION INVALID RETURN qNAN IF NEGATIVE ELSE INPUT ( INF OR ZERO )
+                result = signA ? qNAN : aRET;                                                                                   // CALCULATION INVALID RETURN qNAN IF NEGATIVE ELSE INPUT ( INF OR ZERO )
             }
         }
         { flags = { NV, 1b0, ACTION & OF, ACTION & UF, 1b0 }; }                                                                 // RETURN FLAGS
