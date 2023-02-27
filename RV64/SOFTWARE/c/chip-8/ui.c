@@ -337,7 +337,7 @@ int main( void ) {
             tilemap_scrollwrapclear( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scrollwrapclear( UPPER_LAYER, TM_DOWN, 8 );
 
             restart_machine();
-            int filesize; uint8_t *filebuffer = sdcard_selectfile( "", "Please select a CHIP-8 File", "CH8", &filesize, "Running" );    // LOAD A FILE
+            int filesize; uint8_t *filebuffer = sdcard_selectfile( "Please select a CHIP-8 File", "CH8", &filesize, "Running" );    // LOAD A FILE
             if( filebuffer && ( filesize > 0 ) && ( filesize < 65536 ) ) {
                 gpu_cs();                                                                                                   // START EXECUTION
                 memcpy( &machine.MEMORY[0x200], filebuffer, filesize );

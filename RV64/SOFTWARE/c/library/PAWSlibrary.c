@@ -671,10 +671,10 @@ void gpu_print_vertical( unsigned char colour, short x, short y, unsigned char b
     }
 }
 void gpu_printf( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    static char buffer[ 81 ];
+    char *buffer = (char *)0x1000;
     va_list args;
     va_start (args, fmt);
-    vsnprintf( buffer, 81, fmt, args);
+    vsnprintf( buffer, 80, fmt, args);
     va_end(args);
 
     char *s = buffer;
@@ -684,10 +684,10 @@ void gpu_printf( unsigned char colour, short x, short y, unsigned char bold, uns
     }
 }
 void gpu_printf_vertical( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    static char buffer[ 81 ];
+    char *buffer = (char *)0x1000;
     va_list args;
     va_start (args, fmt);
-    vsnprintf( buffer, 81, fmt, args);
+    vsnprintf( buffer, 80, fmt, args);
     va_end(args);
 
     char *s = buffer;
@@ -699,10 +699,10 @@ void gpu_printf_vertical( unsigned char colour, short x, short y, unsigned char 
 
 // OUTPUT A STRING TO THE GPU - CENTRED AT ( x, y )
 void gpu_printf_centre( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    static char buffer[ 81 ];
+    char *buffer = (char *)0x1000;
     va_list args;
     va_start (args, fmt);
-    vsnprintf( buffer, 81, fmt, args);
+    vsnprintf( buffer, 80, fmt, args);
     va_end(args);
 
     char *s = buffer;
@@ -713,10 +713,10 @@ void gpu_printf_centre( unsigned char colour, short x, short y, unsigned char bo
     }
 }
 void gpu_printf_centre_vertical( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    static char buffer[ 81 ];
+    char *buffer = (char *)0x1000;
     va_list args;
     va_start (args, fmt);
-    vsnprintf( buffer, 81, fmt, args);
+    vsnprintf( buffer, 80, fmt, args);
     va_end(args);
 
     char *s = buffer;
@@ -892,11 +892,9 @@ union Point2D Scale2D( union Point2D point, int xc, int yc, float scale ) {
     return( newpoint );
 }
 
-extern float paws_sinf( float );
-extern float paws_cosf( float );
 union Point2D Rotate2D( union Point2D point, int xc, int yc, int angle, float scale ) {
     union Point2D newpoint;
-    float sine = paws_sinf(angle*0.01745329252), cosine = paws_cosf(angle*0.01745329252);
+    float sine = sinf(angle*0.01745329252), cosine = cosf(angle*0.01745329252);
     newpoint.packed = _rv64_pack( ( (point.dx * scale)*cosine-(point.dy * scale)*sine ) + xc, ( (point.dx * scale)*sine+(point.dy * scale)*cosine ) + yc );
     return( newpoint );
 }
@@ -909,8 +907,7 @@ union Point2D MakePoint2D( int x, int y ) {
 
 // PROCESS A SOFTWARE VECTOR BLOCK AFTER SCALING AND ROTATION
 void DrawVectorShape2D( unsigned char colour, union Point2D *points, int numpoints, int xc, int yc, int angle, float scale ) {
-    union Point2D *NewShape  = (union Point2D * )0x1000;
-    if( !NewShape ) return;
+    union Point2D *NewShape  = (union Point2D *)0x1800;
     for( int vertex = 0; vertex < numpoints; vertex++ ) {
         NewShape[ vertex ] = Rotate2D( points[vertex], xc, yc, angle, scale );
     }
@@ -1255,10 +1252,10 @@ void tpu_print( char attribute, char *buffer ) {
     tpu_outputstring( attribute, buffer );
 }
 void tpu_printf( char attribute, const char *fmt,... ) {
-    static char buffer[ 1024 ];
+    char *buffer = (char *)0x1000;
     va_list args;
     va_start (args, fmt);
-    vsnprintf( buffer, 1024, fmt, args);
+    vsnprintf( buffer, 1023, fmt, args);
     va_end(args);
 
     tpu_outputstring( attribute, buffer );
@@ -1269,7 +1266,7 @@ void tpu_print_centre( unsigned char y, unsigned char background, unsigned char 
     tpu_outputstring( attribute, buffer );
 }
 void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground, char attribute, const char *fmt,...  ) {
-    static char buffer[ 81 ];
+    char *buffer = (char *)0x1000;
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -1312,10 +1309,10 @@ void terminal_print( char *buffer ) {
     terminal_outputstring( buffer );
 }
 void terminal_printf( const char *fmt,... ) {
-    static char buffer[ 1024 ];
+    char *buffer = (char *)0x1000;
     va_list args;
     va_start (args, fmt);
-    vsnprintf( buffer, 1024, fmt, args);
+    vsnprintf( buffer, 1023, fmt, args);
     va_end(args);
 
     terminal_outputstring( buffer );
@@ -1579,6 +1576,7 @@ void __scroll( void ) {
 
 int addch( unsigned char ch ) {
     __curses_cell temp;
+    short gonextline = 0;
 
     switch( ch ) {
         case '\b': {
@@ -1596,7 +1594,7 @@ int addch( unsigned char ch ) {
         case '\n': {
             // LINE FEED
             __curses_x = 0;
-            __curses_y++;
+            gonextline = 1;
             break;
         }
         case '\r': {
@@ -1609,7 +1607,7 @@ int addch( unsigned char ch ) {
             __curses_x = ( 1 + __curses_x / 8 ) * 8;
             if( __curses_x >= COLS ) {
                 __curses_x = 0;
-                __curses_y++;
+                gonextline = 1;
             }
             break;
         }
@@ -1625,7 +1623,7 @@ int addch( unsigned char ch ) {
             __write_curses_cell( __curses_x, __curses_y, temp );
             if( __curses_x == COLS-1 ) {
                 __curses_x = 0;
-                __curses_y++;
+                gonextline = 1;
             } else {
                 __curses_x++;
             }
@@ -1633,13 +1631,17 @@ int addch( unsigned char ch ) {
     }
 
     // GO TO NEXT LINE, SCROLL/WRAP IF REQUIRED
-    if( __curses_y == LINES ) {
-        if( __curses_scroll ) {
-            __scroll();
-            if( __curses_autorefresh )
-                refresh();
+    if( gonextline ) {
+        if( __curses_y == LINES-1 ) {
+            if( __curses_scroll ) {
+                __scroll();
+                if( __curses_autorefresh )
+                    refresh();
+            } else {
+                __curses_y = 0;
+            }
         } else {
-            __curses_y = 0;
+            __curses_y++;
         }
     }
 
@@ -1653,16 +1655,16 @@ int mvaddch( int y, int x, unsigned char ch ) {
 }
 
 void __curses_print_string(const char* s) {
-   for(const char *p = s; *p; ++p) {
-      addch( *p );
+   for(const char* p = s; *p; ++p) {
+      addch(*p);
    }
 }
 
 int printw( const char *fmt,... ) {
-    static char buffer[ 1024 ];
+    char *buffer = (char *)0x1000;
     va_list args;
     va_start (args, fmt);
-    vsnprintf( buffer, 1024, fmt, args);
+    vsnprintf( buffer, 1023, fmt, args);
     va_end(args);
 
     __curses_print_string( buffer );
@@ -1670,10 +1672,10 @@ int printw( const char *fmt,... ) {
 }
 
 int mvprintw( int y, int x, const char *fmt,... ) {
-    static char buffer[ 1024 ];
+    char *buffer = (char *)0x1000;
     va_list args;
     va_start (args, fmt);
-    vsnprintf( buffer, 1024, fmt, args);
+    vsnprintf( buffer, 1023, fmt, args);
     va_end(args);
 
     move( y, x );
@@ -1780,7 +1782,7 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
 #define MALLOC_MEMORY ( 16 * 1024 * 1024 )
 #endif
 
-void *__bram_point = (void *)0x1000;
+void *__bram_point = (void *)0x1a00;
 void *malloc_bram( int size ) {
     void *previous = __bram_point;
     __bram_point += size;
@@ -1821,7 +1823,7 @@ void __start_sdmedia( void ) {
 int paws_printf(const char *restrict format, ... ) {
     if( !__stdinout_init ) __start_stdinout();
 
-    static char buffer[ 1024 ];
+    char *buffer = (char *)0x1400;
     va_list args;
     va_start (args, format);
     vsnprintf( buffer, 1024, format, args);
@@ -1835,7 +1837,7 @@ int paws_fprintf( void *fd, const char *restrict format, ... ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
 
-    static char buffer[ 1024 ];
+    char *buffer = (char *)0x1400;
     va_list args;
     va_start (args, format);
     vsnprintf( buffer, 1024, format, args);
@@ -1855,7 +1857,7 @@ int paws_vfprintf( void *fd, const char *format, va_list args ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
 
-    static char buffer[ 1024 ];
+    char *buffer = (char *)0x1400;
     vsnprintf( buffer, 1024, format, args);
     if( ( fd == stdout ) || ( fd == stderr ) ) {
         if( fd == stdout ) printw( "%s", buffer );
@@ -2060,9 +2062,8 @@ void *paws_freopen( const char *path, const char *mode, FILE *fd ) {
     return( paws_fopen( filename, mode ) );
 }
 void *paws_tmpfile( void ) {
-    char buffer[ 1024 ];
-    sprintf( buffer, "%0d%0d.tmp", rng(65535), *SYSTEMSECONDS );
-    return( paws_fopen( buffer, "w+b" ) );
+    sprintf( (char * restrict)0x1800, "%0d%0d.tmp", rng(65535), *SYSTEMSECONDS );
+    return( paws_fopen( (const char *)0x1800, "w+b" ) );
 }
 int paws_fgetc( void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
@@ -2233,9 +2234,324 @@ int paws_strcmp ( const char *string1, const char *string2 ) {
 size_t paws_strlen ( const char *string ) {
 }
 
-// IMPLEMENTATIONS OF fscanf and vfscanf
 #include "akavel_gostdc/vfscanf.c"
 #include "akavel_gostdc/fscanf.c"
 
 // WRAPPERS FOR VARIOUS BUILTIN FUNCTIONS TO USE OPTIMISED BIT MANIPULATION INSTRUCTIONS
 #include "PAWSoverrides.c"
+
+// READ A FILE USING THE SIMPLE FILE BROWSER
+// WILL ALLOW SELECTION OF A FILE FROM THE SDCARD, INCLUDING SUB-DIRECTORIES
+// ALLOCATES MEMORY FOR THE FILE, AND LOADS INTO MEMORY
+
+union fname {                                                                                                                   // FILENAME AS CHAR OR LONG TO ALLOW FOR QUICK SORTING
+    unsigned char string[8];
+    long sortvalue;
+};
+
+
+typedef struct {                                                                                                                // SDCARD PARTITION STRUCTURE
+    unsigned char first_byte;
+    unsigned char start_chs[3];
+    unsigned char partition_type;
+    unsigned char end_chs[3];
+    unsigned int start_sector;
+    unsigned int length_sectors;
+} __attribute((packed)) PartitionTable;
+
+typedef struct {                                                                                                                // FAT32 VOLUME ID
+    unsigned char   jmp[3];
+    unsigned char   oem[8];
+    unsigned short  sector_size;
+    unsigned char   sectors_per_cluster;
+    unsigned short  reserved_sectors;
+    unsigned char   number_of_fats;
+    unsigned short  root_dir_entries;
+    unsigned short  total_sectors_short;                                                                                        // if zero, later field is used
+    unsigned char   media_descriptor;
+    unsigned short  fat16_size_sectors;
+    unsigned short  sectors_per_track;
+    unsigned short  number_of_heads;
+    unsigned int    hidden_sectors;
+    unsigned int    total_sectors_long;
+    unsigned int    fat32_size_sectors;
+    unsigned short  fat32_flags;
+    unsigned short  version;
+    unsigned int    startof_root;
+    unsigned short  filesystem_information;
+    unsigned short  backupboot_sector;
+    unsigned char   reserved[12];
+    unsigned char   logical_drive_number;
+    unsigned char   unused;
+    unsigned char   extended_signature;
+    unsigned int    volume_id;
+    char            volume_label[11];
+    char            fs_type[8];
+    char            boot_code[420];
+    unsigned short  boot_sector_signature;
+} __attribute((packed)) Fat32VolumeID;
+
+typedef struct {                                                                                                                // ENTRY IN A FAT32 DIRECTORY
+    unsigned char   filename[8];
+    unsigned char   ext[3];
+    unsigned char   attributes;
+    unsigned char   reserved[8];
+    unsigned short  starting_cluster_high;
+    unsigned short  modify_time;
+    unsigned short  modify_date;
+    unsigned short  starting_cluster_low;
+    unsigned int    file_size;
+} __attribute((packed)) FAT32DirectoryEntry;
+
+typedef struct {                                                                                                                // STORAGE FOR ENTRIES EXTRACTED FROM A FAT32 DIRECTORY
+    union fname     filename;
+    unsigned char   ext[3];
+    unsigned char   type;
+    unsigned int    starting_cluster;
+    unsigned int    file_size;
+} __attribute((packed)) DirectoryEntry;
+
+unsigned char *BOOTRECORD = NULL;
+PartitionTable *PARTITIONS = NULL;
+Fat32VolumeID *VolumeID = NULL;
+FAT32DirectoryEntry *directorycluster = NULL;
+unsigned int FAT32startsector, FAT32clustersize, FAT32clusters, *FAT32table = NULL;
+DirectoryEntry *directorynames;
+
+// DISPLAY A FILENAME CLEARING THE AREA BEHIND IT
+void gpu_outputstring( unsigned char colour, short x, short y, unsigned char bold, char *s, unsigned char size ) {
+    while( *s ) {
+        gpu_character_blit( colour, x, y, ( bold ? 256 : 0 ) + *s++, size, 0 );
+        x = x + ( 8 << size );
+    }
+}
+void gpu_outputstringcentre( unsigned char colour, short y, unsigned char bold, char *s, unsigned char size ) {
+    gpu_rectangle( TRANSPARENT, 0, y, 319, y + ( 8 << size ) - 1 );
+    gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1) , y, bold, s, size );
+}
+
+void displayfilename( unsigned char *filename, unsigned char type ) {
+    char displayname[10], i, j;
+    gpu_outputstringcentre( WHITE, 144, 0, "Current File:", 0 );
+    for( i = 0; i < 10; i++ ) {
+        displayname[i] = 0;
+    }
+    j = type - 1;
+    if( j == 1 ) {
+        displayname[0] = 16;
+    }
+    for( i = 0; i < 8; i++ ) {
+        if( filename[i] != ' ' ) {
+            displayname[j++] = filename[i];
+        }
+    }
+    gpu_outputstringcentre( type == 1 ? WHITE : GREY5, 176, 0, displayname, 2 );
+}
+
+unsigned int __basecluster = 0xffffff8;
+unsigned int getnextcluster( unsigned int thiscluster ) {
+    unsigned int readsector = thiscluster/128;
+    if( ( __basecluster == 0xffffff8 ) || ( thiscluster < __basecluster ) || ( thiscluster > __basecluster + 127 ) ) {
+        sdcard_readsector( FAT32startsector + readsector, (unsigned char *)FAT32table );
+        __basecluster = readsector * 128;
+    }
+    return( FAT32table[ thiscluster - __basecluster ] );
+}
+
+void readcluster( unsigned int cluster, unsigned char *buffer ) {
+     for( unsigned char i = 0; i < FAT32clustersize; i++ ) {
+        sdcard_readsector( FAT32clusters + ( cluster - 2 ) * FAT32clustersize + i, buffer + i * 512 );
+    }
+}
+
+void readfile( unsigned int starting_cluster, unsigned char *copyAddress ) {
+    unsigned int nextCluster = starting_cluster;
+    unsigned char *CLUSTERBUFFER = (unsigned char *)directorycluster;
+    int i;
+
+    do {
+        readcluster( nextCluster, CLUSTERBUFFER );
+        memcpy( copyAddress, CLUSTERBUFFER, FAT32clustersize * 512 ); copyAddress += FAT32clustersize * 512;
+        nextCluster = getnextcluster( nextCluster);
+    } while( nextCluster < 0xffffff8 );
+}
+
+void swapentries( short i, short j ) {
+    DirectoryEntry temporary;
+
+    paws_memcpy( &temporary, &directorynames[i], sizeof( DirectoryEntry ) );
+    paws_memcpy( &directorynames[i], &directorynames[j], sizeof( DirectoryEntry ) );
+    paws_memcpy( &directorynames[j], &temporary, sizeof( DirectoryEntry ) );
+}
+
+void sortdirectoryentries( unsigned short entries ) {
+    // SIMPLE BUBBLE SORT, PUT DIRECTORIES FIRST, THEN FILES, IN ALPHABETICAL ORDER
+    if( !entries )
+        return;
+
+    int changes;
+    do {
+        changes = 0;
+
+        for( int i = 0; i < entries; i++ ) {
+            if( directorynames[i].type < directorynames[i+1].type ) {
+                swapentries(i,i+1);
+                changes++;
+            }
+
+            if( ( directorynames[i].type == directorynames[i+1].type ) && ( _rv64_rev8( directorynames[i].filename.sortvalue ) > _rv64_rev8( directorynames[i+1].filename.sortvalue ) ) ) {
+                swapentries(i,i+1);
+                changes++;
+            }
+        }
+    } while( changes );
+}
+
+unsigned int filebrowser( char *message, char *extension, int startdirectorycluster, int rootdirectorycluster, unsigned int *filesize ) {
+    unsigned int thisdirectorycluster = startdirectorycluster;
+    FAT32DirectoryEntry *fileentry;
+
+    unsigned char rereaddirectory = 1;
+    unsigned short entries, present_entry;
+    int temp;
+
+    while( 1 ) {
+        if( rereaddirectory ) {
+            entries = 0xffff; present_entry = 0;
+            fileentry = (FAT32DirectoryEntry *) directorycluster;
+            paws_memset( &directorynames[0], 0, sizeof( DirectoryEntry ) * 256 );
+        }
+
+        while( rereaddirectory ) {
+            readcluster( thisdirectorycluster, (unsigned char *)directorycluster );
+
+            for( int i = 0; i < 16 * FAT32clustersize; i++ ) {
+                if( ( fileentry[i].filename[0] != 0x00 ) && ( fileentry[i].filename[0] != 0xe5 ) ) {
+                    // LOG ITEM INTO directorynames, if appropriate
+                    if( fileentry[i].attributes & 0x10 ) {
+                        // DIRECTORY, IGNORING "." and ".."
+                        if( fileentry[i].filename[0] != '.' ) {
+                            entries++;
+                            paws_memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
+                            directorynames[entries].type = 2;
+                            directorynames[entries].starting_cluster = ( fileentry[i].starting_cluster_high << 16 )+ fileentry[i].starting_cluster_low;
+                        }
+                    } else {
+                        if( fileentry[i].attributes & 0x08 ) {
+                            // VOLUMEID
+                        } else {
+                            if( fileentry[i].attributes != 0x0f ) {
+                                // SHORT FILE NAME ENTRY
+                                if( ( fileentry[i].ext[0] == extension[0] ) && ( fileentry[i].ext[1] == extension[1] ) && ( fileentry[i].ext[2] == extension[2] ) ) {
+                                    entries++;
+                                    paws_memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
+                                    directorynames[entries].type = 1;
+                                    directorynames[entries].starting_cluster = ( fileentry[i].starting_cluster_high << 16 )+ fileentry[i].starting_cluster_low;
+                                    directorynames[entries].file_size = fileentry[i].file_size;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // MOVE TO THE NEXT CLUSTER OF THE DIRECTORY
+            if( getnextcluster( thisdirectorycluster ) >= 0xffffff8 ) {
+                rereaddirectory = 0;
+            } else {
+                thisdirectorycluster = getnextcluster( thisdirectorycluster );
+            }
+        }
+
+        if( entries == 0xffff ) {
+            // NO ENTRIES FOUND
+            gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
+            gpu_outputstringcentre( RED, 192, 1, "IN THIS DIRECTORY", 1 );
+            beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
+            sleep1khz( 1000, 0 );
+            return(0);
+        } else {
+            sortdirectoryentries( entries );
+            gpu_outputstringcentre( WHITE, 88, 0, "Select directory/file using \x0f", 0 );
+            gpu_outputstringcentre( WHITE, 96, 0, "Scroll left/right using \x1b & \x1a", 0 );
+            gpu_outputstringcentre( WHITE, 104, 0, "Move UP a directory using \x18", 0 );
+            gpu_outputstringcentre( WHITE, 128, 1, message, 0 );
+        }
+
+        while( !rereaddirectory ) {
+            displayfilename( directorynames[present_entry].filename.string, directorynames[present_entry].type );
+
+            unsigned short buttons = get_buttons();
+            while( buttons == 1 ) { buttons = get_buttons(); }
+            while( get_buttons() != 1 ) {} sleep1khz( 100, 0 );
+            if( buttons & 64 ) {
+                // MOVE RIGHT
+                if( present_entry == entries ) { present_entry = 0; } else { present_entry++; }
+            }
+            if( buttons & 32 ) {
+                // MOVE LEFT
+                if( present_entry == 0 ) { present_entry = entries; } else { present_entry--; }
+           }
+            if( buttons & 8 ) {
+                // MOVE UP
+                if( startdirectorycluster != rootdirectorycluster ) { return(0); }
+           }
+            if( buttons & 2 ) {
+                // SELECTED
+                switch( directorynames[present_entry].type ) {
+                    case 1:
+                        if( !(*filesize) ) *filesize = directorynames[present_entry].file_size;
+                        return( directorynames[present_entry].starting_cluster );
+                        break;
+                    case 2:
+                        temp = filebrowser( message, extension, directorynames[present_entry].starting_cluster, rootdirectorycluster, filesize );
+                        if( temp ) {
+                            return( temp );
+                        } else {
+                            rereaddirectory = 1;
+                        }
+                }
+            }
+        }
+    }
+}
+
+unsigned char *sdcard_selectfile( char *message, char *extension, unsigned int *filesize, char *afterloading ) {
+    unsigned int starting_cluster;
+
+    *filesize = 0;
+
+    if( VolumeID == NULL ) {
+        // MEMORY SPACE NOT ALLOCATED FOR FAT32 STRUCTURES
+        BOOTRECORD = malloc( 512 );
+        PARTITIONS = (PartitionTable *)&BOOTRECORD[446];
+        VolumeID = malloc( 512 );
+        FAT32table = malloc( 512 );
+        directorynames = (DirectoryEntry *)malloc( sizeof( DirectoryEntry ) * 256 );
+        sdcard_readsector( 0, BOOTRECORD );
+        sdcard_readsector( PARTITIONS[0].start_sector, (unsigned char *)VolumeID );
+
+        FAT32startsector = PARTITIONS[0].start_sector + VolumeID -> reserved_sectors;
+        FAT32clusters = PARTITIONS[0].start_sector + VolumeID -> reserved_sectors + ( VolumeID -> number_of_fats * VolumeID -> fat32_size_sectors );
+        FAT32clustersize = VolumeID -> sectors_per_cluster;
+
+        directorycluster = malloc( FAT32clustersize * 512 );
+    }
+
+    starting_cluster = filebrowser( message, extension, VolumeID -> startof_root, VolumeID -> startof_root, filesize );
+    if( starting_cluster ) {
+        // ALLOCATE ENOUGH MEMORY TO READ CLUSTERS
+        unsigned char *copyaddress = malloc( ( ( *filesize / ( FAT32clustersize * 512 )  ) + 1 ) * ( FAT32clustersize * 512 ) );
+        if( copyaddress ) {
+            gpu_outputstringcentre( WHITE, 224, 0, "Loading File", 0 );
+            readfile( starting_cluster, copyaddress );
+            gpu_outputstringcentre( WHITE, 224, 0, afterloading, 0 );
+            return( copyaddress );
+        } else {
+            gpu_outputstringcentre( WHITE, 224, 1, "Insufficient Memory", 0 );
+            return(0);
+        }
+    } else {
+        return(0);
+    }
+}

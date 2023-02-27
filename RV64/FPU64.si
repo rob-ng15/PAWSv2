@@ -151,14 +151,11 @@ unit floatcalc(
     input   uint5   opCode,
     input   uint3   function3,
     input   uint5   function7,
-    input   uint64  sourceReg1F,
-    input   uint64  sourceReg1Fx,
+    input   uint64  sourceReg1Fx,                                                                                               // sourceReg1F ( repacked in double bitfields )
     input   uint4   typeAF,
-    input   uint64  sourceReg2F,
+    input   uint64  sourceReg2Fx,                                                                                               // sourceReg2F ( repacked in double bitfields )
     input   uint4   typeBF,
-    input   uint64  sourceReg2Fx,
-    input   uint64  sourceReg3F,
-    input   uint64  sourceReg3Fx,
+    input   uint64  sourceReg3Fx,                                                                                               // sourceReg3F ( repacked in double bitfields )
     input   uint4   typeCF,
 
     input   uint8   FPUflags,
@@ -167,13 +164,16 @@ unit floatcalc(
 ) <reginputs> {
     typeF typeMF( df <: df, a <: FPUmultiply.result );                                                                          // CLASSIFY THE RESULT FROM MULTIPLICATION FOR FUSED OPERATIONS
 
-    uint64  a <:: opCode[2,1] ? sourceReg1F :                                                                                   // SELECT A FOR ADDSUB FROM SOURCEREG1F OR RESULT OF MULTIPLICATION FOR FUSED
-                                df ? { opCode[1,1] ^ FPUmultiply.result[63,1], FPUmultiply.result[0,63] } :                     // SWITCHING SIGN IF A NEGATED MULTIPLY
-                                     { 32hffffffff, opCode[1,1] ^ FPUmultiply.result[31,1], FPUmultiply.result[0,31] };
-    uint64  b <:: opCode[2,1] ? df ? { function7[0,1] ^ sourceReg2F[63,1], sourceReg2F[0,63] } :                                // SELECT B FOR ADDSUB FROM SOURCEREG2F OR SOURCEREG3F FOR FUSED
-                                     { 32hffffffff, function7[0,1] ^ sourceReg2F[31,1], sourceReg2F[0,31] }:                    // SWITCHING SIGN IF SUBTRACTION
-                                df ? { opCode[0,1] ^ sourceReg3F[63,1], sourceReg3F[0,63] } :
-                                     { 32hffffffff, opCode[0,1] ^ sourceReg3F[31,1], sourceReg3F[0,31] };
+    uint64  a <:: opCode[2,1] ? sourceReg1Fx :                                                                                  // SELECT A FOR ADDSUB FROM SOURCEREG1F OR RESULT OF MULTIPLICATION FOR FUSED
+                                df ? { opCode[1,1] ^ fp64( FPUmultiply.result ).sign,                                           // SWITCHING SIGN IF A NEGATED MULTIPLY
+                                       fp64( FPUmultiply.result ).exponent, fp64( FPUmultiply.result ).fraction } :             // IF MULTIPLY REPACKAGE FLOAT INTO DOUBLE BITFIELD
+                                     { opCode[1,1] ^ fp32( FPUmultiply.result ).sign,
+                                       3b000, fp32( FPUmultiply.result ).exponent, fp32( FPUmultiply.result ).fraction, 29b0 };
+    uint64  b <:: opCode[2,1] ? { function7[0,1] ^ fp64( sourceReg2Fx ).sign,                                                   // SELECT B FOR ADDSUB FROM SOURCEREG2F OR SOURCEREG3F FOR FUSED
+                                  fp64( sourceReg2Fx ).exponent, fp64( sourceReg2Fx ).fraction } :                              // SWITCHING SIGN IF SUBTRACTION
+                                { opCode[0,1] ^ fp64( sourceReg3Fx ).sign,                                                      // SELECT B FOR ADDSUB FROM SOURCEREG2F OR SOURCEREG3F FOR FUSED
+                                  fp64( sourceReg3Fx ).exponent, fp64( sourceReg3Fx ).fraction };
+
     uint4   typea <:: opCode[2,1] ? typeAF : typeMF.type;                                                                       // SELECT TYPE OF A FOR ADDSUB
     uint4   typeb <:: opCode[2,1] ? typeBF : typeCF;                                                                            // SELECT TYPE OF B FOR ADDSUB
 
@@ -181,32 +181,24 @@ unit floatcalc(
         df <: df,
         a <: a, typeAF <: typea,
         b <: b, typeBF <: typeb,
-        OF <: MAKERESULT.OF,
-        UF <: MAKERESULT.UF,
-        combined <: MAKERESULT.combined
+        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined
     );
     floatmultiply FPUmultiply(
         df <: df,
         a <: sourceReg1Fx, typeAF <: typeAF,
         b <: sourceReg2Fx, typeBF <: typeBF,
-        OF <: MAKERESULT.OF,
-        UF <: MAKERESULT.UF,
-        combined <: MAKERESULT.combined
+        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined
     );
     floatdivide FPUdivide(
         df <: df,
         a <: sourceReg1Fx, typeAF <: typeAF,
         b <: sourceReg2Fx, typeBF <: typeBF,
-        OF <: MAKERESULT.OF,
-        UF <: MAKERESULT.UF,
-        combined <: MAKERESULT.combined
+        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined
     );
     floatsqrt FPUsqrt(
         df <: df,
-        aRET <: sourceReg1F, a <: sourceReg1Fx, typeAF <: typeAF,
-        OF <: MAKERESULT.OF,
-        UF <: MAKERESULT.UF,
-        combined <: MAKERESULT.combined
+        a <: sourceReg1Fx, typeAF <: typeAF,
+        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined
     );
 
     uint3   rm <:: &FPUflags[5,3] ? function3 : FPUflags[5,3];                                                                  // SET ROUNDING FLAG ( ONLY RNE AND RTZ SUPPORTED )
@@ -578,29 +570,39 @@ unit doroundcombine(
 }
 
 // ADDSUB ADD/SUBTRACT TWO FLOATING POINT NUMBERS ( SUBTRACT ACHIEVED BY ALTERING SIGN OF SECOND INPUT BY CALCULATION CONTROL UNIT ABOVE )
+unit alignfractions(
+    input   uint1   df,
+    input   uint11  expA,
+    input   uint52  fractionA,
+    input   uint11  expB,
+    input   uint52  fractionB,
+    output  uint106 sigA,
+    output  uint106 sigB,
+    output  int13   resultexp
+) <reginputs> {
+    uint1   expAvexpB <: ( expA < expB );                                                                                       // FIND SMALLEST EXPONENT
+    uint11  shift <: ( expAvexpB ? expB : expA ) - ( expAvexpB ? expA :expB );                                                  // FIND THE AMOUNT SMALLER NUMBER NEEDS TO BE SHIFTED FOR ALIGNMENT
+
+    always_after {
+        sigA = { 2b01, fractionA, 52b0 } >> ( expAvexpB ? shift : 0 );                                                          // GENERATE A FROM FRACTION, ALIGN IF SMALLER
+        sigB = { 2b01, fractionB, 52b0 } >> ( expAvexpB ? 0 : shift );                                                          // GENERATE B FROM FRACTION, ALIGN IF SMALLER
+        { resultexp = ( expAvexpB ? expB : expA ) - ( df ? 1022 : 126 ); }                                                      // RESULT EXPONENT IS LARGEST EXPONENT ( +1 FOR OVERFLOW ) ( remove bias )
+    }
+}
 unit dofloataddsub(
     input   uint1   df,
-    input   uint64  a,
     input   uint1   signA,
-    input   uint11  expA,
-    input   uint64  b,
+    input   uint106 sigA,
     input   uint1   signB,
-    input   uint11  expB,
+    input   uint106 sigB,
     output  uint1   resultsign,
-    output  int13   resultexp,
     output  uint106 resultfraction
 ) <reginputs> {
-    uint1   expAvexpB <: ( expA < expB );                                                                                      // FIND SMALLEST EXPONENT
-    uint11  shift <: ( expAvexpB ? expB : expA ) - ( expAvexpB ? expA :expB );                                                 // FIND THE AMOUNT SMALLER NUMBER NEEDS TO BE SHIFTED FOR ALIGNMENT
-    uint106 sigA <:: ( df ? { 2b01, fp64(a).fraction, 52b0 } : { 2b01, fp32(a).fraction, 81b0 } ) >> ( expAvexpB ? shift : 0 ); // GENERATE A FROM FRACTION, ALIGN IF SMALLER
-    uint106 sigB <:: ( df ? { 2b01, fp64(b).fraction, 52b0 } : { 2b01, fp32(b).fraction, 81b0 } ) >> ( expAvexpB ? 0 : shift ); // GENERATE B FROM FRACTION, ALIGN IF SMALLER
-
-    uint1   AvB <:: ( sigA > sigB );                                                                                                // FIND LARGEST FRACTION ( when exponents are equal )
+    uint1   AvB <:: ( sigA > sigB );                                                                                            // FIND LARGEST FRACTION ( when exponents are equal )
     uint1   sign <:: ( signA ^ signB ) ? ( signA ? AvB : ~AvB ) : signA;                                                        // DETERMINE RESULT SIGN
 
     always_after {
         { resultsign = sign; }                                                                                                  // GENERATE RESULT SIGN
-        { resultexp = ( expAvexpB ? expB : expA ) - ( df ? 1022 : 126 ); }                                                      // RESULT EXPONENT IS LARGEST EXPONENT ( +1 FOR OVERFLOW )
 
         { if( signA ^ signB ) {
             resultfraction = ( signA ^ sign ? sigB : sigA ) - ( signA ^ sign ? sigA : sigB );                                   // PERFORM SUBTRACTION
@@ -615,8 +617,8 @@ unit floataddsub(
     output  uint1   busy(0),
     input   uint1   df,                                                                                                         // DOUBLE OR FLOAT
     input   uint64  a,                                                                                                          // A INPUT FOR A+B OR A-B
-    input   uint64  b,                                                                                                          // B INPUT FOR A+B OR A-B
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } FOR A
+    input   uint64  b,                                                                                                          // B INPUT FOR A+B OR A-B
     input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } FOR B
     output  uint1   sumsign,                                                                                                    // RESULT SIGN
     output  int13   sumexp,                                                                                                     // RESULT EXPONENT
@@ -627,60 +629,65 @@ unit floataddsub(
     output  uint5   flags,                                                                                                      // OPERATION FLAGS
     output  uint64  result                                                                                                      // RESULT OF CALCULATION
 ) <reginputs> {
-    uint1   signA <:: df ? fp64( a ).sign : fp32( a ).sign;                                                                     // SIGN A
-    uint11  expA <:: ( df ? fp64(a).exponent : fp32(a).exponent );                                                              // EXP A ( with bias )
-    uint1   signB <:: df ? fp64( b ).sign : fp32( b).sign;                                                                      // SIGN B
-    uint11  expB <:: ( df ? fp64(b).exponent : fp32(b).exponent );                                                              // EXP A ( with bias )
+    repackage_actual ARET( df <: df, a <: a ); repackage_actual BRET( df <: df, a <: b );                                       // REPACKAGE INPUTS FOR EXCEPTION RETURN ( ZERO OR INF )
 
     uint1   IF <:: ( typeAF[3,1] | typeBF[3,1] );                                                                               // DETECT INFINITY
     uint1   NN <:: ( |typeAF[1,2] | |typeBF[1,2] );                                                                             // DETECT NAN
-    uint1   NV <:: ( typeAF[3,1] & typeBF[3,1]) & ( signA ^ signB );                                                            // INVALID IF BOTH INFINITY WITH DIFFERING SIGNS
+    uint1   NV <:: ( typeAF[3,1] & typeBF[3,1]) & ( fp64( a ).sign ^ fp64( b ).sign );                                          // INVALID IF BOTH INFINITY WITH DIFFERING SIGNS
     uint2   ACTION <:: { IF | NN, typeAF[0,1] | typeBF[0,1] };                                                                  // DO ADDITION IF NOT INFINITY, NAN OR ZERO
 
     uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
     uint64  ZERO <:: df ? 0 : 64hffffffff00000000;                                                                              // RETURN ZERO FOR 32/64 bit
 
+    alignfractions ALIGN(
+        df <: df,
+        expA <: fp64( a ).exponent, fractionA <: fp64( a ).fraction,
+        expB <: fp64( b ).exponent, fractionB <: fp64( b ).fraction
+    );
     dofloataddsub ADDSUB(                                                                                                       // 1 IS ADDED TO THE EXPONENT IN CASE OF OVERFLOW, NORMALISING WILL ADJUST
         df <: df,
-        a <: a, signA <: signA, expA <: expA,
-        b <: b, signB <: signB, expB <: expB,
+        signA <: fp64( a ).sign, sigA <: ALIGN.sigA,
+        signB <: fp64( b ).sign, sigB <: ALIGN.sigB,
         resultsign :> sumsign
     );
     donormalexp NORMAL(
-        exp <: ADDSUB.resultexp,
+        exp <: ALIGN.resultexp,
         bitstream <: ADDSUB.resultfraction,
         newexponent :> sumexp,
         normalfraction :> normalfraction
     );
 
+    uint1 update = uninitialised;
+    update := 0;
+
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1; if( ~|ACTION & |ADDSUB.resultfraction ) { ++: busy = 0; } else { busy = 0; }                          // PROVIDE WAIT STATES
-            }
+                busy = 1; ++: ++: ++: update = 1; busy = 0;                                                                         // PROVIDE WAIT STATES
+            } else { busy = 0; }
         }
     }
 
     always_after {
          {
-            switch( ACTION ) {
-                case 2b00: { result = |ADDSUB.resultfraction ? combined : ZERO; }                                               // CALCULATION IS VALID, CHECK FOR ZERO RESULT
-                case 2b01: {
-                    result = ( typeAF[0,1] & typeBF[0,1] ) ? ZERO : df ? ( typeBF[0,1] ? a : b ) :                              // ZERO INPUT, CHECK FOR BOTH OR RETURN OTHER
-                                                                         { 32hffffffff, typeBF[0,1] ? a[0,32] : b[0,32] };
-                }
-                default: {
-                    switch( { IF, NN } ) {
-                        case 2b10: {
-                            result = NV ? qNAN : df ? ( typeAF[3,1] ? a : b ) :                                                 // INFINITY RETURN NAN IF OPPOSITE SIGNS ELSE RETURN INFINITY
-                                                      { 32hffffffff, typeAF[3,1] ? a[0,32] : b[0,32] };
+            if( update ) {                                                                                                      // ONLY LOCK RESULT ON UPDATE FLAG TO ALLOW STABLE RESULT FOPR FUSED OPERATIONS
+                switch( ACTION ) {
+                    case 2b00: { result = |ADDSUB.resultfraction ? combined : ZERO; }                                           // CALCULATION IS VALID, CHECK FOR ZERO RESULT
+                    case 2b01: {
+                        result = ( typeAF[0,1] & typeBF[0,1] ) ? ZERO : ( typeBF[0,1] ? ARET.repack : BRET.repack );            // ZERO INPUT, CHECK FOR BOTH OR RETURN OTHER
+                    }
+                    default: {
+                        switch( { IF, NN } ) {
+                            case 2b10: {
+                                result = NV ? qNAN : ( typeAF[3,1] ? ARET.repack : BRET.repack );                               // INFINITY RETURN NAN IF OPPOSITE SIGNS ELSE RETURN INFINITY
+                            }
+                            default: { result = qNAN; }                                                                         // NAN RETURN NAN
                         }
-                        default: { result = qNAN; }                                                                             // NAN RETURN NAN
                     }
                 }
             }
         }
-        { flags = { NV, 1b0, ~|ACTION & OF, ~|ACTION & UF, 1b0 }; }
+        { if( update ) { flags = { NV, 1b0, ~|ACTION & OF, ~|ACTION & UF, 1b0 }; } }
     }
 }
 
@@ -715,12 +722,14 @@ unit floatmultiply(
     uint64  xINF <:: df ? { sign, 63h7FF0000000000000 } : { 32hffffffff, sign, 31h7f800000 };                                   // RETURN SIGNED INFINITY FOR 32/64 bit
     uint64  xZERO <:: df ? { sign, 63h0 } : { 32hffffffff, sign, 31h0 };                                                        // RETURN SIGNED ZERO FOR 32/64 bit
 
+    uint1   update = uninitialised;
+    update := 0;
 
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1; if( |ACTION ) { busy = 0; } else { ++: ++: busy = 0; }                                                // PROVIDE WAIT STATES
-            }
+                busy = 1; ++: ++: ++: update = 1; busy = 0;                                                                     // PROVIDE WAIT STATES
+            } else { busy = 0; }
         }
     }
 
@@ -730,19 +739,21 @@ unit floatmultiply(
                        ( df ? ( product[105,1] ? 2045 : 2046 ) : ( product[105,1] ? 253 : 254 ) ); }
         { normalfraction = product[ product[105,1] ? 52 : 51, 53 ]; }                                                           // EXTRACT 53 BITS ( 1 extra for rounding )
         {
-            switch( ACTION ) {
-                case 2b00: { result = combined; }                                                                               // MULTIPLICATION IS VALID
-                case 2b01: { result = xZERO; }                                                                                  // ZERO INPUT RETURN ZERO
-                default: {
-                    switch( { IF, ZERO } ) {
-                        case 2b11: { result = qNAN; }                                                                           // INFINITY x ZERO RETURN qNAN
-                        case 2b10: { result = NN ? qNAN : xINF; }                                                               // NAN OR INFITITY RETURN qNAN OR INFINITY
-                        default: { result = qNAN; }                                                                             // NAN OR ZERO RETURN qNAN
+            if( busy ) {                                                                                                        // ONLY LOCK RESULT ON UPDATE FLAG TO ALLOW STABLE RESULT FOPR FUSED OPERATIONS
+                switch( ACTION ) {
+                    case 2b00: { result = combined; }                                                                           // MULTIPLICATION IS VALID
+                    case 2b01: { result = xZERO; }                                                                              // ZERO INPUT RETURN ZERO
+                    default: {
+                        switch( { IF, ZERO } ) {
+                            case 2b11: { result = qNAN; }                                                                       // INFINITY x ZERO RETURN qNAN
+                            case 2b10: { result = NN ? qNAN : xINF; }                                                           // NAN OR INFITITY RETURN qNAN OR INFINITY
+                            default: { result = qNAN; }                                                                         // NAN OR ZERO RETURN qNAN
+                        }
                     }
                 }
             }
         }
-        {  flags = { NV, 1b0, ~|ACTION & OF, ~|ACTION & UF, 1b0 }; }                                                            // RETURN FLAGS
+        { if( update ) { flags = { NV, 1b0, ~|ACTION & OF, ~|ACTION & UF, 1b0 };  } }                                           // RETURN FLAGS
     }
 }
 
@@ -885,7 +896,7 @@ unit prepfsqrt(
     output  uint108 start_ac,
     output  uint106 start_x
 ) <reginputs> {
-    int13   expA  <:: ( fp64( a ).exponent ) - ( df ? 1023 : 127 );                                                             // EXTRACT EXPONENT AND REMOVE BIAS
+    int13   expA  <:: fp64( a ).exponent - ( df ? 1023 : 127 );                                                                 // EXTRACT EXPONENT AND REMOVE BIAS
 
     always_after {
         { squarerootexp = expA >>> 1; }                                                                                         // RESULT EXPONENT IS HALF OF INPUT EXPONENT
@@ -934,7 +945,6 @@ unit floatsqrt(
     output  uint1   busy(0),
     input   uint1   df,                                                                                                         // DOUBLE OR FLOAT
     input   uint64  a,                                                                                                          // A INPUT FOR SQRT(A)
-    input   uint64  aRET,                                                                                                       // A INPUT FOR SQRT(A) RETURN VALUE IF ERROR
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } FOR A
     output  int13   squarerootexp,                                                                                              // RESULT EXPONENT
     output  uint53  normalfraction,                                                                                             // NORMALISED RESULT FRACTION
@@ -945,6 +955,7 @@ unit floatsqrt(
     output  uint64  result                                                                                                      // RESULT OF CALCULATION
 ) <reginputs> {
     uint1   signA <:: fp64( a ).sign;                                                                                           // EXTRACT SIGN
+    repackage_actual ARET( df <: df, a <: a );
 
     uint1   NN <:: |typeAF[1,2];                                                                                                // DETECT NAN INPUT
     uint1   NV <:: typeAF[3,1] | NN | signA;                                                                                    // INVALID IF INFINITY, NAN OR NEGATIVE
@@ -968,7 +979,7 @@ unit floatsqrt(
             if( ACTION ) {
                 result = combined;                                                                                              // CALCULATION VALID
             } else {
-                result = signA ? qNAN : aRET;                                                                                   // CALCULATION INVALID RETURN qNAN IF NEGATIVE ELSE INPUT ( INF OR ZERO )
+                result = signA ? qNAN : ARET.repack;                                                                            // CALCULATION INVALID RETURN qNAN IF NEGATIVE ELSE INPUT ( INF OR ZERO )
             }
         }
         { flags = { NV, 1b0, ACTION & OF, ACTION & UF, 1b0 }; }                                                                 // RETURN FLAGS
