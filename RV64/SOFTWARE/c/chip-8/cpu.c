@@ -734,7 +734,7 @@ void opcode_F( uint16_t instruction ) {
                     machine.MODE = XOCHIP;
                     DEBUG("*** -> XOCHIP ");
                 case XOCHIP:                                                                                                    // XOCHIP UPLOAD 16 BYTE BIT SAMPLE
-                    bitsample_upload( 3, &machine.MEMORY[ I ] );
+                    bitsample_upload_128( 3, &machine.MEMORY[ I ] );
                     DEBUG("load_audio %04x",I);
                     break;
             }

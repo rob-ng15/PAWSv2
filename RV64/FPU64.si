@@ -94,9 +94,7 @@ unit fpuSINGLECYCLE(
 
     floatclass FPUclass(                                                                                                        // GENERATE FCLASS
         df <: df,
-        sourceReg1F <: sourceReg1F,
-        typeAF <: typeAF,
-        sign1F <: sign1F
+        sign1F <: sign1F, sourceReg1F <: sourceReg1F, typeAF <: typeAF
     );
     floateqltle FPUeqltle(                                                                                                      // GENERATE FEQ FLT FLE
         function3 <: function3,
@@ -108,17 +106,14 @@ unit fpuSINGLECYCLE(
     floatminmax FPUminmax(                                                                                                      // GENERATE FMIN FMAX
         df <: df,
         function3 <: function3[0,1],
-        sourceReg1F <: sourceReg1F,
-        sourceReg2F <: sourceReg2F,
-        typeAF <: typeAF,
-        typeBF <: typeBF,
+        sourceReg1F <: sourceReg1F, typeAF <: typeAF,
+        sourceReg2F <: sourceReg2F, typeBF <: typeBF,
         LESS <: FLT
     );
     floatsign FPUsign(                                                                                                          // GENERATE SGNJ FSGNJN FSGNJX
         df <: df,
         function3 <: function3,
-        sourceReg1F <: sourceReg1F,
-        sign1F <: sign1F,
+        sign1F <: sign1F, sourceReg1F <: sourceReg1F,
         sign2F <: sign2F
     );
 
@@ -144,6 +139,7 @@ unit fpuSINGLECYCLE(
 }
 
 // FPU CALCULATION CONTROLLER FOR FUSED ADD SUB MUL DIV SQRT
+// ALL CALCULATION UNITS USE AS INPUTS FLOATS AND DOUBLES PACKED INTO DOUBLE BITFIELDS
 unit floatcalc(
     input   uint1   start,
     output  uint1   busy(0),
@@ -171,7 +167,7 @@ unit floatcalc(
                                        3b000, fp32( FPUmultiply.result ).exponent, fp32( FPUmultiply.result ).fraction, 29b0 };
     uint64  b <:: opCode[2,1] ? { function7[0,1] ^ fp64( sourceReg2Fx ).sign,                                                   // SELECT B FOR ADDSUB FROM SOURCEREG2F OR SOURCEREG3F FOR FUSED
                                   fp64( sourceReg2Fx ).exponent, fp64( sourceReg2Fx ).fraction } :                              // SWITCHING SIGN IF SUBTRACTION
-                                { opCode[0,1] ^ fp64( sourceReg3Fx ).sign,                                                      // SELECT B FOR ADDSUB FROM SOURCEREG2F OR SOURCEREG3F FOR FUSED
+                                { opCode[0,1] ^ fp64( sourceReg3Fx ).sign,
                                   fp64( sourceReg3Fx ).exponent, fp64( sourceReg3Fx ).fraction };
 
     uint4   typea <:: opCode[2,1] ? typeAF : typeMF.type;                                                                       // SELECT TYPE OF A FOR ADDSUB
@@ -358,7 +354,7 @@ unit repackage_wide(                                                            
     output  uint64  repack                                                                                                      // REPACKED FLOATING POINT REGISTER
 ) <reginputs> {
     always_after {
-        repack = df ? a : { fp32( a ).sign, 3b000, fp32(a).exponent, fp32(a).fraction, 29b0 };                                  // IF DOUBLE, RETURN DOUBLE< ELSE RETURN REPACKAGED FLOAT
+        repack = df ? a : { fp32( a ).sign, 3b000, fp32(a).exponent, fp32(a).fraction, 29b0 };                                  // IF DOUBLE, RETURN DOUBLE, ELSE RETURN REPACKAGED FLOAT
     }
 }
 
@@ -378,7 +374,7 @@ unit intlong2floatdouble(                                                       
     uint64  number <:: il ? sign ? S1_abs64 : sourceReg1 : sign ? S1_abs32 : sourceReg1[0,32];                                  // EXTRACT ABSOLUTE VALUE
     clz64 CLZ( number <: number );                                                                                              // COUNT LEADING ZEROS
 
-    int13   exponent <:: ( df ? 1086 : 190 ) - CLZ.zeros;                                                                       // GENERATE EXPONENT AND ADD BIAS
+    int13   exponent <:: { df, 2b00, ~df, 7b0111110 } - CLZ.zeros;                                                              // GENERATE EXPONENT AND ADD BIAS ( 1023/127 + 63 ) - CLZ
     uint64  fraction <:: number << CLZ.zeros;                                                                                   // GENERATE FRACTION BY SHIFTING TO THE LEFT
     uint1   roundingbit <:: fraction[ il ? 10 : 39, 1 ] & ( rm != 3b001 );                                                      // EXTRACT ROUNDING BIT OR ZERO IF ROUND TO ZERO
     uint52  fraction52 <:: fraction[11,52] + roundingbit;                                                                       // GENERATE ROUNDED FRACTION FOR DOUBLE
@@ -404,7 +400,7 @@ unit floatdouble2intlong(                                                       
     output  uint5   FPUflags                                                                                                    // FPU FLAGS
 ) <reginputs> {
     uint1   sign <:: fp64( sourceReg1Fx ).sign;                                                                                 // EXTRACT SIGN BIT
-    int13   exp <:: fp64( sourceReg1Fx ).exponent - ( df ? 1023 : 127 );                                                        // EXTRACT EXPONENT AND REMOVE BIAS
+    int13   exp <:: fp64( sourceReg1Fx ).exponent - { {3{df}}, 7b1111111 };                                                     // EXTRACT EXPONENT AND REMOVE BIAS
     uint65  fraction <:: { 1b1, fp64( sourceReg1Fx ).fraction, 12b0 } >> ( 63 - exp );                                          // EXTRACT FRACTION AND EXTEND TO 65 BITS, SHIFT INTO POSITION
     uint1   roundingbit <:: fraction[0,1] & ( rm != 3b001 );                                                                    // EXTRACT ROUNDING BIT
     uint64  unsignedfraction <:: fraction[1,64] + roundingbit;                                                                  // GENERATE ROUNDED 64 bit ABSOLUTE INTEGER

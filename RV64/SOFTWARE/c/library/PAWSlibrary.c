@@ -232,12 +232,20 @@ void sample_upload( unsigned char channel_number, unsigned short length, unsigne
     if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
 }
 
-// 127 x 1 BIT SAMPLES
-void bitsample_upload( unsigned char channel_number, unsigned char *samples ) {
+// 128 x 1 BIT SAMPLES ( for XO-CHIP emulator )
+void bitsample_upload_128( unsigned char channel_number, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
     *AUDIO_NEW_BITSAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 16, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 16, 1 ); }
+    if( channel_number & 1 ) { for( int i = 0; i < 8; i++ ) DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 16, 1 ); }
+    if( channel_number & 2 ) { for( int i = 0; i < 8; i++ ) DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 16, 1 ); }
+}
+
+// 1024 x 1 BIT SAMPLES
+void bitsample_upload_1024( unsigned char channel_number, unsigned char *samples ) {
+    beep( channel_number, 0, 0, 0 );
+    *AUDIO_NEW_BITSAMPLE = channel_number;
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 128, 1 ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 128, 1 ); }
 }
 
 // 256 ENTRY USER DEFINED WAVEFORMS ( 2 per channel )
