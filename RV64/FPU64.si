@@ -622,19 +622,19 @@ unit floataddsub(
     uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
     uint64  ZERO <:: df ? 0 : 64hffffffff00000000;                                                                              // RETURN ZERO FOR 32/64 bit
 
-    alignfractions ALIGN(
-        df <: df,
+    alignfractions ALIGN(                                                                                                       // ALIGN THE FRACTIONS
+        df <: df,                                                                                                               // MOVE THE FRACTION WITH THE SMALLEST EXPONENT RIGHT
         expA <: fp64( a ).exponent, fractionA <: fp64( a ).fraction,
         expB <: fp64( b ).exponent, fractionB <: fp64( b ).fraction
     );
-    dofloataddsub ADDSUB(                                                                                                       // 1 IS ADDED TO THE EXPONENT IN CASE OF OVERFLOW, NORMALISING WILL ADJUST
-        df <: df,
-        signA <: fp64( a ).sign, sigA <: ALIGN.sigA,
+    dofloataddsub ADDSUB(                                                                                                       // PERFORM THE ADDITION/SUBTRACTION, ACCOUNTING FOR SIGNS
+        df <: df,                                                                                                               // SPECIAL CASE FOR SUBTRACTION WHEN EQUAL EXPONENTS
+        signA <: fp64( a ).sign, sigA <: ALIGN.sigA,                                                                            // AND SECOND FRACTION IS LARGER THAN THE FIRST
         signB <: fp64( b ).sign, sigB <: ALIGN.sigB,
         resultsign :> sumsign
     );
     donormalexp NORMAL(
-        exp <: ALIGN.resultexp,
+        exp <: ALIGN.resultexp,                                                                                                 // 1 IS ADDED TO THE EXPONENT IN CASE OF OVERFLOW, NORMALISING WILL ADJUST
         bitstream <: ADDSUB.resultfraction,
         newexponent :> sumexp,
         normalfraction :> normalfraction
@@ -646,7 +646,7 @@ unit floataddsub(
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1; ++: ++: ++: update = 1; busy = 0;                                                                         // PROVIDE WAIT STATES
+                busy = 1; ++: ++: ++: update = 1; busy = 0;                                                                     // PROVIDE WAIT STATES
             } else { busy = 0; }
         }
     }
@@ -692,7 +692,6 @@ unit floatmultiply(
     output  uint5   flags,                                                                                                      // OPERATION FLAGS
     output  uint64  result                                                                                                      // RESULT OF CALCULATION
 ) <reginputs> {
-    uint1   sign <:: fp64( a ).sign ^ fp64( b ).sign;                                                                           // GENERATE PRODUCT SIGN BY XOR OF SIGNS
     uint106  product <:: { 1b1, fp64( a ).fraction } * { 1b1, fp64( b ).fraction };                                             // CALCULATE THE PRODUCT BY MUTLIPLYING LEFT ALIGNED FRACTIONS
 
     uint1   ZERO <:: (typeAF[0,1] | typeBF[0,1] );                                                                              // DETECT ZERO
@@ -702,8 +701,8 @@ unit floatmultiply(
     uint2   ACTION <:: { IF | NN, ZERO };
 
     uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
-    uint64  xINF <:: df ? { sign, 63h7FF0000000000000 } : { 32hffffffff, sign, 31h7f800000 };                                   // RETURN SIGNED INFINITY FOR 32/64 bit
-    uint64  xZERO <:: df ? { sign, 63h0 } : { 32hffffffff, sign, 31h0 };                                                        // RETURN SIGNED ZERO FOR 32/64 bit
+    uint64  xINF <:: df ? { productsign, 63h7FF0000000000000 } : { 32hffffffff, productsign, 31h7f800000 };                     // RETURN SIGNED INFINITY FOR 32/64 bit
+    uint64  xZERO <:: df ? { productsign, 63h0 } : { 32hffffffff, productsign, 31h0 };                                          // RETURN SIGNED ZERO FOR 32/64 bit
 
     uint1   update = uninitialised;
     update := 0;
@@ -717,10 +716,9 @@ unit floatmultiply(
     }
 
     always_after {
-        { productsign = sign; }
-        { productexp = ( fp64( a ).exponent + fp64( b ).exponent ) -                                                            // ADD EXPONENTS FOR RESULT EXPONENT, REMOVE BIAS AND ( +1 if overflow )
-                       ( df ? ( product[105,1] ? 2045 : 2046 ) : ( product[105,1] ? 253 : 254 ) ); }
-        { normalfraction = product[ product[105,1] ? 52 : 51, 53 ]; }                                                           // EXTRACT 53 BITS ( 1 extra for rounding )
+        { productsign = fp64( a ).sign ^ fp64( b ).sign; }                                                                      // GENERATE PRODUCT SIGN BY XOR OF SIGNS
+        { productexp = ( fp64( a ).exponent + fp64( b ).exponent ) - { {3{df}}, 6b111111, ~product[105,1], product[105,1] }; }  // ADD EXPONENTS FOR RESULT EXPONENT, REMOVE BIAS AND ( +1 if overflow )
+        { normalfraction = product[ { 3b110, product[105,1], {2{~product[105,1]}} }, 53 ]; }                                    // EXTRACT 53 BITS ( 1 extra for rounding ) ( from bit 51 or 52 )
         {
             if( busy ) {                                                                                                        // ONLY LOCK RESULT ON UPDATE FLAG TO ALLOW STABLE RESULT FOPR FUSED OPERATIONS
                 switch( ACTION ) {
@@ -879,7 +877,7 @@ unit prepfsqrt(
     output  uint108 start_ac,
     output  uint106 start_x
 ) <reginputs> {
-    int13   expA  <:: fp64( a ).exponent - ( df ? 1023 : 127 );                                                                 // EXTRACT EXPONENT AND REMOVE BIAS
+    int13   expA  <:: fp64( a ).exponent - { {3{df}}, 7b1111111 };                                                              // EXTRACT EXPONENT AND REMOVE BIAS ( 1023/127)
 
     always_after {
         { squarerootexp = expA >>> 1; }                                                                                         // RESULT EXPONENT IS HALF OF INPUT EXPONENT

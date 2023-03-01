@@ -66,10 +66,10 @@ PRJOBJ=\
 	WinQuake/net_loop.o \
 	WinQuake/net_main.o \
 	WinQuake/net_vcr.o \
-	WinQuake/in_paws.o \
+	WinQuake/in_null.o \
 	WinQuake/net_none.o \
 	WinQuake/snd_null.o \
-	WinQuake/sys_paws.o \
-	WinQuake/vid_paws.o
+	WinQuake/sys_mc1.o \
+	WinQuake/vid_mc1.o
 
 include ../makefile-paws.inc

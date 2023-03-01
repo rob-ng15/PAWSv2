@@ -21,20 +21,18 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 #include "errno.h"
+#include "mc1.h"
 
 #include <stdint.h>
 #include <sys/time.h>
 
 #include <PAWSlibrary.h>
 
-// Memory config.
-#define HEAP_SIZE_MB 16
-
 qboolean isDedicated;
 
 static int Sys_TranslateKey (unsigned keycode)
 {
-/*	// clang-format off
+	// clang-format off
     switch (keycode)
     {
         case KB_SPACE:         return K_SPACE;
@@ -113,20 +111,24 @@ static int Sys_TranslateKey (unsigned keycode)
         default:
             return 0;
     }
-*/	// clang-format on
+	// clang-format on
 }
+
+static unsigned s_keyptr;
 
 static qboolean Sys_PollKeyEvent (void)
 {
-	unsigned keycode;
+	unsigned keyptr, keycode;
 	int quake_key;
 
 	// Check if we have any new keycode from the keyboard.
-	if (!ps2_event_available())
+	keyptr = GET_MMIO (KEYPTR);
+	if (s_keyptr == keyptr)
 		return false;
 
 	// Get the next keycode.
-	keycode = ps2_event_get();
+	++s_keyptr;
+	keycode = GET_KEYBUF (s_keyptr % KEYBUF_SIZE);
 
 	// Translate the MC1 keycode to a Quake keycode.
 	quake_key = Sys_TranslateKey (keycode & 0x1ff);
@@ -291,8 +293,6 @@ void Sys_Quit (void)
 
 double Sys_FloatTime (void)
 {
-#if 1
-	// MRISC32 simulator timing: Use gettimeofday().
 	static qboolean s_first = true;
 	static struct timeval s_t0;
 	struct timeval t;
@@ -307,33 +307,6 @@ double Sys_FloatTime (void)
 	t_sec = (float)(t.tv_sec - s_t0.tv_sec) +
 			0.000001F * (float)(t.tv_usec - s_t0.tv_usec);
 	return (double)t_sec;
-#else
-	// MC1 timing: Use CLKCNTHI:CLKCNTLO MMIO registers directly.
-	static qboolean s_first = true;
-	static double s_inv_clk;
-	uint32_t hi_old, hi, lo;
-	uint64_t cycles;
-	double t;
-
-	// Get 1 / cycles per s.
-	if (s_first)
-	{
-		s_inv_clk = 1.0 / (double)GET_MMIO (CPUCLK);
-		s_first = false;
-	}
-
-	// Get number of CPU cycles (64-bit number).
-	hi = GET_MMIO (CLKCNTHI);
-	do
-	{
-		hi_old = hi;
-		lo = GET_MMIO (CLKCNTLO);
-		hi = GET_MMIO (CLKCNTHI);
-	} while (hi != hi_old);
-
-	cycles = (((uint64_t)hi) << 32) | (uint64_t)lo;
-	return s_inv_clk * (double)cycles;
-#endif
 }
 
 char *Sys_ConsoleInput (void)
@@ -367,18 +340,23 @@ void main (int argc, char **argv)
 	double oldtime, newtime;
 	float time;
 
-	parms.memsize = HEAP_SIZE_MB * 1024 * 1024;
+#ifdef MC1_SDK
+	mc1newlib_init(MC1NEWLIB_ALL & ~MC1NEWLIB_CONSOLE);
+#endif
+
+	parms.memsize = 8 * 1024 * 1024;
 	parms.membase = malloc (parms.memsize);
-	parms.basedir = ".";
+	parms.basedir = "/DEMO";
+	fprintf (stderr,"Host_Init, membase = 0x%016lx\n",(long)parms.membase);
 
 	COM_InitArgv (argc, argv);
 
 	parms.argc = com_argc;
 	parms.argv = com_argv;
 
-	fprintf (stderr,"Host_Init\n");
 	Host_Init (&parms);
 
+	s_keyptr = GET_MMIO (KEYPTR);
 	oldtime = Sys_FloatTime () - 0.1;
 	while (1)
 	{
@@ -391,6 +369,7 @@ void main (int argc, char **argv)
 		else
 			oldtime += (double)time;
 
+		fprintf(stderr,"Calling Host_Frame( %f )\n",time);
 		Host_Frame (time);
 	}
 }
