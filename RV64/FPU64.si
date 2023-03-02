@@ -141,22 +141,21 @@ unit fpuSINGLECYCLE(
 // FPU CALCULATION CONTROLLER FOR FUSED ADD SUB MUL DIV SQRT
 // ALL CALCULATION UNITS USE AS INPUTS FLOATS AND DOUBLES PACKED INTO DOUBLE BITFIELDS
 unit floatcalc(
-    input   uint1   start,
-    output  uint1   busy(0),
-    input   uint1   df,
-    input   uint5   opCode,
-    input   uint3   function3,
-    input   uint5   function7,
+    input   uint1   start,                                                                                                      // START FLAG
+    output  uint1   busy(0),                                                                                                    // BUSY FLAG
+    input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
+    input   uint5   opCode,                                                                                                     // OPCODE, SINGLE OR FUSED OPERATIONS
+    input   uint3   function3,                                                                                                  // ROUNDING MODE FLAG
+    input   uint5   function7,                                                                                                  // DETERMINE SINGLE OPERATION
     input   uint64  sourceReg1Fx,                                                                                               // sourceReg1F ( repacked in double bitfields )
-    input   uint4   typeAF,
+    input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT sourceReg1F
     input   uint64  sourceReg2Fx,                                                                                               // sourceReg2F ( repacked in double bitfields )
-    input   uint4   typeBF,
+    input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT sourceReg2F
     input   uint64  sourceReg3Fx,                                                                                               // sourceReg3F ( repacked in double bitfields )
-    input   uint4   typeCF,
-
-    input   uint8   FPUflags,
-    output  uint5   FPUnewflags,
-    output  uint64  result
+    input   uint4   typeCF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT sourceReg3F
+    input   uint8   FPUflags,                                                                                                   // PRESENT FPUFLAGS
+    output  uint5   FPUnewflags,                                                                                                // NEW FPUFLAGS
+    output  uint64  result                                                                                                      // CALCULATION RESULT
 ) <reginputs> {
     typeF typeMF( df <: df, a <: FPUmultiply.result );                                                                          // CLASSIFY THE RESULT FROM MULTIPLICATION FOR FUSED OPERATIONS
 
@@ -359,7 +358,7 @@ unit repackage_wide(                                                            
 }
 
 // CONVERSIONS TO HANDLE FCVT.dest.source
-unit intlong2floatdouble(                                                                                                       // 32/64 BIT INTEGER TO 32/64 BIT FLOATING POINT, NAN BOXED FOR 32 BIT FLOATING POINT
+unit intlong2floatdouble(                                                                                                       // 32/64 BIT INTEGER TO 32/64 BIT FLOATING POINT
     input   uint3   rm,                                                                                                         // ROUDNING MODE
     input   uint1   dounsigned,                                                                                                 // UNSIGNED CONVERSION FLAG
     input   uint1   il,                                                                                                         // FROM INTEGER == 0 OR LONG == 1
@@ -379,19 +378,22 @@ unit intlong2floatdouble(                                                       
     uint1   roundingbit <:: fraction[ il ? 10 : 39, 1 ] & ( rm != 3b001 );                                                      // EXTRACT ROUNDING BIT OR ZERO IF ROUND TO ZERO
     uint52  fraction52 <:: fraction[11,52] + roundingbit;                                                                       // GENERATE ROUNDED FRACTION FOR DOUBLE
     uint23  fraction23 <:: fraction[40,23] + roundingbit;                                                                       // GENERATE ROUNDED FRACTION FOR FLOAT
-    uint1   NZ <:: |( il ? sourceReg1 : sourceReg1[0,32] );                                                                     // CHECK IF NOT ZERO
+
+    uint64  ZERO <:: df ? 0 : 64hffffffff00000000;                                                                              // RETURN ZERO FOR 32/64 bit
+
+    uint1   IZ <:: ~|( il ? sourceReg1 : sourceReg1[0,32] );                                                                     // CHECK IF NOT ZERO
     uint1   NX <:: df ? ( il ? ( CLZ.zeros < 10 ) : 0 ) : ( CLZ.zeros < 40 );                                                   // DETERMINE IF NOT EXACT, TOO MANY BITS
 
     always_after {
-        { result =  df ? NZ ? { sign, exponent[0,11], fraction52 } : 64h00000000000 :                                           // GENERATE DOUBLE OR ZERO
-                         NZ ? { 32hffffffff, sign, exponent[0,8], fraction23 } : 64hffffffff00000000; }                         // GENERATE FLOAT OR ZERO ( NAN boxed )
+        { result =  IZ ? ZERO : df ? { sign, exponent[0,11], fraction52 } :                                                     // GENERATE ZERO OR DOUBLE
+                                     { 32hffffffff, sign, exponent[0,8], fraction23 }; }                                        // GENERATE FLOAT ( NAN boxed )
         { FPUflags = NX; }                                                                                                      // FLAGS
     }
 }
 
-unit floatdouble2intlong(                                                                                                       // 32/64 BIT FLOATING POINT TO 32/64 BIT INTEGER, SIGN EXTENSION FOR SIGNED CONVERSIONS
+unit floatdouble2intlong(                                                                                                       // 32/64 BIT FLOATING POINT TO 32/64 BIT INTEGER
     input   uint3   rm,                                                                                                         // ROUDNING MODE
-    input   uint1   dounsigned,                                                                                                 // UNSINGED CONVERSION FLAG
+    input   uint1   dounsigned,                                                                                                 // UNSIGNED CONVERSION FLAG
     input   uint1   il,                                                                                                         // TO INTEGER == 0 OR LONG == 1
     input   uint1   df,                                                                                                         // FROM DOUBLE == 1 OR FLOAT == 0
     input   uint64  sourceReg1Fx,                                                                                               // REGISTER VALUE TO CONVERT ( repacke into double bitfields )
@@ -420,7 +422,8 @@ unit floatdouble2intlong(                                                       
                 } else {
                     result = NV ? sign ? min : max :                                                                            // MIN FOR SIGNED OUT OF RANGE, MAX FOR UNSIGNED OUT OF RANGE
                              il ? sign ? -unsignedfraction : unsignedfraction :                                                 // RETURN CORRECTLY SIGNED RESULT
-                                  sign ? -unsignedfraction32 : unsignedfraction32;
+                                  sign ? -unsignedfraction32 : dounsigned ? unsignedfraction32 :                                // IF UNSIGNED, NO SIGN EXTENSION
+                                                               { {32{unsignedfraction32[31,1]}}, unsignedfraction32 };          // IF SIGN,SIGN EXTEND 32 BIT INTEGER
                 }
             }
         }
