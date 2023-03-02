@@ -50,8 +50,8 @@ unit floatminmax(                                                               
     output  uint64  MINMAX,                                                                                                     // RESULT OF MIN/MAX(a,b)
     output  uint5   flags                                                                                                       // FLOATING POINT FLAGS FOR MIN/MAX
 ) <reginputs> {
-    uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
     uint1   NAN <:: |( typeAF[1,2] | typeBF[1,2] );                                                                             // DETECT NAN INPUT
+    uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
 
     always_after {
         { MINMAX = NAN ? qNAN : ( function3[0,1] ^ LESS ) ? ( df ? sourceReg1F : { 32hffffffff, sourceReg1F[0,32] } ) :         // EITHER INPUT NAN RETURN qNAN ELSE DO MIN MAX AND SELECT REGISTER
@@ -160,10 +160,9 @@ unit floatcalc(
     typeF typeMF( df <: df, a <: FPUmultiply.result );                                                                          // CLASSIFY THE RESULT FROM MULTIPLICATION FOR FUSED OPERATIONS
 
     uint64  a <:: opCode[2,1] ? sourceReg1Fx :                                                                                  // SELECT A FOR ADDSUB FROM SOURCEREG1F OR RESULT OF MULTIPLICATION FOR FUSED
-                                df ? { opCode[1,1] ^ fp64( FPUmultiply.result ).sign,                                           // SWITCHING SIGN IF A NEGATED MULTIPLY
-                                       fp64( FPUmultiply.result ).exponent, fp64( FPUmultiply.result ).fraction } :             // IF MULTIPLY REPACKAGE FLOAT INTO DOUBLE BITFIELD
-                                     { opCode[1,1] ^ fp32( FPUmultiply.result ).sign,
-                                       3b000, fp32( FPUmultiply.result ).exponent, fp32( FPUmultiply.result ).fraction, 29b0 };
+                                { opCode[1,1] ^ FPUmultiply.result[ { df, 5b11111 }, 1 ],                                       // SWITCHING SIGN IF A NEGATED MULTIPLY
+                                  df ? fp64( FPUmultiply.result ).exponent : { 3b000, fp32( FPUmultiply.result ).exponent },    // IF MULTIPLY REPACKAGE FLOAT INTO DOUBLE BITFIELD
+                                  df ? fp64( FPUmultiply.result ).fraction : { fp32( FPUmultiply.result ).fraction, 29b0 } };
     uint64  b <:: opCode[2,1] ? { function7[0,1] ^ fp64( sourceReg2Fx ).sign,                                                   // SELECT B FOR ADDSUB FROM SOURCEREG2F OR SOURCEREG3F FOR FUSED
                                   fp64( sourceReg2Fx ).exponent, fp64( sourceReg2Fx ).fraction } :                              // SWITCHING SIGN IF SUBTRACTION
                                 { opCode[0,1] ^ fp64( sourceReg3Fx ).sign,
@@ -316,8 +315,8 @@ unit typeF(
     input   uint64  a,                                                                                                          // REGISTER VALUE TO CHECK
     output  uint4   type                                                                                                        // { INF sNAN qNAN ZERO } OF INPUT REGISTER
 ) <reginputs> {
-    uint1   expFF <:: df ? &fp64(a).exponent : &fp32(a).exponent;                                                               // CHECK FOR EXP = ALL 1s ( signals INF/NAN )
-    uint1   zeroFRACTION <:: df ? ~|fp64(a).fraction : ~|fp32(a).fraction;                                                      // FRACTION == 0, INF, == 100... qNAN, == 0xxx... ( xxx... != 0 ) sNAN
+    uint1   expFF <:: &( df ? fp64(a).exponent : fp32(a).exponent );                                                            // CHECK FOR EXP = ALL 1s ( signals INF/NAN )
+    uint1   zeroFRACTION <:: ~|( df ? fp64(a).fraction : fp32(a).fraction );                                                    // FRACTION == 0, INF, == 100... qNAN, == 0xxx... ( xxx... != 0 ) sNAN
     uint1   boxed <:: &a[32,32];                                                                                                // NAN-boxing, upper 32 bits all 1s
 
     always_after {
@@ -515,7 +514,7 @@ unit overflow(
     input   int13   exponent,
     output! uint1   OF
 ) <reginputs> {
-    always_after { OF = exponent > { {3{df}}, 8b11111110 }; }                                                            // OVERFLOW IF EXPONENT PLUS BIAS IS > 2 * BIAS
+    always_after { OF = exponent > { {3{df}}, 8b11111110 }; }                                                                   // OVERFLOW IF EXPONENT PLUS BIAS IS > 2 * BIAS
 }
 unit newexp(
     input   uint1   df,
@@ -541,8 +540,17 @@ unit doroundcombine(
 ) <reginputs> {
     uint1   lsb <:: ( rm == 3b001 ) ? 0 : bitstream[ df ? 0 : 29, 1 ];                                                          // EXTRACT TRAILING BIT AFTER FRACTIONAL PART FOR ROUNDING OR 0 IF RTZ
     uint52  roundfraction <:: df ? ( bitstream[1,52] + lsb ) :  ( bitstream[30,23] + lsb );                                     // EXTRACT RESULT FRACTION AND PERFORM ROUNDING
-    newexp EXP( df <: df, lsb <: lsb, roundfraction <: roundfraction, exponent <: exponent );                                   // GENERATE RESULT EXP, ADJUSTED IF ROUNDING OVERFLOWED
-    overflow OVER( df <: df, exponent <: EXP.newexponent, OF :> OF );                                                           // CHECK FOR OVERFLOW ( exponent > 2 * bias )
+    newexp EXP(                                                                                                                 // GENERATE RESULT EXP, ADJUSTED IF ROUNDING OVERFLOWED
+        df <: df,
+        lsb <: lsb,
+        roundfraction <: roundfraction,
+        exponent <: exponent
+    );
+    overflow OVER(                                                                                                              // CHECK FOR OVERFLOW ( exponent > 2 * bias )
+        df <: df,
+        exponent <: EXP.newexponent,
+        OF :> OF
+    );
 
     uint64  xZERO <:: df ? { sign, 63h0 } : { 32hffffffff, sign, 31h0 };                                                        // RETURN SIGNED ZERO FOR 32/64 bit
     uint64  xINF <:: df ? { sign, 63h7FF0000000000000 } : { 32hffffffff, sign, 31h7f800000 };                                   // RETURN SIGNED INFINITY FOR 32/64 bit
@@ -659,14 +667,10 @@ unit floataddsub(
             if( update ) {                                                                                                      // ONLY LOCK RESULT ON UPDATE FLAG TO ALLOW STABLE RESULT FOPR FUSED OPERATIONS
                 switch( ACTION ) {
                     case 2b00: { result = |ADDSUB.resultfraction ? combined : ZERO; }                                           // CALCULATION IS VALID, CHECK FOR ZERO RESULT
-                    case 2b01: {
-                        result = ( typeAF[0,1] & typeBF[0,1] ) ? ZERO : ( typeBF[0,1] ? ARET.repack : BRET.repack );            // ZERO INPUT, CHECK FOR BOTH OR RETURN OTHER
-                    }
+                    case 2b01: { result = ( typeAF[0,1] & typeBF[0,1] ) ? ZERO : ( typeBF[0,1] ? ARET.repack : BRET.repack ); } // ZERO INPUT, CHECK FOR BOTH OR RETURN OTHER
                     default: {
                         switch( { IF, NN } ) {
-                            case 2b10: {
-                                result = NV ? qNAN : ( typeAF[3,1] ? ARET.repack : BRET.repack );                               // INFINITY RETURN NAN IF OPPOSITE SIGNS ELSE RETURN INFINITY
-                            }
+                            case 2b10: { result = NV ? qNAN : ( typeAF[3,1] ? ARET.repack : BRET.repack ); }                    // INFINITY RETURN NAN IF OPPOSITE SIGNS ELSE RETURN INFINITY
                             default: { result = qNAN; }                                                                         // NAN RETURN NAN
                         }
                     }
