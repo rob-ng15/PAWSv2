@@ -58,10 +58,14 @@ extern void set_volume( unsigned char left, unsigned char right );
 extern void await_beep( unsigned char );
 extern unsigned short get_beep_active( unsigned char );
 extern void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
+extern void bitsample_upload_128( unsigned char channel_number, unsigned char *samples );
+extern void bitsample_upload_1024( unsigned char channel_number, unsigned char *samples );
+extern void wavesample_upload( unsigned char channel_number, unsigned char wave, unsigned char *samples );
 
 // DISPLAY
- void await_vblank( void );
- void await_vblank_finish( void );
+extern int is_vblank( void );
+extern void await_vblank( void );
+extern void await_vblank_finish( void );
 extern void screen_mode( unsigned char, unsigned char, unsigned char );
 extern void screen_dimmer( unsigned char dimmerlevel );
 extern void bitmap_display( unsigned char );
@@ -204,6 +208,18 @@ extern void paws_memset_rectangle( void *restrict destination, int value, size_t
 extern void *paws_memset32( void *restrict destination, int value, size_t count );
 extern void paws_memset_rectangle32( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles );
 #endif
+
+extern float paws_cosf (float);
+extern float paws_sinf (float);
+extern float paws_tanf (float);
+extern float paws_powf (float, float);
+extern float paws_sqrtf(float);
+
+#define cosf(x) paws_cosf(x)
+#define sinf(x) paws_sinf(x)
+#define tanf(x) paws_tanf(x)
+#define powf(x,y) paws_powf(x,y)
+#define scalbnf(x,y) paws_scalbnf(x,y)
 
 #define __PAWSLIBRARY__
 #endif

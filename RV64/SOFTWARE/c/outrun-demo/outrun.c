@@ -494,21 +494,21 @@ void drawtunnelface( float px, float py, float scale ) {
 
 void drawroad( float x1, float y1, float scale1, float x2, float y2, float scale2, int sumct, int tnl ) {
     // DRAW GRASS
-    if( !tnl ) gpu_rectangle( (sumct%2) ? GREEN6 : GREEN5, 0, y1, 319, y2 );
+    if( !tnl ) gpu_rectangle( (sumct&1) ? GREEN6 : GREEN5, 0, y1, 319, y2 );
 
     short w1 = 3 * scale1, w2 = 3 * scale2;
     drawtrapezium( tnl ? GREY2 : GREY3, x1, y1, w1, x2, y2, w2 );
 
     // CENTRE LINE MARKINGS
-    if( !(sumct % 4 ) ) {
+    if( !(sumct&3) ) {
         short mw1 = .1 * scale1, mw2 = .1 * scale2;
         drawtrapezium( tnl ? GREY5 : WHITE, x1, y1, mw1, x2, y2, mw2 );
     }
 
     // SHOULDER MARKINGS
     short sw1 = .2 * scale1, sw2 = .2 * scale2;
-    drawtrapezium( (sumct%2) ? tnl ? GREY5 : WHITE : tnl ? RED2 : RED, x1-w1, y1, sw1 ,x2-w2, y2, sw2 );
-    drawtrapezium( (sumct%2) ? tnl ? GREY5 : WHITE : tnl ? RED2 : RED, x1+w1, y1, sw1, x2+w2, y2, sw2 );
+    drawtrapezium( (sumct&1) ? tnl ? GREY5 : WHITE : tnl ? RED2 : RED, x1-w1, y1, sw1 ,x2-w2, y2, sw2 );
+    drawtrapezium( (sumct&1) ? tnl ? GREY5 : WHITE : tnl ? RED2 : RED, x1+w1, y1, sw1, x2+w2, y2, sw2 );
 }
 
 void draw() {
@@ -563,7 +563,7 @@ void draw() {
 
         sumct = corner[cnr] + seg - 1;
         if( tnl ) {
-            unsigned char wallcol = ( sumct % 4 < 2 ) ? BLUE1 : BLUE2;
+            unsigned char wallcol = ( (sumct&3) < 2 ) ? BLUE1 : BLUE2;
             gettunnelrectangle( p.x, p.y, p.z, &x1, &y1, &x2, &y2 );
             gettunnelrectangle( pp.x, pp.y, pp.z, &px2, &py1, &px2, &py2 );
             if( y1 > py1 ) gpu_rectangle( wallcol, px1, py1, px2-1, y1-1 );

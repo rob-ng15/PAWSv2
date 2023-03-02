@@ -344,6 +344,7 @@ void swapentries( unsigned int i, unsigned int j ) {
     memcpy( &directorynames[j], &temporary, sizeof( DirectoryEntry ) );
 }
 
+static inline long _rv64_rev8(long rs1) { long rd; __asm__ ("rev8     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
 void sortdirectoryentries( unsigned int entries ) {
     if( !entries )
         return;
@@ -357,10 +358,7 @@ void sortdirectoryentries( unsigned int entries ) {
                 swapentries(i,i+1);
                 changes++;
             }
-            if( ( directorynames[i].type == directorynames[i+1].type ) &&
-                ( ( directorynames[i].filename[0] > directorynames[i+1].filename[0] ) ||
-                ( ( directorynames[i].filename[0] == directorynames[i+1].filename[0] ) && ( directorynames[i].filename[1] > directorynames[i+1].filename[1] ) ) )
-            ) {
+            if( ( directorynames[i].type == directorynames[i+1].type ) && ( _rv64_rev8( directorynames[i].filename.sortvalue ) > _rv64_rev8( directorynames[i+1].filename.sortvalue ) ) ) {
                 swapentries(i,i+1);
                 changes++;
             }
@@ -435,7 +433,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
         sortdirectoryentries( entries );
 
         while( !rereaddirectory ) {
-            displayfilename( directorynames[present_entry].filename, directorynames[present_entry].type );
+            displayfilename( directorynames[present_entry].filename.string, directorynames[present_entry].type );
 
             // WAIT FOR BUTTON, AND WAIT FOR RELEASE TO STOP ACCIDENTAL DOUBLE PRESSES
             unsigned short buttons = get_buttons();

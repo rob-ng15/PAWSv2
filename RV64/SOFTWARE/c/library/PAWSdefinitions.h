@@ -206,6 +206,9 @@ struct copper_command {
 #define WAVE_TRIANGLE 2
 #define WAVE_SINE 3
 #define WAVE_NOISE 4
+#define WAVE_UD1 5
+#define WAVE UD2 6
+#define WAVE_BITS 7
 #define WAVE_SAMPLE 8
 #define SAMPLE_REPEAT 16
 
@@ -245,68 +248,6 @@ struct DrawList2D {
     union Point2D   xy3;                // Vertex 3 or line width
     union Point2D   xy4;                // Vertex 4
 };
-
-// FAT32 File System for the file selector
-typedef struct {
-    unsigned char first_byte;
-    unsigned char start_chs[3];
-    unsigned char partition_type;
-    unsigned char end_chs[3];
-    unsigned int start_sector;
-    unsigned int length_sectors;
-} __attribute((packed)) PartitionTable;
-
-typedef struct {
-    unsigned char   jmp[3];
-    unsigned char   oem[8];
-    unsigned short  sector_size;
-    unsigned char   sectors_per_cluster;
-    unsigned short  reserved_sectors;
-    unsigned char   number_of_fats;
-    unsigned short  root_dir_entries;
-    unsigned short  total_sectors_short; // if zero, later field is used
-    unsigned char   media_descriptor;
-    unsigned short  fat16_size_sectors;
-    unsigned short  sectors_per_track;
-    unsigned short  number_of_heads;
-    unsigned int    hidden_sectors;
-    unsigned int    total_sectors_long;
-    unsigned int    fat32_size_sectors;
-    unsigned short  fat32_flags;
-    unsigned short  version;
-    unsigned int    startof_root;
-    unsigned short  filesystem_information;
-    unsigned short  backupboot_sector;
-    unsigned char   reserved[12];
-    unsigned char   logical_drive_number;
-    unsigned char   unused;
-    unsigned char   extended_signature;
-    unsigned int    volume_id;
-    char            volume_label[11];
-    char            fs_type[8];
-    char            boot_code[420];
-    unsigned short  boot_sector_signature;
-} __attribute((packed)) Fat32VolumeID;
-
-typedef struct {
-    unsigned char   filename[8];
-    unsigned char   ext[3];
-    unsigned char   attributes;
-    unsigned char   reserved[8];
-    unsigned short  starting_cluster_high;
-    unsigned short  modify_time;
-    unsigned short  modify_date;
-    unsigned short  starting_cluster_low;
-    unsigned int    file_size;
-} __attribute((packed)) FAT32DirectoryEntry;
-
-typedef struct {
-    unsigned char   filename[8];
-    unsigned char   ext[3];
-    unsigned char   type;
-    unsigned int    starting_cluster;
-    unsigned int    file_size;
-} __attribute((packed)) DirectoryEntry;
 
 // PAWS SYSTEMCLOCK
 typedef struct paws_timeval {

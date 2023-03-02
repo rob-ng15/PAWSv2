@@ -46,11 +46,13 @@ unit PAWSCPU(
     uint64  result <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.result : RV64CONTROL.IS_FAST ? EXECUTEFAST.result : EXECUTESLOW.result;
     uint1   frd <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.frd : RV64CONTROL.writeRegisterF;
     uint1   write <:: COMMIT & RV64CONTROL.writeRegister;
+    uint1   COMMIT_SMT = uninitialised;
     control RV64CONTROL <@clock_CPUdecoder> (
         cacheselect <: cacheselect,
         DMAACTIVE <: DMA.DMAACTIVE,
         DMAACCESSSIZE <: DMA.DMAACCESSSIZE,
         SMT <:: SMT,
+        COMMIT_SMT <: COMMIT_SMT,
         frd <: frd,
         write <: write,
         result <: result,
@@ -58,6 +60,15 @@ unit PAWSCPU(
         instruction <: instruction,
         compressed <: compressed,
         accesssize :> accesssize
+    );
+
+    float_control RV64CONTROLF <@clock_CPUdecoder> (
+        SMT <:: SMT,
+        COMMIT_SMT <: COMMIT_SMT,
+        frd <: frd,
+        write <: write,
+        result <: result,
+        instruction <: instruction
     );
 
     // EXECUTE SINGLE CYLE INSTRUCTIONS, MOST OF BASE PLUS INTEGER MULTIPLICATION
@@ -71,7 +82,7 @@ unit PAWSCPU(
         rs2 <: RV64CONTROL.rs2,
         sourceReg1 <: RV64CONTROL.sourceReg1,
         sourceReg2 <: RV64CONTROL.sourceReg2,
-        sourceReg2F <: RV64CONTROL.sourceReg2F,
+        sourceReg2F <: RV64CONTROLF.sourceReg2F,
         immediateValue <: RV64CONTROL.immediateValue,
         memoryinput <: memoryinput,
         AUIPCLUI <: RV64CONTROL.AUIPCLUI,
@@ -91,14 +102,9 @@ unit PAWSCPU(
         opCode <: RV64CONTROL.opCode,
         function3 <: RV64CONTROL.function3,
         function7 <: RV64CONTROL.function7,
-        rs1 <: RV64CONTROL.rs1,
-        rs2 <: RV64CONTROL.rs2,
-        sourceReg1 <: RV64CONTROL.sourceReg1,
-        S1_abs32 <: RV64CONTROL.S1_abs32,
-        S1_abs64 <: RV64CONTROL.S1_abs64,
-        sourceReg2 <: RV64CONTROL.sourceReg2,
-        S2_abs32 <: RV64CONTROL.S2_abs32,
-        S2_abs64 <: RV64CONTROL.S2_abs64,
+        rs1 <: RV64CONTROL.rs1, rs2 <: RV64CONTROL.rs2,
+        sourceReg1 <: RV64CONTROL.sourceReg1, S1_abs32 <: RV64CONTROL.S1_abs32, S1_abs64 <: RV64CONTROL.S1_abs64,
+        sourceReg2 <: RV64CONTROL.sourceReg2, S2_abs32 <: RV64CONTROL.S2_abs32, S2_abs64 <: RV64CONTROL.S2_abs64,
         memoryinput <: memoryinput,
         incCSRinstret <: COMMIT,
         isALUM <: RV64CONTROL.IS_ALUM,
@@ -114,17 +120,12 @@ unit PAWSCPU(
         function3 <: RV64CONTROL.function3,
         function7 <: RV64CONTROL.function7,
         rs2 <: RV64CONTROL.rs2,
-        sourceReg1 <: RV64CONTROL.sourceReg1,
-        S1_abs32 <: RV64CONTROL.S1_abs32,
-        S1_abs64 <: RV64CONTROL.S1_abs64,
-        sourceReg1F <: RV64CONTROL.sourceReg1F,
-        sourceReg2F <: RV64CONTROL.sourceReg2F,
-        sourceReg3F <: RV64CONTROL.sourceReg3F,
-        typeAF <: RV64CONTROL.typeAF,
-        typeAS <: RV64CONTROL.typeAS,
-        typeAD <: RV64CONTROL.typeAD,
-        typeBF<: RV64CONTROL.typeBF,
-        typeCF <: RV64CONTROL.typeCF,
+        sourceReg1 <: RV64CONTROL.sourceReg1, S1_abs32 <: RV64CONTROL.S1_abs32, S1_abs64 <: RV64CONTROL.S1_abs64,
+        sourceReg1F <: RV64CONTROLF.sourceReg1F, sourceReg1Fx <: RV64CONTROLF.sourceReg1Fx, sourceReg1Fxopp <: RV64CONTROLF.sourceReg1Fxopp, typeAF <: RV64CONTROLF.typeAF, typeAopp <: RV64CONTROLF.typeAopp,
+        sourceReg2F <: RV64CONTROLF.sourceReg2F, sourceReg2Fx <: RV64CONTROLF.sourceReg2Fx, typeBF <: RV64CONTROLF.typeBF,
+        sourceReg3Fx <: RV64CONTROLF.sourceReg3Fx, typeCF <: RV64CONTROLF.typeCF,
+        FLT <: RV64CONTROLF.FLT,
+        FEQ <: RV64CONTROLF.FEQ,
         isFASTFPU <: RV64CONTROL.IS_FASTFPU,
         FPUflags <: EXECUTESLOW.FPUflags
     );
@@ -234,7 +235,7 @@ unit PAWSCPU(
         while(1) {
             // CPU LOOP, CONTINUE UNTIL DMA REQUEST, THEN RESTART AT FETCH
             while( ~|DMAMODE ) {
-                RV64CONTROL.COMMIT_SMT = SMT;
+                COMMIT_SMT = SMT;
                 if( L0match ) {                                                                                                     // COMPLETE FETCH INSTRUCTION
                     instruction =  L0instruction; compressed = L0compressed;                                                            // FROM CACHE
                 } else {
@@ -245,20 +246,14 @@ unit PAWSCPU(
                 ICACHEUPDATE = 1; cacheselect = 1; ++:                                                                              // SWITCH TO DATA CACHE, UPDATE ICACHE
 
                 switch( { RV64CONTROL.IS_LOAD, RV64CONTROL.IS_FAST, RV64CONTROL.IS_STORE } ) {
-                    case 3b000: {                                                                                                   // DIVISION, FLOATING POINT, CSR
-                        ++: EXECUTESLOW.start = ~RV64CONTROL.IS_FPU; EXECUTEFPU.start = RV64CONTROL.IS_FPU;
+                    case 3b000: {                                                                                              // DIVISION, CSR, FLOATIUNG POINT
+                        EXECUTESLOW.start = ~RV64CONTROL.IS_FPU; EXECUTEFPU.start = RV64CONTROL.IS_FPU;
                         while( EXECUTESLOW.busy | EXECUTEFPU.busy ) {}
                     }
-                    case 3b010: {}                                                                                                  // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
-                    case 3b011: {                                                                                                   // INTEGER + FLOAT/DOUBLE STORE
-                        STORE.start = ~MEM64; STORE64.start = MEM64;
-                            while( STORE64.busy | STORE.busy ) {}
-                    }
-                    case 3b110: {                                                                                                   // INTEGER + FLOAT/DOUBLE LOAD
-                        LOAD.start = ~MEM64; LOAD64.start = MEM64;
-                            while( LOAD64.busy | LOAD.busy ) {}
-                    }
-                    default: {                                                                                                      // ATOMIC LOAD - MODIFY - STORE + EMULATION OF LR.W AND SC.W
+                    case 3b010: {}                                                                                             // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
+                    case 3b011: { STORE.start = ~MEM64; STORE64.start = MEM64; while( STORE64.busy | STORE.busy ) {} }         // INTEGER + FLOAT/DOUBLE STORE
+                    case 3b110: { LOAD.start = ~MEM64; LOAD64.start = MEM64; while( LOAD64.busy | LOAD.busy ) {} }             // INTEGER + FLOAT/DOUBLE LOAD
+                    default: {                                                                                                  // ATOMIC LOAD - MODIFY - STORE + EMULATION OF LR.W AND SC.W
                         LOAD.start = RV64CONTROL.IS_LOAD & ~MEM64; LOAD64.start = RV64CONTROL.IS_LOAD & MEM64;
                             while( LOAD64.busy | LOAD.busy ) {}
                         EXECUTESLOW.start = 1;
@@ -456,13 +451,17 @@ unit cpuexecuteFPU(
     input   uint32  S1_abs32,
     input   uint64  S1_abs64,
     input   uint64  sourceReg1F,
-    input   uint64  sourceReg2F,
-    input   uint64  sourceReg3F,
+    input   uint64  sourceReg1Fx,
+    input   uint64  sourceReg1Fxopp,
     input   uint4   typeAF,
-    input   uint4   typeAS,
-    input   uint4   typeAD,
+    input   uint4   typeAopp,
+    input   uint64  sourceReg2F,
+    input   uint64  sourceReg2Fx,
     input   uint4   typeBF,
+    input   uint64  sourceReg3Fx,
     input   uint4   typeCF,
+    input   uint1   FLT,
+    input   uint1   FEQ,
     output  uint1   frd,
     output  int64   result,
     input   uint1   isFASTFPU,
@@ -486,20 +485,17 @@ unit cpuexecuteFPU(
         df <: function7[0,1],
         FPUflags <: FPUflags,
         opCode <: opCode, function3 <: function3, function7 <: function7[2,5],
-        sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F, sourceReg3F <: sourceReg3F,
+        sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx, sourceReg3Fx <: sourceReg3Fx,
         typeAF <: typeAF, typeBF <: typeBF, typeCF <: typeCF
     );
 
     // FLOATING POINT CONVERSIONS
-    intlong2floatdouble FPUIL2FD( rm <: function3, dounsigned <: rs2[0,1], il <: rs2[1,1], df <: function7[0,1], sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64, FPUflags <: FPUflags );
-    floatdouble2intlong FPUFD2IL( rm <: function3, dounsigned <: rs2[0,1], il <: rs2[1,1], df <: function7[0,1], sourceReg1F <: sourceReg1F, typeAF <: typeAF, FPUflags <: FPUflags );
-    changeprecision FPUF2D_D2F( df <: function7[0,1], sourceReg1F <: sourceReg1F, typeAS <: typeAS, typeAD <: typeAD, FPUflags <: FPUflags );
-    uint64  convertresult <:: converttype[2,1] ? FPUFD2IL.result :
-                              converttype[1,1] ? FPUIL2FD.result :
-                                                 FPUF2D_D2F.result;
-    uint5   convertflags  <:: converttype[2,1] ? FPUFD2IL.FPUnewflags :
-                              converttype[1,1] ? FPUIL2FD.FPUnewflags :
-                                                 FPUF2D_D2F.FPUnewflags;
+    intlong2floatdouble FPUIL2FD( rm <: function3, dounsigned <: rs2[0,1], il <: rs2[1,1], df <: function7[0,1], sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64 );
+    floatdouble2intlong FPUFD2IL( rm <: function3, dounsigned <: rs2[0,1], il <: rs2[1,1], df <: function7[0,1], sourceReg1Fx <: sourceReg1Fx, typeAF <: typeAF );
+    changeprecision FPUF2D_D2F( df <: function7[0,1], sourceReg1Fx <: sourceReg1Fxopp, typeAF <: typeAopp );
+
+    uint64  convertresult <:: converttype[2,1] ? FPUFD2IL.result : converttype[1,1] ? FPUIL2FD.result : FPUF2D_D2F.result;
+    uint5   convertflags  <:: FPUflags | ( converttype[2,1] ? FPUFD2IL.FPUflags : converttype[1,1] ? FPUIL2FD.FPUflags : FPUF2D_D2F.FPUflags );
 
     // FLOATING POINT FAST OPERATIONS
     fpuSINGLECYCLE FPUFAST(
@@ -507,7 +503,8 @@ unit cpuexecuteFPU(
         FPUflags <: FPUflags,
         function3 <: function3[0,2], function7 <: function7[2,5],
         sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
-        typeAF <: typeAF, typeBF <: typeBF
+        typeAF <: typeAF, typeBF <: typeBF,
+        FLT <: FLT, FEQ <: FEQ
     );
 
     // START FLAGS AND UPDATE CSR

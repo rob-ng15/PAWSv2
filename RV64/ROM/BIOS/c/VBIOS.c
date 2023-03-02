@@ -483,6 +483,7 @@ unsigned char ufo_sample[] = { 75, 83, 89, 0 };
 
 extern int _bss_start, _bss_end;
 static inline long _rv64_rol(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
 void main( void ) {
     unsigned int isa;
     unsigned short i,j = 0, x, y;

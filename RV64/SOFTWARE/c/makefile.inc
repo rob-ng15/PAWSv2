@@ -24,14 +24,21 @@ ifndef INCLUDEEXTRA
 INCLUDEEXTRA=
 endif
 
-CFLAGS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
-CXXFLAGS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -ffunction-sections -fdata-sections -O2 -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib
+CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax
+
+CFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
+CXXFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleriscv \
-	-Wl,--wrap=memcpy \
-	-Wl,--wrap=__clzsi2 -Wl,--wrap=memcpy -Wl,--wrap=__clzdi2 \
-	-Wl,--wrap=__ctzsi2 -Wl,--wrap=memcpy -Wl,--wrap=__ctzdi2 \
-	-Wl,--wrap=__popcountsi2 -Wl,--wrap=memcpy -Wl,--wrap=__popcountdi2 \
-	-Wl,--wrap=__paritysi2 -Wl,--wrap=memcpy -Wl,--wrap=__paritydi2
+	-Wl,--wrap=memcpy -Wl,--wrap=memset \
+	-Wl,--wrap=__clzsi2 -Wl,--wrap=__clzdi2 \
+	-Wl,--wrap=__ctzsi2 -Wl,--wrap=__ctzdi2 \
+	-Wl,--wrap=__popcountsi2 -Wl,--wrap=__popcountdi2 \
+	-Wl,--wrap=__builtin_clz -Wl,--wrap=__builtin_clzl \
+	-Wl,--wrap=__builtin_ctz -Wl,--wrap=__builtin_ctzl \
+	-Wl,--wrap=__builtin_popcount -Wl,--wrap=__builtin_popcountl \
+	-Wl,--wrap=__builtin_parity -Wl,--wrap=__builtin_parityl \
+	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64 \
+	-Wl,--wrap=powf -Wl,--wrap=sinf -Wl,--wrap=cos -Wl,--wrap=tanf -Wl,--wrap=scalbnf
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 
 PAWSBASE=../
@@ -49,7 +56,7 @@ CRT0OBJ=	$(PAWSBASE)library/build/crt0.o
 LIBPAWSSOURCE=	$(PAWSBASE)library/PAWS.h $(PAWSBASE)library/PAWSdefinitions.h $(PAWSBASE)library/PAWSlibrary.c
 LIBPAWSOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/libPAWS.o
 
-PAWSP2SOURCE=	$(PAWSBASE)library/PAWSPS2driver.c
+PAWSPS2SOURCE=	$(PAWSBASE)library/PAWSPS2driver.c
 PAWSPS2OBJ=	$(PAWSBASE)library/$(BUILD_DIR)/PAWSPS2driver.o
 
 NANOJPEGSOURCE= $(PAWSBASE)library/nanojpeg/nanojpeg.c
@@ -80,7 +87,7 @@ PRJSRC=
 $(LIBPAWSOBJ) : $(LIBPAWSSOURCE) $(CRT0OBJ)
 	$(CC) $(CFLAGS) -c $(PAWSBASE)library/PAWSlibrary.c -o $@
 
-$(PAWSPS2OBJ) : $(PAWSP2SOURCE)
+$(PAWSPS2OBJ) : $(PAWSPS2SOURCE)
 	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
 
 $(NANOJPEGOBJ) : $(NANOJPEGSOURCE)
