@@ -22,6 +22,7 @@ unit floatclass(                                                                
         };
    }
 }
+
 unit floateqltle(                                                                                                               // FLOATING POINT COMPARISONS ( uses base comparison less/equal generator )
     input   uint2   function3,                                                                                                  // COMPARISON TYPE SWITCH
     input   uint1   EQUAL,                                                                                                      // IS EQUAL FLAG A == B
@@ -39,6 +40,7 @@ unit floateqltle(                                                               
         { flags = { function3[1,1] ? ( typeAF[2,1] | typeBF[2,1] ) : NAN, 4b0000 }; }                                           // RETURN NV FLAG IF FLT OR FLE AND NAN IS AN INPUT
     }
 }
+
 unit floatminmax(                                                                                                               // FLOATING POINT MIN / MAX
     input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
     input   uint1   function3,                                                                                                  // MIN == 0, MAX == 1
@@ -59,6 +61,7 @@ unit floatminmax(                                                               
         { flags = { NAN, 4b0000 }; }                                                                                            // FLAGS SIGNALLING NAN INPUT
     }
 }
+
 unit floatsign(                                                                                                                 // FLOATING POINT FSGNJ FSGNJN FSGNJX SIGN INJECTION
     input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
     input   uint2   function3,                                                                                                  // SWITCH FSGNJ == 00, FSGNJN == 01, FSGNJX == 10
@@ -73,6 +76,7 @@ unit floatsign(                                                                 
         SIGN = df ? { SIGNBIT, sourceReg1F[0,63] } : { 32hffffffff, SIGNBIT, sourceReg1F[0,31] };                               // INJECT SIGN ( NAN boxed if float )
    }
 }
+
 unit fpuSINGLECYCLE(
     input   uint1   df,                                                                                                         // DOUBLE OR FLOAT FLAG
     input   uint2   function3,                                                                                                  // SWITCH FOR COMPARE MINMAX AND SIGN OPERATIONS
@@ -138,8 +142,7 @@ unit fpuSINGLECYCLE(
     }
 }
 
-// FPU CALCULATION CONTROLLER FOR FUSED ADD SUB MUL DIV SQRT
-// ALL CALCULATION UNITS USE AS INPUTS FLOATS AND DOUBLES PACKED INTO DOUBLE BITFIELDS
+// FPU CALCULATION CONTROLLER FOR FUSED ADD SUB MUL DIV SQRT - ALL CALCULATION UNITS USE AS INPUTS FLOATS AND DOUBLES PACKED INTO DOUBLE BITFIELDS
 unit floatcalc(
     input   uint1   start,                                                                                                      // START FLAG
     output  uint1   busy(0),                                                                                                    // BUSY FLAG
@@ -171,6 +174,12 @@ unit floatcalc(
     uint4   typea <:: opCode[2,1] ? typeAF : typeMF.type;                                                                       // SELECT TYPE OF A FOR ADDSUB
     uint4   typeb <:: opCode[2,1] ? typeBF : typeCF;                                                                            // SELECT TYPE OF B FOR ADDSUB
 
+    uint3   rm <:: &FPUflags[5,3] ? function3 : FPUflags[5,3];                                                                  // SET ROUNDING FLAG ( ONLY RNE AND RTZ SUPPORTED ), FCSR UNLESS 111
+    doroundcombine MAKERESULT(                                                                                                  // DO ROUNDING AND COMBINING
+        df <: df,
+        rm <: rm
+    );
+
     floataddsub FPUaddsub(
         df <: df,
         a <: a, typeAF <: typea,
@@ -193,12 +202,6 @@ unit floatcalc(
         df <: df,
         a <: sourceReg1Fx, typeAF <: typeAF,
         OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined
-    );
-
-    uint3   rm <:: &FPUflags[5,3] ? function3 : FPUflags[5,3];                                                                  // SET ROUNDING FLAG ( ONLY RNE AND RTZ SUPPORTED )
-    doroundcombine MAKERESULT(                                                                                                  // DO ROUNDING AND COMBINING
-        df <: df,
-        rm <: rm
     );
 
     uint4   unitbusy <:: { FPUsqrt.busy, FPUdivide.busy, FPUmultiply.busy, FPUaddsub.busy };                                    // UNIT BUSY FLAGS
@@ -651,33 +654,28 @@ unit floataddsub(
         normalfraction :> normalfraction
     );
 
-    uint1 update = uninitialised;
-    update := 0;
-
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1; ++: ++: ++: update = 1; busy = 0;                                                                     // PROVIDE WAIT STATES
+                busy = 1; ++: ++: busy = 0;                                                                                     // PROVIDE WAIT STATES
             } else { busy = 0; }
         }
     }
 
     always_after {
          {
-            if( update ) {                                                                                                      // ONLY LOCK RESULT ON UPDATE FLAG TO ALLOW STABLE RESULT FOPR FUSED OPERATIONS
-                switch( ACTION ) {
-                    case 2b00: { result = |ADDSUB.resultfraction ? combined : ZERO; }                                           // CALCULATION IS VALID, CHECK FOR ZERO RESULT
-                    case 2b01: { result = ( typeAF[0,1] & typeBF[0,1] ) ? ZERO : ( typeBF[0,1] ? ARET.repack : BRET.repack ); } // ZERO INPUT, CHECK FOR BOTH OR RETURN OTHER
-                    default: {
-                        switch( { IF, NN } ) {
-                            case 2b10: { result = NV ? qNAN : ( typeAF[3,1] ? ARET.repack : BRET.repack ); }                    // INFINITY RETURN NAN IF OPPOSITE SIGNS ELSE RETURN INFINITY
-                            default: { result = qNAN; }                                                                         // NAN RETURN NAN
-                        }
+            switch( ACTION ) {
+                case 2b00: { result = |ADDSUB.resultfraction ? combined : ZERO; }                                               // CALCULATION IS VALID, CHECK FOR ZERO RESULT
+                case 2b01: { result = ( typeAF[0,1] & typeBF[0,1] ) ? ZERO : ( typeBF[0,1] ? ARET.repack : BRET.repack ); }     // ZERO INPUT, CHECK FOR BOTH OR RETURN OTHER
+                default: {
+                    switch( { IF, NN } ) {
+                        case 2b10: { result = NV ? qNAN : ( typeAF[3,1] ? ARET.repack : BRET.repack ); }                        // INFINITY RETURN NAN IF OPPOSITE SIGNS ELSE RETURN INFINITY
+                        default: { result = qNAN; }                                                                             // NAN RETURN NAN
                     }
                 }
             }
         }
-        { if( update ) { flags = { NV, 1b0, ~|ACTION & OF, ~|ACTION & UF, 1b0 }; } }
+        { flags = { NV, 1b0, ~|ACTION & OF, ~|ACTION & UF, 1b0 }; }
     }
 }
 
@@ -717,7 +715,7 @@ unit floatmultiply(
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1; ++: ++: ++: update = 1; busy = 0;                                                                     // PROVIDE WAIT STATES
+                busy = 1; ++: ++: update = 1; busy = 0;                                                                         // PROVIDE WAIT STATES
             } else { busy = 0; }
         }
     }
@@ -727,7 +725,7 @@ unit floatmultiply(
         { productexp = ( fp64( a ).exponent + fp64( b ).exponent ) - { {3{df}}, 6b111111, ~product[105,1], product[105,1] }; }  // ADD EXPONENTS FOR RESULT EXPONENT, REMOVE BIAS AND ( +1 if overflow )
         { normalfraction = product[ { 3b110, product[105,1], {2{~product[105,1]}} }, 53 ]; }                                    // EXTRACT 53 BITS ( 1 extra for rounding ) ( from bit 51 or 52 )
         {
-            if( busy ) {                                                                                                        // ONLY LOCK RESULT ON UPDATE FLAG TO ALLOW STABLE RESULT FOPR FUSED OPERATIONS
+            if( update ) {                                                                                                      // ONLY LOCK RESULT ON UPDATE FLAG TO ALLOW STABLE RESULT FOPR FUSED OPERATIONS
                 switch( ACTION ) {
                     case 2b00: { result = combined; }                                                                           // MULTIPLICATION IS VALID
                     case 2b01: { result = xZERO; }                                                                              // ZERO INPUT RETURN ZERO
