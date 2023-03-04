@@ -445,10 +445,10 @@ void SMTSTART( unsigned int code ) {
 
 void smtmandel( void ) {
     const int graphwidth = 320, graphheight = 100;
-    double kt = 63, m = 4.0;
-    double xmin = -2.1, xmax = 0.6, ymin = -1.35, ymax = 1.35;
-    double dx = (xmax - xmin) / graphwidth, dy = (ymax - ymin) / graphheight;
-    double jx, jy, tx, ty, wx, wy, r;
+    float kt = 63, m = 4.0;
+    float xmin = -2.1, xmax = 0.6, ymin = -1.35, ymax = 1.35;
+    float dx = (xmax - xmin) / graphwidth, dy = (ymax - ymin) / graphheight;
+    float jx, jy, tx, ty, wx, wy, r;
     int k;
 
     gpu_pixelblock_start( 0, 122, 320 );
