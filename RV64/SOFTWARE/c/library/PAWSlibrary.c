@@ -679,7 +679,7 @@ void gpu_print_vertical( unsigned char colour, short x, short y, unsigned char b
     }
 }
 void gpu_printf( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -692,7 +692,7 @@ void gpu_printf( unsigned char colour, short x, short y, unsigned char bold, uns
     }
 }
 void gpu_printf_vertical( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -707,7 +707,7 @@ void gpu_printf_vertical( unsigned char colour, short x, short y, unsigned char 
 
 // OUTPUT A STRING TO THE GPU - CENTRED AT ( x, y )
 void gpu_printf_centre( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -721,7 +721,7 @@ void gpu_printf_centre( unsigned char colour, short x, short y, unsigned char bo
     }
 }
 void gpu_printf_centre_vertical( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -915,7 +915,7 @@ union Point2D MakePoint2D( int x, int y ) {
 
 // PROCESS A SOFTWARE VECTOR BLOCK AFTER SCALING AND ROTATION
 void DrawVectorShape2D( unsigned char colour, union Point2D *points, int numpoints, int xc, int yc, int angle, float scale ) {
-    union Point2D *NewShape  = (union Point2D *)0x1800;
+    static union Point2D NewShape[256];
     for( int vertex = 0; vertex < numpoints; vertex++ ) {
         NewShape[ vertex ] = Rotate2D( points[vertex], xc, yc, angle, scale );
     }
@@ -1260,7 +1260,7 @@ void tpu_print( char attribute, char *buffer ) {
     tpu_outputstring( attribute, buffer );
 }
 void tpu_printf( char attribute, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 1023, fmt, args);
@@ -1274,7 +1274,7 @@ void tpu_print_centre( unsigned char y, unsigned char background, unsigned char 
     tpu_outputstring( attribute, buffer );
 }
 void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground, char attribute, const char *fmt,...  ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -1317,7 +1317,7 @@ void terminal_print( char *buffer ) {
     terminal_outputstring( buffer );
 }
 void terminal_printf( const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 1023, fmt, args);
@@ -1669,7 +1669,7 @@ void __curses_print_string(const char* s) {
 }
 
 int printw( const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 1023, fmt, args);
@@ -1680,7 +1680,7 @@ int printw( const char *fmt,... ) {
 }
 
 int mvprintw( int y, int x, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 1023, fmt, args);
@@ -1790,7 +1790,7 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
 #define MALLOC_MEMORY ( 16 * 1024 * 1024 )
 #endif
 
-void *__bram_point = (void *)0x1a00;
+void *__bram_point = (void *)0x1000;
 void *malloc_bram( int size ) {
     void *previous = __bram_point;
     __bram_point += size;
@@ -1831,7 +1831,7 @@ void __start_sdmedia( void ) {
 int paws_printf(const char *restrict format, ... ) {
     if( !__stdinout_init ) __start_stdinout();
 
-    char *buffer = (char *)0x1400;
+    static char buffer[1024];
     va_list args;
     va_start (args, format);
     vsnprintf( buffer, 1024, format, args);
@@ -1845,7 +1845,7 @@ int paws_fprintf( void *fd, const char *restrict format, ... ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
 
-    char *buffer = (char *)0x1400;
+    static char buffer[1024];
     va_list args;
     va_start (args, format);
     vsnprintf( buffer, 1024, format, args);
@@ -1865,7 +1865,7 @@ int paws_vfprintf( void *fd, const char *format, va_list args ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
 
-    char *buffer = (char *)0x1400;
+    static char buffer[1024];
     vsnprintf( buffer, 1024, format, args);
     if( ( fd == stdout ) || ( fd == stderr ) ) {
         if( fd == stdout ) printw( "%s", buffer );
@@ -2070,8 +2070,9 @@ void *paws_freopen( const char *path, const char *mode, FILE *fd ) {
     return( paws_fopen( filename, mode ) );
 }
 void *paws_tmpfile( void ) {
-    sprintf( (char * restrict)0x1800, "%0d%0d.tmp", rng(65535), *SYSTEMSECONDS );
-    return( paws_fopen( (const char *)0x1800, "w+b" ) );
+    static char buffer[1024];
+    sprintf( (char * restrict)buffer, "%0d%0d.tmp", rng(65535), *SYSTEMSECONDS );
+    return( paws_fopen( buffer, "w+b" ) );
 }
 int paws_fgetc( void *fd ) {
     if( !__stdinout_init ) __start_stdinout();

@@ -53,4 +53,3 @@ struct C8 {                                                                     
 
 // SIMPLE ACCESS TO THE FLAG REGISTER
 #define VF machine.V[15]
-

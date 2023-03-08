@@ -42,8 +42,14 @@ unsigned char *states[] = {
 unsigned char *speed[] = {
     "MAX  I/S",
     "1000 I/S",
-    "1 I/S   "
+    "500  I/S",
+    "250  I/S",
+    "100  I/S",
+    "10   I/S",
+    "2    I/S",
+    "1    I/S"
 };
+unsigned short wait_times[] = { 0, 1, 2, 4, 10, 100, 500, 1000 };
 
 unsigned char *keyboard = "1234QWERASDFZXCV";
 unsigned char *keys = "123C456D789EA0BF";
@@ -200,7 +206,7 @@ __attribute__((used)) void interactivity( void ) {
                     }
                     break;
                 case 0x0b: if( keycode & 0x200 ) { machine.debug = 1 - machine.debug; }; break;                                 // F6 TOGGLE DEBUG OUTPUT TO UART
-                case 0x83: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 2 ) ? 2 : machine.limit + 1; } break;     // F7 SLOW DOWN
+                case 0x83: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 7 ) ? 7 : machine.limit + 1; } break;     // F7 SLOW DOWN
                 case 0x0a: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 0 ) ? 0 : machine.limit - 1; } break;     // F8 SPEED UP
 
                 case 0x01: if( keycode & 0x200 ) { machine.running = 0; machine.quit = 1; pass_control = 1; } break;            // F9 QUIT
@@ -328,7 +334,7 @@ int main( void ) {
     set_timer1khz( (short)1000/60, 0 );
 
     while( !machine.quit ) {
-        set_timer1khz( ( machine.limit == CYCLE ) ? 1000 : 1, 1 );                                                             // SET !KHz timer, 1000 instructions per second limit
+        set_timer1khz( wait_times[ machine.limit ], 1 );                                                                        // SET !KHz timer for instructions per second
 
         if( machine.loading ) {
             set_background( BLACK, BLACK, BKG_SOLID );
