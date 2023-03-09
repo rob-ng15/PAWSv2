@@ -151,12 +151,11 @@ unit do_float_multiply(
     output  uint53  productnormal
 ) <reginputs> {
     always_after {
+        { productnormal = productfraction[                                                                                      // NORMALISED PRODUCT RESULT FOR 0 ADDITION
+                                { 3b110, productfraction[105,1], {2{~productfraction[105,1]}} }, 53 ]; }
         { productfraction = { 1b1, fp64( sourceReg1Fx ).fraction } * { 1b1, fp64( sourceReg2Fx ).fraction }; }                  // CALCULATE THE PRODUCT BY MUTLIPLYING LEFT ALIGNED FRACTIONS
         { productexp = ( fp64( sourceReg1Fx ).exponent + fp64( sourceReg2Fx ).exponent ) -                                      // ADD EXPONENTS FOR RESULT EXPONENT, REMOVE BIAS AND ( +1 if overflow )
                        { {3{df}}, 6b111111, ~productfraction[105,1], productfraction[105,1] }; }
-        { productnormal = productfraction[                                                                                      // NORMALISED PRODUCT RESULT FOR 0 ADDITION
-                                { 3b110, productfraction[105,1], {2{~productfraction[105,1]}} }, 53 ]; }
-
     }
 }
 unit floatcalc(
@@ -224,13 +223,13 @@ unit floatcalc(
 
     uint5   unitbusy <:: { FPUfused.busy, FPUsqrt.busy, FPUdivide.busy, FPUmultiply.busy, FPUaddsub.busy };                     // UNIT BUSY FLAGS
     uint1   isbusy <:: |unitbusy;                                                                                               // WAIT FOR CALCULATIONS TO FINISH
+    busy := start | isbusy;
 
     FPUaddsub.start := 0; FPUmultiply.start := 0; FPUdivide.start := 0; FPUsqrt.start := 0; FPUfused.start := 0;
 
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1;
                 if( opCode[2,1] ) {
                     switch( function7[0,2] ) {                                                                                  // START 2 REGISTER FPU OPERATIONS
                         default: { FPUaddsub.start = 1; }                                                                       // FADD FSUB
@@ -240,61 +239,37 @@ unit floatcalc(
                 } else {
                     FPUfused.start = 1;                                                                                         // START 3 REGISTER FUSED FPU OPERATION
                 }
-                while( isbusy ) {} busy = 0;
             }
         }
     }
 
     always_after {
         uint5   flags = uninitialised;                                                                                          // UNIT RESULT FLAGS
+        { FPUnewflags = FPUflags[0,5] | flags; }                                                                                // RETURN NEW FLAGS
         {
             if( isbusy ) {
-                onehot( unitbusy ) {                                                                                            // SELECT EXPONENT FOR ROUNDING AND COMBINING
-                    case 0: { MAKERESULT.exponent = FPUaddsub.sumexp; }
-                    case 1: { MAKERESULT.exponent = MULT.productexp; }
-                    case 2: { MAKERESULT.exponent = FPUdivide.quotientexp; }
-                    case 3: { MAKERESULT.exponent = FPUsqrt.squarerootexp; }
-                    case 4: { MAKERESULT.exponent = FPUfused.fusedexp; }
+                onehot( unitbusy ) {                                                                                            // SELECT SIGN, EXPONENT, NORMALISED FRACTION FOR ROUNDING AND COMBINING
+                    case 0: { MAKERESULT.exponent = FPUaddsub.sumexp; MAKERESULT.bitstream = FPUaddsub.normalfraction; }
+                    case 1: { MAKERESULT.exponent = MULT.productexp; MAKERESULT.bitstream = MULT.productnormal; }
+                    case 2: { MAKERESULT.exponent = FPUdivide.quotientexp; MAKERESULT.bitstream = FPUdivide.normalfraction; }
+                    case 3: { MAKERESULT.exponent = FPUsqrt.squarerootexp; MAKERESULT.bitstream = FPUsqrt.normalfraction; }
+                    case 4: { MAKERESULT.exponent = FPUfused.fusedexp; MAKERESULT.bitstream = FPUfused.normalfraction; }
                 }
-            }
-        }
-        {
-            if( isbusy ) {
-                onehot( unitbusy ) {                                                                                            // SELECT NORMALISED FRACTION FOR ROUNDING AND COMBINING
-                    case 0: { MAKERESULT.bitstream = FPUaddsub.normalfraction; }
-                    case 1: { MAKERESULT.bitstream = MULT.productnormal; }
-                    case 2: { MAKERESULT.bitstream = FPUdivide.normalfraction; }
-                    case 3: { MAKERESULT.bitstream = FPUsqrt.normalfraction; }
-                    case 4: { MAKERESULT.bitstream = FPUfused.normalfraction; }
-                }
-            }
-        }
-        {
-            if( isbusy ) {                                                                                                      // SELECT RESULT SIGN FOR ROUNDING AND COMBINING
                 MAKERESULT.sign = |( { FPUfused.fusedsign, 1b0, FPUdivide.quotientsign, FPUmultiply.productsign, FPUaddsub.sumsign } & unitbusy );
             }
         }
-        {                                                                                                                       // SELECT RESULT
+        {                                                                                                                       // SELECT RESULT AND FLAGS ( with mask )
             if( opCode[2,1] ) {                                                                                                 // SINGLE OPERATION
                 switch( function7[0,2] ) {
-                    default: { result = FPUaddsub.result; }                                                                     // FADD FSUB
-                    case 2b10: { result = FPUmultiply.result; }                                                                 // FMUL
-                    case 2b11: { result = function7[3,1] ? FPUsqrt.result : FPUdivide.result; }                                 // FSQRT FDIV
+                    default: { result = FPUaddsub.result; flags = FPUaddsub.flags & 5b00110; }                                  // FADD FSUB
+                    case 2b10: { result = FPUmultiply.result; flags = FPUmultiply.flags & 5b00110; }                            // FMUL
+                    case 2b11: {                                                                                                // FSQRT FDIV
+                        result = function7[3,1] ? FPUsqrt.result : FPUdivide.result;
+                        flags = function7[3,1] ? FPUsqrt.flags & 5b00110 : FPUdivide.flags & 5b01110;
+                    }
                 }
             } else {                                                                                                            // FUSED OPERATIONS
-                result = FPUfused.result;
-            }
-        }
-        { FPUnewflags = FPUflags[0,5] | flags; }                                                                                // RETURN NEW FLAGS
-        {                                                                                                                       // SELECT FLAGS
-            if( opCode[2,1] ) {                                                                                                 // SINGLE OPERATION
-                switch( function7[0,2] ) {
-                    default: { flags = FPUaddsub.flags & 5b00110; }                                                             // FADD FSUB
-                    case 2b10: { flags = FPUmultiply.flags & 5b00110; }                                                         // FMUL
-                    case 2b11: { flags = function7[3,1] ? FPUsqrt.flags & 5b00110 : FPUdivide.flags & 5b01110; }                // FSQRT FDIV
-                }
-            } else {                                                                                                            // FUSED OPERATIONS
-                flags = FPUfused.flags & 5b10110;
+                result = FPUfused.result; flags = FPUfused.flags & 5b10110;
             }
         }
     }
@@ -441,48 +416,30 @@ unit donormalexp(
 // ADD BIAS TO EXPONENT AND ADJUST EXPONENT IF ROUNDING FORCES
 // COMBINE COMPONENTS TO FLOATING POINT NUMBER - USED BY CALCULATIONS
 // UNDERFLOW return 0, OVERFLOW return infinity
-unit overflow(
-    input   uint1   df,
-    input   int13   exponent,
-    output! uint1   OF
-) <reginputs> {
-    always_after { OF = exponent > { {3{df}}, 8b11111110 }; }                                                                   // OVERFLOW IF EXPONENT PLUS BIAS IS > 2 * BIAS
-}
-unit newexp(
-    input   uint1   df,
-    input   uint53  roundfraction,
-    input   uint1   lsb,
-    input   int13   exponent,
-    output  int13   newexponent
-) <reginputs> {
-    always_after {
-        newexponent = ( df ? ( ( ~|roundfraction[0,52] & lsb ) ? 1024 : 1023 ) :                                                // IF ROUNDING OVERFLOWED INCREASE EXPONENT BY 1
-                             ( ( ~|roundfraction[0,23] & lsb ) ? 128 : 127 ) ) + exponent;                                      // WHEN ADDING BIAS
-    }
-}
 unit doroundcombine(
     input   uint3   rm,                                                                                                         // ROUNDING MODE ( RNE OR RTZ SUPPORTED )
     input   uint1   df,                                                                                                         // DOUBLE OR FLOAT
     input   uint1   sign,                                                                                                       // RESULT SIGN
     input   uint53  bitstream,                                                                                                  // NORMALISED BITSTREAM 1.xxxx
     input   int13   exponent,                                                                                                   // EXPONENT ( no bias )
-    output! uint1   OF,                                                                                                         // OVERFLOW FLAG
-    output! uint1   UF,                                                                                                         // UNDERFLOW FLAG
-    output! uint64  combined                                                                                                    // COMBIUNED DOUBLE OR FLOAT ROUNDED AND COMBINED
+    output  uint1   OF,                                                                                                         // OVERFLOW FLAG
+    output  uint1   UF,                                                                                                         // UNDERFLOW FLAG
+    output  uint64  combined                                                                                                    // COMBIUNED DOUBLE OR FLOAT ROUNDED AND COMBINED
 ) <reginputs> {
     uint1   lsb <:: ( rm == 3b001 ) ? 0 : bitstream[ df ? 0 : 29, 1 ];                                                          // EXTRACT TRAILING BIT AFTER FRACTIONAL PART FOR ROUNDING OR 0 IF RTZ
     uint52  roundfraction <:: ( df ? bitstream[1,52] : bitstream[30,23] ) + lsb;                                                // EXTRACT RESULT FRACTION AND PERFORM ROUNDING
-    newexp EXP( df <: df, lsb <: lsb, roundfraction <: roundfraction, exponent <: exponent );                                   // GENERATE RESULT EXP, ADJUSTED IF ROUNDING OVERFLOWED
-    overflow OVER( df <: df,  exponent <: EXP.newexponent, OF :> OF );                                                          // CHECK FOR OVERFLOW ( exponent > 2 * bias )
+    int13   newexponent <:: ( ~|( df ? roundfraction[0,52] : roundfraction[0,23] ) & lsb ?                                      // IF ROUNDING OVERFLOWED INCREASE EXPONENT BY 1 ( 1024 / 128 )
+                            { df, 2b00, ~df, 7b0000000 } : { {3{df}}, 7b1111111 } ) + exponent;                                 // WHEN ADDING BIAS RATHER THAN ( 1023 / 127 )
 
     gen_xINF xINF( df <: df, sign <: sign );                                                                                    // SIGNED INFINITY RETURN VALUE FOR 32/64 bit
     gen_xZERO xZERO( df <: df, sign <: sign );                                                                                  // SIGNED ZERO RETURN VALUE FOR 32/64 bit
 
     always_after {
-        { UF = EXP.newexponent[12,1]; }                                                                                         // UNDERFLOW IF EXPONENT IS NEGATIVE
-        { combined = EXP.newexponent[12,1] ? xZERO.value : OVER.OF ? xINF.value :                                               // UNDERFLOW RETURN SIGNED ZERO, OVERFLOW RETTURN SIGNED INFINITY
-                                             df ? { sign, EXP.newexponent[0,11], roundfraction } :                              // RETURN DOUBLE RESULT
-                                                  { 32hffffffff, sign, EXP.newexponent[0,8], roundfraction[0,23] }; }           // RETURN FLOAT RESULT ( NAN boxed )
+        { OF = newexponent > { {3{df}}, 8b11111110 }; }                                                                         // OVERFLOW IF EXPONENT IS GREATER THAN 2046/254 ( 2 * BIAS )
+        { UF = newexponent[12,1]; }                                                                                             // UNDERFLOW IF EXPONENT IS STILL NEGATIVE AFTER BIAS ADDED
+        { combined = newexponent[12,1] ? xZERO.value : OF ? xINF.value :                                                        // UNDERFLOW RETURN SIGNED ZERO, OVERFLOW RETTURN SIGNED INFINITY
+                                             df ? { sign, newexponent[0,11], roundfraction } :                                  // RETURN DOUBLE RESULT
+                                                  { 32hffffffff, sign, newexponent[0,8], roundfraction[0,23] }; }               // RETURN FLOAT RESULT ( NAN boxed )
     }
 }
 
@@ -571,10 +528,7 @@ unit changeprecision(                                                           
     uint1   sign <:: fp64( sourceReg1Fx ).sign;                                                                                 // SELECT SIGN BIT
     int13   exp <:: fp64( sourceReg1Fx ).exponent + ( df ? 896 : -896 );                                                        // SELECT EXPONENT AND ADJUST BOAS
 
-    uint64  xINF <:: df ? { sign, 63h7FF0000000000000 } : { 32hffffffff, sign, 31h7f800000 };                                   // RETURN SIGNED INFINITY FOR 32/64 bit
-    uint64  sNAN <:: df ? 64h7FF4000000000000 : 64hffffffff7fa00000;                                                            // RETURN sNAN FOR 32/64 bit
-    uint64  qNAN <:: df ? 64h7FF8000000000000 : 64hffffffff7fc00000;                                                            // RETURN qNAN FOR 32/64 bit
-    uint64  xZERO <:: df ? { sign, 63h0 } : { 32hffffffff, sign, 31h0 };                                                        // RETURN SIGNED ZERO FOR 32/64 bit
+    special_values RET( df <: df, sign <: sign );                                                                               // GENERATE xINF sNAN qNAN and xZERO
 
     uint1   OF = uninitialised;                                                                                                 // OVERFLOW FLAG
     uint1   UF = uninitialised;                                                                                                 // UNDERFLOW FLAG
@@ -588,20 +542,20 @@ unit changeprecision(                                                           
                         result = { fp64( sourceReg1Fx ).sign, exp[0,11], fp64( sourceReg1Fx ).fraction };                       // VALID NUMBER, TO DOUBLE ALWAYS SUCEEDS
                     } else {
                         if( &exp[0,8] | |exp[8,4] ) {
-                            result = xINF; OF = 1;                                                                              // VALID NUMBER, TO FLOAT BUT OVERFLOWED RETURN SIGNED INFINITY
+                            result = RET.xINF; OF = 1;                                                                          // VALID NUMBER, TO FLOAT BUT OVERFLOWED RETURN SIGNED INFINITY
                         } else {
                             if( exp[12,1] ) {
-                                result = xZERO; UF = 1;                                                                         // VALID NUMBER, TO FLOAT BUT UNDERFLOWED RETURN SIGNED ZERO
+                                result = RET.xZERO; UF = 1;                                                                     // VALID NUMBER, TO FLOAT BUT UNDERFLOWED RETURN SIGNED ZERO
                             } else {
                                 result = { 32hffffffff, sign, exp[0,8], fp64( sourceReg1Fx ).fraction[29,23] };                 // VALID NUMBER, TO FLOAT ( NAN boxed )
                             }
                         }
                     }
                 }
-                case 4b1000: { result = xINF; }                                                                                 // INPUT IS INFINITY
-                case 4b0100: { result = sNAN; }                                                                                 // INPUT IS sNAN
-                case 4b0010: { result = qNAN; }                                                                                 // INPUT IS qNAN
-                case 4b0001: { result = xZERO; }                                                                                // INPUT IS ZERO
+                case 4b1000: { result = RET.xINF; }                                                                             // INPUT IS INFINITY
+                case 4b0100: { result = RET.sNAN; }                                                                             // INPUT IS sNAN
+                case 4b0010: { result = RET.qNAN; }                                                                             // INPUT IS qNAN
+                case 4b0001: { result = RET.xZERO; }                                                                            // INPUT IS ZERO
             }
         }
         { FPUflags = { OF, UF, 1b0 }; }                                                                                         // FLAGS
@@ -623,8 +577,8 @@ unit do_addsub_align(                                                           
     uint11  shift <: ( expAvexpB ? expB : expA ) - ( expAvexpB ? expA :expB );                                                  // FIND THE AMOUNT SMALLER NUMBER NEEDS TO BE SHIFTED FOR ALIGNMENT
 
     always_after {
-        sigA = { 2b01, fractionA, 52b0 } >> ( expAvexpB ? shift : 0 );                                                          // GENERATE A FROM FRACTION, ALIGN IF SMALLER
-        sigB = { 2b01, fractionB, 52b0 } >> ( expAvexpB ? 0 : shift );                                                          // GENERATE B FROM FRACTION, ALIGN IF SMALLER
+        { sigA = { 2b01, fractionA, 52b0 } >> ( expAvexpB ? shift : 0 ); }                                                      // GENERATE A FROM FRACTION, ALIGN IF SMALLER
+        { sigB = { 2b01, fractionB, 52b0 } >> ( expAvexpB ? 0 : shift ); }                                                      // GENERATE B FROM FRACTION, ALIGN IF SMALLER
         { resultexp = ( expAvexpB ? expB : expA ) - { {3{df}}, 7b1111110 }; }                                                   // RESULT EXPONENT IS LARGEST EXPONENT ( +1 FOR OVERFLOW ) ( remove bias )
     }
 }
@@ -642,7 +596,6 @@ unit do_float_addsub(
 
     always_after {
         { resultsign = sign; }                                                                                                  // GENERATE RESULT SIGN
-
         { if( signA ^ signB ) {
             resultfraction = ( signA ^ sign ? sigB : sigA ) - ( signA ^ sign ? sigA : sigB );                                   // PERFORM SUBTRACTION
         } else {
@@ -781,8 +734,8 @@ unit do_addsub_align_fused(                                                     
     int13   shift <: ( expAvexpB ? expB : expA ) - ( expAvexpB ? expA :expB );                                                  // FIND THE AMOUNT SMALLER NUMBER NEEDS TO BE SHIFTED FOR ALIGNMENT
 
     always_after {
-        sigA = ( fractionA[105,1] ? { 1b0, fractionA[1,105] } : fractionA ) >> ( expAvexpB ? shift : 0 );                       // ALIGN A IF SMALLER
-        sigB = { 2b01, fractionB, 52b0 } >> ( expAvexpB ? 0 : shift );                                                          // GENERATE B FROM FRACTION, ALIGN IF SMALLER
+        { sigA = ( fractionA[105,1] ? { 1b0, fractionA[1,105] } : fractionA ) >> ( expAvexpB ? shift : 0 ); }                   // ALIGN A IF SMALLER
+        { sigB = { 2b01, fractionB, 52b0 } >> ( expAvexpB ? 0 : shift ); }                                                      // GENERATE B FROM FRACTION, ALIGN IF SMALLER
         { fusedexp = ( expAvexpB ? expB : expA ) + 1; }                                                                         // RESULT EXPONENT IS LARGEST EXPONENT ( +1 FOR OVERFLOW ) ( remove bias )
     }
 }

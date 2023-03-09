@@ -259,6 +259,13 @@ typedef struct paws_timeval {
 typedef unsigned char chtype;
 typedef void WINDOW;
 
+// PIXELBLOCK SCALEABLE SPRITES
+typedef struct {
+    int width;
+    int height;
+    unsigned char *bitmap;
+} bitmap_sprite;
+
 #define COLORS 256
 #define A_NOACTION 2048
 #define A_NORMAL 256

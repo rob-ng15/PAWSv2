@@ -827,7 +827,7 @@ void gpu_pixelblockBGRA( short x, short y, unsigned short w, unsigned short h, u
 // SET GPU TO RECEIVE A PIXEL BLOCK, SEND INDIVIDUAL PIXELS, STOP
 void gpu_pixelblock_start( short x,  short y, unsigned short w ) {
     wait_gpu_finished();
-    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_PARAM1 = TRANSPARENT; *GPU_WRITE = 10;
 }
 
 void gpu_pixelblock_pixel( unsigned char pixel ) {
@@ -863,6 +863,28 @@ void gpu_pixelblock_mode( unsigned char mode ) {
 // SET AN ENTRY IN THE REMAPPER
 void gpu_pixelblock_remap( unsigned char from, unsigned char to ) {
     *PB_CMNUMBER = from; *PB_CMENTRY = to;
+}
+
+// USE THE PIXELBLOCK TO DRAW SCALEABLE SPRITES
+void DrawBitmapSprite( short x, short y, float scale, bitmap_sprite sprite ) {
+    int width = sprite.width * scale;
+    int height = sprite.height * scale;
+
+    if( !width || !height ) return;
+
+    float xdelta = (float)sprite.width / (float)width;
+    float ydelta = (float)sprite.height / (float)height;
+
+    gpu_pixelblock_start( x, y, width );
+
+    for( float yc = 0; (int)yc < sprite.height; yc += ydelta ) {
+        unsigned char *line = sprite.bitmap + (int)yc * sprite.width;
+        for( float xc = 0; (int)xc < sprite.width; xc += xdelta ) {
+            gpu_pixelblock_pixel( line[ (int)xc ] );
+        }
+    }
+
+    gpu_pixelblock_stop();
 }
 
 // GPU VECTOR BLOCK
