@@ -303,6 +303,27 @@ struct DrawList2D RIGHTBILLBOARD4[] = {
     { DLRECT, PINK, DITHERSOLID, { 52, -52 }, { 44, -60 }, },
 };
 
+// PIXELBLOCK SPRITES FOR TREES
+unsigned char tree_1[] = {
+#include "graphics/tree-1.h"
+};
+unsigned char tree_2[] = {
+#include "graphics/tree-2.h"
+};
+unsigned char tree_3[] = {
+#include "graphics/tree-3.h"
+};
+unsigned char tree_4[] = {
+#include "graphics/tree-4.h"
+};
+
+bitmap_sprite tree_sprites[]= {
+    {64,76,tree_1},
+    {64,72,tree_2},
+    {64,103,tree_3},
+    {64,53,tree_4}
+};
+
 // ROAD SEGMENTS, DEFINING NUMBER OF SECTIONS BEFORE NEXT TURN, TURN ANGLE, AND SIDE OBJECTS
 #define MAXSEGMENT 17
 typedef struct {

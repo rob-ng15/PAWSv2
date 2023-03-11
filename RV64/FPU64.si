@@ -143,12 +143,12 @@ unit fpuSINGLECYCLE(
 
 // FPU CALCULATION CONTROLLER FOR FUSED ADD SUB MUL DIV SQRT - ALL CALCULATION UNITS USE AS INPUTS FLOATS AND DOUBLES PACKED INTO DOUBLE BITFIELDS
 unit do_float_multiply(
-    input   uint1   df,
-    input   uint64  sourceReg1Fx,
-    input   uint64  sourceReg2Fx,
-    output  uint106 productfraction,
-    output  int13   productexp,
-    output  uint53  productnormal
+    input   uint1   df,                                                                                                         // DOUBLE OR FLAT FLAG
+    input   uint64  sourceReg1Fx,                                                                                               // sourceReg1F ( repacked in double bitfields )
+    input   uint64  sourceReg2Fx,                                                                                               // sourceReg2F ( repacked in double bitfields )
+    output  uint106 productfraction,                                                                                            // PRODUCT sourceReg1F x sourceReg2F
+    output  int13   productexp,                                                                                                 // EXPONENT sourceReg1F x sourceReg2F
+    output  uint53  productnormal                                                                                               // NORMALISED FRACTION OF sourceReg1F x sourceReg2F
 ) <reginputs> {
     always_after {
         { productnormal = productfraction[                                                                                      // NORMALISED PRODUCT RESULT FOR 0 ADDITION
@@ -181,44 +181,41 @@ unit floatcalc(
     doroundcombine MAKERESULT( df <: df, rm <: rm );                                                                            // DO ROUNDING AND COMBINING
 
     uint64  b <:: { function7[0,1] ^ fp64( sourceReg2Fx ).sign, sourceReg2Fx[0,63] };                                           // SWITCH SIGN OF B FOR SUBTRACTION IF REQUIRED
-    floataddsub FPUaddsub(
+    floataddsub FPUaddsub(                                                                                                      // FLOAT ADDITION ( SUBTRACTION by sign switch )
         df <: df,
         a <: sourceReg1Fx, typeAF <: typeAF,
         b <: b, typeBF <: typeBF,
         OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN
     );
 
-    do_float_multiply MULT(                                                                                                     // GENERATE PRODUCT FRACTION AND EXPONENT FOR MULTIPLY AND FUSED
+    do_float_multiply MULT( df <: df,  sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx );                            // GENERATE PRODUCT FRACTION AND EXPONENT FOR MULTIPLY AND FUSED
+    floatmultiply FPUmultiply(                                                                                                  // FLOAT MULTIPLICATION
         df <: df,
-        sourceReg1Fx <: sourceReg1Fx,
-        sourceReg2Fx <: sourceReg2Fx
+        signA <: fp64( sourceReg1Fx ).sign, typeAF <: typeAF,                                                                   // ONLY SIGN NEEDS PASSING FOR MULTIPLICATION
+        signB <: fp64( sourceReg2Fx ).sign, typeBF <: typeBF,                                                                   // ONLY SIGN NEEDS PASSING FOR MULTIPLICATION
+        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN                                 // ROUNDED AND COMBINED RESULT
     );
-    floatmultiply FPUmultiply(
-        df <: df,
-        signA <: fp64( sourceReg1Fx ).sign, typeAF <: typeAF,
-        signB <: fp64( sourceReg2Fx ).sign, typeBF <: typeBF,
-        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN
-    );
-    floatfused FPUfused(
-        df <: df, rm <: rm, opCode <: opCode,
-        a <: sourceReg1Fx, typeAF <: typeAF,
-        b <: sourceReg2Fx, typeBF <: typeBF,
-        c <: sourceReg3Fx, typeCF <: typeCF,
-        productfraction <: MULT.productfraction, productexp <: MULT.productexp, productnormal <: MULT.productnormal,
-        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN
+    floatfused FPUfused(                                                                                                        // FLOAT FUSED-MULTIPLY-ADD
+        df <: df,                                                                                                               // DOUBLE OR FLOAT FLAG
+        rm <: rm, opCode <: opCode[0,2],                                                                                        // ROUNDING MODE AND SIGN SWITCHES
+        signA <: fp64( sourceReg1Fx ).sign, typeAF <: typeAF,                                                                   // ONLY SIGN NEEDS PASSING FOR MULTIPLICATION
+        signB <: fp64( sourceReg2Fx ).sign, typeBF <: typeBF,                                                                   // ONLY SIGN NEEDS PASSING FOR MULTIPLICATION
+        c <: sourceReg3Fx, typeCF <: typeCF,                                                                                    // THIRD OPERAND FOR ADDITION/SIBTRATION
+        productfraction <: MULT.productfraction, productexp <: MULT.productexp, productnormal <: MULT.productnormal,            // MULTIPLICATION RESULTS
+        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN                                 // ROUNDED AND COMBINED RESULT
     );
 
-    floatdivide FPUdivide(
-        df <: df,
+    floatdivide FPUdivide(                                                                                                      // FLOAT DIVISION
+        df <: df,                                                                                                               // DOUBLE OR FLOAT FLAG
         a <: sourceReg1Fx, typeAF <: typeAF,
         b <: sourceReg2Fx, typeBF <: typeBF,
-        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN
+        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN                                 // ROUNDED AND COMBINED RESULT
     );
 
-    floatsqrt FPUsqrt(
-        df <: df,
+    floatsqrt FPUsqrt(                                                                                                          // FLOAT SQUARE ROOT https://projectf.io/posts/square-root-in-verilog/
+        df <: df,                                                                                                               // DOUBLE OR FLOAT FLAG
         a <: sourceReg1Fx, typeAF <: typeAF,
-        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN
+        OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN                                 // ROUNDED AND COMBINED RESULT
     );
 
     uint5   unitbusy <:: { FPUfused.busy, FPUsqrt.busy, FPUdivide.busy, FPUmultiply.busy, FPUaddsub.busy };                     // UNIT BUSY FLAGS
@@ -248,14 +245,29 @@ unit floatcalc(
         { FPUnewflags = FPUflags[0,5] | flags; }                                                                                // RETURN NEW FLAGS
         {
             if( isbusy ) {
-                onehot( unitbusy ) {                                                                                            // SELECT SIGN, EXPONENT, NORMALISED FRACTION FOR ROUNDING AND COMBINING
-                    case 0: { MAKERESULT.exponent = FPUaddsub.sumexp; MAKERESULT.bitstream = FPUaddsub.normalfraction; }
-                    case 1: { MAKERESULT.exponent = MULT.productexp; MAKERESULT.bitstream = MULT.productnormal; }
-                    case 2: { MAKERESULT.exponent = FPUdivide.quotientexp; MAKERESULT.bitstream = FPUdivide.normalfraction; }
-                    case 3: { MAKERESULT.exponent = FPUsqrt.squarerootexp; MAKERESULT.bitstream = FPUsqrt.normalfraction; }
-                    case 4: { MAKERESULT.exponent = FPUfused.fusedexp; MAKERESULT.bitstream = FPUfused.normalfraction; }
-                }
                 MAKERESULT.sign = |( { FPUfused.fusedsign, 1b0, FPUdivide.quotientsign, FPUmultiply.productsign, FPUaddsub.sumsign } & unitbusy );
+            }
+        }
+        {
+            if( isbusy ) {
+                onehot( unitbusy ) {                                                                                            // SELECT SIGN, EXPONENT, NORMALISED FRACTION FOR ROUNDING AND COMBINING
+                    case 0: { MAKERESULT.exponent = FPUaddsub.sumexp; }
+                    case 1: { MAKERESULT.exponent = MULT.productexp; }
+                    case 2: { MAKERESULT.exponent = FPUdivide.quotientexp; }
+                    case 3: { MAKERESULT.exponent = FPUsqrt.squarerootexp; }
+                    case 4: { MAKERESULT.exponent = FPUfused.fusedexp; }
+                }
+            }
+        }
+        {
+            if( isbusy ) {
+                onehot( unitbusy ) {
+                    case 0: { MAKERESULT.bitstream = FPUaddsub.normalfraction; }
+                    case 1: { MAKERESULT.bitstream = MULT.productnormal; }
+                    case 2: { MAKERESULT.bitstream = FPUdivide.normalfraction; }
+                    case 3: { MAKERESULT.bitstream = FPUsqrt.normalfraction; }
+                    case 4: { MAKERESULT.bitstream = FPUfused.normalfraction; }
+                }
             }
         }
         {                                                                                                                       // SELECT RESULT AND FLAGS ( with mask )
@@ -675,9 +687,9 @@ unit floatmultiply(
     input   uint1   start,
     output  uint1   busy(0),
     input   uint1   df,                                                                                                         // DOUBLE OR FLOAT
-    input   uint1   signA,                                                                                                          // A INPUT FOR A*B
+    input   uint1   signA,                                                                                                      // SIGN OF A INPUT FOR A*B
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } FOR A
-    input   uint1   signB,                                                                                                          // B INPUT FOR A*B
+    input   uint1   signB,                                                                                                      // SIGN OF B INPUT FOR A*B
     input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } FOR B
     output  uint1   productsign,                                                                                                // RESULT SIGN
     input   uint1   OF,                                                                                                         // OVERFLOW FLAG
@@ -742,18 +754,18 @@ unit do_addsub_align_fused(                                                     
 unit floatfused(
     input   uint1   start,
     output  uint1   busy,
-    input   uint5   opCode,
+    input   uint2   opCode,
     input   uint1   df,
     input   uint3   rm,
-    input   uint64  a,                                                                                                          // A INPUT FOR A*B+C and - variations
+    input   uint1   signA,                                                                                                      // SIGN OF A INPUT FOR A*B+C and - variations
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } FOR A
-    input   uint64  b,                                                                                                          // B INPUT FOR A*B+C and - variations
+    input   uint1   signB,                                                                                                      // SIGN OF B INPUT FOR A*B+C and - variations
     input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } FOR B
     input   uint64  c,                                                                                                          // B INPUT FOR A*B+C and - variations
     input   uint4   typeCF,                                                                                                     // { INF sNAN qNAN ZERO } FOR C
-    input   uint106 productfraction,
-    input   int13   productexp,
-    input   uint53  productnormal,
+    input   uint106 productfraction,                                                                                            // MULTIPLICATION RESULT IN FOR ADD/SUB
+    input   int13   productexp,                                                                                                 // MULTIPLICATION EXPONENT FOR ADD/SUB
+    input   uint53  productnormal,                                                                                              // NORMALISED MULTIPLICATION RESULT IN CASE OF +/-0
     output  uint1   fusedsign,                                                                                                  // RESULT SIGN
     output  int13   fusedexp,                                                                                                   // RESULT EXPONENT
     output  uint53  normalfraction,                                                                                             // NORMALISED RESULT FRACTION
@@ -777,7 +789,7 @@ unit floatfused(
 
     uint1   signC <:: opCode[0,1] ^ fp64( c ).sign;                                                                             // SWITCH SIGN OF C INPUT IF SUBTRACTION REQUIRED
     int13   expC <:: fp64( c ).exponent - { {3{df}}, 7b1111111 };                                                               // REMOVE BIAS FROM C INPUT
-    uint1   productsign <:: opCode[1,1] ^ ( fp64( a ).sign ^ fp64( b ).sign );                                                  // PRODUCT SIGN XOR SIGNS AND THEN WITH NEGATE FLAG
+    uint1   productsign <:: opCode[1,1] ^ ( signA ^ signB );                                                                    // PRODUCT SIGN XOR SIGNS AND THEN WITH NEGATE FLAG
 
     do_addsub_align_fused ALIGN(                                                                                                // ALIGN THE FRACTIONS
         df <: df,                                                                                                               // MOVE THE FRACTION WITH THE SMALLEST EXPONENT RIGHT
@@ -805,9 +817,7 @@ unit floatfused(
     );
 
     uint106 repackC <:: { signC, c[0,63] };                                                                                     // REPACK C WITH ADJUSTED SIGN IN CASE OF 0 FROM MULTIPLICATION
-    repackage_actual CRET(
-        df <: df, a <: repackC
-    );
+    repackage_actual CRET(  df <: df, a <: repackC );
 
     uint2   wait(0);
     busy := start | wait[0,1];

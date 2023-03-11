@@ -144,6 +144,8 @@ extern void gpu_print_centre_vertical( unsigned char, short, short, unsigned cha
 
 // PIXELBLOCK SCALEABLE SPRITES
 extern void DrawBitmapSprite( short x, short y, float scale, bitmap_sprite sprite );
+extern void DrawBitmapSpriteAtBaseRight( short x, short y, float scale, bitmap_sprite sprite );
+extern void DrawBitmapSpriteAtCentre( short x, short y, float scale, bitmap_sprite sprite );
 
 // SOFTWARE VECTOR SHAPES
 extern void DrawVectorShape2D( unsigned char, union Point2D *, int, int, int, int, float );

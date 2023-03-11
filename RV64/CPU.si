@@ -626,6 +626,7 @@ unit load64(
     output! uint1   readmemory,
     input!  uint1   memorybusy
 ) <reginputs> {
+    uint$addr_width$ plus4 <:: loadAddress + 4;
     uint1   complete = uninitialised;
     readmemory := 0; complete := 0;
 
@@ -633,7 +634,7 @@ unit load64(
         while(1) {
             if( start ) {
                 address = loadAddress; readmemory = 1; while( memorybusy ) {} memoryinput[0,32] = readdata;
-                address = loadAddress + 4; readmemory = 1; while( memorybusy ) {} memoryinput[32,32]= readdata;
+                address = plus4; readmemory = 1; while( memorybusy ) {} memoryinput[32,32]= readdata;
                 complete = 1;
             } else { complete = 0; }
         }
@@ -672,13 +673,14 @@ unit store64(
     output! uint1   writememory,
     input!  uint1   memorybusy
 ) <reginputs> {
+    uint$addr_width$ plus4 <:: storeAddress + 4;
     writememory := 0;
 
     algorithm <autorun> {
         while(1) {
             if( start ) {
                 address = storeAddress; writedata = storedata[0,32]; writememory = 1; while( memorybusy ) {}
-                address = storeAddress + 4; writedata = storedata[32,32]; writememory = 1; while( memorybusy ) {}
+                address = plus4; writedata = storedata[32,32]; writememory = 1; while( memorybusy ) {}
                 busy = 0;
             } else { writememory = 0; }
         }
@@ -699,6 +701,87 @@ unit store64(
 //      7   32/16bit to 4/2 pixels for PIXEL BLOCK special mode
 //      8   MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
 //      9   MEMSET RECTANGLE IS 32/16 BIT CAPABLE
+unit dma_flags(
+    input   uint$addr_width$  DMASOURCE,
+    input   uint$addr_width$  DMASOURCEADD,
+    input   uint$addr_width$  DMADEST,
+    input   uint$addr_width$  DMADESTADD,
+    input   uint$addr_width$  DMACOUNT,
+    output  uint1   srcSET,
+    output  uint1   src16bit,
+    output  uint1   SD16,
+    output  uint1   SSD16,
+    output  uint1   SD32,
+    output  uint1   SSD32,
+    output  uint1   ADD16,
+    output  uint1   ADD32,
+    output  uint1   multi16,
+    output  uint1   multi32
+) <reginputs> {
+    uint1   srcBRAM <:: ~DMASOURCE[26,1] & ~DMASOURCE[25,1] & ~DMASOURCE[15,1];                                                 // SOURCE IS BRAM
+    uint1   destBRAM <:: ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[15,1];                                                      // DEST IS BRAM
+    uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                         // DESTINATION IS 16 BIT CAPABLE
+
+    always_after {
+        { srcSET = ( DMASOURCE == 27hfe0e ); }                                                                                  // SOURCE IS THE SET VALUE REGISTER, NO LOADING REQUIRED
+        { src16bit = ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~DMASOURCE[0,1]; }                              // SOURCE IS 16 BIT CAPABLE
+
+        { SD16 = src16bit & dest16bit & ~DMACOUNT[0,1]; }                                                                       // 16/32 BIT FLAGS FOR SOURCE&DEST + SET&DEST
+        { SSD16 = srcSET & dest16bit & ~DMACOUNT[0,1]; }
+        { SD32 = src16bit & dest16bit & ~|DMACOUNT[0,2]; }
+        { SSD32 = srcSET & dest16bit & ~|DMACOUNT[0,2]; }
+
+        { ADD16 = ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1]; }                                                                      // 16/32 BIT FLAGS FOR SOURCE&DEST ADD
+        { ADD32 = ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2]; }
+
+        { multi16 = ( DMADEST == $addr_width$hd642 ); }                                                                         // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
+        { multi32 = ( DMADEST == $addr_width$hd680 ) | ( DMADEST == $addr_width$hd684 ) |                                       // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
+                      ( DMADEST == $addr_width$hd688 ) | ( DMADEST == $addr_width$hd68c ); }
+    }
+}
+unit dma_src_add(
+    input   uint$addr_width$ dmasrc,
+    input   uint$addr_width$ DMASOURCEADD,
+    input   uint1   DMA16BIT,
+    input   uint1   DMA32BIT,
+    input   uint3   PBmax,
+    output  uint$addr_width$  NEXT,
+    output  uint$addr_width$  ADD,
+    output  uint$addr_width$  PB
+) <reginputs> {
+    always_after {
+        { NEXT = dmasrc + ( DMA32BIT ? 4 : DMA16BIT ? 2 : 1 ); }                                                                // NEXT SOURCE ADDRESS FOR 32/16/8 BITS
+        { ADD = dmasrc + DMASOURCEADD; }                                                                                        // NEXT DESTINATION ADDRESS IF STEPPING
+        { PB = dmasrc + PBmax; }                                                                                                // NEXT SOURCE ADDRESS FOR PIXELBLOCK TRANSFERS
+    }
+}
+unit dma_dest_add(
+    input   uint$addr_width$ dmadest,
+    input   uint$addr_width$ DMADESTADD,
+    input   uint1   DMA16BIT,
+    input   uint1   DMA32BIT,
+    input   uint3   PBmax,
+    output  uint$addr_width$  NEXT,
+    output  uint$addr_width$  ADD,
+    output  uint$addr_width$  PB
+) <reginputs> {
+    always_after {
+        { NEXT = dmadest + ( DMA32BIT ? 4 : DMA16BIT ? 2 : 1 ); }                                                               // NEXT DESTINATION ADDRESS FOR 32/16/8 BITS
+        { ADD = dmadest + DMADESTADD; }                                                                                         // NEXT DESTINATION ADDRESS IF STEPPING
+        { PB = &dmadest[1,2] ? 27hd672: dmadest + 2; }                                                                          // DETECTS BLUE PIXEL WRITTEN, MOVES BACK TO RED
+    }
+}
+unit dma_pb_add(
+    input   uint3   PBcount,
+    input   uint3   PBmax,
+    output  uint3   NEXT,
+    output  uint1   WAIT
+) <reginputs> {
+    always_after {
+        { NEXT = PBcount + 1; }
+        { WAIT = ( NEXT != PBmax ); }
+    }
+}
 unit dma(
     input   uint$addr_width$  DMASOURCE,
     input   uint$addr_width$  DMASOURCEADD,
@@ -719,37 +802,44 @@ unit dma(
     input!  uint32  readdata,
     input!  uint1   memorybusy
 ) <reginputs> {
-    uint1   DMA16BIT = uninitialised;               uint1   DMA32BIT = uninitialised;                   uint1   srcSET <:: ( DMASOURCE == 27hfe0e ); // SOURCE IS THE SET VALUE REGISTER, NO LOADING REQUIRED
+    uint1   DMA16BIT = uninitialised;               uint1   DMA32BIT = uninitialised;                                               // IS DMA TRANSFER 16/32 BIT CAPABLE, DEFAULTS TO 8 BIT
 
     // COUNTERS FOR PIXEL BLOCK TRANSFERS
     uint1   PB4pixel = uninitialised;               uint3   PBmax <:: PB4pixel ? 4 : 2;                 uint3   PBcount = uninitialised;
-    uint3   PBcountp1 <:: PBcount + 1;              uint1   PBwritewait <:: ( PBcountp1 != PBmax );
 
     uint4   dmamode = uninitialized;                uint$addr_width$  dmacount = uninitialised;         uint8   dmacycles = uninitialised;
     uint$addr_width$  dmasrc = uninitialised;       uint$addr_width$  dmadest = uninitialised;          uint32  memoryinput = uninitialised;
-    uint1   update = uninitialised;                 uint32  writecopy <:: DMA16BIT | DMA32BIT ? readdata :  readdata[ { dmasrc[0,1], 3b000 }, 8 ];
 
-    uint$addr_width$  dmasrcNEXT <:: DMA32BIT ? dmasrc + 4 : DMA16BIT ? dmasrc + 2 : dmasrc + 1;
-    uint$addr_width$  dmasrcADD <:: dmasrc + DMASOURCEADD;
-    uint$addr_width$  dmadestNEXT <:: DMA32BIT ? dmadest + 4 : DMA16BIT ? dmadest + 2 : dmadest + 1;
-    uint$addr_width$  dmadestADD <:: dmadest + DMADESTADD;
+    uint1   update = uninitialised;
 
-    uint1   srcBRAM <:: ~DMASOURCE[26,1] & ~DMASOURCE[25,1] & ~DMASOURCE[15,1];                                         // SOURCE IS BRAM
-    uint1   destBRAM <:: ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[15,1];                                              // DEST IS BRAM
-    uint1   src16bit <:: ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~DMASOURCE[0,1];                    // SOURCE IS 16 BIT CAPABLE
-    uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                 // DESTINATION IS 16 BIT CAPABLE
+    uint32  writecopy <:: DMA16BIT | DMA32BIT ? readdata :  readdata[ { dmasrc[0,1], 3b000 }, 8 ];
 
     uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | ( &dmamode[0,3] & PB4pixel ) ? 2 : 1 );
 
-    // 16/32 BIT FLAGS FOR SOURCE&DEST + SET&DEST
-    uint1   SD16 <:: src16bit & dest16bit & ~DMACOUNT[0,1];
-    uint1   SSD16 <:: srcSET & dest16bit & ~DMACOUNT[0,1];
-    uint1   SD32 <:: src16bit & dest16bit & ~|DMACOUNT[0,2];
-    uint1   SSD32 <:: srcSET & dest16bit & ~|DMACOUNT[0,2];
-
-    // 16/32 BIT FLAGS FOR SOURCE&DEST ADD
-    uint1   ADD16 <:: ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1];
-    uint1   ADD32 <:: ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2];
+    dma_flags FLAGS(                                                                                                             // GENERATE DMA SIZE FLAGS FOR 8/16/32 BIT ACCESS
+        DMASOURCE <: DMASOURCE,
+        DMASOURCEADD <: DMASOURCEADD,
+        DMADEST <: DMADEST,
+        DMADESTADD <: DMADESTADD,
+        DMACOUNT <: DMACOUNT,
+    );
+    dma_src_add SRC(                                                                                                            // GENERATE NEXT SOURCE ADDRESSES
+        dmasrc <: dmasrc,
+        DMASOURCEADD <: DMASOURCEADD,
+        DMA16BIT <: DMA16BIT,
+        DMA32BIT <: DMA32BIT,
+        PBmax <: PBmax
+    );
+    dma_dest_add DEST(                                                                                                          // GENERATE NEXT DESTINATION ADDRESSES
+        dmadest <: dmadest,
+        DMADESTADD <: DMADESTADD,
+        DMA16BIT <: DMA16BIT,
+        DMA32BIT <: DMA32BIT
+    );
+    dma_pb_add PB(                                                                                                              // GENERATE NEXT PIXELBLOCK COUNTERS
+        PBcount <: PBcount,
+        PBmax <: PBmax
+    );
 
     writememory := 0; readmemory := 0; update := 0;
 
@@ -759,20 +849,20 @@ unit dma(
                 switch( dmamode[3,1] ) {
                     case 0: {
                         while( |dmacount ) {                                                                                        // SINGLE CYCLE MODE
-                            address = dmasrc; readmemory = ~srcSET;
-                            switch( { srcSET, &dmamode[0,3] } ) {
+                            address = dmasrc; readmemory = ~FLAGS.srcSET;
+                            switch( { FLAGS.srcSET, &dmamode[0,3] } ) {
                                 case 2b00: { while( memorybusy ) {} address = dmadest; writedata = writecopy; writememory = 1; while( memorybusy ) {} }
                                 case 2b01: {
                                     while( memorybusy ) {} memoryinput = readdata;
                                     address = dmadest; PBcount = 0;
                                     while( PBcount != PBmax ) {
-                                        writedata = memoryinput[ { PBcount, 3b000 }, 8]; if( PBwritewait ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1;
+                                        writedata = memoryinput[ { PBcount, 3b000 }, 8]; if( PB.WAIT ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PB.NEXT;
                                     }
                                 }
                                 case 2b10: { address = dmadest; writememory = 1; while( memorybusy ) {} }
                                 case 2b11: {
                                     address = dmadest; PBcount = 0;
-                                    while( PBcount != PBmax ) { if( PBwritewait ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PBcountp1; }
+                                    while( PBcount != PBmax ) { if( PB.WAIT ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PB.NEXT; }
                                 }
                             }
                             update = 1;
@@ -781,8 +871,8 @@ unit dma(
                     case 1: {
                         while( |dmacycles ) {
                             while( |dmacount ) {                                                                                    // MULTI-CYCLE MODE
-                                address = dmasrc; readmemory = ~srcSET;
-                                switch( srcSET ) {
+                                address = dmasrc; readmemory = ~FLAGS.srcSET;
+                                switch( FLAGS.srcSET ) {
                                     case 0: { while( memorybusy ) {} address = dmadest; writedata = writecopy; writememory = 1; while( memorybusy ) {} }
                                     case 1: { address = dmadest;  writememory = 1; while( memorybusy ) {} }
                                 }
@@ -793,7 +883,7 @@ unit dma(
                     }
                 }
                 DMAACTIVE = 0;
-            } else { dmamode = DMAMODE; writedata = DMASET; }
+            }
         }
     }
 
@@ -803,62 +893,41 @@ unit dma(
             if( update ) {
                 if( dmamode[3,1] ) {
                     if( |dmacount ) {
-                        if( ~dmamode[0,1] ) { dmasrc = dmasrcNEXT; }
+                        if( ~dmamode[0,1] ) { dmasrc = SRC.NEXT; }
                     } else {
-                        if( ~dmamode[0,1] ) { dmasrc = dmasrcADD - DMACOUNT; }
+                        if( ~dmamode[0,1] ) { dmasrc = SRC.ADD - DMACOUNT; }
                     }
                 } else {
                     switch( dmamode[0,3] ) {
                         default: {}
-                        case 1: { dmasrc = dmasrcNEXT; }
-                        case 2: { dmasrc = dmasrcNEXT; }
-                        case 3: { dmasrc = dmasrcNEXT; }
-                        case 6: { dmasrc = dmasrcADD; }
-                        case 7: { dmasrc = dmasrc + PBmax; }
+                        case 1: { dmasrc = SRC.NEXT; }
+                        case 2: { dmasrc = SRC.NEXT; }
+                        case 3: { dmasrc = SRC.NEXT; }
+                        case 6: { dmasrc = SRC.ADD; }
+                        case 7: { dmasrc = SRC.PB; }
                     }
                 }
-            } else {
-                if( ~DMAACTIVE ) { dmasrc = DMASOURCE; }
             }
         }
         // UPDATE DESTINATION ADDRESSES
         {
             if( update ) {
                 if( dmamode[3,1] ) {
-                    if( |dmacount ) {
-                        dmadest = dmadestNEXT;
-                    } else {
-                        dmadest = dmadestADD - DMACOUNT;
-                    }
+                    if( |dmacount ) { dmadest = DEST.NEXT; } else { dmadest = DEST.ADD - DMACOUNT; }                            // UPDATE DESTINATION ADDRESS IF RECTANGLE MODE
                 } else {
                     switch( dmamode[0,3] ) {
                         default: {}
-                        case 2: { dmadest = &dmadest[1,2] ? 27hd672: dmadest + 2; }     // DETECTS BLUE PIXEL WRITTEN, MOVES BACK TO RED
-                        case 3: { dmadest = dmadestNEXT; }
-                        case 4: { dmadest = dmadestNEXT; }
-                        case 6: { dmadest = dmadestADD; }
+                        case 2: { dmadest = DEST.PB; }
+                        case 3: { dmadest = DEST.NEXT; }
+                        case 4: { dmadest = DEST.NEXT; }
+                        case 6: { dmadest = DEST.ADD; }
                     }
                 }
-            } else {
-                if( ~DMAACTIVE ) { dmadest = DMADEST; }
             }
         }
-        // UPDATE COUNT IF != 0, reset if multi-cycle mode
-        {
-            if( update ) {
-                dmacount = |dmacount ? dmacountNEXT : dmamode[3,1] ? DMACOUNT : 0;
-            } else {
-                if( ~DMAACTIVE ) { dmacount = DMACOUNT; }
-            }
-        }
-        // UPDATE CYCLES WHEN COUNT == 0
-        {
-            if( update ) {
-                dmacycles = dmacycles - ~|dmacount;
-            } else {
-                if( ~DMAACTIVE ) { dmacycles = DMACYCLES; }
-            }
-        }
+
+        { if( update ) { dmacount = |dmacount ? dmacountNEXT : dmamode[3,1] ? DMACOUNT : 0; } }                                 // UPDATE COUNT I` != 0, reset if multi-cycle mode
+        { if( update ) { dmacycles = dmacycles - ~|dmacount; } }                                                                // UPDATE CYCLES WHEN COUNT == 0
 
         // DETERMINE MAXIMUM DMA TRANSFER SIZE, 8, 16 OR 32 BIT
         {
@@ -867,20 +936,24 @@ unit dma(
                 switch( dmamode ) {
                     default: {}                                                                                                 // DEFAULT TO 8 BIT MODE
                     case 1: {
-                        DMA16BIT = ( DMADEST == $addr_width$hd642 );                                                            // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
-                        DMA32BIT = ( DMADEST == $addr_width$hd680 ) | ( DMADEST == $addr_width$hd684 ) |                        // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
-                                   ( DMADEST == $addr_width$hd688 ) | ( DMADEST == $addr_width$hd68c );
+                        DMA16BIT = FLAGS.multi16;                                                                               // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
+                        DMA32BIT = FLAGS.multi32;                                                                               // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
                     }
-                    case 3: { DMA32BIT = SD32; DMA16BIT = SD16; }                                                               // MEMCPY IS 32/16 BIT CAPABLE
-                    case 4: { DMA32BIT = SSD32; DMA16BIT = SSD16; }                                                             // MEMSET IS 32/16 BIT CAPABLE
-                    case 7: { PB4pixel = ~|DMACOUNT[0,2] & src16bit; }                                                          // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
-                    case 8: { DMA32BIT = SD32 & ADD32; DMA16BIT = SD16 & ADD16; }                                               // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
-                    case 9: { DMA32BIT = SSD32 & ADD32; DMA16BIT = SSD16 & ADD16; }                                             // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
+                    case 3: { DMA32BIT = FLAGS.SD32; DMA16BIT = FLAGS.SD16; }                                                   // MEMCPY IS 32/16 BIT CAPABLE
+                    case 4: { DMA32BIT = FLAGS.SSD32; DMA16BIT = FLAGS.SSD16; }                                                 // MEMSET IS 32/16 BIT CAPABLE
+                    case 7: { PB4pixel = ~|DMACOUNT[0,2] & FLAGS.src16bit; }                                                    // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
+                    case 8: { DMA32BIT = FLAGS.SD32 & FLAGS.ADD32; DMA16BIT = FLAGS.SD16 & FLAGS.ADD16; }                       // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
+                    case 9: { DMA32BIT = FLAGS.SSD32 & FLAGS.ADD32; DMA16BIT = FLAGS.SSD16 & FLAGS.ADD16; }                     // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
                 }
 
             }
         }
         { if( start ) { DMAACTIVE = 1; } }
-        { if( start ) { DMAACCESSSIZE = DMA32BIT | ( &DMAMODE[0,3] & PB4pixel ) ? 2b10 : DMA16BIT | &DMAMODE[0,3] ? 2b01: 2b00; } } // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
+        { if( start ) { DMAACCESSSIZE = DMA32BIT | ( &DMAMODE[0,3] & PB4pixel ) ? 2b10 :                                        // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
+                                        DMA16BIT | &DMAMODE[0,3] ? 2b01: 2b00; } }
+
+        { if( ~DMAACTIVE ) {
+            dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES;                                  // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
+            dmamode = DMAMODE; writedata = DMASET; } }
     }
 }

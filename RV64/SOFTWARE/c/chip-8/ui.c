@@ -236,9 +236,9 @@ __attribute__((used)) void interactivity( void ) {
         }
 
         presentvblank = is_vblank();
-        if( needvblank == presentvblank ) {                                                                                     // IF NEW VBLANK
-            if( presentvblank ) {
-                if( machine.HIRES ) { draw_screen_hires(); } else { draw_screen_lores(); }                                      // DRAW THE SCREEN
+        if( needvblank == presentvblank ) {
+            if( presentvblank ) {                                                                                               // IF NEW VBLANK
+                draw_screen_hires();                                                                                            // DRAW THE SCREEN
                 display_state();                                                                                                // DISPLAY STATUS
             }
             needvblank = 1 - needvblank;

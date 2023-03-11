@@ -865,26 +865,62 @@ void gpu_pixelblock_remap( unsigned char from, unsigned char to ) {
     *PB_CMNUMBER = from; *PB_CMENTRY = to;
 }
 
-// USE THE PIXELBLOCK TO DRAW SCALEABLE SPRITES
-void DrawBitmapSprite( short x, short y, float scale, bitmap_sprite sprite ) {
-    int width = sprite.width * scale;
-    int height = sprite.height * scale;
+// USE THE PIXELBLOCK TO DRAW SCALEABLE SPRITES STORED IN MEMORY AS BLOCK OF PIXELS
+// USES FIXED POINT 16.16 MATHEMATICS TO ALLOW FOR INTEGER ARITHMETIC FOR SPEED
+#define TOFIXED(a) (int)( 65536.0 * a )
+#define TOINT(a) (a>>16)
+void DrawBitmapSprite( short x, short y, float scale, bitmap_sprite sprite ) {                                                  // X Y AT TOP LEFT
+    int width = sprite.width * scale, height = sprite.height * scale, w;                                                        // FIND REQUIRED WIDTH AND HEIGHT
+    if( !width || !height ) return;                                                                                             // STOP IF EITHER IS 0
 
-    if( !width || !height ) return;
+    int xdelta = TOFIXED( (float)sprite.width / (float)width );                                                                 // FIXED POINT X DELTA
+    int ydelta = TOFIXED( (float)sprite.height / (float)height );                                                               // FIXED POINT Y DELTA
 
-    float xdelta = (float)sprite.width / (float)width;
-    float ydelta = (float)sprite.height / (float)height;
-
-    gpu_pixelblock_start( x, y, width );
-
-    for( float yc = 0; (int)yc < sprite.height; yc += ydelta ) {
-        unsigned char *line = sprite.bitmap + (int)yc * sprite.width;
-        for( float xc = 0; (int)xc < sprite.width; xc += xdelta ) {
-            gpu_pixelblock_pixel( line[ (int)xc ] );
+    gpu_pixelblock_start( x, y, width );                                                                                        // START PIXELBLOCK AT TOP LEFT
+    for( int yc = 0; TOINT(yc) < sprite.height; yc += ydelta ) {                                                                // GO LINE BY LINE THROUGH THE PIXELS
+        unsigned char *line = sprite.bitmap + TOINT(yc) * sprite.width;                                                         // POINTER TO SPRITE LINE DATA
+        w = 0;                                                                                                                  // PIXELS ON LINE DRAWN
+        for( int xc = 0; ( TOINT(xc) < sprite.width ) && ( w<width); xc += xdelta ) {                                           // GO PIXEL BY PIXEL THROUGH THE LINE UNTIL AT WIDTH OF WIDTH PIXELS DRAWN
+            gpu_pixelblock_pixel( line[ TOINT(xc) ] ); w++;                                                                     // OUTPUT PIXEL
         }
     }
+    gpu_pixelblock_stop();                                                                                                      // STOP THE PIXELBLOCK
+}
 
-    gpu_pixelblock_stop();
+void DrawBitmapSpriteAtBaseRight( short x, short y, float scale, bitmap_sprite sprite ) {                                       // X Y AT BOTTOM RIGHT
+    int width = sprite.width * scale, height = sprite.height * scale, w;
+    if( !width || !height ) return;
+
+    int xdelta = TOFIXED( (float)sprite.width / (float)width );
+    int ydelta = TOFIXED( (float)sprite.height / (float)height );
+
+    gpu_pixelblock_start( x - width, y - height, width );                                                                       // START THE PIXELBLOCK AT TOP LEFT USING OFFSETS
+    for( int yc = 0; TOINT(yc) < sprite.height; yc += ydelta ) {                                                                // GO LINE BY LINE THROUGH THE PIXELS
+        unsigned char *line = sprite.bitmap + TOINT(yc) * sprite.width;                                                         // POINTER TO SPRITE LINE DATA
+        w = 0;                                                                                                                  // PIXELS ON LINE DRAWN
+        for( int xc = 0; ( TOINT(xc) < sprite.width ) && ( w<width); xc += xdelta ) {                                           // GO PIXEL BY PIXEL THROUGH THE LINE UNTIL AT WIDTH OF WIDTH PIXELS DRAWN
+            gpu_pixelblock_pixel( line[ TOINT(xc) ] ); w++;                                                                     // OUTPUT PIXEL
+        }
+    }
+    gpu_pixelblock_stop();                                                                                                      // STOP THE PIXELBLOCK
+}
+
+void DrawBitmapSpriteAtCentre( short x, short y, float scale, bitmap_sprite sprite ) {                                          // X Y AT CENTRE
+    int width = sprite.width * scale, height = sprite.height * scale, w;
+    if( !width || !height ) return;
+
+    int xdelta = TOFIXED( (float)sprite.width / (float)width );
+    int ydelta = TOFIXED( (float)sprite.height / (float)height );
+
+    gpu_pixelblock_start( x - ( width >> 2), y - ( height >> 2 ), width );                                                      // START THE PIXELBLOCK AT TOP LEFT USING OFFSETS
+    for( int yc = 0; TOINT(yc) < sprite.height; yc += ydelta ) {                                                                // GO LINE BY LINE THROUGH THE PIXELS
+        unsigned char *line = sprite.bitmap + TOINT(yc) * sprite.width;                                                         // POINTER TO SPRITE LINE DATA
+        w = 0;                                                                                                                  // PIXELS ON LINE DRAWN
+        for( int xc = 0; ( TOINT(xc) < sprite.width ) && ( w<width); xc += xdelta ) {                                           // GO PIXEL BY PIXEL THROUGH THE LINE UNTIL AT WIDTH OF WIDTH PIXELS DRAWN
+            gpu_pixelblock_pixel( line[ TOINT(xc) ] ); w++;                                                                     // OUTPUT PIXEL
+        }
+    }
+    gpu_pixelblock_stop();                                                                                                      // STOP THE PIXELBLOCK
 }
 
 // GPU VECTOR BLOCK
