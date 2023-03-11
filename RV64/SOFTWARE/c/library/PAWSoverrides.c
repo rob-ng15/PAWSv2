@@ -92,18 +92,3 @@ unsigned long __wrap___builtin_bswap64(unsigned long a) {
 }
 
 #include "newlib/libm/paws_conversions.c"
-float __wrap_cosf(float x) {
-    return paws_cosf(x);
-}
-float __wrap_sinf(float x) {
-    return paws_sinf(x);
-}
-float __wrap_tanf(float x) {
-    return paws_tanf(x);
-}
-float __wrap_powf(float x, float y) {
-    return paws_powf(x,y);
-}
-float __wrap_scalbnf(float x, int n ) {
-    return paws_scalbnf(x,n);
-}

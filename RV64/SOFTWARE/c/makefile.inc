@@ -37,8 +37,7 @@ LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleris
 	-Wl,--wrap=__builtin_ctz -Wl,--wrap=__builtin_ctzl \
 	-Wl,--wrap=__builtin_popcount -Wl,--wrap=__builtin_popcountl \
 	-Wl,--wrap=__builtin_parity -Wl,--wrap=__builtin_parityl \
-	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64 \
-	-Wl,--wrap=powf -Wl,--wrap=sinf -Wl,--wrap=cos -Wl,--wrap=tanf -Wl,--wrap=scalbnf
+	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 
 PAWSBASE=../

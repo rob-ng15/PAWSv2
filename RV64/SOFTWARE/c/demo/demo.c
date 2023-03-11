@@ -1138,7 +1138,6 @@ unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
                                 13,  0,  0, 20, 13,  0,  0, 19,
                                 12,  0,  0, 19, 12,  0,  0, 20,
                                 19,  0, 20,  0, 22,  0,  24, 0, 0xff };
-
 void spritedemo( void ) {
     unsigned short animation_count = 0, ghost_animation_frame = 0, move_count = 0, do_power = 0, power = 0;
     char ghost_direction[4] = { 0, 1, 2, 3 };
