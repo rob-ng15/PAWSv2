@@ -41,26 +41,26 @@ Based upon the ZX-81 3D MONSTER MAZE using PacMan Ghosts instead of the dinorsau
 ![3D MAZE](Reference/Graphics/MAZE-2.jpg)
 
 ## ASTROIDS (GAMES)
-An implementation of the arcade games Asteroids, written from scratch, using the PAWSv2 sprites. The asteroids are moved in the SMT thread.
+An implementation of the arcade games Asteroids, written from scratch, using the PAWSv2 sprites. The asteroid sprites are moved in the SMT thread.
 <br>
 ![3D MAZE](Reference/Graphics/ASTEROIDS-1.jpg)
 
 ![3D MAZE](Reference/Graphics/ASTEROIDS-2.jpg)
 
 ## DOOM (GAMES)
-A conversion of https://github.com/mbitsnbites/mc1-doom to the PAWSv2 graphics, sound and input system. DOOM style PC speaker sound support was added to PAWSv2 for DOOM.
+A conversion of https://github.com/mbitsnbites/mc1-doom to the PAWSv2 graphics, sound and input system. The images are drawn to the screen using the DMA engine, with the display being in 256 colour mode, and uses the DOOM palette, no the PAWSv2 default RGBM palette. DOOM style PC speaker sound support was added to PAWSv2 for DOOM.
 <br>
 ![3D MAZE](Reference/Graphics/DOOM-1.jpg)
 
 ![3D MAZE](Reference/Graphics/DOOM-2.jpg)
 
 ## IMGUI (DEMO)
-A test running the IMGUI DEMO to check PAWSv2 against other people's code, specially heavy on the floating-point unit.
+A test running the IMGUI DEMO to check PAWSv2 against other people's code, specially heavy on the floating-point unit. The generated image is tranferred to the display using the DMA engine, translating the RGBA image to PAWSv2 via the pixelblock.
 <br>
 ![IMGUI Test](Reference/Graphics/IMGUI.jpg)
 
 ## INVADERS (GAMES)
-An implementation of the arcade games Space Invaders. Written after reading http://nicktasios.nl/posts/space-invaders-from-scratch-part-1.html
+An implementation of the arcade games Space Invaders. The space invaders, bunkers and UFO are drawn using the blitter. The background images and score are drawm using the two tilemaps. The player ship and the bullets are sprites, using the sprite to background detection. Written after reading http://nicktasios.nl/posts/space-invaders-from-scratch-part-1.html
 <br>
 ![3D MAZE](Reference/Graphics/INVADERS-1.jpg)
 
@@ -86,6 +86,6 @@ A test of the floating point unit. Runs first in 256 colours, then in 256 greys.
 ![RAYTRACING Grey](Reference/Graphics/RAY-2.jpg)
 
 ## SMURFS (DEMO)
-A test of the dual bitmap display to provide the two parallel scrolling layers, transfer to the display by the DMA engine, extracting sections from the bitmap images in memory. The sky images  The Smurf theme is played in an SMT thread and uses a user-defined waveform (a 4 layer harmonic sine-wave). The smurf sprite uses the PAWSv2 library 32x32 sprites to combine 4 16x16 sprites.
+A test of the dual bitmap display to provide the two parallel scrolling layers, transfer to the display by the DMA engine, extracting sections from the bitmap images in memory. The sky images are on the tilemaps. The Smurf theme is played in an SMT thread and uses a user-defined waveform (a 4 layer harmonic sine-wave). The smurf sprite uses the PAWSv2 library 32x32 sprites to combine 4 16x16 sprites, handling reflection and rotation.
 <br>
 ![SPRITES](Reference/Graphics/SMURFS.jpg)
