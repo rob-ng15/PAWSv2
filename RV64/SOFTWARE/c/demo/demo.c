@@ -1138,10 +1138,32 @@ unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
                                 13,  0,  0, 20, 13,  0,  0, 19,
                                 12,  0,  0, 19, 12,  0,  0, 20,
                                 19,  0, 20,  0, 22,  0,  24, 0, 0xff };
+
+unsigned char harmonic_wave[256] = {
+127,137,147,156,165,174,182,190,196,203,208,213,216,220,223,225,226,
+228,229,230,231,232,233,234,235,236,238,239,241,243,245,247,249,250,
+252,253,254,254,254,253,252,251,249,246,243,240,237,234,231,227,224,
+222,219,217,216,215,215,215,216,217,219,221,223,225,228,230,233,234,
+236,237,238,238,237,236,234,231,228,224,220,215,210,204,199,194,188,
+183,178,174,169,166,162,159,156,154,152,150,148,146,144,143,141,139,
+136,134,131,128,125,122,118,115,111,108,105,102,99,97,96,95,95,
+96,97,99,102,105,108,113,117,122,127,132,137,141,146,149,152,
+155,157,158,159,159,158,157,155,152,149,146,143,139,136,132,129,126,
+123,120,118,115,113,111,110,108,106,104,102,100,98,95,92,88,85,
+80,76,71,66,60,55,50,44,39,34,30,26,23,20,18,17,16,
+16,17,18,20,21,24,26,29,31,33,35,37,38,39,39,39,38,
+37,35,32,30,27,23,20,17,14,11,8,5,3,2,1,0,0,
+0,1,2,4,5,7,9,11,13,15,16,18,19,20,21,22,23,
+24,25,26,28,29,31,34,38,41,46,51,58,64,72,80,89,98,
+107,117
+};
+
 void spritedemo( void ) {
     unsigned short animation_count = 0, ghost_animation_frame = 0, move_count = 0, do_power = 0, power = 0;
     char ghost_direction[4] = { 0, 1, 2, 3 };
     unsigned short trebleposition = 0, bassposition = 0, updateflag;
+
+    wavesample_upload( CHANNEL_BOTH, 1, harmonic_wave );
 
     displayreset();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "SPRITE Demo" );
@@ -1262,13 +1284,13 @@ void spritedemo( void ) {
         // PACMAN "TUNE" - SLIGHTLY OUT
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
-                beep( 1, 0, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
+                beep( 1, WAVE_UD1, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
                 trebleposition++;
             }
         }
         if( tune_bass[ bassposition ] != 0xff ) {
             if( !get_beep_active( 2 ) ) {
-                beep( 2, 0, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
+                beep( 2, WAVE_UD1, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
                 bassposition++;
             }
         }

@@ -324,6 +324,11 @@ bitmap_sprite tree_sprites[]= {
     {64,53,tree_4}
 };
 
+// 128x70 http://www.dizionariovideogiochi.it/doku.php?id=out_run
+unsigned char car_bitmap[] = {
+#include "graphics/car.h"
+};
+
 // ROAD SEGMENTS, DEFINING NUMBER OF SECTIONS BEFORE NEXT TURN, TURN ANGLE, AND SIDE OBJECTS
 #define MAXSEGMENT 17
 typedef struct {
@@ -645,6 +650,9 @@ void draw() {
             default:
         }
     }
+
+    // DRAW CAR GRAPHIC
+    gpu_pixelblock( 96,  168, 128, 70, TRANSPARENT, car_bitmap );
 }
 
 void set_background_generator( void ) {

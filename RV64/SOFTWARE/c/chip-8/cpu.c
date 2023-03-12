@@ -34,10 +34,9 @@ int set_pixel( int p, int x, int y ) {
 
     switch( machine.HIRES ) {
         case 0:                                                                                                                 // LORES SET 2x2 PIXELS
-            machine.DISPLAY[ p ][ y ][ section ] = _rv64_binv( machine.DISPLAY[ p ][ y ][ section ], bit );
-            machine.DISPLAY[ p ][ y ][ section ] = _rv64_binv( machine.DISPLAY[ p ][ y ][ section ], bitnext );
-            machine.DISPLAY[ p ][ y + 1 ][ section ] = _rv64_binv( machine.DISPLAY[ p ][ y + 1 ][ section ], bit );
-            machine.DISPLAY[ p ][ y + 1 ][ section ] = _rv64_binv( machine.DISPLAY[ p ][ y + 1 ][ section ], bitnext );
+            unsigned long temp = _rv64_bset( _rv64_bset( 0, bit ), bitnext );
+            machine.DISPLAY[ p ][ y ][ section ] ^= temp;
+            machine.DISPLAY[ p ][ y + 1 ][ section ] ^= temp;
             break;
         case 1:                                                                                                                 // HIRES SET 1 PIXEL
             machine.DISPLAY[ p ][ y ][ section ] = _rv64_binv( machine.DISPLAY[ p ][ y ][ section ], bit );
