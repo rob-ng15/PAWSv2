@@ -68,14 +68,21 @@ unit gpu_queue(
 
     // QUEUE STORAGE
     uint1   queue_busy <:: |queue_write;            uint1   dispatch <:: queue_busy & ~gpu_active;
-    uint4   queue_write = 0;
+    uint4   queue_write(0);
+
+    int11   queue_x = uninitialised;                int11   queue_y = uninitialised;
+    uint8   queue_colour = uninitialised;           uint8   queue_colour_alt = uninitialised;
+    int11   queue_param0 = uninitialised;           int11   queue_param1 = uninitialised;
+    int11   queue_param2 = uninitialised;           int11   queue_param3 = uninitialised;
+    int11   queue_param4 = uninitialised;           int11   queue_param5 = uninitialised;
+    uint4   queue_dithermode = uninitialised;
+    uint9   queue_cropL = uninitialised;            uint8   queue_cropT = uninitialised;
+    uint9   queue_cropR = uninitialised;            uint8   queue_cropB = uninitialised;
 
     GPU.gpu_write := 0; queue_full := vector_block_active | queue_busy ; queue_complete := ~( gpu_active | queue_full );
 
     always_after {
-        {
-            bitmap_crop_left = GPU.crop_left; bitmap_crop_right = GPU.crop_right; bitmap_crop_top = GPU.crop_top; bitmap_crop_bottom = GPU.crop_bottom;
-        }
+        { bitmap_crop_left = GPU.crop_left; bitmap_crop_right = GPU.crop_right; bitmap_crop_top = GPU.crop_top; bitmap_crop_bottom = GPU.crop_bottom; }
 
         {
             // PASS VECTOR BLOCK REQUEST
@@ -90,15 +97,6 @@ unit gpu_queue(
         }
 
         {
-            int11   queue_x = uninitialised;                int11   queue_y = uninitialised;
-            uint8   queue_colour = uninitialised;           uint8   queue_colour_alt = uninitialised;
-            int11   queue_param0 = uninitialised;           int11   queue_param1 = uninitialised;
-            int11   queue_param2 = uninitialised;           int11   queue_param3 = uninitialised;
-            int11   queue_param4 = uninitialised;           int11   queue_param5 = uninitialised;
-            uint4   queue_dithermode = uninitialised;
-            uint9   queue_cropL = uninitialised;            uint8   queue_cropT = uninitialised;
-            uint9   queue_cropR = uninitialised;            uint8   queue_cropB = uninitialised;
-
             // QUEUE CPU REQUEST
             if( |gpu_write ) {
                 queue_dithermode = gpu_dithermode; queue_colour = gpu_colour; queue_colour_alt = gpu_colour_alt; queue_write = gpu_write;
@@ -109,7 +107,8 @@ unit gpu_queue(
                 ( queue_cropL, queue_cropR ) = copycoordinates( crop_left, crop_right );
                 ( queue_cropT, queue_cropB ) = copycoordinates( crop_top, crop_bottom );
             }
-
+        }
+        {
             // DISPATCH FROM QUEUE
             if( dispatch ) {
                 GPU.gpu_dithermode = queue_dithermode; GPU.gpu_colour = queue_colour; GPU.gpu_colour_alt = queue_colour_alt;
@@ -576,7 +575,7 @@ unit drawcircle(
     int11   min_count = uninitialised;                  int11   min_countNEXT <:: min_count + 1;
     uint1   drawingcircle <:: ( active_y >= active_x ); uint1   finishsegment <:: ( countNEXT == min_count );
 
-    uint4   arc = uninitialised;                        uint4   arcNEXT <:: arc + 1;
+    uint4   arc(0);                                     uint4   arcNEXT <:: arc + 1;
     arccoords ARC( xc <: xc, yc <: yc, active_x <: active_x, count <: count, arc <: arc );
 
     bitmap_write := 0;
@@ -586,23 +585,30 @@ unit drawcircle(
             if( start ) {
                 busy = 1;
                 active_x = 0; active_y = radius; count = radius; min_count = (-1); numerator = start_numerator;
-                while( drawingcircle ) {
-                    if( ARC.centrepixel ) {
-                        // DETECT IF CENTRE PIXEL, OUTPUT ONCE
-                        bitmap_write = |draw_sectors;
-                    } else {
-                        arc = 0; while( ~arc[3,1] ) {
-                            // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
-                            bitmap_write = draw_sectors[arc,1]; arc = arcNEXT;
+                while( 1 ) {
+                    if( drawingcircle ) {
+                        if( ARC.centrepixel ) {
+                            bitmap_write = |draw_sectors;                                                                       // DETECT IF CENTRE PIXEL, OUTPUT ONCE
+                        } else {
+                            while( 1 ) {
+                                if( ~arc[3,1] ) {
+                                    bitmap_write = draw_sectors[arc,1]; arc = arcNEXT;                                          // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
+                                } else {
+                                    arc = 0;
+                                    break;
+                                }
+                            }
                         }
-                    }
-                    if( finishsegment ) {
-                        active_x = active_xNEXT; active_y = active_yNEXT; count = active_y; min_count = min_countNEXT; numerator = new_numerator;
+                        if( finishsegment ) {
+                            active_x = active_xNEXT; active_y = active_yNEXT; count = active_y; min_count = min_countNEXT; numerator = new_numerator;
+                        } else {
+                            count = countNEXT;
+                        }
                     } else {
-                        count = countNEXT;
+                        busy = 0;
+                        break;
                     }
                 }
-                busy = 0;
             } else {
                 busy = 0;
             }
@@ -939,16 +945,38 @@ unit blit(
         while(1) {
             if( |start ) {
                 busy = start; PYS.offset = 0;
-                while( pyworking ) {
-                    PXS.offset = 0;
-                    while( pxworking ) {
-                        y2 = 0;
-                        while( y2working ) { x2 = 0; while( x2working ) { dooutput = 1; } y2 = y2NEXT; }
-                        PXS.offset = pxNEXT;
+                while( 1 ) {
+                    if( pyworking ) {
+                        PXS.offset = 0;
+                        while( 1 ) {
+                            if( pxworking ) {
+                                y2 = 0;
+                                while( 1 ) {
+                                    if( y2working ) {
+                                        x2 = 0;
+                                        while( 1 ) {
+                                            if( x2working ) {
+                                                dooutput = 1;
+                                            } else {
+                                                y2 = y2NEXT;
+                                                break;
+                                            }
+                                        }
+                                    } else {
+                                        PXS.offset = pxNEXT;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                PYS.offset = pyNEXT;
+                                break;
+                            }
+                        }
+                    } else {
+                        busy = 0;
+                        break;
                     }
-                    PYS.offset = pyNEXT;
                 }
-                busy = 0;
             } else {
                 busy = 0;
             }
