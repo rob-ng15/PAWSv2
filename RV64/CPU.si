@@ -42,7 +42,7 @@ unit PAWSCPU(
     uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;
     uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                      // SELECT PC FOR THIS CYCLE
 
-    // RISC-V 32 BIT CONTROLLER
+    // RISC-V 64 BIT CONTROLLER FOR INTEGER OPERATIONS
     uint64  result <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.result : RV64CONTROL.IS_FAST ? EXECUTEFAST.result : EXECUTESLOW.result;
     uint1   frd <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.frd : RV64CONTROL.writeRegisterF;
     uint1   write <:: COMMIT & RV64CONTROL.writeRegister;
@@ -62,6 +62,7 @@ unit PAWSCPU(
         accesssize :> accesssize
     );
 
+    // RISC-V 64 BIT CONTROLLER FOR SINGLE AND DOUBLE PRECISION FLOATING POINT OPERATIONS
     float_control RV64CONTROLF <@clock_CPUdecoder> (
         SMT <:: SMT,
         COMMIT_SMT <: COMMIT_SMT,
@@ -234,7 +235,10 @@ unit PAWSCPU(
 
         while(1) {
             // CPU LOOP, CONTINUE UNTIL DMA REQUEST, THEN RESTART AT FETCH
-            while( ~|DMAMODE ) {
+            if( DMAMODE ) {
+                DMA.start = 1; while( DMAACTIVE | |DMAMODE ) {}                                                                         // PROCESS MINI-DMA ENGINE REQUESTS
+                cacheselect = 0; FETCH.start = ~L0match;                                                                                // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
+            } else {
                 COMMIT_SMT = SMT;
                 if( L0match ) {                                                                                                     // COMPLETE FETCH INSTRUCTION
                     instruction =  L0instruction; compressed = L0compressed;                                                            // FROM CACHE
@@ -265,10 +269,7 @@ unit PAWSCPU(
                 COMMIT = 1; ++:                                                                                                     // COMMIT REGISTERS< AND UPDATE PC AND SWITCH THREADS IF SMT ENABLED
 
                 if( ~|DMAMODE ) { cacheselect = 0; FETCH.start = ~L0match; }                                                        // START FETCH OF NEXT INSTRUCTION IF NO DMA REQUEST
-            } // RISC-V CPU LOOP, EXIT TO PROCESS DMA REQUEST
-
-            DMA.start = 1; while( DMAACTIVE | |DMAMODE ) {}                                                                         // PROCESS MINI-DMA ENGINE REQUESTS
-            cacheselect = 0; FETCH.start = ~L0match;                                                                                // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
+            }
         }
     }
 
@@ -409,8 +410,7 @@ unit cpuexecuteSLOWPATH(
         while(1) {
             if( start ) {
                 onehot( operation ) {
-                    case 0: { ++: }                                                                                             // CSR
-                    case 1: { ++: }                                                                                             // ATOMIC OPERATIONS
+                    default: { ++: }                                                                                            // CSR ATOMIC OPERATIONS
                     case 2: { while( unitbusy ) {} }                                                                            // INTEGER DIVISION + CLMUL
                 }
                 busy = 0;
@@ -427,13 +427,26 @@ unit cpuexecuteSLOWPATH(
                     case 0: { result = |function3 ? CSR.result : 0; }                                                           // CSR
                     case 1: {
                         if( function7[3,1] ) {
-                            result = memoryinput; memoryoutput = ALUA.result;                                                   // ATOMIC LOAD - MODIFY - STORE
+                            result = memoryinput;                                                                                // ATOMIC LOAD - MODIFY - STORE
                         } else {
                             result = function7[2,1] ? 0 : memoryinput;                                                          // LR.W SC.W
-                            memoryoutput = sourceReg2;
                         }
                     }
                     case 2: { result = size32 ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; }
+                }
+            }
+        }
+        {
+            if( busy ) {
+                onehot( operation ) {
+                   default: {}
+                    case 1: {
+                        if( function7[3,1] ) {
+                            memoryoutput = ALUA.result;                                                                         // ATOMIC LOAD - MODIFY - STORE
+                        } else {
+                            memoryoutput = sourceReg2;                                                                          // LR.W SC.W
+                        }
+                    }
                 }
             }
         }
@@ -515,8 +528,7 @@ unit cpuexecuteFPU(
         while(1) {
             if( start ) {
                 onehot( operation ) {
-                    case 0: {}                                                                                                  // FPU COMPARE, MIN/MAX, CLASS, MOVE,
-                    case 1: {}                                                                                                  // FPU CONVERT
+                    default: {}                                                                                                  // FPU COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
                     case 2: { while( FPUCALC.busy ) {} }                                                                        // FPU CALCULATIONS
                 }
                 busy = 0;

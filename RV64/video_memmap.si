@@ -52,7 +52,7 @@ unit statusdisplay(
     input   uint1   NUMLOCK,
     input   uint1   RESETSTATUS
 ) <reginputs> {
-    uint9   x <: pix_x + 1;                         uint8   y <: pix_y - 1;                                                     // MOVE 1 pixel in from top right
+    uint8   y <: pix_y - 1;                                                                                                     // MOVE 1 pixel in from top right
 
     pulse1khz COUNTER();                                                                                                        // TIMER, 1 SECOND = 1000 milliseconds
 
@@ -67,16 +67,16 @@ unit statusdisplay(
     always_after {
         { if( RESETSTATUS ) { COUNTER.resetCounter = 1000; } }                                                                  // REQUEST TO DISPLAY STATUS LIGHTS
         {
-            if( |COUNTER.counter1khz & display & pix_active & ( x > 255 ) & ( x < 319 ) & ( y < 16 ) ) {                        // CHECK IF IN RANGE
-                switch( x[4,2] ) {
+            if( |COUNTER.counter1khz & display & pix_active & pix_x[8,1] & ~|y[4,4] ) {                                         // CHECK IF IN RANGE
+                switch( pix_x[4,2] ) {
                     // SELECT PIXEL COLOUR ACCORDING TO EACH STATUS LIGHT
                     case 2b00: {
-                        pixel = sdcard.rdata[~x[0,4],1] ? sdcardlightcolour[1,1] ? 8hf9 : sdcardlightcolour[0,1] ? 8hc1 : 8h5b  // SDCARD
+                        pixel = sdcard.rdata[~pix_x[0,4],1] ? sdcardlightcolour[1,1] ? 8hf9 : sdcardlightcolour[0,1] ? 8hc1 : 8h5b  // SDCARD
                                 : background;
                     }
-                    case 2b01: { pixel = joystick.rdata[~x[0,4],1] ? JOYSTICK ? 8h38 : 8h5b : background; }                     // JOYSTICK
-                    case 2b10: { pixel = capslock.rdata[~x[0,4],1] ? CAPSLOCK ? 8h38 : 8h5b : background; }                     // CAPSLOCK
-                    case 2b11: { pixel = numlock.rdata[~x[0,4],1] ? NUMLOCK ? 8h38 : 8h5b : background; }                       // NUMLOCK
+                    case 2b01: { pixel = joystick.rdata[~pix_x[0,4],1] ? JOYSTICK ? 8h38 : 8h5b : background; }                 // JOYSTICK
+                    case 2b10: { pixel = capslock.rdata[~pix_x[0,4],1] ? CAPSLOCK ? 8h38 : 8h5b : background; }                 // CAPSLOCK
+                    case 2b11: { pixel = numlock.rdata[~pix_x[0,4],1] ? NUMLOCK ? 8h38 : 8h5b : background; }                   // NUMLOCK
                 }
                 pixel_display = ( pixel != 8h40 );                                                                              // CHECK NOT TRANSPARENT
             }
@@ -222,6 +222,7 @@ $$end
         video_clock <: video_clock,
         video_reset <: video_reset,
         pix_x      <: xscreen,
+        pix_x1     <: xscreenp1,
         pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
@@ -236,6 +237,7 @@ $$end
         video_clock <: video_clock,
         video_reset <: video_reset,
         pix_x      <: xscreen,
+        pix_x1     <: xscreenp1,
         pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
@@ -268,6 +270,7 @@ $$end
         video_reset <: video_reset,
         lorez <: hilorez[0,1],
         pix_x      <: xscreen,
+        pix_x1     <: xscreenp1,
         pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
@@ -279,6 +282,7 @@ $$end
         video_reset <: video_reset,
         lorez <: hilorez[1,1],
         pix_x      <: xscreen,
+        pix_x1     <: xscreenp1,
         pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
@@ -288,7 +292,7 @@ $$end
 
     // STATUS LIGHTS
     statusdisplay STATUS <@video_clock,!video_reset> (
-        pix_x      <: xscreen[1,9],
+        pix_x      <: xscreenp1[1,9],
         pix_y      <: yscreen[1,8],
         pix_active <: pix_active,
         sdcardlightcolour <: sdcardlightcolour,
@@ -865,6 +869,7 @@ unit sprite_memmap(
 
     // Pixels
     input   uint10  pix_x,
+    input   uint10  pix_x1,
     input   uint10  pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
@@ -900,6 +905,7 @@ unit sprite_memmap(
 
     sprite_layer sprites <@video_clock,!video_reset> (
         pix_x      <: pix_x,
+        pix_x1     <: pix_x1,
         pix_y      <: pix_y,
         pix_active <: pix_active,
         pix_vblank <: pix_vblank,
@@ -1031,7 +1037,8 @@ unit tilemap_memmap(
 
     // Pixels
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint10  pix_x1,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     output! uint8   pixel,
@@ -1071,12 +1078,13 @@ unit tilemap_memmap(
     // 42 x 32 tile map, allows for pixel scrolling with border { 2 bit rotation/reflection, 6 bits tile number }
     dualport_bram uint9 tiles <@video_clock,@clock> [1344] = uninitialized;
 
-    uint10  dopix_x <: pix_x >> lorez;  uint10  dopix_y <: pix_y >> lorez;
+    uint10  dopix_x <: lorez ? pix_x[1,9] : pix_x; uint10  dopix_x1 <: lorez ? pix_x1[1,9] : pix_x1; uint9  dopix_y <: lorez ? pix_y[1,8] : pix_y;
     tilemap tile_map <@video_clock,!video_reset> (
         clockTG <: clock,
         tiles16x16 <:> tiles16x16,
         tiles <:> tiles,
         pix_x      <: dopix_x,
+        pix_x1     <: dopix_x1,
         pix_y      <: dopix_y,
         pix_active <: pix_active,
         pix_vblank <: pix_vblank,

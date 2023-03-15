@@ -324,9 +324,15 @@ bitmap_sprite tree_sprites[]= {
     {64,53,tree_4}
 };
 
-// 128x70 http://www.dizionariovideogiochi.it/doku.php?id=out_run
-unsigned char car_bitmap[] = {
-#include "graphics/car.h"
+// https://www.spriters-resource.com/fullview/25458/
+unsigned char car_0[] = {
+#include "graphics/car-down.h"
+};
+unsigned char car_1[] = {
+#include "graphics/car-level.h"
+};
+unsigned char car_2[] = {
+#include "graphics/car-up.h"
 };
 
 // ROAD SEGMENTS, DEFINING NUMBER OF SECTIONS BEFORE NEXT TURN, TURN ANGLE, AND SIDE OBJECTS
@@ -652,7 +658,15 @@ void draw() {
     }
 
     // DRAW CAR GRAPHIC
-    gpu_pixelblock( 96,  168, 128, 70, TRANSPARENT, car_bitmap );
+    if( road[camcnr].pi > 0 ) {
+        gpu_pixelblock( 121, 197, 78, 40, TRANSPARENT, car_0 );
+    } else {
+        if( road[camcnr].pi < 0 ) {
+            gpu_pixelblock( 121, 196, 78, 41, TRANSPARENT, car_2 );
+        } else {
+            gpu_pixelblock( 121, 197, 78, 40, TRANSPARENT, car_1 );
+        }
+    }
 }
 
 void set_background_generator( void ) {
