@@ -165,6 +165,10 @@ void sleep( unsigned short counter ) {
     *SLEEPTIMER0 = counter;
     while( *SLEEPTIMER0 );
 }
+// SLEEP FOR counter milliseconds
+void sleep1khz( unsigned short counter, unsigned char timer ) {
+    *( timer ? SLEEPTIMER1 : SLEEPTIMER0 ) = counter; while( timer ? *SLEEPTIMER1 : *SLEEPTIMER0 );
+}
 
 // WAIT FOR VBLANK TO START
 void await_vblank( void ) {
@@ -212,6 +216,24 @@ void gpu_rectangle( unsigned char colour, short x1, short y1, short x2, short y2
 
     wait_gpu();
     *GPU_WRITE = 3;
+}
+
+// DRAW A LINE FROM (x1,y1) to (x2,y2) in colour - uses Bresenham's Line Drawing Algorithm - single pixel width
+void gpu_line( unsigned char colour, short x1, short y1, short x2, short y2 ) {
+    *GPU_COLOUR = colour;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = 1;
+    wait_gpu();
+    *GPU_WRITE = 2;
+}
+
+// DRAW A LINE FROM (x1,y1) to (x2,y2) in colour - uses Bresenham's Line Drawing Algorithm - multi-pixel width
+void gpu_wideline( unsigned char colour, short x1, short y1, short x2, short y2, unsigned char width ) {
+    if( width ) {
+        *GPU_COLOUR = colour;
+        *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = width;
+        wait_gpu();
+        *GPU_WRITE = 2;
+    }
 }
 
 // CLEAR THE BITMAP by drawing a transparent rectangle from (0,0) to (639,479) and resetting the bitamp scroll position
@@ -451,6 +473,11 @@ void smtmandel( void ) {
     float jx, jy, tx, ty, wx, wy, r;
     int k;
 
+    for( int y = 0; y < 100; y++ ) {
+        gpu_line( y, y, 122+y, 319 - y, 221 );
+        sleep1khz( 10, 0 );
+    }
+
     gpu_pixelblock_start( 0, 122, 320 );
     for( int y = 0; y < graphheight; y++ ) {
         jy = ymin + y * dy;
@@ -512,7 +539,7 @@ void main( void ) {
     }
     gpu_outputstringcentre( UK_GOLD, 74, "VERILATOR - SMT + FPU TEST", 0 );
     gpu_outputstringcentre( UK_GOLD, 82, "THREAD 0 - PACMAN SPRITES", 0 );
-    gpu_outputstringcentre( UK_GOLD, 90, "THREAD 1 - FPU MANDELBROT", 0 );
+    gpu_outputstringcentre( UK_GOLD, 90, "THREAD 1 - GPU AND FPU MANDELBROT", 0 );
 
     SMTSTART( (unsigned long)smtthread );
 

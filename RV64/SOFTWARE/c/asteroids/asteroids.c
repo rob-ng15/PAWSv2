@@ -66,6 +66,14 @@
 
 #include "graphics/asteroids-sprites.h"
 
+// PLAYER LIVES AS A 2D DRAWLIST
+struct DrawList2D PlayerShip[] = {
+    { DLLINE, GREY3, DITHERSOLID, { 0, 0 }, { 5, 10 }, { 1, 0 }, },
+    { DLLINE, GREY3, DITHERSOLID, { 5, 10 }, { 0, 6 }, { 1, 0 }, },
+    { DLLINE, GREY3, DITHERSOLID, { 0, 6 }, { -5, 10 }, { 1, 0 }, },
+    { DLLINE, GREY3, DITHERSOLID, { -5, 10 }, { 0, 0 }, { 1, 0 }, },
+};
+
 // PROGRAM THE BACKGROUND COPPER FOR THE FALLING STARS
 void program_background( void ) {
     copper_startstop( 0 );
@@ -93,15 +101,6 @@ void program_background( void ) {
 void set_sprites( void ) {
     set_sprite_bitamps_from_spritesheet( LOWER_LAYER, &lower_sprite_sheet[0] );
     set_sprite_bitamps_from_spritesheet( UPPER_LAYER, &upper_sprite_sheet[0] );
-}
-
-void set_ship_vector( void ) {
-    set_vector_vertex( 0, 0, 1, 0, 0 );
-    set_vector_vertex( 0, 1, 1, 5, 10 );
-    set_vector_vertex( 0, 2, 1, 0, 6 );
-    set_vector_vertex( 0, 3, 1, -5, 10 );
-    set_vector_vertex( 0, 4, 1, 0, 0 );
-    set_vector_vertex( 0, 5, 0, 0, 0 );
 }
 
 void set_tilemap( void ) {
@@ -217,7 +216,6 @@ void setup_game() {
     risc_ice_v_logo();
     set_tilemap();
     set_sprites();
-    set_ship_vector();
 
     lives = 0; score = 0;
     fuel = 1000; shield = 250;
@@ -362,7 +360,7 @@ void draw_score( void ) {
 
 void draw_lives( void ) {
     for( unsigned short i = 0; i < lives; i++ ) {
-        draw_vector_block( 0, WHITE, 304, 16 + i * 16, 0, ROTATE0 + i );
+        DoDrawList2D( PlayerShip, 4, 304, 16 + i * 16, i * 90, 1 );
     }
 }
 
