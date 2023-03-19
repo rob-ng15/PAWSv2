@@ -1,3 +1,8 @@
+// COPY COORDINATES CIRCUIT
+circuitry copycoordinates( input x, input y, output x1, output y1 ) {
+    x1 = x; y1 = y;
+}
+
 unit gpu_queue(
     output  int11   bitmap_x_write,
     output  int11   bitmap_y_write,
@@ -38,16 +43,7 @@ unit gpu_queue(
     input   uint8   pb_colour8g,
     input   uint8   pb_colour8b,
     input   uint2   pb_newpixel,
-
     simple_dualport_bram_port0 pb_colourmap,
-
-    input   uint8   vector_block_colour,
-    input   int11   vector_drawer_gpu_x,
-    input   int11   vector_drawer_gpu_y,
-    input   int11   vector_drawer_gpu_param0,
-    input   int11   vector_drawer_gpu_param1,
-    input   uint1   vector_drawer_gpu_write,
-    input   uint1   vector_block_active,
 
     output  uint1   queue_full(0),
     output  uint1   queue_complete(1),
@@ -79,22 +75,10 @@ unit gpu_queue(
     uint9   queue_cropL = uninitialised;            uint8   queue_cropT = uninitialised;
     uint9   queue_cropR = uninitialised;            uint8   queue_cropB = uninitialised;
 
-    GPU.gpu_write := 0; queue_full := vector_block_active | queue_busy ; queue_complete := ~( gpu_active | queue_full );
+    GPU.gpu_write := 0; queue_full := queue_busy ; queue_complete := ~( gpu_active | queue_full );
 
     always_after {
         { bitmap_crop_left = GPU.crop_left; bitmap_crop_right = GPU.crop_right; bitmap_crop_top = GPU.crop_top; bitmap_crop_bottom = GPU.crop_bottom; }
-
-        {
-            // PASS VECTOR BLOCK REQUEST
-            if( vector_drawer_gpu_write ) {
-                GPU.gpu_colour = vector_block_colour;
-                GPU.gpu_x = vector_drawer_gpu_x; GPU.gpu_y = vector_drawer_gpu_y;
-                GPU.gpu_param0 = vector_drawer_gpu_param0; GPU.gpu_param1 = vector_drawer_gpu_param1;
-                GPU.gpu_param2 = 1;
-                GPU.crop_left = crop_left; GPU.crop_right = crop_right; GPU.crop_top = crop_top; GPU.crop_bottom = crop_bottom;
-                GPU.gpu_write = 2;
-            }
-        }
 
         {
             // QUEUE CPU REQUEST
@@ -489,7 +473,7 @@ unit drawline(
                     }
                     numerator = newnumerator; x = xNEXT; y = yNEXT; count = countNEXT;
                 }
-                busy = 0;
+                ++: busy = 0;
             } else {
                 busy = 0;
             }
@@ -559,9 +543,7 @@ unit arccoords(
                 case 7: { bitmap_y_write = ycpax; }
             }
         }
-        {
-            centrepixel = ( ~|count & ~|active_x );
-        }
+        { centrepixel = ( ~|count & ~|active_x ); }
     }
 }
 unit drawcircle(
@@ -1066,154 +1048,5 @@ unit pixelblock(
             }
         }
         { if( busy ) { toprocess = newpixel; } }
-    }
-}
-
-// Vector Block
-// Stores blocks of upto 16 vertices which can be sent to the GPU for line drawing
-// Each vertices represents a delta from the centre of the vector
-// Deltas are stored as 6 bit 2's complement range -31 to 0 to 31
-// Each vertices has an active flag, processing of a vector block stops when the active flag is 0
-// Each vector block has a centre x and y coordinate and a colour { rrggbb } when drawn
-
-// SCALE A DELTA USING THE SCALE ATTRIBUTE
-unit scaledetla(
-    input   uint3   scale,
-    input   uint6   delta,
-    output  int11   scaled
-) <reginputs> {
-    // SIGN EXTEND THE DELTA, THEN SCALE
-    int11   extdelta <:: { {11{delta[5,1]}}, delta };
-
-    always_after {
-        scaled = ( scale[2,1] ? ( __signed(extdelta) >>> scale[0,2] ) : ( extdelta << scale[0,2] ) );
-    }
-}
-unit cpm(
-    input   int11   xc,
-    input   uint6   dx,
-    input   int11   yc,
-    input   uint6   dy,
-    input   uint3   scale,
-    output  int11   xcpdx,
-    output  int11   xcndx,
-    output  int11   ycpdy,
-    output  int11   ycndy,
-    output  int11   xcpdy,
-    output  int11   xcndy,
-    output  int11   ycpdx,
-    output  int11   ycndx,
-) <reginputs> {
-    // SIGN EXTEND DELTAS AND APPLY SCALE
-    scaledetla SDX( scale <: scale, delta <: dx ); scaledetla SDY( scale <: scale, delta <: dy );
-
-    // PLUS OR MINUS SCALE
-    always_after {
-        { xcpdx = xc + SDX.scaled; }                { xcndx = xc - SDX.scaled; }
-        { ycpdy = yc + SDY.scaled; }                { ycndy = yc - SDY.scaled; }
-        { xcpdy = xc + SDY.scaled; }                { xcndy = xc - SDY.scaled; }
-        { ycpdx = yc + SDX.scaled; }                { ycndx = yc - SDX.scaled; }
-    }
-}
-// ADJUST COORDINATES BY DELTAS AND SCALE
-unit centreplusdelta(
-    input   int11   xc,
-    input   uint6   dx,
-    input   int11   yc,
-    input   uint6   dy,
-    input   uint3   scale,
-    input   uint3   action,
-    output  int11   xdx,
-    output  int11   ydy
-) <reginputs> {
-    cpm CPM( xc <: xc, yc <: yc, dx <: dx, dy <: dy, scale <: scale );
-
-    always_after {
-        {
-            if( action[2,1] ) {
-                // ROTATION
-                switch( action[0,2] ) {
-                    case 0: { xdx = CPM.xcpdx; }
-                    case 1: { xdx = CPM.xcndy; }
-                    case 2: { xdx = CPM.xcndx; }
-                    case 3: { xdx = CPM.xcpdy; }
-                }
-            } else {
-                // REFLECTION
-                xdx = action[0,1] ? CPM.xcndx : CPM.xcpdx;
-            }
-        }
-        {
-            if( action[2,1] ) {
-                // ROTATION
-                switch( action[0,2] ) {
-                    case 0: { ydy = CPM.ycpdy; }
-                    case 1: { ydy = CPM.ycpdx; }
-                    case 2: { ydy = CPM.ycndy; }
-                    case 3: { ydy = CPM.ycndx; }
-                }
-            } else {
-                // REFLECTION
-                ydy = action[1,1] ? CPM.ycndy : CPM.ycpdy;
-            }
-        }
-    }
-}
-unit vectors(
-    simple_dualport_bram_port0 vertex,
-    input   uint6   vector_block_number,
-    input   int11   vector_block_xc,
-    input   int11   vector_block_yc,
-    input   uint3   vector_block_scale,
-    input   uint3   vector_block_action,
-    input   uint1   draw_vector,
-    output  uint1   vector_block_active(0),
-
-    // Communication with the GPU
-    output  int11   gpu_x,
-    output  int11   gpu_y,
-    output  int11   gpu_param0,
-    output  int11   gpu_param1,
-    output  uint1   gpu_write,
-    input   uint1   gpu_active
-) <reginputs> {
-    // Add deltas to the centres
-    centreplusdelta CENTREPLUSDELTA(
-        xc <: vector_block_xc, yc <: vector_block_yc,
-        dx <: vectorentry(vertex.rdata0).dx, dy <: vectorentry(vertex.rdata0).dy,
-        scale <: vector_block_scale, action <: vector_block_action,
-        xdx :> gpu_param0, ydy :> gpu_param1
-    );
-
-    // Vertices being processed, plus first coordinate of each line
-    uint4   vertex = uninitialised;                     uint4   vertexNEXT <:: vertex + 1;
-    uint1   working <:: vectorentry(vertex.rdata0).active & ( |vertex );
-    uint1   copycoords = uninitialised;                 uint1   increment = uninitialised;
-
-    // Set read address for the vertices
-    vertex.addr0 := { vector_block_number, vertex };
-
-    gpu_write := 0; copycoords := 0; increment := 0;
-
-    algorithm <autorun> {
-        while(1) {
-            if( draw_vector ) {
-                vertex = 1; copycoords = 1;                                                 // Copy vertex 0 to line start x,y
-                while( working ) {                                                          // Continue until an inactive or last vertex
-                    ++:
-                    while( gpu_active ) {} gpu_write = 1;                                   // Dispatch line to GPU
-                    ++:
-                    copycoords = 1; increment = 1;                                          // Copy line end to line start and move onto the next vertex
-                }
-            } else {
-                vertex = 0;
-            }
-        }
-    }
-
-    always_after {
-        { vector_block_active = draw_vector | working; }
-        { if( copycoords ) { ( gpu_x, gpu_y ) = copycoordinates( gpu_param0, gpu_param1 ); } } // Copy coordinates to the GPU
-        { if( increment ) { vertex = vertexNEXT; } }                                           // Move to the next vector
     }
 }

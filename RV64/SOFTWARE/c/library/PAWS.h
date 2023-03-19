@@ -80,20 +80,6 @@ unsigned char volatile *GPU_WRITE = (unsigned char volatile *) 0xd616;
 unsigned char volatile *GPU_STATUS = (unsigned char volatile *) 0xd616;
 unsigned char volatile *GPU_FINISHED = (unsigned char volatile *) 0xd618;
 
-unsigned char volatile *VECTOR_DRAW_BLOCK = (unsigned char volatile *) 0xd620;
-unsigned char volatile *VECTOR_DRAW_COLOUR = (unsigned char volatile *) 0xd622;
-short volatile *VECTOR_DRAW_XC = (short volatile *) 0xd624;
-short volatile *VECTOR_DRAW_YC = (short volatile *) 0xd626;
-unsigned char volatile *VECTOR_DRAW_SCALE = (unsigned char volatile *) 0xd628;
-unsigned char volatile *VECTOR_DRAW_ACTION = (unsigned char volatile *) 0xd62a;
-unsigned char volatile *VECTOR_DRAW_START = (unsigned char volatile *) 0xd62c;
-unsigned char volatile *VECTOR_DRAW_STATUS = (unsigned char volatile *) 0xd62a;
-unsigned char volatile *VECTOR_WRITER_BLOCK = (unsigned char volatile *) 0xd630;
-unsigned char volatile *VECTOR_WRITER_VERTEX = (unsigned char volatile *) 0xd632;
-char volatile *VECTOR_WRITER_DELTAX = (char volatile *) 0xd634;
-char volatile *VECTOR_WRITER_DELTAY = (char volatile *) 0xd636;
-unsigned char volatile *VECTOR_WRITER_ACTIVE = (unsigned char volatile *) 0xd638;
-
 unsigned char volatile *BLIT_WRITER_TILE = (unsigned char volatile *) 0xd640;
 unsigned short volatile *BLIT_WRITER_BITMAP = (unsigned short volatile *) 0xd642;
 unsigned char volatile *BLIT_CHWRITER_TILE = (unsigned char volatile *) 0xd650;

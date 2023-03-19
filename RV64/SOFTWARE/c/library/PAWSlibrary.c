@@ -923,33 +923,6 @@ void DrawBitmapSpriteAtCentre( short x, short y, float scale, bitmap_sprite spri
     gpu_pixelblock_stop();                                                                                                      // STOP THE PIXELBLOCK
 }
 
-// GPU VECTOR BLOCK
-// 32 VECTOR BLOCKS EACH OF 16 VERTICES ( offsets in the range -15 to 15 from the centre )
-// WHEN ACTIVATED draws lines from a vector block (x0,y0) to (x1,y1), (x1,y1) to (x2,y2), (x2,y2) to (x3,y3) until (x15,y15) or an inactive vertex is encountered
-
-// START DRAWING A VECTOR BLOCK centred at (xc,yc) in colour
-// { rotate/reflect, ACTION } ROTATION == 4 0 == 5 90 == 6 180 == 7 270
-// == 1 REFLECT X, == 2 REFLECT Y
-void draw_vector_block( unsigned char block, unsigned char colour, short xc, short yc, unsigned char scale, unsigned char action ) {
-    while( *VECTOR_DRAW_STATUS );
-    *VECTOR_DRAW_BLOCK = block;
-    *VECTOR_DRAW_COLOUR = colour;
-    *VECTOR_DRAW_XC = xc;
-    *VECTOR_DRAW_YC = yc;
-    *VECTOR_DRAW_SCALE = scale;
-    *VECTOR_DRAW_ACTION = action;
-    *VECTOR_DRAW_START = 1;
-}
-
-// SET A VERTEX IN A VECTOR BLOCK - SET AN INACTIVE VERTEX IF NOT ALL 16 VERTICES ARE TO BE USED
-void set_vector_vertex( unsigned char block, unsigned char vertex, unsigned char active, char deltax, char deltay ) {
-    *VECTOR_WRITER_BLOCK = block;
-    *VECTOR_WRITER_VERTEX = vertex;
-    *VECTOR_WRITER_ACTIVE = active;
-    *VECTOR_WRITER_DELTAX = deltax;
-    *VECTOR_WRITER_DELTAY = deltay;
-}
-
 // SOFTWARE VECTORS AND DRAWLISTS
 // SCALE A POINT AND MOVE TO CENTRE POINT
 union Point2D Scale2D( union Point2D point, int xc, int yc, float scale ) {

@@ -1089,21 +1089,6 @@ void gpudemo( void ) {
         gpu_colourblit( rng( 352 ) - 16, rng( 256 ) - 8, rng( 9 ), rng( 4 ), rng(8) );
     }
     sleep1khz( 1000, 0 );
-
-    // VECTOR TEST
-    gpu_cs();
-    tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "GPU Vector Draw Test - REFLECT & ROTATE" );
-    set_vector_vertex( 0, 0, 1, 0, 0 );
-    set_vector_vertex( 0, 1, 1, 5, 10 );
-    set_vector_vertex( 0, 2, 1, 0, 6 );
-    set_vector_vertex( 0, 3, 1, -5, 10 );
-    set_vector_vertex( 0, 4, 1, 0, 0 );
-    set_vector_vertex( 0, 5, 0, 0, 0 );
-    for( i = 0; i < 128; i++ ) {
-        draw_vector_block( 0, rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng(8), rng(8) );
-    }
-    sleep1khz( 1000, 0 );
-
 }
 
 void ditherdemo( void ) {

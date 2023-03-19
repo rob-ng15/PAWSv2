@@ -110,9 +110,6 @@ extern void gpu_character_blit_shadow( unsigned char, unsigned char, short, shor
 extern void gpu_colourblit( short, short, short, unsigned char, unsigned char );
 extern void gpu_triangle( unsigned char, short, short, short, short, short, short );
 extern void gpu_quadrilateral( unsigned char, short, short, short, short, short, short, short, short );
-extern void draw_vector_block( unsigned char, unsigned char, short, short, unsigned char, unsigned char );
-extern void set_vector_vertex( unsigned char, unsigned char , unsigned char, char, char );
-extern void bitmap_scrollwrap( unsigned char );
 extern void set_blitter_bitmap( unsigned char, unsigned short *);
 extern void set_blitter_chbitmap( unsigned char, unsigned char *);
 extern void set_colourblitter_bitmap( unsigned char, unsigned char *);
