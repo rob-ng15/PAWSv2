@@ -112,6 +112,8 @@ unsigned char volatile *PB_STOP = (unsigned char volatile *) 0xd678;
 unsigned char volatile *PB_MODE = (unsigned char volatile *) 0xd67a;
 unsigned char volatile *PB_CMNUMBER = (unsigned char volatile *) 0xd67c;
 unsigned char volatile *PB_CMENTRY = (unsigned char volatile *) 0xd67e;
+unsigned int volatile *PB_ARGB = (unsigned int volatile *) 0xd680;
+unsigned int volatile *PB_RGBA = (unsigned int volatile *) 0xd684;
 
 unsigned short volatile *CROP_LEFT = (unsigned short volatile *) 0xd6e0;
 unsigned short volatile *CROP_RIGHT = (unsigned short volatile *) 0xd6e2;
@@ -198,15 +200,12 @@ unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
 
-// FIXED POINT DIVISION ACCELERATOR
-int volatile *FIXED_A = (int volatile *)0xf800;
-int volatile *FIXED_B = (int volatile *)0xf804;
-int volatile *FIXED_RESULT = (int volatile*)0xf800;
-unsigned char volatile *FIXED_STATUS = (unsigned char volatile *)0xf808;
-
 int volatile *AUDIO_REGS = (int volatile *) 0xe000;
 char volatile *TPU_REGS_B = (char volatile *) 0xd500;
+
 int volatile *PAWSMAGIC = (int volatile *) 0xf700;
+unsigned int volatile *RAMBASE = (unsigned int volatile *) 0xf704;
+unsigned int volatile *RAMTOP = (unsigned int volatile *) 0xf708;
 
 // TYPES AND STRUCTURES
 typedef unsigned int size_t;
@@ -272,23 +271,29 @@ typedef struct {
     unsigned short boot_sector_signature;
 } __attribute((packed)) Fat32VolumeID;
 
+union fname {
+    unsigned char string[8];
+    long sortvalue;
+};
+
 typedef struct {
-    unsigned char filename[8];
-    unsigned char ext[3];
-    unsigned char attributes;
-    unsigned char reserved[8];
-    unsigned short starting_cluster_high;
-    unsigned short modify_time;
-    unsigned short modify_date;
-    unsigned short starting_cluster_low;
-    unsigned int file_size;
+    unsigned char   filename[8];
+    unsigned char   ext[3];
+    unsigned char   attributes;
+    unsigned char   reserved[8];
+    unsigned short  starting_cluster_high;
+    unsigned short  modify_time;
+    unsigned short  modify_date;
+    unsigned short  starting_cluster_low;
+    unsigned int    file_size;
 } __attribute((packed)) FAT32DirectoryEntry;
 
 typedef struct {
-    unsigned char filename[8];
-    unsigned char ext[3];
-    unsigned char type;
-    unsigned long starting_cluster;
+    union fname     filename;
+    unsigned char   ext[3];
+    unsigned char   type;
+    unsigned int    starting_cluster;
+    unsigned int    file_size;
 } __attribute((packed)) DirectoryEntry;
 
 // COLOURS - RGBM MODE
@@ -378,4 +383,3 @@ static inline int _rv32_pack(int rs1, int rs2) { int rd; __asm__ ("pack  %0, %1,
 static inline int _rv32_packh(int rs1, int rs2) { int rd; __asm__ ("packh  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
 static inline int _rv32_unzip(int rs1) { int rd; __asm__ ("unzip     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
 static inline int _rv32_zip(int rs1) { int rd; __asm__ ("zip     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-
