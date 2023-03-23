@@ -473,9 +473,6 @@ void smtmandel( void ) {
     float jx, jy, tx, ty, wx, wy, r;
     int k;
 
-    for( int y = 0; y < 100; y++ ) { gpu_line( y, y, 122+y, 319 - y, 221 ); }                                                   // DRAW LINE PATTERN
-    sleep1khz( 25, 0 );
-
     gpu_pixelblock_start( 0, 122, 320 );
     for( int y = 0; y < graphheight; y++ ) {
         jy = ymin + y * dy;
