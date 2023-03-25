@@ -5,12 +5,24 @@
 #define NULL 0
 #endif
 
+#ifndef Bool
+#define Bool int
+#endif
+
 #ifndef TRUE
 #define TRUE 1
 #endif
 
 #ifndef FALSE
 #define FALSE 0
+#endif
+
+#ifndef True
+#define True 1
+#endif
+
+#ifndef False
+#define False 0
 #endif
 
 // DISPLAY LAYERS
