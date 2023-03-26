@@ -20,6 +20,7 @@
 //#include <X11/Shell.h>
 
 typedef long LONG;
+typedef int Font;
 
 #include "c_config.h"
 #include "c_colors.h"

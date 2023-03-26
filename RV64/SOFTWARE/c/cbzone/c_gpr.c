@@ -580,7 +580,10 @@ void polyline(points, number)
       p[i].x = (points[i].x-XOFF)*XM/XD;
       p[i].y = (points[i].y-YOFF)*XM/XD;
     }
-  XDrawLines(d, w, DrawGC, p, number, CoordModeOrigin);
+  for (i = 0; i < number-1; i++)
+    {
+      gpu_line( WHITE, p[i].x, p[i].y, p[i+1].x, p[i+1].y );
+    }
 }
 
 void multiline(segments, number)
@@ -595,8 +598,8 @@ void multiline(segments, number)
       seg[i].x2 = (segments[i].x2-XOFF)*XM/XD;
       seg[i].y1 = (segments[i].y1-YOFF)*XM/XD;
       seg[i].y2 = (segments[i].y2-YOFF)*XM/XD;
+      gpu_line( WHITE, seg[i].x1, seg[i].y1, seg[i].x2, seg[i].y2 );
     }
-  XDrawSegments (d, w, DrawGC, seg, number);
 }
 
 void drawrectangle(x, y, width, height)
@@ -782,18 +785,14 @@ void gprcircle(center, radius)
      Position_t *center;
      int radius;
 {
-  XDrawArc (d, w, DrawGC,
-            (center->x - XOFF - radius)*XM/XD, (center->y - YOFF - radius)*YM/YD,
-            (radius+radius)*XM/XD, (radius+radius)*YM/YD, 0, 360*64);
+  gpu_circle( WHITE, (center->x-XOFF - radius)*XM/XD, (center->y-YOFF - radius)*YM/YD, (radius+radius)*XM/XD, 0xff, FALSE );
 }
 
 void gprcirclefilled(center, radius)
      Position_t *center;
      int radius;
 {
-  XFillArc (d, w, DrawGC,
-            (center->x-XOFF - radius)*XM/XD, (center->y-YOFF - radius)*YM/YD,
-            (radius+radius)*XM/XD, (radius+radius)*YM/YD, 0, 360*64);
+  gpu_circle( WHITE, (center->x-XOFF - radius)*XM/XD, (center->y-YOFF - radius)*YM/YD, (radius+radius)*XM/XD, 0xff, TRUE );
 }
 
 void gprsetclipwindow(window)
@@ -807,12 +806,11 @@ void gprsetclipwindow(window)
 
 void clearentirescreen()
 {
-  XClearWindow(d, w);
+  gpu_cs();
 }
 
 void flushwindow()
 {
-  XFlush(d);
 }
 
 void waitforkey(c)
@@ -821,7 +819,6 @@ void waitforkey(c)
   char keystr;
   XEvent ev;
 
-  XFlush(d);                    /* out with the old */
   while (XPending(d))
     XNextEvent(d, &ev);
                                 /* now wait for the new */
@@ -846,7 +843,7 @@ void putpixmap(i, p)
      int i;
      int* p;
 {
-  
+
   XCopyArea(d, bmaps[i].p, w, DrawGC, 0, 0,
             bmaps[i].width, bmaps[i].height, (p[0]-XOFF)*XM/XD, (p[1]-YOFF)*YM/YD);
 }
