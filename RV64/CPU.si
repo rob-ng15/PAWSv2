@@ -497,7 +497,7 @@ unit cpuexecuteFPU(
 
     // FLOATING POINT CALCULATIONS
     floatcalc FPUCALC(
-        df <: function7[0,1],
+        dsh <: function7[0,2],
         FPUflags <: FPUflags,
         opCode <: opCode, function3 <: function3, function7 <: function7[2,5],
         sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx, sourceReg3Fx <: sourceReg3Fx,
@@ -507,7 +507,7 @@ unit cpuexecuteFPU(
     // FLOATING POINT CONVERSIONS
     intlong2floatdouble FPUIL2FD( rm <: function3, dounsigned <: rs2[0,1], il <: rs2[1,1], df <: function7[0,1], sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64 );
     floatdouble2intlong FPUFD2IL( rm <: function3, dounsigned <: rs2[0,1], il <: rs2[1,1], df <: function7[0,1], sourceReg1Fx <: sourceReg1Fx, typeAF <: typeAF );
-    changeprecision FPUF2D_D2F( df <: function7[0,1], sourceReg1Fx <: sourceReg1Fxopp, typeAF <: typeAopp );
+    changeprecision FPUF2D_D2F( dest <: function7[0,2], source <: rs2[0,2], sourceReg1Fx <: sourceReg1Fxopp, typeAF <: typeAopp );
 
     uint64  convertresult <:: converttype[2,1] ? FPUFD2IL.result : converttype[1,1] ? FPUIL2FD.result : FPUF2D_D2F.result;
     uint5   convertflags  <:: FPUflags | ( converttype[2,1] ? FPUFD2IL.FPUflags : converttype[1,1] ? FPUIL2FD.FPUflags : FPUF2D_D2F.FPUflags );
@@ -562,7 +562,7 @@ unit fetch(
     output  uint32  instruction,
     output  uint1   compressed,
 
-    input!  uint32  readdata,
+    input   uint32  readdata,
     output! uint1   readmemory,
     input!  uint1   memorybusy
 ) <reginputs> {
@@ -571,29 +571,23 @@ unit fetch(
     compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata[0,16] );
     compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata[0,16] );
 
-    uint1   complete = uninitialised;
-    readmemory := start; complete := 0;
+    readmemory := start;
 
     algorithm <autorun> {
         while(1) {
-            if( start ) { while( memorybusy ) {} ++: complete = 1; }
-        }
-    }
-
-    always_after {
-        { if( start ) { busy = 1; } }
-        { if( complete ) { busy = 0; } }
-        {
-            if( complete ) {
+            if( start ) {
+                busy = 1;
+                while( memorybusy ) {} ++:
                 switch( readdata[0,2] ) {                                               // EXPAND COMPRESSED INSTRUCTION
                     case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }            // OR KEEP 32 BIT INSTRUCTION
                     case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
                     case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
                     default: { instruction = readdata; }
                 }
+                compressed = ( ~&readdata[0,2] );                        // SET COMPRESSED FLAGS
+                busy = 0;
             }
         }
-        { if( complete ) { compressed = ( ~&readdata[0,2] ); } }                        // SET COMPRESSED FLAGS
     }
 }
 
@@ -606,7 +600,7 @@ unit load(
     input   uint1   dounsigned,
     output  int64   memoryinput,
 
-    input!  uint32  readdata,
+    input   uint32  readdata,
     output! uint1   readmemory,
     input!  uint1   memorybusy
 ) <reginputs> {
@@ -615,19 +609,12 @@ unit load(
     uint64  signextend <:: accesssize[1,1] ? { {32{sign}}, readdata } :                                                         // 32 BIT
                            accesssize[0,1] ? { {48{sign}}, readdata[0,16] } :                                                   // 16 BIT
                                              { {56{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };                              // 8 BIT
-    uint1   complete = uninitialised;
-    readmemory := start; complete := 0;
+    readmemory := start;
 
     algorithm <autorun> {
         while(1) {
-            if( start ) { while( memorybusy ) {} ++: complete = 1; }
+            if( start ) { busy = 1; while( memorybusy ) {} ++: memoryinput = signextend; busy = 0; }
         }
-    }
-
-    always_after {
-        { if( start ) { busy = 1; } }
-        { if( complete ) { busy = 0; } }
-        { if( complete ) { memoryinput = signextend; } }
     }
 }
 unit load64(
@@ -636,27 +623,22 @@ unit load64(
     output  int64   memoryinput,
     input   uint$addr_width$ loadAddress,
     output! uint$addr_width$ address,
-    input!  uint32  readdata,
+    input   uint32  readdata,
     output! uint1   readmemory,
     input!  uint1   memorybusy
 ) <reginputs> {
     uint$addr_width$ plus4 <:: loadAddress + 4;
-    uint1   complete = uninitialised;
-    readmemory := 0; complete := 0;
+    readmemory := 0;
 
     algorithm <autorun> {
         while(1) {
             if( start ) {
+                busy = 1;
                 address = loadAddress; readmemory = 1; while( memorybusy ) {} ++: memoryinput[0,32] = readdata;
                 address = plus4; readmemory = 1; while( memorybusy ) {} ++: memoryinput[32,32]= readdata;
-                complete = 1;
+                busy = 0;
             }
         }
-    }
-
-    always_after {
-        { if( start ) { busy = 1; } }
-        { if( complete ) {  busy = 0; } }
     }
 }
 // STORE UNIT FOR NON-FAST STORES ( to BRAM/SDRAM or 32 bit )
@@ -670,11 +652,8 @@ unit store(
 
     algorithm <autorun> {
         while(1) {
-            if( start ) { while( memorybusy ) {} busy = 0; }
+            if( start ) { busy = 1; while( memorybusy ) {} busy = 0; }
         }
-    }
-    always_after {
-        if( start ) { busy = 1; }
     }
 }
 unit store64(
@@ -693,14 +672,12 @@ unit store64(
     algorithm <autorun> {
         while(1) {
             if( start ) {
+                busy = 1;
                 address = storeAddress; writedata = storedata[0,32]; writememory = 1; while( memorybusy ) {}
                 address = plus4; writedata = storedata[32,32]; writememory = 1; while( memorybusy ) {}
                 busy = 0;
             }
         }
-    }
-    always_after {
-        if( start ) { busy = 1; }
     }
 }
 
@@ -732,26 +709,24 @@ unit dma_flags(
     output  uint1   multi16,
     output  uint1   multi32
 ) <reginputs> {
-    uint1   srcBRAM <:: ~DMASOURCE[26,1] & ~DMASOURCE[25,1] & ~DMASOURCE[15,1];                                                 // SOURCE IS BRAM
-    uint1   destBRAM <:: ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[15,1];                                                      // DEST IS BRAM
-    uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                         // DESTINATION IS 16 BIT CAPABLE
+    uint1   srcBRAM <: ~DMASOURCE[26,1] & ~DMASOURCE[25,1] & ~DMASOURCE[15,1];                                                 // SOURCE IS BRAM
+    uint1   destBRAM <: ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[15,1];                                                      // DEST IS BRAM
+    uint1   dest16bit <: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                         // DESTINATION IS 16 BIT CAPABLE
 
-    always_after {
-        { srcSET = ( DMASOURCE == $addr_width$hfe0e ); }                                                                        // SOURCE IS THE SET VALUE REGISTER, NO LOADING REQUIRED
-        { src16bit = ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~DMASOURCE[0,1]; }                              // SOURCE IS 16 BIT CAPABLE
+    srcSET := ( DMASOURCE == $addr_width$hfe0e );                                                                        // SOURCE IS THE SET VALUE REGISTER, NO LOADING REQUIRED
+    src16bit := ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~DMASOURCE[0,1];                              // SOURCE IS 16 BIT CAPABLE
 
-        { SD16 = src16bit & dest16bit & ~DMACOUNT[0,1]; }                                                                       // 16/32 BIT FLAGS FOR SOURCE&DEST + SET&DEST
-        { SSD16 = srcSET & dest16bit & ~DMACOUNT[0,1]; }
-        { SD32 = src16bit & dest16bit & ~|DMACOUNT[0,2]; }
-        { SSD32 = srcSET & dest16bit & ~|DMACOUNT[0,2]; }
+    SD16 := src16bit & dest16bit & ~DMACOUNT[0,1];                                                                       // 16/32 BIT FLAGS FOR SOURCE&DEST + SET&DEST
+    SSD16 := srcSET & dest16bit & ~DMACOUNT[0,1];
+    SD32 := src16bit & dest16bit & ~|DMACOUNT[0,2];
+    SSD32 := srcSET & dest16bit & ~|DMACOUNT[0,2];
 
-        { ADD16 = ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1]; }                                                                      // 16/32 BIT FLAGS FOR SOURCE&DEST ADD
-        { ADD32 = ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2]; }
+    ADD16 := ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1];                                                                      // 16/32 BIT FLAGS FOR SOURCE&DEST ADD
+    ADD32 := ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2];
 
-        { multi16 = ( DMADEST == 27hd642 ); }                                                                         // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
-        { multi32 = ( DMADEST == 27hd680 ) | ( DMADEST == 27hd684 ) |                                       // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
-                      ( DMADEST == 27hd688 ) | ( DMADEST == 27hd68c ); }
-    }
+    multi16 := ( DMADEST == 27hd642 );                                                                         // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
+    multi32 := ( DMADEST == 27hd680 ) | ( DMADEST == 27hd684 ) |                                       // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
+                    ( DMADEST == 27hd688 ) | ( DMADEST == 27hd68c );
 }
 unit dma_src_add(
     input   uint$addr_width$ dmasrc,
@@ -763,11 +738,9 @@ unit dma_src_add(
     output  uint$addr_width$  ADD,
     output  uint$addr_width$  PB
 ) <reginputs> {
-    always_after {
-        { NEXT = dmasrc + ( DMA32BIT ? 4 : DMA16BIT ? 2 : 1 ); }                                                                // NEXT SOURCE ADDRESS FOR 32/16/8 BITS
-        { ADD = dmasrc + DMASOURCEADD; }                                                                                        // NEXT DESTINATION ADDRESS IF STEPPING
-        { PB = dmasrc + PBmax; }                                                                                                // NEXT SOURCE ADDRESS FOR PIXELBLOCK TRANSFERS
-    }
+    NEXT := dmasrc + ( DMA32BIT ? 4 : DMA16BIT ? 2 : 1 );                                                                // NEXT SOURCE ADDRESS FOR 32/16/8 BITS
+    ADD := dmasrc + DMASOURCEADD;                                                                                        // NEXT DESTINATION ADDRESS IF STEPPING
+    PB := dmasrc + PBmax;                                                                                                // NEXT SOURCE ADDRESS FOR PIXELBLOCK TRANSFERS
 }
 unit dma_dest_add(
     input   uint$addr_width$ dmadest,
@@ -779,11 +752,9 @@ unit dma_dest_add(
     output  uint$addr_width$  ADD,
     output  uint$addr_width$  PB
 ) <reginputs> {
-    always_after {
-        { NEXT = dmadest + ( DMA32BIT ? 4 : DMA16BIT ? 2 : 1 ); }                                                               // NEXT DESTINATION ADDRESS FOR 32/16/8 BITS
-        { ADD = dmadest + DMADESTADD; }                                                                                         // NEXT DESTINATION ADDRESS IF STEPPING
-        { PB = &dmadest[1,2] ? 27hd672: dmadest + 2; }                                                                // DETECTS BLUE PIXEL WRITTEN, MOVES BACK TO RED
-    }
+    NEXT := dmadest + ( DMA32BIT ? 4 : DMA16BIT ? 2 : 1 );                                                               // NEXT DESTINATION ADDRESS FOR 32/16/8 BITS
+    ADD := dmadest + DMADESTADD;                                                                                         // NEXT DESTINATION ADDRESS IF STEPPING
+    PB := &dmadest[1,2] ? 27hd672: dmadest + 2;                                                                // DETECTS BLUE PIXEL WRITTEN, MOVES BACK TO RED
 }
 unit dma_pb_add(
     input   uint3   PBcount,
@@ -791,10 +762,8 @@ unit dma_pb_add(
     output  uint3   NEXT,
     output  uint1   WAIT
 ) <reginputs> {
-    always_after {
-        { NEXT = PBcount + 1; }
-        { WAIT = ( NEXT != PBmax ); }
-    }
+    NEXT := PBcount + 1;
+    WAIT := ( NEXT != PBmax );
 }
 unit dma(
     input   uint$addr_width$  DMASOURCE,

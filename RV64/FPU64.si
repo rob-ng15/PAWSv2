@@ -160,7 +160,7 @@ unit do_float_multiply(
 unit floatcalc(
     input   uint1   start,                                                                                                      // START FLAG
     output  uint1   busy(0),                                                                                                    // BUSY FLAG
-    input   uint2   df,                                                                                                         // DOUBLE OR FLOAT FLAG
+    input   uint2   dsh,                                                                                                        // DOUBLE/SINGLE?HALF FLAG
     input   uint5   opCode,                                                                                                     // OPCODE, SINGLE OR FUSED OPERATIONS
     input   uint3   function3,                                                                                                  // ROUNDING MODE FLAG
     input   uint5   function7,                                                                                                  // DETERMINE SINGLE OPERATION
@@ -174,28 +174,28 @@ unit floatcalc(
     output  uint5   FPUnewflags,                                                                                                // NEW FPUFLAGS
     output  uint64  result                                                                                                      // CALCULATION RESULT
 ) <reginputs> {
-    uint64  qNAN <:: df[0,1] ? 64h7FF8000000000000 : df[1,1] ? 64hffffffffffff7e00 : 64hffffffff7fc00000;                       // RETURN qNAN FOR DOUBLE/SINGLE/FLOAT
+    uint64  qNAN <:: dsh[0,1] ? 64h7FF8000000000000 : dsh[1,1] ? 64hffffffffffff7e00 : 64hffffffff7fc00000;                     // RETURN qNAN FOR DOUBLE/SINGLE/FLOAT
 
     uint3   rm <:: &FPUflags[5,3] ? function3 : FPUflags[5,3];                                                                  // SET ROUNDING FLAG ( ONLY RNE AND RTZ SUPPORTED ), FCSR UNLESS 111
-    doroundcombine MAKERESULT( df <: df, rm <: rm );                                                                            // DO ROUNDING AND COMBINING
+    doroundcombine MAKERESULT( df <: dsh, rm <: rm );                                                                           // DO ROUNDING AND COMBINING
 
     uint64  b <:: { function7[0,1] ^ fp64( sourceReg2Fx ).sign, sourceReg2Fx[0,63] };                                           // SWITCH SIGN OF B FOR SUBTRACTION IF REQUIRED
     floataddsub FPUaddsub(                                                                                                      // FLOAT ADDITION ( SUBTRACTION by sign switch )
-        df <: df,
+        df <: dsh,
         a <: sourceReg1Fx, typeAF <: typeAF,
         b <: b, typeBF <: typeBF,
         OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN
     );
 
-    do_float_multiply MULT( df <: df,  sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx );                            // GENERATE PRODUCT FRACTION AND EXPONENT FOR MULTIPLY AND FUSED
+    do_float_multiply MULT( df <: dsh,  sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx );                           // GENERATE PRODUCT FRACTION AND EXPONENT FOR MULTIPLY AND FUSED
     floatmultiply FPUmultiply(                                                                                                  // FLOAT MULTIPLICATION
-        df <: df,
+        df <: dsh,
         signA <: fp64( sourceReg1Fx ).sign, typeAF <: typeAF,                                                                   // ONLY SIGN NEEDS PASSING FOR MULTIPLICATION
         signB <: fp64( sourceReg2Fx ).sign, typeBF <: typeBF,                                                                   // ONLY SIGN NEEDS PASSING FOR MULTIPLICATION
         OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN                                 // ROUNDED AND COMBINED RESULT
     );
     floatfused FPUfused(                                                                                                        // FLOAT FUSED-MULTIPLY-ADD
-        df <: df,                                                                                                               // DOUBLE OR FLOAT FLAG
+        df <: dsh,                                                                                                              // DOUBLE OR FLOAT FLAG
         rm <: rm, opCode <: opCode[0,2],                                                                                        // ROUNDING MODE AND SIGN SWITCHES
         signA <: fp64( sourceReg1Fx ).sign, typeAF <: typeAF,                                                                   // ONLY SIGN NEEDS PASSING FOR MULTIPLICATION
         signB <: fp64( sourceReg2Fx ).sign, typeBF <: typeBF,                                                                   // ONLY SIGN NEEDS PASSING FOR MULTIPLICATION
@@ -205,14 +205,14 @@ unit floatcalc(
     );
 
     floatdivide FPUdivide(                                                                                                      // FLOAT DIVISION
-        df <: df,                                                                                                               // DOUBLE OR FLOAT FLAG
+        df <: dsh,                                                                                                              // DOUBLE OR FLOAT FLAG
         a <: sourceReg1Fx, typeAF <: typeAF,
         b <: sourceReg2Fx, typeBF <: typeBF,
         OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN                                 // ROUNDED AND COMBINED RESULT
     );
 
     floatsqrt FPUsqrt(                                                                                                          // FLOAT SQUARE ROOT https://projectf.io/posts/square-root-in-verilog/
-        df <: df,                                                                                                               // DOUBLE OR FLOAT FLAG
+        df <: dsh,                                                                                                              // DOUBLE OR FLOAT FLAG
         a <: sourceReg1Fx, typeAF <: typeAF,
         OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined, qNAN <: qNAN                                 // ROUNDED AND COMBINED RESULT
     );
@@ -525,47 +525,52 @@ unit floatdouble2intlong(                                                       
     }
 }
 
-unit changeprecision(                                                                                                           // FLOAT <-> DOUBLE ( EXTEND OR TRUNCATE )
-    input   uint1   df,                                                                                                         // TO DOUBLE == 1 OR FLOAT == 0
+unit changeprecision(                                                                                                           // DOUBLE/SINGLE/HALF <-> DOUBLE/SINGLE/HALF ( EXTEND OR TRUNCATE )
+    input   uint2   dest,                                                                                                       // TO DOUBLE(01)/SINGLE(00)/HALF(10)
+    input   uint2   source,                                                                                                     // FROM DOUBLE(01)/SINGLE(00)/HALF(10)
     input   uint64  sourceReg1Fx,                                                                                               // REGISTER VALUE TO EXTEND / TRUNCATE ( in double bitfields )
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO }
     output  uint64  result,                                                                                                     // EXTENDED OR TRUNCATED RESULT
     output  uint3   FPUflags                                                                                                    // FPU FLAGS
 ) <reginputs> {
     uint1   sign <:: fp64( sourceReg1Fx ).sign;                                                                                 // SELECT SIGN BIT
-    int13   exp <:: fp64( sourceReg1Fx ).exponent + ( df ? 896 : -896 );                                                        // SELECT EXPONENT AND ADJUST BOAS
+    int13   exp <:: fp64( sourceReg1Fx ).exponent - ( source[0,1] ? 1023 : source[1,1] ? 15 : 127 )                             // SELECT EXPONENT AND SUBTRACT SOURCE BIAS
+                                                  + ( dest[0,1] ? 1023 : dest[1,1] ? 15 : 127 );                                //                     ADD DESTINATION BIAS
 
-    special_values RET( dsh <: df, sign <: sign );                                                                              // GENERATE xINF sNAN qNAN and xZERO
+    uint1   truncateOF <:: exp > ( dest[0,1] ? 30 : 254 );                                                                      // CHECK IF NEW EXPONENT IS TOO LARGE ( for single/half)
+    uint1   truncateUF <:: exp[12,1];                                                                                           // CHECK IF NEW EXPONENT IS NEGATIVE/TOO SMALL ( for single/half)
+
+    special_values RET( dsh <: dest, sign <: sign );                                                                            // GENERATE xINF sNAN qNAN and xZERO
 
     uint1   OF = uninitialised;                                                                                                 // OVERFLOW FLAG
     uint1   UF = uninitialised;                                                                                                 // UNDERFLOW FLAG
-    OF := 0; UF := 0;                                                                                                           // HOLD AT ZERO
+    OF := 0; UF := 0; FPUflags := { OF, UF, 1b0 };                                                                              // HOLD AT ZERO UNLESS OUT OF RANGE, RETURN FLAGS
 
-    always_after {
-        {
-            switch( typeAF ) {
-                default: {
-                    if( df ) {
-                        result = { fp64( sourceReg1Fx ).sign, exp[0,11], fp64( sourceReg1Fx ).fraction };                       // VALID NUMBER, TO DOUBLE ALWAYS SUCEEDS
-                    } else {
-                        if( &exp[0,8] | |exp[8,4] ) {
-                            result = RET.xINF; OF = 1;                                                                          // VALID NUMBER, TO FLOAT BUT OVERFLOWED RETURN SIGNED INFINITY
+
+    always {
+        switch( typeAF ) {
+            default: {
+                switch( dest ) {
+                    default: {
+                        if( truncateOF ) {
+                            result = RET.xINF; OF = 1;                                                                      // VALID NUMBER, TO SINGLE/HALF BUT OVERFLOWED RETURN SIGNED INFINITY
                         } else {
-                            if( exp[12,1] ) {
-                                result = RET.xZERO; UF = 1;                                                                     // VALID NUMBER, TO FLOAT BUT UNDERFLOWED RETURN SIGNED ZERO
+                            if( truncateUF ) {
+                                result = RET.xZERO; UF = 1;                                                                 // VALID NUMBER, TO SINGLE/HALF BUT UNDERFLOWED RETURN SIGNED ZERO
                             } else {
-                                result = { 32hffffffff, sign, exp[0,8], fp64( sourceReg1Fx ).fraction[29,23] };                 // VALID NUMBER, TO FLOAT ( NAN boxed )
+                                result = dest[1,1] ? { 48hffffffffffff, sign, exp[0,5], fp64( sourceReg1Fx ).fraction[42,10] } :    // VALID NUMBER, TO HALF ( NAN boxed )
+                                                     { 32hffffffff, sign, exp[0,8], fp64( sourceReg1Fx ).fraction[29,23] };         // VALID NUMBER, TO SINGLE ( NAN boxed )
                             }
                         }
                     }
+                    case 2b01: { result = { fp64( sourceReg1Fx ).sign, exp[0,11], fp64( sourceReg1Fx ).fraction }; }          // VALID NUMBER, TO DOUBLE ALWAYS SUCEEDS}
                 }
-                case 4b1000: { result = RET.xINF; }                                                                             // INPUT IS INFINITY
-                case 4b0100: { result = RET.sNAN; }                                                                             // INPUT IS sNAN
-                case 4b0010: { result = RET.qNAN; }                                                                             // INPUT IS qNAN
-                case 4b0001: { result = RET.xZERO; }                                                                            // INPUT IS ZERO
             }
+            case 4b1000: { result = RET.xINF; }                                                                             // INPUT IS INFINITY
+            case 4b0100: { result = RET.sNAN; }                                                                             // INPUT IS sNAN
+            case 4b0010: { result = RET.qNAN; }                                                                             // INPUT IS qNAN
+            case 4b0001: { result = RET.xZERO; }                                                                            // INPUT IS ZERO
         }
-        { FPUflags = { OF, UF, 1b0 }; }                                                                                         // FLAGS
     }
 }
 

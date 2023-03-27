@@ -3,7 +3,7 @@
 * Written in Silice
     * Inspired by ICE-V by [ICE-V](https://github.com/sylefeb/Silice/tree/master/projects/ice-v) by @sylefeb
 
-The aim of PAWS is to have a modern CPU, Risc-V was chosen for ease of implementation, with system capabilities equivalent to an 80s era computer/games console, with as much off-loading to the hardware as possible for speed. A floating-point unit was eventually added as a challenge to myself, expanded to support 64-bit floating-point (double precision), with the capability to be extended to support 16-bit (half precision).
+The aim of PAWS is to have a modern CPU, Risc-V was chosen for ease of implementation, with system capabilities equivalent to an 80s era computer/games console, with as much off-loading to the hardware as possible for speed. A single-precision floating-point unit was eventually added as a challenge to myself, expanded to support double-precision floating-point with the move to the 64-biot RV64 CPU, with the enablement of half-precision in progress (for the recently ratified Risc-V zfh extension).
 
 * Display
     * Multiple display layers
@@ -13,7 +13,7 @@ The aim of PAWS is to have a modern CPU, Risc-V was chosen for ease of implement
         * 2 sprite layers (16 16x16 sprites per layer, each sprite can have 8 tiles)
         * 2 320x240 bitmaps, for double buffering or simultaneous display
 
-Refer to RV32 for the 32bit CPU, or RV64 for the 64bit CPU. Development has stopped on the 32bit CPU, but is kept for reference.
+Refer to RV32 for the 32bit CPU, or RV64 for the 64bit CPU. Development has stopped on the 32bit CPU, but is kept for reference, with backporting where applicable.
 
 Copy the files from the directory "SOFTWARE/PAWS" to an SDCARD and insert into the ULX3S. Flash the bitstream from "ULX3S/BUILD_ulx3s/PAWSv2-32.bit" or "ULX3S/BUILD_ulx3s/PAWSv2-64.bit" to the ULX3S
 

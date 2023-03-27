@@ -852,6 +852,5 @@ void removepixmap(i, p)
      int i;
      int* p;
 {
-  XFillRectangle(d, w, EraseGC, (p[0]-XOFF)*XM/XD, (p[1]-YOFF)*YM/YD,
-                 bmaps[i].width, bmaps[i].height);
+  gpu_rectangle( TRANSPARENT, (p[0]-XOFF)*XM/XD, (p[1]-YOFF)*YM/YD, (p[0]-XOFF)*XM/XD + bmaps[i].width, (p[1]-YOFF)*YM/YD + bmaps[i].height );
 }
