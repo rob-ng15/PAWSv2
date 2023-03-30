@@ -90,5 +90,3 @@ unsigned int __wrap___builtin_bswap32(unsigned int a) {
 unsigned long __wrap___builtin_bswap64(unsigned long a) {
     return( _rv64_rev8( a ) );
 }
-
-#include "newlib/libm/paws_conversions.c"

@@ -211,17 +211,5 @@ extern void *paws_memset32( void *restrict destination, int value, size_t count 
 extern void paws_memset_rectangle32( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles );
 #endif
 
-extern float paws_cosf (float);
-extern float paws_sinf (float);
-extern float paws_tanf (float);
-extern float paws_powf (float, float);
-extern float paws_sqrtf(float);
-
-#define cosf(x) paws_cosf(x)
-#define sinf(x) paws_sinf(x)
-#define tanf(x) paws_tanf(x)
-#define powf(x,y) paws_powf(x,y)
-#define scalbnf(x,y) paws_scalbnf(x,y)
-
 #define __PAWSLIBRARY__
 #endif
