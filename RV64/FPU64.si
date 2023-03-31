@@ -1,3 +1,44 @@
+// Rob Shelton ( @robng15 Twitter, @rob-ng15 GitHub )
+// Simple 16/32/64 bit FPU calculation/conversion routines
+// Designed for as small as FPGA usage as possible,
+// not for speed.
+//
+// Copyright (c) 2021 Rob Shelton
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
+//
+// Donated to Silice by @sylefeb
+// MIT license, see LICENSE_MIT in Silice repo root
+//
+// NB: dsh represents the precision of the flaoting-point inputs single == 00, double == 01, half == 10
+//     as per the Risc-V function7[0,2] bits
+// NB: All calculations and conversions expect to receive repackaged floating-point inputs.
+//     Half and Single precision floating-point numbers are expanded to fit into the bitfields
+//     of double precision numbers. Repackers are provided to expand/truncate inputs/results
+//     with nan-boxing of half and single precision numbers.
+// NB: rm represents the rounding mode, only RTE (000) and RTZ(001) are supported.
+// NB: The typeAF/typeBF/typeCF inputs detect exception inputs for each of the input registers,
+//     and are 4 bits each for { infinity, signalling NAN, quiet NAN, ZERO } and will signal a
+//     NAN if a half or single precision input is not nan-boxed.
+// NB: subnormal inputs are presently detected and treated as zero.
+// NB: Error states are those required by Risc-V floating point
+
 // FMIN FMAX FSGNJ FSGNJN FSGNJX FEQ FLT FLE FCLASS FMV
 unit floatclass(                                                                                                                // CLASSIFY FLOATING POINT INPUT ( FCLASS.S FCLASS.D )
     input   uint2   dsh,                                                                                                        // DOUBLE/SINGLE/HALF FLAG
@@ -284,36 +325,6 @@ unit floatcalc(
     }
 }
 
-// Rob Shelton ( @robng15 Twitter, @rob-ng15 GitHub )
-// Simple 32bit FPU calculation/conversion routines
-// Designed for as small as FPGA usage as possible,
-// not for speed.
-//
-// Copyright (c) 2021 Rob Shelton
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in all
-// copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
-//
-// Donated to Silice by @sylefeb
-// MIT license, see LICENSE_MIT in Silice repo root
-//
-// NB: Error states are those required by Risc-V floating point
-
 // IDENTIFY { infinity, signalling NAN, quiet NAN, ZERO } CHECKS FOR NAN-BOXING OF FLOAT
 unit typeF(
     input   uint2   dsh,                                                                                                        // DOUBLE/SINGLE/HALF
@@ -468,7 +479,7 @@ unit intlong2float(                                                             
     result :=  ~|( il ? sourceReg1 : sourceReg1[0,32] ) ? ZERO.value :                                                          // GENERATE ZERO
                dsh[0,1] ? { sign, exponent[0,11], fraction52 } :                                                                // GENERATE DOUBLE
                dsh[1,1] ? { 48hffffffffffff, sign, exponent[0,5], fraction10 } :                                                // GENERATE HALF ( NAN boxed )
-               { 32hffffffff, sign, exponent[0,8], fraction23 };                                                                // GENERATE SINGLE ( NAN boxed )
+                          { 32hffffffff, sign, exponent[0,8], fraction23 };                                                     // GENERATE SINGLE ( NAN boxed )
     FPUflags := dsh[0,1] ? ( il ? zlt : 0 ) : zlt;                                                                              // FLAGS NOT EXACT, TOO MANY BITS
 }
 
@@ -513,6 +524,7 @@ unit float2intlong(                                                             
 }
 
 unit changeprecision(                                                                                                           // DOUBLE/SINGLE/HALF <-> DOUBLE/SINGLE/HALF ( EXTEND OR TRUNCATE )
+    input   uint3   rm,                                                                                                         // ROUDNING MODE
     input   uint2   dest,                                                                                                       // TO DOUBLE(01)/SINGLE(00)/HALF(10)
     input   uint2   source,                                                                                                     // FROM DOUBLE(01)/SINGLE(00)/HALF(10)
     input   uint64  sourceReg1Fx,                                                                                               // REGISTER VALUE TO EXTEND / TRUNCATE ( in double bitfields )

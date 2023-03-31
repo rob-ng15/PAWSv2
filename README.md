@@ -79,7 +79,7 @@ A conversion of https://github.com/mbitsnbites/mc1-doom to the PAWSv2 graphics, 
 ![3D MAZE](Reference/Graphics/DOOM-2.jpg)
 
 ## IMGUI (DEMO)
-A test running the IMGUI DEMO to check PAWSv2 against other people's code, specially heavy on the floating-point unit. The generated image is tranferred to the display using the DMA engine, translating the RGBA image to PAWSv2 via the pixelblock.
+A test running the IMGUI DEMO to check PAWSv2 against other people's code, specially heavy on the floating-point unit. The generated image is tranferred to the display using the DMA engine, translating the RGBA image to PAWSv2 via the pixelblock. Press FIRE 1 and FIRE 2 buttons simultaneously to exit.
 <br>
 ![IMGUI Test](Reference/Graphics/IMGUI.jpg)
 
