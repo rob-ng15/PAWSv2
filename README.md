@@ -100,11 +100,15 @@ The image displayed below, shows our PAWS, for whom the project is named. From l
 
 
 ## OUTRUN (DEMO)
-An implementation of https://www.lexaloffle.com/bbs/?tid=35767 using the GPU and DrawList2D from the PAWSv2 library, and the floating-point unit. The car is a pixelblock sprite ported from http://www.dizionariovideogiochi.it/doku.php?id=out_run with no animation. The cityscape and clouds are drawn on the two tilemaps. There are vehicles running in front of the cityscape that are just visible in one frame of the demonstration using sprites. Press FIRE2 to exit.
+An implementation of https://www.lexaloffle.com/bbs/?tid=35767 using the GPU and DrawList2D from the PAWSv2 library, and the floating-point unit. The car is a pixelblock sprite ported from https://www.spriters-resource.com/genesis_32x_scd/outrun/sheet/25458/ with no animation. The cityscape and clouds are drawn on the two tilemaps. There are vehicles running in front of the cityscape that are just visible in one frame of the demonstration using sprites. Press FIRE2 to exit.
 <br>
 ![OUTRUN](Reference/Graphics/OUTRUN-1.jpg)
 ![OUTRUN](Reference/Graphics/OUTRUN-2.jpg)
 ![OUTRUN](Reference/Graphics/OUTRUN-3.jpg)
+
+A full view of the cityscape backdrop (forced, not normally available), showing the background sprites.
+
+![OUTRUN Full view of the cityscape](Reference/Graphics/OUTRUN-4.jpg)
 
 ## PACMAN (GAMES)
 A conversion of https://github.com/floooh/pacman.c to the PAWSv2 graphics, sound and input system.

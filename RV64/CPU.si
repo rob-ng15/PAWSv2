@@ -110,6 +110,7 @@ unit PAWSCPU(
         memoryinput <: memoryinput,
         incCSRinstret <: COMMIT,
         isALUM <: RV64CONTROL.IS_ALUM,
+        isALUCLM <: RV64CONTROL.IS_ALUCLM,
         isCSR <: RV64CONTROL.IS_CSR,
         isATOMIC <: RV64CONTROL.IS_ATOMIC,
         FPUnewflags <: EXECUTEFPU.FPUnewflags,
@@ -372,6 +373,7 @@ unit cpuexecuteSLOWPATH(
     input   uint1   isCSR,
     input   uint1   isATOMIC,
     input   uint1   isALUM,
+    input   uint1   isALUCLM,
     output  uint8   FPUflags,
     input   uint5   FPUnewflags,
     input   uint1   CSRupdateFPUflags
@@ -530,31 +532,20 @@ unit cpuexecuteFPU(
     FPUCALC.start := fpucalc & start; CSRupdateFPUflags := 0;
 
     algorithm <autorun> {
-        // PROVIDE WAIT STATE FOR APPROPRIATE OPERATION
         while(1) {
             if( start ) {
-                onehot( operation ) {
-                    default: {}                                                                                                  // FPU COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                    case 2: { while( FPUCALC.busy ) {} }                                                                        // FPU CALCULATIONS
-                }
+                busy = 1;
+                if( operation[2,1] ) { while( FPUCALC.busy ) {} }                                                               // WAIT STATE FOR CALCULATIONS
                 busy = 0;
                 CSRupdateFPUflags = 1;
             }
         }
     }
 
-    // COLLECT THE APPROPRIATE RESULT
     always_after {
-        { if( start ) { busy = 1; } }
-        {
-            onehot( operation ) {
-                case 0: { result = FPUFAST.result; }
-                case 1: { result = convertresult; }
-                case 2: { result = FPUCALC.result; }
-            }
-        }
-        { frd = fpuconvert ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd; }
-        { FPUnewflags = fpuconvert ? convertflags : fpucalc ? FPUCALC.FPUnewflags : FPUFAST.FPUnewflags; }
+        result = operation[0,1] ? FPUFAST.result : operation[1,1] ? convertresult : FPUCALC.result;                                // COLLECT THE APPROPRIATE RESULT
+        frd = fpuconvert ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd;                                                      // WRITE TO F REGISTERS FOR TO FLOAT CONVERSIONS, CALCULATIONS AND SOME SINGLE CYCLE
+        FPUnewflags = fpuconvert ? convertflags : fpucalc ? FPUCALC.FPUnewflags : FPUFAST.FPUnewflags;                             // OUTPUT NEW FPU FLAGS
     }
 }
 
@@ -581,21 +572,24 @@ unit fetch(
         while(1) {
             if( start ) {
                 busy = 1;
-                while( memorybusy ) {} ++:
-                switch( readdata[0,2] ) {                                               // EXPAND COMPRESSED INSTRUCTION
-                    case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }            // OR KEEP 32 BIT INSTRUCTION
-                    case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
-                    case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
-                    default: { instruction = readdata; }
-                }
-                compressed = ( ~&readdata[0,2] );                        // SET COMPRESSED FLAGS
+                while( memorybusy ) {}
                 busy = 0;
             }
         }
     }
+
+    always_after {
+        switch( readdata[0,2] ) {                                               // EXPAND COMPRESSED INSTRUCTION
+            case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }            // OR KEEP 32 BIT INSTRUCTION
+            case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
+            case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
+            default: { instruction = readdata; }
+        }
+        compressed = ( ~&readdata[0,2] );                        // SET COMPRESSED FLAGS
+    }
 }
 
-// LOAD UNIT - INCLUDING SIGN EXTENSION FOR 8/16 BIT SIGNED LOADS
+// LOAD UNITS - INCLUDING SIGN EXTENSION FOR 8/16 BIT SIGNED LOADS
 unit load(
     input   uint1   start,
     output! uint1   busy(0),
@@ -610,15 +604,18 @@ unit load(
 ) <reginputs> {
     // SIGN FOR 8, 16, 32 BIT LOADS
     uint1   sign <:: ~dounsigned & ( accesssize[1,1] ? readdata[31,1] : accesssize[0,1] ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
-    uint64  signextend <:: accesssize[1,1] ? { {32{sign}}, readdata } :                                                         // 32 BIT
-                           accesssize[0,1] ? { {48{sign}}, readdata[0,16] } :                                                   // 16 BIT
-                                             { {56{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };                              // 8 BIT
     readmemory := start;
 
     algorithm <autorun> {
         while(1) {
-            if( start ) { busy = 1; while( memorybusy ) {} ++: memoryinput = signextend; busy = 0; }
+            if( start ) { busy = 1; while( memorybusy ) {} ++: busy = 0; }
         }
+    }
+
+    always_after {
+        memoryinput = accesssize[1,1] ? { {32{sign}}, readdata } :                                                              // 32 BIT
+                      accesssize[0,1] ? { {48{sign}}, readdata[0,16] } :                                                        // 16 BIT
+                                        { {56{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };                                   // 8 BIT
     }
 }
 unit load64(
@@ -645,7 +642,8 @@ unit load64(
         }
     }
 }
-// STORE UNIT FOR NON-FAST STORES ( to BRAM/SDRAM or 32 bit )
+
+// STORE UNITS
 unit store(
     input   uint1   start,
     output! uint1   busy(0),
