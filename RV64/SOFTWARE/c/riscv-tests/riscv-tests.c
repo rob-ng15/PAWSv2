@@ -86,37 +86,37 @@ int single_tests( void ) {
         switch( single_test_inputs[ test ].operation ) {
             case 1:
                 result.single_float = single_test_inputs[test].op1.single_float + single_test_inputs[test].op2.single_float;
-                printf("fadd.s %8.8f + %8.8f\n",
+                printf("fadd.s %f + %f\n",
                         single_test_inputs[test].op1.single_float,single_test_inputs[test].op2.single_float);
-                printf("    -> %8.8f ( %8.8f )\n",result.single_float,single_test_inputs[test].result.single_float);
+                printf("    -> %f ( %f )\n",result.single_float,single_test_inputs[test].result.single_float);
                 printf("    -> 0x%8x ( 0x%8x )",result.bitstream,single_test_inputs[test].result.bitstream);
                 break;
             case 2:
                 result.single_float = single_test_inputs[test].op1.single_float - single_test_inputs[test].op2.single_float;
-                printf("fsub.s %8.8f - %8.8f\n",
+                printf("fsub.s %f - %f\n",
                         single_test_inputs[test].op1.single_float,single_test_inputs[test].op2.single_float);
-                printf("    -> %8.8f ( %8.8f )\n",result.single_float,single_test_inputs[test].result.single_float);
+                printf("    -> %f ( %f )\n",result.single_float,single_test_inputs[test].result.single_float);
                 printf("    -> 0x%8x ( 0x%8x )",result.bitstream,single_test_inputs[test].result.bitstream);
                 break;
             case 3:
                 result.single_float = single_test_inputs[test].op1.single_float * single_test_inputs[test].op2.single_float;
-                printf("fmul.s %8.8f * %8.8f\n",
+                printf("fmul.s %f * %f\n",
                         single_test_inputs[test].op1.single_float,single_test_inputs[test].op2.single_float);
-                printf("    -> %8.8f ( %8.8f )\n",result.single_float,single_test_inputs[test].result.single_float);
+                printf("    -> %f ( %f )\n",result.single_float,single_test_inputs[test].result.single_float);
                 printf("    -> 0x%8x ( 0x%8x )",result.bitstream,single_test_inputs[test].result.bitstream);
                 break;
             case 4:
                 result.single_float = single_test_inputs[test].op1.single_float / single_test_inputs[test].op2.single_float;
-                printf("fdiv.s %8.8f / %8.8f\n",
+                printf("fdiv.s %f / %f\n",
                         single_test_inputs[test].op1.single_float,single_test_inputs[test].op2.single_float);
-                printf("    -> %8.8f ( %8.8f )\n",result.single_float,single_test_inputs[test].result.single_float);
+                printf("    -> %f ( %f )\n",result.single_float,single_test_inputs[test].result.single_float);
                 printf("    -> 0x%8x ( 0x%8x )",result.bitstream,single_test_inputs[test].result.bitstream);
                 break;
             case 5:
                 result.single_float = sqrtf(single_test_inputs[test].op1.single_float);
-                printf("fsqrt.s %8.8f\n",
+                printf("fsqrt.s %f\n",
                         single_test_inputs[test].op1.single_float);
-                printf("    -> %8.8f ( %8.8f )\n",result.single_float,single_test_inputs[test].result.single_float);
+                printf("    -> %f ( %f )\n",result.single_float,single_test_inputs[test].result.single_float);
                 printf("    -> 0x%8x ( 0x%8x )",result.bitstream,single_test_inputs[test].result.bitstream);
                 break;
         }

@@ -570,22 +570,18 @@ unit fetch(
 
     algorithm <autorun> {
         while(1) {
-            if( start ) {
-                busy = 1;
-                while( memorybusy ) {}
-                busy = 0;
-            }
+            if( start ) { busy = 1; while( memorybusy ) {} busy = 0; }
         }
     }
 
     always_after {
-        switch( readdata[0,2] ) {                                               // EXPAND COMPRESSED INSTRUCTION
-            case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }            // OR KEEP 32 BIT INSTRUCTION
+        switch( readdata[0,2] ) {                                                                                               // EXPAND COMPRESSED INSTRUCTION
+            case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }                                                            // OR KEEP 32 BIT INSTRUCTION
             case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
             case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
             default: { instruction = readdata; }
         }
-        compressed = ( ~&readdata[0,2] );                        // SET COMPRESSED FLAGS
+        compressed = ( ~&readdata[0,2] );                                                                                       // SET COMPRESSED FLAGS
     }
 }
 
@@ -873,72 +869,49 @@ unit dma(
     }
 
     always_after {
-        // UPDATE SOURCE ADDRESSES
-        {
-            if( update ) {
-                if( dmamode[3,1] ) {
-                    if( |dmacount ) {
-                        if( ~dmamode[0,1] ) { dmasrc = SRC.NEXT; }
-                    } else {
-                        if( ~dmamode[0,1] ) { dmasrc = SRC.ADD - DMACOUNT; }
-                    }
+        if( start ) {
+            DMA16BIT = 0; DMA32BIT = 0; PB4pixel = 0;                                                                           // DETERMINE MAXIMUM DMA TRANSFER SIZE PER CYCLE
+            switch( dmamode ) {
+                default: {}                                                                                                     // DEFAULT TO 8 BIT MODE
+                case 1: {
+                    DMA16BIT = FLAGS.multi16;                                                                                   // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
+                    DMA32BIT = FLAGS.multi32;                                                                                   // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
+                }
+                case 3: { DMA32BIT = FLAGS.SD32; DMA16BIT = FLAGS.SD16; }                                                       // MEMCPY IS 32/16 BIT CAPABLE
+                case 4: { DMA32BIT = FLAGS.SSD32; DMA16BIT = FLAGS.SSD16; }                                                     // MEMSET IS 32/16 BIT CAPABLE
+                case 7: { PB4pixel = ~|DMACOUNT[0,2] & FLAGS.src16bit; }                                                        // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
+                case 8: { DMA32BIT = FLAGS.SD32 & FLAGS.ADD32; DMA16BIT = FLAGS.SD16 & FLAGS.ADD16; }                           // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
+                case 9: { DMA32BIT = FLAGS.SSD32 & FLAGS.ADD32; DMA16BIT = FLAGS.SSD16 & FLAGS.ADD16; }                         // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
+            }
+            DMAACCESSSIZE = DMA32BIT | ( &DMAMODE[0,3] & PB4pixel ) ? 2b10 : DMA16BIT | &DMAMODE[0,3] ? 2b01: 2b00;             // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
+            DMAACTIVE = 1;
+        }
+
+        if( update ) {
+            if( dmamode[3,1] ) {                                                                                                // UPDATE ADDRESSES IF RECTANGLE MODE
+                if( |dmacount ) {
+                    dmadest = DEST.NEXT; if( ~dmamode[0,1] ) { dmasrc = SRC.NEXT; }
                 } else {
-                    switch( dmamode[0,3] ) {
-                        default: {}
-                        case 1: { dmasrc = SRC.NEXT; }
-                        case 2: { dmasrc = SRC.NEXT; }
-                        case 3: { dmasrc = SRC.NEXT; }
-                        case 6: { dmasrc = SRC.ADD; }
-                        case 7: { dmasrc = SRC.PB; }
-                    }
+                    dmadest = DEST.ADD - DMACOUNT; if( ~dmamode[0,1] ) { dmasrc = SRC.ADD - DMACOUNT; }
+                }
+            } else {
+                switch( dmamode[0,3] ) {                                                                                        // UPDATE ADDRESS IF NOT RECTANGLE MODE
+                    default: {}
+                    case 1: { dmasrc = SRC.NEXT; }
+                    case 2: { dmasrc = SRC.NEXT; dmadest = DEST.PB; }
+                    case 3: { dmasrc = SRC.NEXT; dmadest = DEST.NEXT; }
+                    case 4: { dmadest = DEST.NEXT; }
+                    case 6: { dmasrc = SRC.ADD; dmadest = DEST.ADD; }
+                    case 7: { dmasrc = SRC.PB; }
                 }
             }
-        }
-        // UPDATE DESTINATION ADDRESSES
-        {
-            if( update ) {
-                if( dmamode[3,1] ) {
-                    if( |dmacount ) { dmadest = DEST.NEXT; } else { dmadest = DEST.ADD - DMACOUNT; }                            // UPDATE DESTINATION ADDRESS IF RECTANGLE MODE
-                } else {
-                    switch( dmamode[0,3] ) {
-                        default: {}
-                        case 2: { dmadest = DEST.PB; }
-                        case 3: { dmadest = DEST.NEXT; }
-                        case 4: { dmadest = DEST.NEXT; }
-                        case 6: { dmadest = DEST.ADD; }
-                    }
-                }
-            }
+            dmacycles = dmacycles - ~|dmacount;                                                                                 // UPDATE CYCLES WHEN COUNT == 0
+            dmacount = |dmacount ? dmacountNEXT : dmamode[3,1] ? DMACOUNT : 0;                                                  // UPDATE COUNT I` != 0, reset if multi-cycle mode
         }
 
-        { if( update ) { dmacount = |dmacount ? dmacountNEXT : dmamode[3,1] ? DMACOUNT : 0; } }                                 // UPDATE COUNT I` != 0, reset if multi-cycle mode
-        { if( update ) { dmacycles = dmacycles - ~|dmacount; } }                                                                // UPDATE CYCLES WHEN COUNT == 0
-
-        // DETERMINE MAXIMUM DMA TRANSFER SIZE, 8, 16 OR 32 BIT
-        {
-            if( start ) {
-                DMA16BIT = 0; DMA32BIT = 0; PB4pixel = 0;
-                switch( dmamode ) {
-                    default: {}                                                                                                 // DEFAULT TO 8 BIT MODE
-                    case 1: {
-                        DMA16BIT = FLAGS.multi16;                                                                               // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
-                        DMA32BIT = FLAGS.multi32;                                                                               // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
-                    }
-                    case 3: { DMA32BIT = FLAGS.SD32; DMA16BIT = FLAGS.SD16; }                                                   // MEMCPY IS 32/16 BIT CAPABLE
-                    case 4: { DMA32BIT = FLAGS.SSD32; DMA16BIT = FLAGS.SSD16; }                                                 // MEMSET IS 32/16 BIT CAPABLE
-                    case 7: { PB4pixel = ~|DMACOUNT[0,2] & FLAGS.src16bit; }                                                    // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
-                    case 8: { DMA32BIT = FLAGS.SD32 & FLAGS.ADD32; DMA16BIT = FLAGS.SD16 & FLAGS.ADD16; }                       // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
-                    case 9: { DMA32BIT = FLAGS.SSD32 & FLAGS.ADD32; DMA16BIT = FLAGS.SSD16 & FLAGS.ADD16; }                     // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
-                }
-
-            }
-        }
-        { if( start ) { DMAACTIVE = 1; } }
-        { if( start ) { DMAACCESSSIZE = DMA32BIT | ( &DMAMODE[0,3] & PB4pixel ) ? 2b10 :                                        // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
-                                        DMA16BIT | &DMAMODE[0,3] ? 2b01: 2b00; } }
-
-        { if( ~DMAACTIVE ) {
+        if( ~DMAACTIVE ) {
             dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES;                                  // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
-            dmamode = DMAMODE; writedata = DMASET; } }
+            dmamode = DMAMODE; writedata = DMASET;
+        }
     }
 }
