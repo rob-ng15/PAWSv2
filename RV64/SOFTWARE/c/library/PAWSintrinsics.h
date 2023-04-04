@@ -1,5 +1,8 @@
 #ifndef __PAWSINTRINSICS__
 
+// B EXTENSION INTRINSICS
+static inline long _rv64_adduw(long rs1, long rs2) { long rd; __asm__ ("add.uw %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
 static inline long _rv64_bset(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("bseti %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & rs2)); else __asm__ ("bset %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
 static inline long _rv64_bclr(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("bclri %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & rs2)); else __asm__ ("bclr %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
 static inline long _rv64_binv(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("binvi %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & rs2)); else __asm__ ("binv %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
@@ -34,6 +37,14 @@ static inline long _rv64_packh(long rs1, long rs2) { long rd; __asm__ ("packh  %
 static inline int _rv64_packw(int rs1, int rs2) { int rd; __asm__ ("packw  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
 
 static inline long _rv64_rev8(long rs1) { long rd; __asm__ ("rev8     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+
+// FLOATING POINT INTRINSICS
+static inline float _rv64_fadds(float rs1, float rs2) { float rd; __asm__ ("fadd.s %0, %1, %2" : "=f"(rd) : "f"(rs1), "f"(rs2)); return rd; }
+static inline int _rv64_fclasss(float rs1) { int rd; __asm__ ("fclass.s %0, %1" : "=r"(rd) : "f"(rs1)); return rd; }
+static inline float _rv64_fdivs(float rs1, float rs2) { float rd; __asm__ ("fdiv.s %0, %1, %2" : "=f"(rd) : "f"(rs1), "f"(rs2)); return rd; }
+static inline float _rv64_fmuls(float rs1, float rs2) { float rd; __asm__ ("fmul.s %0, %1, %2" : "=f"(rd) : "f"(rs1), "f"(rs2)); return rd; }
+static inline float _rv64_fsubs(float rs1, float rs2) { float rd; __asm__ ("fsub.s %0, %1, %2" : "=f"(rd) : "f"(rs1), "f"(rs2)); return rd; }
+static inline float _rv64_fsqrts(float rs1) { float rd; __asm__ ("fsqrt.s %0, %1" : "=f"(rd) : "f"(rs1)); return rd; }
 
 #define __PAWSINTRINSICS__
 #endif
