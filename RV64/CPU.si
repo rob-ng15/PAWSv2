@@ -101,7 +101,6 @@ unit PAWSCPU(
     cpuexecuteSLOWPATH EXECUTESLOW(
         size32 <: RV64CONTROL.IS_ALU32,
         SMT <: SMT,
-        opCode <: RV64CONTROL.opCode,
         function3 <: RV64CONTROL.function3,
         function7 <: RV64CONTROL.function7,
         rs1 <: RV64CONTROL.rs1, rs2 <: RV64CONTROL.rs2,
@@ -109,6 +108,7 @@ unit PAWSCPU(
         sourceReg2 <: RV64CONTROL.sourceReg2, S2_abs32 <: RV64CONTROL.S2_abs32, S2_abs64 <: RV64CONTROL.S2_abs64,
         memoryinput <: memoryinput,
         incCSRinstret <: COMMIT,
+        isALU <: RV64CONTROL.IS_ALU,
         isALUM <: RV64CONTROL.IS_ALUM,
         isALUCLM <: RV64CONTROL.IS_ALUCLM,
         isCSR <: RV64CONTROL.IS_CSR,
@@ -355,7 +355,6 @@ unit cpuexecuteSLOWPATH(
     input   uint1   start,
     output  uint1   busy(0),
     input   uint1   SMT,
-    input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
     input   uint5   rs1,
@@ -372,23 +371,14 @@ unit cpuexecuteSLOWPATH(
     input   uint1   incCSRinstret,
     input   uint1   isCSR,
     input   uint1   isATOMIC,
+    input   uint1   isALU,
     input   uint1   isALUM,
     input   uint1   isALUCLM,
     output  uint8   FPUflags,
     input   uint5   FPUnewflags,
     input   uint1   CSRupdateFPUflags
 ) <reginputs> {
-    uint4   operation <:: { isALUCLM, isALUM, isATOMIC, isCSR };
-
-    // M EXTENSION - DIVISION
-    aludivision ALUMD(
-        size32 <: size32, function3 <: function3[0,2],
-        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64,
-        sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
-    );
-
-    // B EXTENSION - CARRYLESS MULTIPLY
-    alucarrylessmultiply ALUCLMUL( function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
+    uint3   operation <:: { isALU, isATOMIC, isCSR };
 
     // ATOMIC MEMORY OPERATIONS
     aluA ALUA( function7 <: function7, memoryinput <: memoryinput, sourceReg2 <: sourceReg2 );
@@ -407,17 +397,22 @@ unit cpuexecuteSLOWPATH(
         incCSRinstret <: incCSRinstret
     );
 
+    alu_multicycle ALU(
+        size32 <: size32, function3 <: function3[0,2], isALUM <: isALUM, isALUCLM <: isALUCLM,
+        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64,
+        sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
+    );
+
     // START FLAGS
-    ALUMD.start := 0; ALUCLMUL.start := 0; CSR.start := 0;
+    CSR.start := start & isCSR & |function3; ALU.start := start & isALU;
 
     algorithm <autorun> {
         // PROVIDE WAIT STATE FOR APPROPRIATE OPERATION
         while(1) {
             if( start ) {
                 onehot( operation ) {
-                    default: { CSR.start = isCSR & |function3; ++: }                                                            // CSR ATOMIC OPERATIONS
-                    case 2: { ALUMD.start = 1; while( ALUMD.busy ) {} }                                                         // INTEGER DIVISION
-                    case 3: { ALUCLMUL.start = 1; while( ALUCLMUL.busy ) {} }                                                   // CARRYLESS MULTIPLY
+                    default: { ++: }                                                                                            // CSR ATOMIC OPERATIONS
+                    case 2: { while( ALU.busy ) {} }                                                                            // INTEGER DIVISION AND CARRYLESS MULTIPLY
                 }
                 busy = 0;
             }
@@ -437,16 +432,9 @@ unit cpuexecuteSLOWPATH(
                         } else {
                             result = function7[2,1] ? 0 : memoryinput;                                                          // LR.W SC.W
                         }
+                        memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                               // ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORUOUTPUT SETTING
                     }
-                    case 2: { result = size32 ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; }              // INTEGER DIVISION
-                    case 3: { result = ALUCLMUL.result; }                                                                       // CARRYLESS MULTIPLY
-                }
-            }
-        }
-        {
-            if( busy ) {
-                if( operation[1,1] ) {
-                    if( function7[3,1] ) { memoryoutput = function7[3,1] ? ALUA.result : sourceReg2; }                          // ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W
+                    case 2: { result = size32 ? { {32{ALU.result[31,1]}}, ALU.result[0,32] } : ALU.result; }                    // INTEGER DIVISION AND CARRYLESS MULTIPLY
                 }
             }
         }

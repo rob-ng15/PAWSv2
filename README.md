@@ -57,7 +57,7 @@ A simple test https://en.wikipedia.org/wiki/Langton%27s_ant which I discovered a
 
 ## ASTROIDS (GAMES)
 An implementation of the arcade games Asteroids, written from scratch, using the PAWSv2 sprites. The asteroid sprites are moved in the SMT thread.
-<br>
+
 When I first started programming for FPGAs, Asteroids was my first game implemented (j1eforth on the DE10-Nano and ULX3S, it probably doesn't build and run now, but I'll update it), and the development of the features for SoC was driven by the requirements for Asteroids, i.e. sprites for the ships, bullets, asteroids and UFOs, initially in single colour, and eventually in 256 colour sprites; input, the FPGA board buttons, and eventually the PS/2 keyboard; simple sound, initially tone generators, expanded to include waveforms, square, triangle, saw and sine, plus eventually user-defined waveforms, simple 1-bit samples, DOOM style PC speaker sounds, which can be used for playing tunes.
 <br>
 ![3D MAZE](Reference/Graphics/ASTEROIDS-1.jpg)
@@ -74,6 +74,8 @@ Uses 64-bit integers to implement the display, and uses the ROR/ROL instructions
 
 ## DOOM (GAMES)
 A conversion of https://github.com/mbitsnbites/mc1-doom to the PAWSv2 graphics, sound and input system. The images are drawn to the screen using the DMA engine, with the display being in 256 colour mode, and uses the DOOM palette, no the PAWSv2 default RGBM palette. DOOM style PC speaker sound support was added to PAWSv2 for DOOM.
+
+To make the game playable, when the demo starts press the "-" key on the keyboard 3 times to shrink the display area. Movement keys are "WASD", not as on the help screen.
 <br>
 ![3D MAZE](Reference/Graphics/DOOM-1.jpg)
 ![3D MAZE](Reference/Graphics/DOOM-2.jpg)

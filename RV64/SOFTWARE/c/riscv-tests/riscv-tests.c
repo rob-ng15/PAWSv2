@@ -41,18 +41,16 @@ void b_extension_test( void ) {
     printw("\n");
 
     result = _rv64_adduw(0xfffffffffffffbff,0xfffffffffffffff7); report_test_2long_r1long( "add.uw",0xfffffffffffffbff,0xfffffffffffffff7,result,0xfffffbf6);
+    result = _rv64_clmul(0xa,0x6); report_test_2long_r1long( "clmul",0xa,0x6,result,0x3c);
+    result = _rv64_clmul(0x355,0x487); report_test_2long_r1long( "clmul",0x355,0x487,result,0xcf62b);
+    result = _rv64_sh1add(0xffffffff12345678,0); report_test_2long_r1long( "sh1add",0xffffffff12345678,0,result,0xfffffffe2468acf0);
+    result = _rv64_sh1adduw(0xffffffff12345678,0); report_test_2long_r1long( "sh1add.uw",0xffffffff12345678,0,result,0x2468acf0);
+    result = _rv64_sh2add(0xffffffff12345678,0); report_test_2long_r1long( "sh2add",0xffffffff12345678,0,result,0xfffffffc48d159e0);
+    result = _rv64_sh2adduw(0xffffffff12345678,0); report_test_2long_r1long( "sh2add.uw",0xffffffff12345678,0,result,0x48d159e0);
+    result = _rv64_sh3add(0xffffffff12345678,0); report_test_2long_r1long( "sh3add",0xffffffff12345678,0,result,0xfffffff891a2b3c0);
+    result = _rv64_sh3adduw(0xffffffff12345678,0); report_test_2long_r1long( "sh3add.uw",0xffffffff12345678,0,result,0x91a2b3c0);
+    result = _rv64_slliuw(0xffffffff12345678,8); report_test_2long_r1long( "slli.uw",0xffffffff12345678,8,result,0x1234567800);
 }
-
-// https://github.com/riscv-software-src/riscv-tests/blob/master/isa/macros/scalar/test_macros.h
-#define qNaN 0x7ff8000000000000
-#define sNaN 0x7ff0000000000001
-
-struct singe_inputs {
-    int operation;
-    union single_bitstream op1;
-    union single_bitstream op2;
-    union single_bitstream result;
-};
 
 int single_tests( void ) {
     union single_bitstream result, expected;

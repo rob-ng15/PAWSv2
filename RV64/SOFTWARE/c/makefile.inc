@@ -24,7 +24,7 @@ ifndef INCLUDEEXTRA
 INCLUDEEXTRA=
 endif
 
-CPUOPTS=-march=rv64gc_zba_zbb_zbc_zbs_zbkb_zbkc_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax
+CPUOPTS=-march=rv64gc_zba_zbb_zbc_zbs_zbkb_zbkc_zfh_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax
 
 CFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
 CXXFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib

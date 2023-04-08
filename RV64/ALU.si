@@ -212,7 +212,7 @@ unit aludecode(
     uint1   f70110100 <:: ( function7 == 7b0110100 );                               // DETECT BREV8
     uint1   f70110101 <:: ( function7 == 7b0110101 );                               // DETECT REV8
 
-    doadduw := size32 & regreg & ( f70000100 | f70000100 );                         // ADD.UW SHxADD.UW
+    doadduw := size32 & regreg & ( f70000100 | f70010000 );                         // ADD.UW SHxADD.UW
     doalt := regreg & f70100000;                                                    // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
     dobclrext := ( function7[1,6] == 6b010010 );                                    // BCLR BCLRI BEXT BEXTI
     dobrev := ~regreg & f70110100;                                                  // BREV8
@@ -276,6 +276,45 @@ unit alu(
                 case 3b111: { result = AD.dominmax ? MINMAX.result : AD.dopack ? PACK.packh : LOGIC.AND; }
             }
         }
+    }
+}
+
+unit alu_multicycle(
+    input   uint1   size32,
+    input   uint1   start,
+    output  uint1   busy(0),
+    input   uint2   function3,
+    input   int64   sourceReg1,
+    input   uint32  S1_abs32,
+    input   uint64  S1_abs64,
+    input   int64   sourceReg2,
+    input   uint32  S2_abs32,
+    input   uint64  S2_abs64,
+    output  int64   result,
+    input   uint1   isALUM,
+    input   uint1   isALUCLM
+) <reginputs> {
+    // M EXTENSION - DIVISION
+    aludivision ALUMD(
+        size32 <: size32, function3 <: function3,
+        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64,
+        sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
+    );
+
+    // B EXTENSION - CARRYLESS MULTIPLY
+    alucarrylessmultiply ALUCLMUL( function3 <: function3, sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
+
+    ALUMD.start := start & isALUM; ALUCLMUL.start := start & isALUCLM;
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) { while( ALUMD.busy |  ALUCLMUL.busy ) {} busy = 0; }
+        }
+    }
+
+    always_after {
+        { if( start ) { busy = 1; } }
+        { if( busy ) { result = isALUM ? ALUMD.result : ALUCLMUL.result; } }
     }
 }
 
@@ -354,7 +393,7 @@ unit alucarrylessmultiply(
     input   uint64  sourceReg2,
     output  uint64  result
 ) <reginputs> {
-    uint64  resultNEXT <:: result ^ ( ( function3[1,1] ) ? ( sourceReg1 >> ( ( function3[0,1] ? 64 : 63 ) - count ) ) : ( sourceReg1 << count ) );
+    uint64  resultNEXT <:: result ^ ( ( function3[1,1] ) ? ( sourceReg1 >> ( stopat - count ) ) : ( sourceReg1 << count ) );
     uint7   startat <:: &function3;
     uint7   stopat <:: function3[0,1] ? 64 : 63;
     uint7   count = uninitialised;
