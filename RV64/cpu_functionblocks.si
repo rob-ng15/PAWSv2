@@ -3,6 +3,7 @@ unit control(
     // THREAD, DMA AND MEMORY ACCESS SIZE
     input   uint1   cacheselect,
     output  uint2   accesssize,
+    output  uint1   IS_MEM64,
     input   uint1   DMAACTIVE,
     input   uint2   DMAACCESSSIZE,
     input   uint1   SMT,
@@ -20,7 +21,7 @@ unit control(
     output  uint64  immediateValue,
     output  uint1   IS_AUIPCLUI,
     output  uint1   IS_JAL,
-    output  uint1   IS_ALUM,
+    output  uint1   IS_ALUMD,
     output  uint1   IS_ALUCLM,
     output  uint1   IS_CSR,
     output  uint1   IS_ATOMIC,
@@ -56,17 +57,18 @@ unit control(
     output  uint64  AUIPCLUI,
     output  uint$addr_width$  loadAddress,
     output  uint$addr_width$  storeAddress,
+    output  uint1   IS_MA,
     output  uint$addr_width$  nextPC,
     output  uint$addr_width$  newPC
 ) <reginputs> {
     // INSTRUCTION CLASSIFICATION AND CPU CONTROL FLAGS
     controlflags FLAGS(
-        opCode <: Rtype(instruction).opCode,
+        opCode <: Rtype(instruction).opCode[2,5],
         function3 <: Rtype(instruction).function3,
         function7 <: Rtype(instruction).function7,
         IS_AUIPCLUI :> IS_AUIPCLUI,
         IS_JAL :> IS_JAL,
-        IS_ALUM :> IS_ALUM,
+        IS_ALUMD :> IS_ALUMD,
         IS_ALUCLM :> IS_ALUCLM,
         IS_CSR :> IS_CSR,
         IS_ATOMIC :> IS_ATOMIC,
@@ -119,21 +121,19 @@ unit control(
         EQ :> EQ
     );
 
-    // EXTRACT BITFIELDS FROM INSTRUCTION
-    opCode := instruction[2,5];
-    function3 := Rtype(instruction).function3;
-    function7 := Rtype(instruction).function7;
-    immediateValue := { {52{instruction[31,1]}}, Itype(instruction).immediate };
+    IS_MA := ~FLAGS.IS_ATOMIC & |Rtype(instruction).function3[0,2] & (                                                  // ATOMIC OPERATIONS CANNOT BE IS_MA
+             ( FLAGS.IS_LOAD & ( instruction[20,1] ^ I1R.rdata0[0,1] ) ) |                                               // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
+             ( FLAGS.IS_STORE & ( instruction[7,1] ^ I1R.rdata0[0,1] ) ) );                                              // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
 
-    // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
-    rs1 := Rtype(instruction).sourceReg1;
-    rs2 := Rtype(instruction).sourceReg2;
+    opCode := instruction[2,5]; function3 := Rtype(instruction).function3; function7 := Rtype(instruction).function7;          // EXTRACT BITFIELDS FROM INSTRUCTION
+    immediateValue := { {52{instruction[31,1]}}, Itype(instruction).immediate };                                             // EXTRACT AND SIGN EXTEND IMMEDIATE VALUE FROM INSTRUCTION
+    rs1 := Rtype(instruction).sourceReg1; rs2 := Rtype(instruction).sourceReg2;                                               // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
 
-    // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32 ELSE BY function3
-    accesssize := DMAACTIVE ? DMAACCESSSIZE : cacheselect ? Rtype(instruction).function3[0,2] : 2b10;
+    accesssize := DMAACTIVE ? DMAACCESSSIZE : cacheselect ? IS_MA ? 2b00 : Rtype(instruction).function3[0,2] : 2b10;    // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32
+                                                                                                                            // ELSE BY function3 ( IS_MA AS BYTES )
+    IS_MEM64 := &Rtype(instruction).function3[0,2];
 
-    // ADDRESS GENRATION
-    AUIPCLUI := { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
+    AUIPCLUI := { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );   // ADDRESS GENRATION
     loadAddress := ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Itype(instruction).immediate } ) + I1R.rdata0[0,$addr_width$];
     storeAddress := ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R.rdata0[0,$addr_width$];
     nextPC := PC + ( compressed ? 2 : 4 );
@@ -213,7 +213,7 @@ unit regR(
     input   uint5   addr0,
     output  uint64  rdata0
 ) <reginputs> {
-    regfile0.addr0 := addr0;   regfile1.addr0 := addr0;   rdata0 := SMT ? regfile1.rdata0 : regfile0.rdata0;
+        regfile0.addr0 := addr0; regfile1.addr0 := addr0; rdata0 := SMT ? regfile1.rdata0 : regfile0.rdata0;
 }
 unit regW(
     input   uint1   SMT,
@@ -223,8 +223,8 @@ unit regW(
     input   uint1   wenable1,
     input   uint64  wdata1
 ) <reginputs> {
-    regfile0.addr1 := addr1;   regfile0.wdata1 := wdata1;   regfile0.wenable1 := ~SMT & wenable1;
-    regfile1.addr1 := addr1;   regfile1.wdata1 := wdata1;   regfile1.wenable1 := SMT & wenable1;
+    regfile0.addr1 := addr1; regfile0.wdata1 := wdata1; regfile0.wenable1 := ~SMT & wenable1;
+    regfile1.addr1 := addr1; regfile1.wdata1 := wdata1; regfile1.wenable1 := SMT & wenable1;
 }
 
 // ABSOLUTE VALUES FOR 32 AND 64 BIT REGISTER CONTENTS
@@ -239,13 +239,13 @@ unit abs3264(
 
 // CLASSIFY INSTRUCTION TYPE AND DETIMINE CPU CONTROL FLAGS
 unit controlflags(
-    input   uint7   opCode,
+    input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
     output  uint1   IS_AUIPCLUI,
     output  uint1   IS_JAL,
     output  uint1   IS_BRANCH,
-    output  uint1   IS_ALUM,
+    output  uint1   IS_ALUMD,
     output  uint1   IS_ALUCLM,
     output  uint1   IS_CSR,
     output  uint1   IS_ATOMIC,
@@ -262,47 +262,51 @@ unit controlflags(
     output  uint1   IS_ALU32,
     output  uint1   IS_ALU32SIGNX
 ) <reginputs> {
-    uint1   REGREG <: ( opCode[2,5] == 5b01100 ) | ( opCode[2,5] == 5b01110 );                                                  // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
+    writeRegisterF := 0; writeRegister := 1; incPC := 1; IS_FAST := 1;                                                          // DEFAULT TO SINGLE-CYCLE, WRITE INTEGER REGISTER AND INCREMENT PC
+    IS_ALU := 0; IS_ALU32 := 0; IS_ALU32SIGNX := 1;                                                                             // ALU DETECTED FLAGS, DEFAULT TO 32-BIT SIGN EXTENSION
+    IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;     // NON-ALU/FPU INSTRUCTION DETECTED FLAGS
+    IS_FPU := 0; IS_FASTFPU := 0;                                                                                               // FLOATING-POINT UNIT DETECTION FLAGS
 
-    // SET DEFAULT CONTROL FLAGS - STANDARD "SINGLE CYCLE" INTEGER ALU OPERATION
-    writeRegisterF := 0; writeRegister := 1; incPC := 1;
-    IS_FAST := 1; IS_ALU := 0; IS_ALU32 := 0; IS_ALU32SIGNX := 1; IS_FPU := 0; IS_FASTFPU := 0;
-    IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;
-    IS_ALUM := REGREG & ( function7 == 7b0000001 );
-    IS_ALUCLM := 0; //IS_ALUCLM := REGREG & ( function7 == 7b0000101 );
-
-    always_after {
-        switch( opCode[2,5] ) {                                                                                                 // DETERMINE CPU CONTROL FLAGS BY OPCODE
-            case 5b01101: { IS_AUIPCLUI = 1; }                                                                                  // LUI
-            case 5b00101: { IS_AUIPCLUI = 1; }                                                                                  // AUIPC
-            case 5b11011: { IS_JAL = 1; incPC = 0; }                                                                            // JAL
-            case 5b11001: { IS_JAL = 1; incPC = 0; }                                                                            // JALR
-            case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                                                 // BRANCH
-            case 5b00000: { IS_LOAD = 1; }                                                                                      // LOAD
-            case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                                                  // FLOAT LOAD
-            case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                                                  // STORE
-            case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                                                  // FLOAT STORE
-            case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                                                   // FENCE[I]
-            case 5b11100: { IS_CSR = 1; IS_FAST = 0; }                                                                          // CSR ECALL EBBREAK
-            case 5b00100: { IS_ALU = 1; }                                                                                       // REGISTER-IMMEDIATE ALU
-            case 5b01100: { IS_ALU = 1; IS_FAST = ~( IS_ALUCLM | ( IS_ALUM & function3[2,1] ) ); }                              // REGISTER-REGISTER ALU ( FAST NOT DIVIDE OR CLMUL )
-            case 5b00110: {
-                IS_ALU = 1; IS_ALU32 = 1;                                                                                       // REGISTER-IMMEDIATE ALU 32BIT
-                if( function3 == 3b001 ) { IS_ALU32SIGNX = ( function7[1,6] != 6b000010 ); }                                    // DETECT SLLI.UW
-            }
-            case 5b01110: {                                                                                                     // REGISTER-REGISTER ALU 32BIT ( FAST NOT DIVIDE )
-                IS_ALU = 1; IS_ALU32 = 1; IS_FAST = ~( IS_ALUM & function3[2,1] );
-                if( ~function3[0,1] ) {
-                    switch( function3[1,2] ) {
-                        case 2b00: { IS_ALU32SIGNX = ( function7 != 7b0000100 ); }                                              // DETECT ADD.UW
-                        default: { IS_ALU32SIGNX = ( function7 != 7b0010000 ); }                                                // DETECT SHxADD.UW
+    algorithm <autorun> {
+        while(1) {
+            switch( opCode ) {                                                                                                  // DETERMINE CPU CONTROL FLAGS BY OPCODE
+                case 5b01101: { IS_AUIPCLUI = 1; }                                                                              // LUI
+                case 5b00101: { IS_AUIPCLUI = 1; }                                                                              // AUIPC
+                case 5b11011: { IS_JAL = 1; incPC = 0; }                                                                        // JAL
+                case 5b11001: { IS_JAL = 1; incPC = 0; }                                                                        // JALR
+                case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                                             // BRANCH
+                case 5b00000: { IS_LOAD = 1; }                                                                                  // LOAD
+                case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                                              // FLOAT LOAD
+                case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                                              // STORE
+                case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                                              // FLOAT STORE
+                case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                                               // FENCE[I]
+                case 5b11100: { IS_CSR = 1; IS_FAST = 0; }                                                                      // CSR ECALL EBBREAK
+                case 5b00100: { IS_ALU = 1; }                                                                                   // REGISTER-IMMEDIATE ALU
+                case 5b01100: { IS_ALU = 1; IS_FAST = ~( IS_ALUCLM | IS_ALUMD ); }                                              // REGISTER-REGISTER ALU ( FAST NOT DIVIDE OR CLMUL )
+                case 5b00110: {                                                                                                 // REGISTER-IMMEDIATE ALU 32BIT
+                    IS_ALU = 1; IS_ALU32 = 1;
+                    if( function3 == 3b001 ) { IS_ALU32SIGNX = ( function7[1,6] != 6b000010 ); }                                // DETECT SLLI.UW
+                }
+                case 5b01110: {                                                                                                 // REGISTER-REGISTER ALU 32BIT ( FAST NOT DIVIDE )
+                    IS_ALU = 1; IS_ALU32 = 1; IS_FAST = ~IS_ALUMD;
+                    if( ~function3[0,1] ) {
+                        switch( function3[1,2] ) {
+                            case 2b00: { IS_ALU32SIGNX = ( function7 != 7b0000100 ); }                                          // DETECT ADD.UW
+                            default: { IS_ALU32SIGNX = ( function7 != 7b0010000 ); }                                            // DETECT SHxADD.UW
+                        }
                     }
                 }
+                case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                                                   // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
+                case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }                       // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
+                default: { IS_FPU = 1; IS_FAST = 0; }                                                                           // FUSED-FPU
             }
-            case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                                                       // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
-            case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }                           // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
-            default: { IS_FPU = 1; IS_FAST = 0; }                                                                               // FUSED-FPU
         }
+    }
+
+    always_after {
+        uint1   REGREG = ( opCode == 5b01100 ) | ( opCode == 5b01110 );                                                         // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
+        IS_ALUMD = REGREG & ( function7 == 7b0000001 ) & function3[2,1];                                                        // INTEGER DIVISION DETECTED FLAG
+        IS_ALUCLM = 0; // IS_ALUCLM = REGREG & ( function7 == 7b0000101 ) & ~function3[2,1];                                   // CARRYLESS MULTIPLICATION DETECTED FLAG { f3 == 0xx, f3 == 1xx is min/max (
     }
 }
 
@@ -476,7 +480,7 @@ unit csrf(
 ) <reginputs> {
     always_after {
         if( update ) {
-            CSRf = { CSRf[5,3], newflags };
+            CSRf = { CSRf[0,5], newflags };
         } else {
             switch( csr ) {
                 case 0: {}
@@ -552,8 +556,7 @@ unit CSRblock(
                 switch( function3[0,2] ) {
                     case 2b00: {} // ECALL / EBBREAK
                     case 2b01: {
-                        // CSRRW / CSRRWI
-                        switch( { ~|rs1, function3[2,1] } ) {
+                        switch( { ~|rs1, function3[2,1] } ) {                                                                   // CSRRW / CSRRWI
                             case 2b10: {}
                             default: { if( SMT ) { CSRF1.writetype = 1; } else { CSRF0.writetype = 1; } }
                         }
@@ -565,29 +568,27 @@ unit CSRblock(
     }
 
     always_after {
-        if( start ) {
-            result = 0;
-            switch( csrRegister[8,4] ) {
-                case 4h0: {
-                    switch( csrRegister[0,2] ) {
-                        case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                                    // frflags
-                        case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                                     // frrm
-                        case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                               // frcsr
-                        default: {}
-                    }
+        result = 0;
+        switch( csrRegister[8,4] ) {
+            case 4h0: {
+                switch( csrRegister[0,2] ) {
+                    case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                                        // frflags
+                    case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                                         // frrm
+                    case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                                   // frcsr
+                    default: {}
                 }
-                case 4h3: { result = $CPUISA$; }
-                case 4hc: {
-                    switch( { csrRegister[7,1], csrRegister[0,2] } ) {
-                        case 3h0: { result = SMT ? CYCLE1 : CYCLE0; }
-                        case 3h1: { result = TIMER; }
-                        case 3h2: { result = SMT ? INSTRET1 : INSTRET0; }
-                        default: {}
-                    }
-                    }
-                case 4hf: { result = SMT; }                                                                                 // HART ID
-                default: {}
             }
+            case 4h3: { result = $CPUISA$; }
+            case 4hc: {
+                switch( { csrRegister[7,1], csrRegister[0,2] } ) {
+                    case 3h0: { result = SMT ? CYCLE1 : CYCLE0; }
+                    case 3h1: { result = TIMER; }
+                    case 3h2: { result = SMT ? INSTRET1 : INSTRET0; }
+                    default: {}
+                }
+                }
+            case 4hf: { result = SMT; }                                                                                     // HART ID
+            default: {}
         }
     }
 }

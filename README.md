@@ -81,15 +81,18 @@ To make the game playable, when the demo starts press the "-" key on the keyboar
 ![3D MAZE](Reference/Graphics/DOOM-2.jpg)
 
 ## IMGUI (DEMO)
-A test running the IMGUI DEMO to check PAWSv2 against other people's code, specially heavy on the floating-point unit. The generated image is tranferred to the display using the DMA engine, translating the RGBA image to PAWSv2 via the pixelblock. Press FIRE 1 and FIRE 2 buttons simultaneously to exit.
+A test running the IMGUI DEMO to check PAWSv2 against other people's code, specially heavy on the floating-point unit. The generated image is tranferred to the display using the DMA engine, translating the RGBA image to PAWSv2 via the pixelblock.
+
+Press FIRE 1 and FIRE 2 buttons simultaneously to exit.
 <br>
 ![IMGUI Test](Reference/Graphics/IMGUI.jpg)
 
 ## INVADERS (GAMES)
-An implementation of the arcade games Space Invaders. The space invaders, bunkers and UFO are drawn using the blitter. The background images and score are drawm using the two tilemaps. The player ship and the bullets are sprites, using the sprite to background detection. Written after reading http://nicktasios.nl/posts/space-invaders-from-scratch-part-1.html
+An implementation of the arcade games Space Invaders. The space invaders, bunkers and UFO are drawn using the blitter; the Galaxian aliens using the colour blitter. The background images and score are drawm using the two tilemaps. The player ship and the bullets are sprites, using the sprite to background detection. Written after reading http://nicktasios.nl/posts/space-invaders-from-scratch-part-1.html
 <br>
-![3D MAZE](Reference/Graphics/INVADERS-1.jpg)
-![3D MAZE](Reference/Graphics/INVADERS-2.jpg)
+![Space Invaders Welcome Screen](Reference/Graphics/INVADERS-1.jpg)
+![Space Invaders](Reference/Graphics/INVADERS-2.jpg)
+![Space Invaders with Galaxian Aliens](Reference/Graphics/INVADERS-3.jpg)
 
 ## JPEG (DEMO)
 A simple test of the pixelblock (hardware transfer from memory to the display), in this case remapping RGB data in the PAWSv2 RGBM (256 colour) display, and the 256 greyscale display. Also tests the file selector, based upon the BIOS file selector. NOTE: The JPEG decoder is only tested with 320x240 pixel images, and they must be non-progressive, and colour.
@@ -100,7 +103,6 @@ The image displayed below, shows our PAWS, for whom the project is named. From l
 ![JPEG Colour Output](Reference/Graphics/JPEG-2.jpg)
 ![JPEG Greyscale Output](Reference/Graphics/JPEG-3.jpg)
 
-
 ## OUTRUN (DEMO)
 An implementation of https://www.lexaloffle.com/bbs/?tid=35767 using the GPU and DrawList2D from the PAWSv2 library, and the floating-point unit. The car is a pixelblock sprite ported from https://www.spriters-resource.com/genesis_32x_scd/outrun/sheet/25458/ with no animation. The cityscape and clouds are drawn on the two tilemaps. There are vehicles running in front of the cityscape that are just visible in one frame of the demonstration using sprites. Press FIRE2 to exit.
 <br>
@@ -108,7 +110,7 @@ An implementation of https://www.lexaloffle.com/bbs/?tid=35767 using the GPU and
 ![OUTRUN](Reference/Graphics/OUTRUN-2.jpg)
 ![OUTRUN](Reference/Graphics/OUTRUN-3.jpg)
 
-A full view of the cityscape backdrop (forced, not normally available), showing the background sprites.
+A full view of the cityscape backdrop (forced, not normally visible), showing the background sprites and tilemaps.
 
 ![OUTRUN Full view of the cityscape](Reference/Graphics/OUTRUN-4.jpg)
 

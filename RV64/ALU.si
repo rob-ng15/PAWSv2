@@ -291,7 +291,7 @@ unit alu_multicycle(
     input   uint32  S2_abs32,
     input   uint64  S2_abs64,
     output  int64   result,
-    input   uint1   isALUM,
+    input   uint1   isALUMD,
     input   uint1   isALUCLM
 ) <reginputs> {
     // M EXTENSION - DIVISION
@@ -304,7 +304,7 @@ unit alu_multicycle(
     // B EXTENSION - CARRYLESS MULTIPLY
     alucarrylessmultiply ALUCLMUL( function3 <: function3, sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
 
-    ALUMD.start := start & isALUM; ALUCLMUL.start := start & isALUCLM;
+    ALUMD.start := start & isALUMD; ALUCLMUL.start := start & isALUCLM;
 
     algorithm <autorun> {
         while(1) {
@@ -314,7 +314,7 @@ unit alu_multicycle(
 
     always_after {
         { if( start ) { busy = 1; } }
-        { if( busy ) { result = isALUM ? ALUMD.result : ALUCLMUL.result; } }
+        { if( busy ) { result = isALUMD ? ALUMD.result : ALUCLMUL.result; } }
     }
 }
 
@@ -378,10 +378,12 @@ unit aludivision(
     busy := start | DODIVIDE.busy; DODIVIDE.start := start & notdivzero;
 
     // EXTRACT RESULT
-    result := notdivzero ? function3[1,1] ? DODIVIDE.remainder :                                                         // RETURN REMAINDER
-                            ( ( ~function3[0,1] & ( sign1 ^ sign2 ) ) ? -DODIVIDE.quotient :                              // RETURN QUOTIENT ( correcting sgn )
-                                                                        DODIVIDE.quotient ) :                            // RETURN QUOTIENT ( unsigned or positive )
-                            function3[1,1] ? sourceReg1 : 64hffffffffffffffff;                                            // DIVIDE BY ZERO, dividend if remainder, -1 if quotient
+    always_after {
+        result = notdivzero ? function3[1,1] ? DODIVIDE.remainder :                                                         // RETURN REMAINDER
+                                ( ( ~function3[0,1] & ( sign1 ^ sign2 ) ) ? -DODIVIDE.quotient :                              // RETURN QUOTIENT ( correcting sgn )
+                                                                            DODIVIDE.quotient ) :                            // RETURN QUOTIENT ( unsigned or positive )
+                                function3[1,1] ? sourceReg1 : 64hffffffffffffffff;                                            // DIVIDE BY ZERO, dividend if remainder, -1 if quotient
+    }
 }
 
 // ALU FOR CARRYLESS MULTIPLY FROM B-EXTENSION
@@ -395,25 +397,22 @@ unit alucarrylessmultiply(
 ) <reginputs> {
     uint64  resultNEXT <:: result ^ ( ( function3[1,1] ) ? ( sourceReg1 >> ( stopat - count ) ) : ( sourceReg1 << count ) );
     uint7   startat <:: &function3;
-    uint7   stopat <:: function3[0,1] ? 64 : 63;
+    uint7   stopat <:: ( function3 == 2b10 ) ? 64 : 63;
     uint7   count = uninitialised;
+    uint7   countNEXT <:: count - 1;
     uint1   update = uninitialised;
     update := 0;
 
     algorithm <autorun> {
         while(1) {
-            if( start ) { busy = 1; while( count != stopat ) { update = 1; } busy = 0; }
+            if( start ) { busy = 1; result = 0; count = start; while( count != stopat ) { update = 1; } busy = 0; }
         }
     }
 
     always_after {
-        if( start ) {
-            result = 0; count = start;
-        } else {
-            if( update ) {
-                if( sourceReg2[ count, 1 ] ) { result = resultNEXT; }
-                count = count + 1;
-            }
+        if( update ) {
+            if( sourceReg2[ count, 1 ] ) { result = resultNEXT; }
+            count = countNEXT;
         }
     }
 }
@@ -426,9 +425,11 @@ unit integercomparisons(
     output  uint1   LTU,
     output  uint1   EQ
 ) <reginputs> {
-     LT := ( __signed( sourceReg1 ) < __signed( operand2 ) );
-     LTU := ( __unsigned( sourceReg1 ) < __unsigned( operand2 ) );
-     EQ := ( sourceReg1 == operand2 );
+    always_after {
+        LT = ( __signed( sourceReg1 ) < __signed( operand2 ) );
+        LTU = ( __unsigned( sourceReg1 ) < __unsigned( operand2 ) );
+        EQ = ( sourceReg1 == operand2 );
+    }
 }
 
 // ATOMIC A EXTENSION ALU
@@ -443,18 +444,16 @@ unit aluA(
     uint64  AMOADD <:: ( function3[1,1] ? memoryinput : memoryinput[0,32] ) + ( function3[1,1] ? sourceReg2 : sourceReg2[0,32] );
     uint64  MINMAX <:: ( function7[2,1] ^ ( function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) :  ( __signed(memoryinput) < __signed(sourceReg2) ) ) ) ? memoryinput : sourceReg2;
 
-    algorithm <autorun> {
-        while(1) {
-            if( function7[4,1] ) {                                                                                                  // AMOMAX[U] AMOMIN[U]
-                result = MINMAX;
-            } else {
-                switch( function7[0,4] ) {
-                    default: { result = AMOADD; }                                                                                   // AMOADD
-                    case 4b0001: { result = sourceReg2; }                                                                           // AMOSWAP
-                    case 4b0100: { result = LOGIC.XOR; }                                                                            // AMOXOR
-                    case 4b1000: { result = LOGIC.OR; }                                                                             // AMOOR
-                    case 4b1100: { result = LOGIC.AND; }                                                                            // AMOAND
-                }
+    always_after {
+        if( function7[4,1] ) {                                                                                                  // AMOMAX[U] AMOMIN[U]
+            result = MINMAX;
+        } else {
+            switch( function7[0,4] ) {
+                default: { result = AMOADD; }                                                                                   // AMOADD
+                case 4b0001: { result = sourceReg2; }                                                                           // AMOSWAP
+                case 4b0100: { result = LOGIC.XOR; }                                                                            // AMOXOR
+                case 4b1000: { result = LOGIC.OR; }                                                                             // AMOOR
+                case 4b1100: { result = LOGIC.AND; }                                                                            // AMOAND
             }
         }
     }

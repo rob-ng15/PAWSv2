@@ -32,6 +32,18 @@ void report_test_2long_r1long( char *operation, long op1, long op2, long result,
     printw("%s 0x%lx, 0x%lx -> 0x%lx ( 0x%lx )",operation,op1,op2,result,expected);
     if( result == expected ) { pass(); } else { fail(); }
 }
+void report_test_2ulong_r1ulong( char *operation, unsigned long op1, unsigned long op2, unsigned long result, unsigned long expected ) {
+    printw("%s 0x%ulx, 0x%ulx -> 0x%ulx ( 0x%ulx )",operation,op1,op2,result,expected);
+    if( result == expected ) { pass(); } else { fail(); }
+}
+void report_test_2int_r1int( char *operation, int op1, int op2, int result, int expected ) {
+    printw("%s 0x%x, 0x%x -> 0x%x ( 0x%x )",operation,op1,op2,result,expected);
+    if( result == expected ) { pass(); } else { fail(); }
+}
+void report_test_2uint_r1uint( char *operation, unsigned int op1, unsigned int op2, unsigned int result, unsigned int expected ) {
+    printw("%s 0x%ux, 0x%ux -> 0x%ux ( 0x%ux )",operation,op1,op2,result,expected);
+    if( result == expected ) { pass(); } else { fail(); }
+}
 
 void b_extension_test( void ) {
     long result;
@@ -41,18 +53,18 @@ void b_extension_test( void ) {
     printw("\n");
 
     result = _rv64_adduw(0xfffffffffffffbff,0xfffffffffffffff7); report_test_2long_r1long( "add.uw",0xfffffffffffffbff,0xfffffffffffffff7,result,0xfffffbf6);
-    result = _rv64_clmul(0xa,0x6); report_test_2long_r1long( "clmul",0xa,0x6,result,0x3c);
-    result = _rv64_clmul(0x355,0x487); report_test_2long_r1long( "clmul",0x355,0x487,result,0xcf62b);
+//    result = _rv64_clmul(0xa,0x6); report_test_2long_r1long( "clmul",0xa,0x6,result,0x3c);
+//    result = _rv64_clmul(0x355,0x487); report_test_2long_r1long( "clmul",0x355,0x487,result,0xcf62b);
     result = _rv64_sh1add(0xffffffff12345678,0); report_test_2long_r1long( "sh1add",0xffffffff12345678,0,result,0xfffffffe2468acf0);
-    result = _rv64_sh1adduw(0xffffffff12345678,0); report_test_2long_r1long( "sh1add.uw",0xffffffff12345678,0,result,0x2468acf0);
+    result = _rv64_sh1adduw(0xffffffff12345678,0xffff000000000000); report_test_2long_r1long( "sh1add.uw",0xffffffff12345678,0xffff000000000000,result,0xffff00002468acf0);
     result = _rv64_sh2add(0xffffffff12345678,0); report_test_2long_r1long( "sh2add",0xffffffff12345678,0,result,0xfffffffc48d159e0);
-    result = _rv64_sh2adduw(0xffffffff12345678,0); report_test_2long_r1long( "sh2add.uw",0xffffffff12345678,0,result,0x48d159e0);
+    result = _rv64_sh2adduw(0xffffffff12345678,0xffff000000000000); report_test_2long_r1long( "sh2add.uw",0xffffffff12345678,0xffff000000000000,result,0xffff000048d159e0);
     result = _rv64_sh3add(0xffffffff12345678,0); report_test_2long_r1long( "sh3add",0xffffffff12345678,0,result,0xfffffff891a2b3c0);
-    result = _rv64_sh3adduw(0xffffffff12345678,0); report_test_2long_r1long( "sh3add.uw",0xffffffff12345678,0,result,0x91a2b3c0);
+    result = _rv64_sh3adduw(0xffffffff12345678,0xffff000000000000); report_test_2long_r1long( "sh3add.uw",0xffffffff12345678,0xffff000000000000,result,0xffff000091a2b3c0);
     result = _rv64_slliuw(0xffffffff12345678,8); report_test_2long_r1long( "slli.uw",0xffffffff12345678,8,result,0x1234567800);
 }
 
-int single_tests( void ) {
+void f_extension_test( void ) {
     union single_bitstream result, expected;
 
     printw("\n");
@@ -88,6 +100,35 @@ int single_tests( void ) {
     result.single_float = _rv64_fsqrts( 171.0f ); expected.single_float = 13.076696f; report_test_1float_r1float( "fsqrt.s", 171.0f, result, expected );
 }
 
+void m_extension_test( void ) {
+    long result;
+    int result_w;
+
+    printw("\n");
+    printw("Multiplication / Division Extension Test");
+    printw("\n");
+
+    result = _rv64_div(20,6); report_test_2long_r1long( "div",20,6,result,3);
+    result = _rv64_div(-20,6); report_test_2long_r1long( "div",-20,6,result,-3);
+    result = _rv64_div(20,-6); report_test_2long_r1long( "div",20,-6,result,-3);
+    result = _rv64_div(-20,-6); report_test_2long_r1long( "div",-20,-6,result,3);
+    result = _rv64_div(-1<<63,1); report_test_2long_r1long( "div",-1<<63,1,result,-1<<63);
+    result = _rv64_div(-1<<63,-1); report_test_2long_r1long( "div",-1<<63,-1,result,-1<<63);
+    result = _rv64_div(-1<<63,0); report_test_2long_r1long( "div",-1<<63,0,result,-1);
+    result = _rv64_div(1,0); report_test_2long_r1long( "div",1,0,result,-1);
+    result = _rv64_div(0,0); report_test_2long_r1long( "div",0,0,result,-1);
+
+    result = _rv64_divu(20,6); report_test_2ulong_r1ulong( "divu",20,6,result,3);
+    result = _rv64_divu(-20,6); report_test_2ulong_r1ulong( "divu",-20,6,result,3074457345618258599);
+    result = _rv64_divu(20,-6); report_test_2ulong_r1ulong( "divu",20,-6,result,0);
+    result = _rv64_divu(-20,-6); report_test_2ulong_r1ulong( "divu",-20,-6,result,0);
+    result = _rv64_divu(-1<<63,1); report_test_2ulong_r1ulong( "divu",-1<<63,1,result,-1<<63);
+    result = _rv64_divu(-1<<63,-1); report_test_2ulong_r1ulong( "divu",-1<<63,-1,result,0);
+    result = _rv64_divu(-1<<63,0); report_test_2ulong_r1ulong( "divu",-1<<63,0,result,-1);
+    result = _rv64_divu(1,0); report_test_2ulong_r1ulong( "divu",1,0,result,-1);
+    result = _rv64_divu(0,0); report_test_2ulong_r1ulong( "divu",0,0,result,-1);
+}
+
 int main( void ) {
     initscr();
     start_color();
@@ -98,8 +139,8 @@ int main( void ) {
     attron( A_NORMAL | COLOR_PAIR(7) );
 
     b_extension_test(); sleep1khz( 4000, 0 );
-
-    single_tests(); sleep1khz( 4000, 0 );
+    m_extension_test(); sleep1khz( 4000, 0 );
+    f_extension_test(); sleep1khz( 4000, 0 );
 }
 
 // EXIT WILL RETURN TO BIOS

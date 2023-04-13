@@ -39,6 +39,21 @@ static inline long _rv64_slliuw(long rs1, int rs2) { long rd; __asm__ ("slli.uw 
 static inline long _rv64_xnor(long rs1, long rs2) { long rd; __asm__ ("xnor %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
 static inline int _rv64_zext_h(int rs1) { int rd; __asm__ ("zext.h  %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
 
+// MULTIPLICATION AND DIVISION INTRINSICS
+static inline long _rv64_div(long rs1, long rs2) { long rd; __asm__ ("div  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline long _rv64_divu(unsigned long rs1, unsigned long rs2) { unsigned long rd; __asm__ ("divu  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline long _rv64_mul(long rs1, long rs2) { long rd; __asm__ ("mul  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline long _rv64_mulh(long rs1, long rs2) { long rd; __asm__ ("mulh  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline long _rv64_mulhsu(long rs1, long rs2) { long rd; __asm__ ("mulhsu  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline long _rv64_mulhu(unsigned long rs1, unsigned long rs2) { unsigned long rd; __asm__ ("mulu  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline long _rv64_rem(long rs1, long rs2) { long rd; __asm__ ("rem  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline long _rv64_remu(unsigned long rs1, unsigned long rs2) { unsigned long rd; __asm__ ("remu  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv64_divuw(unsigned int rs1, unsigned int rs2) { unsigned int rd; __asm__ ("div.uw  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv64_divw(int rs1, int rs2) { int rd; __asm__ ("div.w  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv64_mulw(int rs1, int rs2) { int rd; __asm__ ("mul.w  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv64_remuw(unsigned int rs1, unsigned int rs2) { unsigned int rd; __asm__ ("rem.uw  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+static inline int _rv64_remw(int rs1, int rs2) { int rd; __asm__ ("rem.w  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
 // FLOATING POINT INTRINSICS - SINGLE PRECISION
 static inline float _rv64_fadds(float rs1, float rs2) { float rd; __asm__ ("fadd.s %0, %1, %2" : "=f"(rd) : "f"(rs1), "f"(rs2)); return rd; }
 static inline int _rv64_fclasss(float rs1) { int rd; __asm__ ("fclass.s %0, %1" : "=r"(rd) : "f"(rs1)); return rd; }

@@ -298,8 +298,8 @@ void reset_aliens( void ) {
     // DRAW BUNKERS
     bitmap_draw( 3 );
     for( short j = 0; j < 4; j++ ) {
-        gpu_blit( GREEN, 24 + j * 80, 208, 12, 0, 0 );
-        gpu_blit( GREEN, 40 + j * 80, 208, 13, 0, 0 );
+        gpu_blit( RED, 24 + j * 80, 208, 12, 0, 0 );
+        gpu_blit( RED, 40 + j * 80, 208, 13, 0, 0 );
     }
 
     bitmap_draw( 3 - framebuffer );
@@ -358,6 +358,7 @@ void trim_aliens( void ) {
     AlienSwarm.bottompixel = pixel;
 }
 
+unsigned char colour_table[] = { TRANSPARENT, GREEN, CYAN, ORANGE };
 void draw_aliens( void ) {
     // DRAW ALIEN SWARM
     for( short y = AlienSwarm.toprow; y <= AlienSwarm.bottomrow; y++ ) {
@@ -371,7 +372,7 @@ void draw_aliens( void ) {
                     if( Ship.level & 1 ) {
                         gpu_colourblit( Aliens[ y * 11 + x ].x, Aliens[ y * 11 + x ].y, Aliens[ y * 11 + x ].type * 3 +  Aliens[ y * 11 + x ].animation_count, 0, 0 );
                     } else {
-                        gpu_blit( WHITE, Aliens[ y * 11 + x ].x, Aliens[ y * 11 + x ].y, Aliens[ y * 11 + x ].type * 2 +  Aliens[ y * 11 + x ].animation_count, 0, 0 );
+                        gpu_blit( colour_table[ Aliens[ y * 11 + x ].type ], Aliens[ y * 11 + x ].x, Aliens[ y * 11 + x ].y, Aliens[ y * 11 + x ].type * 2 +  Aliens[ y * 11 + x ].animation_count, 0, 0 );
                     }
                     break;
                 case 4:
@@ -409,6 +410,8 @@ void draw_aliens( void ) {
     }
 }
 
+unsigned char note_table[] = { 17, 13, 11, 7 };
+unsigned int note_position = 0;
 void move_aliens( void ) {
     // CHECK IF ANY ALIENS LEFT
     if( !AlienSwarm.count ) {
@@ -431,7 +434,8 @@ void move_aliens( void ) {
                     }
                     if( AlienSwarm.row > AlienSwarm.bottomrow ) {
                         if( !UFO.active ) {
-                            beep( 1, 0, 1, 100 );
+                            beep( 1, 0, note_table[ note_position ], 100 );
+                            note_position = ( note_position + 1 ) & 3;
                         }
                         AlienSwarm.row = AlienSwarm.toprow;
                         AlienSwarm.column = AlienSwarm.rightcolumn;
@@ -451,7 +455,8 @@ void move_aliens( void ) {
                     }
                     if( AlienSwarm.row > AlienSwarm.bottomrow ) {
                         if( !UFO.active ) {
-                            beep( 1, 0, 1, 100 );
+                            beep( 1, 0, note_table[ note_position ], 100 );
+                            note_position = ( note_position + 1 ) & 3;
                         }
                         AlienSwarm.row = AlienSwarm.toprow;
                         AlienSwarm.column = AlienSwarm.leftcolumn;
@@ -859,6 +864,7 @@ void demo_actions( void ) {
 
 void attract( void ) {
     short mode = 0, animation = 0, move_amount = 0;
+    int count = 0;
 
     UFO.active = 0;
     while( !( get_buttons() & 8 ) ) {
@@ -873,11 +879,11 @@ void attract( void ) {
             reset_aliens();
             trim_aliens();
             reset_player();
-        } else {
         }
         while( get_timer1khz( 0 ) && !( get_buttons() & 8 ) ) {
             if( !get_timer1khz( 1 ) ) {
                 animation = !animation;
+                count++;
                 set_timer1khz( 1000, 1 );
             }
             switch( mode ) {
@@ -885,9 +891,18 @@ void attract( void ) {
                     // WELCOME SCREEN
                     // DRAW TO HIDDEN FRAME BUFFER
                     bitmap_draw( 3 - framebuffer ); gpu_cs();
-                    gpu_blit( WHITE, 128, 64, 2 + animation, 1, 0 ); gpu_printf_centre( RED, 176, 64, BOLD, 1, 0, "%d", 30, 0 );
-                    gpu_blit( WHITE, 128, 96, 4 + animation, 1, 0 ); gpu_printf_centre( RED, 176, 96, BOLD, 1, 0, "%d", 20, 0 );
-                    gpu_blit( WHITE, 128, 128, 6 + animation, 1, 0 ); gpu_printf_centre( RED, 176, 128, BOLD, 1, 0, "%d", 10, 0 );
+                    if( count & 8 ) {
+                        gpu_colourblit( 128, 64, 3 + animation, 1, 0 );
+                        gpu_colourblit( 128, 96, 6 + animation, 1, 0 );
+                        gpu_colourblit( 128, 128, 9 + animation, 1, 0 );
+                    } else {
+                        gpu_blit( GREEN, 128, 64, 2 + animation, 1, 0 );
+                        gpu_blit( CYAN, 128, 96, 4 + animation, 1, 0 );
+                        gpu_blit( ORANGE, 128, 128, 6 + animation, 1, 0 );
+                    }
+                    gpu_printf_centre( RED, 176, 64, BOLD, 1, 0, "%d", 30, 0 );
+                    gpu_printf_centre( RED, 176, 96, BOLD, 1, 0, "%d", 20, 0 );
+                    gpu_printf_centre( RED, 176, 128, BOLD, 1, 0, "%d", 10, 0 );
                     gpu_blit( MAGENTA, 126, 160, 10 + animation, 1, 0 ); gpu_printf_centre( RED, 176, 160, BOLD, 1, ROTATE0 + ( systemclock() & 3 ), "?", 0 );
 
                     switch( animation ) {
