@@ -121,21 +121,22 @@ unit control(
         EQ :> EQ
     );
 
-    IS_MA := ~FLAGS.IS_ATOMIC & |Rtype(instruction).function3[0,2] & (                                                  // ATOMIC OPERATIONS CANNOT BE IS_MA
-             ( FLAGS.IS_LOAD & ( instruction[20,1] ^ I1R.rdata0[0,1] ) ) |                                               // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
-             ( FLAGS.IS_STORE & ( instruction[7,1] ^ I1R.rdata0[0,1] ) ) );                                              // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
+    accesssize := DMAACTIVE ? DMAACCESSSIZE : cacheselect ? IS_MA ? 2b00 : Rtype(instruction).function3[0,2] : 2b10;            // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32
+                                                                                                                                // ELSE BY function3 ( IS_MA AS BYTES )
+    IS_MA := ~FLAGS.IS_ATOMIC & |Rtype(instruction).function3[0,2] & (                                                          // ATOMIC OPERATIONS CANNOT BE MISALIGNED
+             ( FLAGS.IS_LOAD & ( instruction[20,1] ^ I1R.rdata0[0,1] ) ) |                                                      // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
+             ( FLAGS.IS_STORE & ( instruction[7,1] ^ I1R.rdata0[0,1] ) ) );                                                     // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
+    IS_MEM64 := &Rtype(instruction).function3[0,2];                                                                             // DETECT 64 BIT MEMORY ACCESSES
 
-    opCode := instruction[2,5]; function3 := Rtype(instruction).function3; function7 := Rtype(instruction).function7;          // EXTRACT BITFIELDS FROM INSTRUCTION
-    immediateValue := { {52{instruction[31,1]}}, Itype(instruction).immediate };                                             // EXTRACT AND SIGN EXTEND IMMEDIATE VALUE FROM INSTRUCTION
-    rs1 := Rtype(instruction).sourceReg1; rs2 := Rtype(instruction).sourceReg2;                                               // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
+    opCode := instruction[2,5]; function3 := Rtype(instruction).function3; function7 := Rtype(instruction).function7;           // EXTRACT BITFIELDS FROM INSTRUCTION
+    immediateValue := { {52{instruction[31,1]}}, Itype(instruction).immediate };                                                // EXTRACT AND SIGN EXTEND IMMEDIATE VALUE FROM INSTRUCTION
+    rs1 := Rtype(instruction).sourceReg1; rs2 := Rtype(instruction).sourceReg2;                                                 // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
 
-    accesssize := DMAACTIVE ? DMAACCESSSIZE : cacheselect ? IS_MA ? 2b00 : Rtype(instruction).function3[0,2] : 2b10;    // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32
-                                                                                                                            // ELSE BY function3 ( IS_MA AS BYTES )
-    IS_MEM64 := &Rtype(instruction).function3[0,2];
-
-    AUIPCLUI := { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );   // ADDRESS GENRATION
-    loadAddress := ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Itype(instruction).immediate } ) + I1R.rdata0[0,$addr_width$];
-    storeAddress := ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R.rdata0[0,$addr_width$];
+    AUIPCLUI := { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );      // ADDRESS GENRATION
+    loadAddress := ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Itype(instruction).immediate } ) +
+                   I1R.rdata0[0,$addr_width$];
+    storeAddress := ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) +
+                    I1R.rdata0[0,$addr_width$];
     nextPC := PC + ( compressed ? 2 : 4 );
     newPC := FLAGS.incPC ? ( FLAGS.IS_BRANCH & takeBranch ? jumpAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress );
 }

@@ -310,10 +310,11 @@ typedef struct {
 #define LINES 60
 
 // PACK RGB MACRO
-#define PACKRGB(r,g,b) \
-    _rv64_packw( _rv64_packh( b, g ), _rv64_packh( r, 0 ) )
+#define PACKRGB(r,g,b) _rv64_packw( _rv64_packh( b, g ), _rv64_packh( r, 0 ) )
 
 // MIN MAX MACROS
+#ifdef __cplusplus
+#else
 #ifndef min
 #define min(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -325,4 +326,5 @@ typedef struct {
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
      _a > _b ? _a : _b; })
+#endif
 #endif
