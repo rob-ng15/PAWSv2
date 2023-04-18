@@ -679,7 +679,7 @@ void gpu_print_vertical( unsigned char colour, short x, short y, unsigned char b
     }
 }
 void gpu_printf( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -692,7 +692,7 @@ void gpu_printf( unsigned char colour, short x, short y, unsigned char bold, uns
     }
 }
 void gpu_printf_vertical( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -707,7 +707,7 @@ void gpu_printf_vertical( unsigned char colour, short x, short y, unsigned char 
 
 // OUTPUT A STRING TO THE GPU - CENTRED AT ( x, y )
 void gpu_printf_centre( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -721,7 +721,7 @@ void gpu_printf_centre( unsigned char colour, short x, short y, unsigned char bo
     }
 }
 void gpu_printf_centre_vertical( unsigned char colour, short x, short y, unsigned char bold, unsigned char size, unsigned char action, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -827,7 +827,7 @@ void gpu_pixelblockBGRA( short x, short y, unsigned short w, unsigned short h, u
 // SET GPU TO RECEIVE A PIXEL BLOCK, SEND INDIVIDUAL PIXELS, STOP
 void gpu_pixelblock_start( short x,  short y, unsigned short w ) {
     wait_gpu_finished();
-    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
+    *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_PARAM1 = TRANSPARENT; *GPU_WRITE = 10;
 }
 
 void gpu_pixelblock_pixel( unsigned char pixel ) {
@@ -865,31 +865,62 @@ void gpu_pixelblock_remap( unsigned char from, unsigned char to ) {
     *PB_CMNUMBER = from; *PB_CMENTRY = to;
 }
 
-// GPU VECTOR BLOCK
-// 32 VECTOR BLOCKS EACH OF 16 VERTICES ( offsets in the range -15 to 15 from the centre )
-// WHEN ACTIVATED draws lines from a vector block (x0,y0) to (x1,y1), (x1,y1) to (x2,y2), (x2,y2) to (x3,y3) until (x15,y15) or an inactive vertex is encountered
+// USE THE PIXELBLOCK TO DRAW SCALEABLE SPRITES STORED IN MEMORY AS BLOCK OF PIXELS
+// USES FIXED POINT 16.16 MATHEMATICS TO ALLOW FOR INTEGER ARITHMETIC FOR SPEED
+#define TOFIXED(a) (int)( 65536.0 * a )
+#define TOINT(a) (a>>16)
+void DrawBitmapSprite( short x, short y, float scale, bitmap_sprite sprite ) {                                                  // X Y AT TOP LEFT
+    int width = sprite.width * scale, height = sprite.height * scale, w;                                                        // FIND REQUIRED WIDTH AND HEIGHT
+    if( !width || !height ) return;                                                                                             // STOP IF EITHER IS 0
 
-// START DRAWING A VECTOR BLOCK centred at (xc,yc) in colour
-// { rotate/reflect, ACTION } ROTATION == 4 0 == 5 90 == 6 180 == 7 270
-// == 1 REFLECT X, == 2 REFLECT Y
-void draw_vector_block( unsigned char block, unsigned char colour, short xc, short yc, unsigned char scale, unsigned char action ) {
-    while( *VECTOR_DRAW_STATUS );
-    *VECTOR_DRAW_BLOCK = block;
-    *VECTOR_DRAW_COLOUR = colour;
-    *VECTOR_DRAW_XC = xc;
-    *VECTOR_DRAW_YC = yc;
-    *VECTOR_DRAW_SCALE = scale;
-    *VECTOR_DRAW_ACTION = action;
-    *VECTOR_DRAW_START = 1;
+    int xdelta = TOFIXED( (float)sprite.width / (float)width );                                                                 // FIXED POINT X DELTA
+    int ydelta = TOFIXED( (float)sprite.height / (float)height );                                                               // FIXED POINT Y DELTA
+
+    gpu_pixelblock_start( x, y, width );                                                                                        // START PIXELBLOCK AT TOP LEFT
+    for( int yc = 0; TOINT(yc) < sprite.height; yc += ydelta ) {                                                                // GO LINE BY LINE THROUGH THE PIXELS
+        unsigned char *line = sprite.bitmap + TOINT(yc) * sprite.width;                                                         // POINTER TO SPRITE LINE DATA
+        w = 0;                                                                                                                  // PIXELS ON LINE DRAWN
+        for( int xc = 0; ( TOINT(xc) < sprite.width ) && ( w<width); xc += xdelta ) {                                           // GO PIXEL BY PIXEL THROUGH THE LINE UNTIL AT WIDTH OF WIDTH PIXELS DRAWN
+            gpu_pixelblock_pixel( line[ TOINT(xc) ] ); w++;                                                                     // OUTPUT PIXEL
+        }
+    }
+    gpu_pixelblock_stop();                                                                                                      // STOP THE PIXELBLOCK
 }
 
-// SET A VERTEX IN A VECTOR BLOCK - SET AN INACTIVE VERTEX IF NOT ALL 16 VERTICES ARE TO BE USED
-void set_vector_vertex( unsigned char block, unsigned char vertex, unsigned char active, char deltax, char deltay ) {
-    *VECTOR_WRITER_BLOCK = block;
-    *VECTOR_WRITER_VERTEX = vertex;
-    *VECTOR_WRITER_ACTIVE = active;
-    *VECTOR_WRITER_DELTAX = deltax;
-    *VECTOR_WRITER_DELTAY = deltay;
+void DrawBitmapSpriteAtBaseRight( short x, short y, float scale, bitmap_sprite sprite ) {                                       // X Y AT BOTTOM RIGHT
+    int width = sprite.width * scale, height = sprite.height * scale, w;
+    if( !width || !height ) return;
+
+    int xdelta = TOFIXED( (float)sprite.width / (float)width );
+    int ydelta = TOFIXED( (float)sprite.height / (float)height );
+
+    gpu_pixelblock_start( x - width, y - height, width );                                                                       // START THE PIXELBLOCK AT TOP LEFT USING OFFSETS
+    for( int yc = 0; TOINT(yc) < sprite.height; yc += ydelta ) {                                                                // GO LINE BY LINE THROUGH THE PIXELS
+        unsigned char *line = sprite.bitmap + TOINT(yc) * sprite.width;                                                         // POINTER TO SPRITE LINE DATA
+        w = 0;                                                                                                                  // PIXELS ON LINE DRAWN
+        for( int xc = 0; ( TOINT(xc) < sprite.width ) && ( w<width); xc += xdelta ) {                                           // GO PIXEL BY PIXEL THROUGH THE LINE UNTIL AT WIDTH OF WIDTH PIXELS DRAWN
+            gpu_pixelblock_pixel( line[ TOINT(xc) ] ); w++;                                                                     // OUTPUT PIXEL
+        }
+    }
+    gpu_pixelblock_stop();                                                                                                      // STOP THE PIXELBLOCK
+}
+
+void DrawBitmapSpriteAtCentre( short x, short y, float scale, bitmap_sprite sprite ) {                                          // X Y AT CENTRE
+    int width = sprite.width * scale, height = sprite.height * scale, w;
+    if( !width || !height ) return;
+
+    int xdelta = TOFIXED( (float)sprite.width / (float)width );
+    int ydelta = TOFIXED( (float)sprite.height / (float)height );
+
+    gpu_pixelblock_start( x - ( width >> 2), y - ( height >> 2 ), width );                                                      // START THE PIXELBLOCK AT TOP LEFT USING OFFSETS
+    for( int yc = 0; TOINT(yc) < sprite.height; yc += ydelta ) {                                                                // GO LINE BY LINE THROUGH THE PIXELS
+        unsigned char *line = sprite.bitmap + TOINT(yc) * sprite.width;                                                         // POINTER TO SPRITE LINE DATA
+        w = 0;                                                                                                                  // PIXELS ON LINE DRAWN
+        for( int xc = 0; ( TOINT(xc) < sprite.width ) && ( w<width); xc += xdelta ) {                                           // GO PIXEL BY PIXEL THROUGH THE LINE UNTIL AT WIDTH OF WIDTH PIXELS DRAWN
+            gpu_pixelblock_pixel( line[ TOINT(xc) ] ); w++;                                                                     // OUTPUT PIXEL
+        }
+    }
+    gpu_pixelblock_stop();                                                                                                      // STOP THE PIXELBLOCK
 }
 
 // SOFTWARE VECTORS AND DRAWLISTS
@@ -915,7 +946,7 @@ union Point2D MakePoint2D( int x, int y ) {
 
 // PROCESS A SOFTWARE VECTOR BLOCK AFTER SCALING AND ROTATION
 void DrawVectorShape2D( unsigned char colour, union Point2D *points, int numpoints, int xc, int yc, int angle, float scale ) {
-    union Point2D *NewShape  = (union Point2D *)0x1800;
+    static union Point2D NewShape[256];
     for( int vertex = 0; vertex < numpoints; vertex++ ) {
         NewShape[ vertex ] = Rotate2D( points[vertex], xc, yc, angle, scale );
     }
@@ -1260,7 +1291,7 @@ void tpu_print( char attribute, char *buffer ) {
     tpu_outputstring( attribute, buffer );
 }
 void tpu_printf( char attribute, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 1023, fmt, args);
@@ -1274,7 +1305,7 @@ void tpu_print_centre( unsigned char y, unsigned char background, unsigned char 
     tpu_outputstring( attribute, buffer );
 }
 void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground, char attribute, const char *fmt,...  ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 80, fmt, args);
@@ -1317,7 +1348,7 @@ void terminal_print( char *buffer ) {
     terminal_outputstring( buffer );
 }
 void terminal_printf( const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 1023, fmt, args);
@@ -1669,7 +1700,7 @@ void __curses_print_string(const char* s) {
 }
 
 int printw( const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 1023, fmt, args);
@@ -1680,7 +1711,7 @@ int printw( const char *fmt,... ) {
 }
 
 int mvprintw( int y, int x, const char *fmt,... ) {
-    char *buffer = (char *)0x1000;
+    static char buffer[1024];
     va_list args;
     va_start (args, fmt);
     vsnprintf( buffer, 1023, fmt, args);
@@ -1790,7 +1821,7 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
 #define MALLOC_MEMORY ( 16 * 1024 * 1024 )
 #endif
 
-void *__bram_point = (void *)0x1a00;
+void *__bram_point = (void *)0x1000;
 void *malloc_bram( int size ) {
     void *previous = __bram_point;
     __bram_point += size;
@@ -1831,7 +1862,7 @@ void __start_sdmedia( void ) {
 int paws_printf(const char *restrict format, ... ) {
     if( !__stdinout_init ) __start_stdinout();
 
-    char *buffer = (char *)0x1400;
+    static char buffer[1024];
     va_list args;
     va_start (args, format);
     vsnprintf( buffer, 1024, format, args);
@@ -1845,7 +1876,7 @@ int paws_fprintf( void *fd, const char *restrict format, ... ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
 
-    char *buffer = (char *)0x1400;
+    static char buffer[1024];
     va_list args;
     va_start (args, format);
     vsnprintf( buffer, 1024, format, args);
@@ -1865,7 +1896,7 @@ int paws_vfprintf( void *fd, const char *format, va_list args ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
 
-    char *buffer = (char *)0x1400;
+    static char buffer[1024];
     vsnprintf( buffer, 1024, format, args);
     if( ( fd == stdout ) || ( fd == stderr ) ) {
         if( fd == stdout ) printw( "%s", buffer );
@@ -2070,8 +2101,9 @@ void *paws_freopen( const char *path, const char *mode, FILE *fd ) {
     return( paws_fopen( filename, mode ) );
 }
 void *paws_tmpfile( void ) {
-    sprintf( (char * restrict)0x1800, "%0d%0d.tmp", rng(65535), *SYSTEMSECONDS );
-    return( paws_fopen( (const char *)0x1800, "w+b" ) );
+    static char buffer[1024];
+    sprintf( (char * restrict)buffer, "%0d%0d.tmp", rng(65535), *SYSTEMSECONDS );
+    return( paws_fopen( buffer, "w+b" ) );
 }
 int paws_fgetc( void *fd ) {
     if( !__stdinout_init ) __start_stdinout();

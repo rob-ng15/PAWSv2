@@ -1,14 +1,3 @@
-// ABSOLUTE DELTA ( DIFFERENCE )
-circuitry absdelta( input value1, input value2, output delta ) {
-    delta = ( __signed(value1) < __signed(value2) ) ? value2 - value1 : value1 - value2;
-}
-
-// COPY COORDINATES
-circuitry copycoordinates( input x, input y, output x1, output y1 ) {
-    x1 = x;
-    y1 = y;
-}
-
 // CLZ CIRCUITS - TRANSLATED BY @sylefeb + CTZ AND CPOP ADAPTED BY ROB S
 // From recursive Verilog module
 // https://electronics.stackexchange.com/questions/196914/verilog-synthesize-high-speed-leading-zero-count
@@ -65,7 +54,7 @@ $$ if w_in > 2 then generate_cpop(name,w_in//2,1) end
 circuitry $name$_$w_in$ (input in,output out)
 {
 $$ if w_in == 2 then
-   out = in[0,1] + in[1,1];
+   out = &in[0,2] ? 2 : |in[0,2];
 $$ else
    uint$clog2(w_in)$   left_count  = uninitialized;
    uint$clog2(w_in)$   right_count = uninitialized;
@@ -78,7 +67,39 @@ $$ end
 }
 $$end
 
-// Produce circuits for 32 bits numbers (64 bits for clz for double floating point)
+// Produce circuits for 64 bits numbers
 $$generate_clz('clz_silice',64)
-$$generate_ctz('ctz_silice',32)
-$$generate_cpop('cpop_silice',32)
+$$generate_ctz('ctz_silice',64)
+$$generate_cpop('cpop_silice',64)
+
+unit clz64(
+    input   uint64  number,
+    output! uint7   zeros
+) <reginputs> {
+    always_after {
+        ( zeros ) = clz_silice_64( number );
+    }
+}
+
+unit clz106(
+    input   uint106  bitstream,
+    output! uint7   count
+) <reginputs> {
+    uint4   mask <:: { |bitstream3, |bitstream2, |bitstream1, 1b0 };                                                            // FLAG CONTENTS OF EACH SECTION
+    uint2   bitstream3 <:: bitstream[104,2];        uint8   bitstream2 <:: bitstream[96,8];                                     // SPLIT 106 BITS INTO 64, 32, 8 AND 2 ( from low to high )
+    uint32  bitstream1 <:: bitstream[64,32];        uint64  bitstream0 <:: bitstream[0,64];
+
+    uint2   clz_3 = uninitialised;                  uint4   clz_2 = uninitialised;
+    uint6   clz_1 = uninitialised;                  uint7   clz_0 = uninitialised;
+
+    always_after {
+        { ( clz_3 ) = clz_silice_2( bitstream3 ); }
+        { ( clz_2 ) = clz_silice_8( bitstream2 ); }
+        { ( clz_1 ) = clz_silice_32( bitstream1 ); }
+        { ( clz_0 ) = clz_silice_64( bitstream0 ); }
+        {
+            count = ( mask[3,1] ? clz_3 : mask[2,1] ? clz_2 : mask[1,1] ? clz_1 : clz_0 ) +                                     // COUNT LEADING ZEROS FOR NORMALISATION SHIFT
+                    ( mask[3,1] ? 0 : mask[2,1] ? 2 : mask[1,1] ? 10 : 42 );
+        }
+     }
+}

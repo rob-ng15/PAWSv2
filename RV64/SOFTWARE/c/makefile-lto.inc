@@ -24,7 +24,7 @@ ifndef INCLUDEEXTRA
 INCLUDEEXTRA=
 endif
 
-CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax
+CPUOPTS=-march=rv64gc_zba_zbb_zbc_zbs_zbkb_zbkc__zbkx_zfh_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -mno-strict-align
 
 CFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib $(CFLAGSEXTRA)
 CXXFLAGS=-$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
@@ -37,8 +37,7 @@ LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleris
 	-Wl,--wrap=__builtin_ctz -Wl,--wrap=__builtin_ctzl \
 	-Wl,--wrap=__builtin_popcount -Wl,--wrap=__builtin_popcountl \
 	-Wl,--wrap=__builtin_parity -Wl,--wrap=__builtin_parityl \
-	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64 \
-	-Wl,--wrap=powf -Wl,--wrap=sinf -Wl,--wrap=cos -Wl,--wrap=tanf -Wl,--wrap=scalbnf
+	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64
 LCONFIG=-Wl,-T../config_c_SDRAM-lto.ld
 
 PAWSBASE=../

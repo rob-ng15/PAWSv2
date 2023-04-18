@@ -165,6 +165,10 @@ void sleep( unsigned short counter ) {
     *SLEEPTIMER0 = counter;
     while( *SLEEPTIMER0 );
 }
+// SLEEP FOR counter milliseconds
+void sleep1khz( unsigned short counter, unsigned char timer ) {
+    *( timer ? SLEEPTIMER1 : SLEEPTIMER0 ) = counter; while( timer ? *SLEEPTIMER1 : *SLEEPTIMER0 );
+}
 
 // WAIT FOR VBLANK TO START
 void await_vblank( void ) {
@@ -212,6 +216,34 @@ void gpu_rectangle( unsigned char colour, short x1, short y1, short x2, short y2
 
     wait_gpu();
     *GPU_WRITE = 3;
+}
+
+// DRAW A LINE FROM (x1,y1) to (x2,y2) in colour - uses Bresenham's Line Drawing Algorithm - single pixel width
+void gpu_line( unsigned char colour, short x1, short y1, short x2, short y2 ) {
+    *GPU_COLOUR = colour;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = 1;
+    wait_gpu();
+    *GPU_WRITE = 2;
+}
+
+// DRAW A LINE FROM (x1,y1) to (x2,y2) in colour - uses Bresenham's Line Drawing Algorithm - multi-pixel width
+void gpu_wideline( unsigned char colour, short x1, short y1, short x2, short y2, unsigned char width ) {
+    if( width ) {
+        *GPU_COLOUR = colour;
+        *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = width;
+        wait_gpu();
+        *GPU_WRITE = 2;
+    }
+}
+
+// DRAW A FILLED TRIANGLE with vertices (x1,y1) (x2,y2) (x3,y3) in colour
+// VERTICES SHOULD BE PRESENTED CLOCKWISE FROM THE TOP ( minimal adjustments made to the vertices to comply )
+void gpu_triangle( unsigned char colour, short x1, short y1, short x2, short y2, short x3, short y3 ) {
+    *GPU_COLOUR = colour;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
+    *GPU_PARAM2 = x3; *GPU_PARAM3 = y3;
+    wait_gpu();
+    *GPU_WRITE = 6;
 }
 
 // CLEAR THE BITMAP by drawing a transparent rectangle from (0,0) to (639,479) and resetting the bitamp scroll position
@@ -512,7 +544,9 @@ void main( void ) {
     }
     gpu_outputstringcentre( UK_GOLD, 74, "VERILATOR - SMT + FPU TEST", 0 );
     gpu_outputstringcentre( UK_GOLD, 82, "THREAD 0 - PACMAN SPRITES", 0 );
-    gpu_outputstringcentre( UK_GOLD, 90, "THREAD 1 - FPU MANDELBROT", 0 );
+    gpu_outputstringcentre( UK_GOLD, 90, "THREAD 1 - GPU AND FPU MANDELBROT", 0 );
+
+    gpu_triangle( WHITE, 300, 0, 310, 10, 305, 30 );
 
     SMTSTART( (unsigned long)smtthread );
 

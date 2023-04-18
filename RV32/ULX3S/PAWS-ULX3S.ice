@@ -100,10 +100,11 @@ $include('../timers_random.si')
 $$CPUISA = 0x40011027
 $include('../cpu_functionblocks.si')
 $include('../ALU.si')
-$include('../FPU32.si')
+$include('../FPU64.si')
 $include('../CPU.si')
 
 // MAIN PAWS.si
+$include('../caches.si')
 $include('../PAWS.si')
 
 // I2C (EMARD FOR RTC)

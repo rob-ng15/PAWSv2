@@ -37,41 +37,6 @@ unsigned short mountainslopes[] = {
 
 #include "graphics/outrun-graphics.h"
 
-unsigned char* mountains[]={
-    "                                          ",   // OFFSCREEN TOP
-    "                                          ",
-    "                     3                    ",
-    "                    142                   ",
-    "   3               14442                  ",
-    "  142             1444442              3  ",
-    " 14442           144444442     3      142 ",
-    "4444442      14444444444442   142    14444",
-    "44444442    1444444444444442 1444444444444",
-    "444444442  1444444444444444444444444444444",
-    "444444444444444444444444444444444444444444",
-    "444444444444444444444444444444444444444444",
-    "444444444444444444444444744444444444444444",
-    "444444444474444444444445864444444444444444",
-    "444444444586444474444458886444444444444444",
-    "444444445888644586444588888886444474444444",
-    "444444458888888888645888888888644586444444",   // BASELINE
-    "444444588888888888888888888888888888644444",
-    "888888888888888888888888888888888888888888",
-    "888888888888888888888888888888888888888888",
-    "888888888888888888888888888888888888888888",
-    "888888888888888888888888888888888888888888",
-    "888888888888888888888888888888888888888888",
-    "888888888888888888888888888888888888888888",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          "    // OFFSCREEN BOTTOM
-};
-
 unsigned char *cityscape[]={
     "                                          ",   // OFFSCREEN TOP
     "                                          ",
@@ -111,7 +76,6 @@ void set_tilemaps( void ) {
     tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
     tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
 
-
     // SET BUILDINGS TILEMAPS
     set_tilemap_bitamps_from_spritesheet( UPPER_LAYER, &building_graphics[ 0 ] );
 
@@ -120,39 +84,8 @@ void set_tilemaps( void ) {
         set_tilemap_bitmap32x32( LOWER_LAYER, 1 + ( i * 4 ), &cloud_graphics[ i * 1024 ] );
     }
 
-    // SET MOUNTAIN TILEMAPS
-    for( int i = 0; i < 2; i++ ) {
-//        set_tilemap_bitmap( LOWER_LAYER, 1 + i, &mountainslopes[ i * 16 ] );
-    }
-
     for( int y = 0; y < 32; y++ ) {
         for( int x = 0; x < 42; x++ ) {
-            switch( mountains[y][x] ) {
-                case '1':
-//                    set_tilemap_tile( LOWER_LAYER, x, y, 1, TRANSPARENT, GREY1, 0 );
-                    break;
-                case '2':
-//                    set_tilemap_tile( LOWER_LAYER, x, y, 1, TRANSPARENT, GREY1, REFLECT_X );
-                    break;
-                case '3':
-//                    set_tilemap_tile( LOWER_LAYER, x, y, 2, TRANSPARENT, GREY1, 0 );
-                    break;
-                case '4':
-//                    set_tilemap_tile( LOWER_LAYER, x, y, 0, GREY1, GREY1, 0 );
-                    break;
-                case '5':
-//                    set_tilemap_tile( LOWER_LAYER, x, y, 1, GREY1, GREY2, 0 );
-                    break;
-                case '6':
-//                    set_tilemap_tile( LOWER_LAYER, x, y, 1, GREY1, GREY2, REFLECT_X );
-                    break;
-                case '7':
-//                    set_tilemap_tile( LOWER_LAYER, x, y, 2, GREY1, GREY2, 0 );
-                    break;
-                case '8':
-//                    set_tilemap_tile( LOWER_LAYER, x, y, 0, GREY2, GREY2, 0 );
-                    break;
-            }
             switch( cityscape[y][x] ) {
                 case ' ':
                 case '@':
@@ -370,6 +303,38 @@ struct DrawList2D RIGHTBILLBOARD4[] = {
     { DLRECT, PINK, DITHERSOLID, { 52, -52 }, { 44, -60 }, },
 };
 
+// PIXELBLOCK SPRITES FOR TREES
+unsigned char tree_1[] = {
+#include "graphics/tree-1.h"
+};
+unsigned char tree_2[] = {
+#include "graphics/tree-2.h"
+};
+unsigned char tree_3[] = {
+#include "graphics/tree-3.h"
+};
+unsigned char tree_4[] = {
+#include "graphics/tree-4.h"
+};
+
+bitmap_sprite tree_sprites[]= {
+    {64,76,tree_1},
+    {64,72,tree_2},
+    {64,103,tree_3},
+    {64,53,tree_4}
+};
+
+// https://www.spriters-resource.com/fullview/25458/
+unsigned char car_0[] = {
+#include "graphics/car-down.h"
+};
+unsigned char car_1[] = {
+#include "graphics/car-level.h"
+};
+unsigned char car_2[] = {
+#include "graphics/car-up.h"
+};
+
 // ROAD SEGMENTS, DEFINING NUMBER OF SECTIONS BEFORE NEXT TURN, TURN ANGLE, AND SIDE OBJECTS
 #define MAXSEGMENT 17
 typedef struct {
@@ -494,7 +459,11 @@ void drawtunnelface( float px, float py, float scale ) {
 
 void drawroad( float x1, float y1, float scale1, float x2, float y2, float scale2, int sumct, int tnl ) {
     // DRAW GRASS
-    if( !tnl ) gpu_rectangle( (sumct&1) ? GREEN6 : GREEN5, 0, y1, 319, y2 );
+    if( !tnl ) {
+        gpu_dither( DITHERHSTRIPE, (sumct&1) ? GREEN5 : GREEN3 );
+        gpu_rectangle( (sumct&1) ? GREEN6 : GREEN4, 0, y1, 319, y2 );
+        gpu_dither( DITHEROFF );
+    }
 
     short w1 = 3 * scale1, w2 = 3 * scale2;
     drawtrapezium( tnl ? GREY2 : GREY3, x1, y1, w1, x2, y2, w2 );
@@ -563,12 +532,13 @@ void draw() {
 
         sumct = corner[cnr] + seg - 1;
         if( tnl ) {
-            unsigned char wallcol = ( (sumct&3) < 2 ) ? BLUE1 : BLUE2;
+            unsigned char wallcol = ( sumct&1 ) ? 9 : 10;
             gettunnelrectangle( p.x, p.y, p.z, &x1, &y1, &x2, &y2 );
             gettunnelrectangle( pp.x, pp.y, pp.z, &px2, &py1, &px2, &py2 );
-            if( y1 > py1 ) gpu_rectangle( wallcol, px1, py1, px2-1, y1-1 );
-            if( x1 > px1 ) gpu_rectangle( wallcol, px1, y1,x1-1,py2-1 );
-            if( x2 < px2 ) gpu_rectangle( wallcol, x2, y1, px2-1,py2-1 );
+            if( y1 > py1 ) { gpu_dither( DITHERHATCH, 8 ); gpu_rectangle( wallcol, px1, py1, px2-1, y1-1 ); }
+            if( x1 > px1 ) { gpu_dither( DITHERRSLOPE, 8 ); gpu_rectangle( wallcol, px1, y1,x1-1,py2-1 ); }
+            if( x2 < px2 ) { gpu_dither( DITHERLSLOPE, 8 ); gpu_rectangle( wallcol, x2, y1, px2-1,py2-1 ); }
+            gpu_dither( DITHEROFF );
         }
         drawroad( p.x, p.y, p.z, pp.x, pp.y, pp.z, sumct, tnl );
 
@@ -684,6 +654,17 @@ void draw() {
                 DoDrawList2Dscale( RIGHTBILLBOARD4, 17, spritesxyz[i].x + offset, spritesxyz[i].y, scale );
                 break;
             default:
+        }
+    }
+
+    // DRAW CAR GRAPHIC
+    if( road[camcnr].pi > 0 ) {
+        gpu_pixelblock( 121, 197, 78, 40, TRANSPARENT, car_0 );
+    } else {
+        if( road[camcnr].pi < 0 ) {
+            gpu_pixelblock( 121, 196, 78, 41, TRANSPARENT, car_2 );
+        } else {
+            gpu_pixelblock( 121, 197, 78, 40, TRANSPARENT, car_1 );
         }
     }
 }

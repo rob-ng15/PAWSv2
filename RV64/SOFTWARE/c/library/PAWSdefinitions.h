@@ -5,12 +5,24 @@
 #define NULL 0
 #endif
 
+#ifndef Bool
+#define Bool int
+#endif
+
 #ifndef TRUE
 #define TRUE 1
 #endif
 
 #ifndef FALSE
 #define FALSE 0
+#endif
+
+#ifndef True
+#define True 1
+#endif
+
+#ifndef False
+#define False 0
 #endif
 
 // DISPLAY LAYERS
@@ -157,7 +169,7 @@ struct copper_command {
 #define SPRITE_DOUBLE 8
 #define SPRITE_QUAD 16
 
-// FOR TILEMAP, BLITTERS, SPRITES AND VECTOR BLOCK
+// FOR TILEMAP, BLITTERS, SPRITES
 #define REFLECT_X 1
 #define REFLECT_Y 2
 #define ROTATE0 4
@@ -259,6 +271,13 @@ typedef struct paws_timeval {
 typedef unsigned char chtype;
 typedef void WINDOW;
 
+// PIXELBLOCK SCALEABLE SPRITES
+typedef struct {
+    int width;
+    int height;
+    unsigned char *bitmap;
+} bitmap_sprite;
+
 #define COLORS 256
 #define A_NOACTION 2048
 #define A_NORMAL 256
@@ -291,10 +310,11 @@ typedef void WINDOW;
 #define LINES 60
 
 // PACK RGB MACRO
-#define PACKRGB(r,g,b) \
-    _rv64_packw( _rv64_packh( b, g ), _rv64_packh( r, 0 ) )
+#define PACKRGB(r,g,b) _rv64_packw( _rv64_packh( b, g ), _rv64_packh( r, 0 ) )
 
 // MIN MAX MACROS
+#ifdef __cplusplus
+#else
 #ifndef min
 #define min(a,b) \
    ({ __typeof__ (a) _a = (a); \
@@ -306,4 +326,5 @@ typedef void WINDOW;
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
      _a > _b ? _a : _b; })
+#endif
 #endif
