@@ -211,40 +211,31 @@ unit cachecontroller(
                         DCACHEW.update = accessmask;                                                                            // UPDATE CACHE IF WRITE
                     }
                 } else {                                                                                                        // CACHE MISS
-                    busy = 1;
-                    if( |Devict ) {
-                        switch( Devict ) {                                                                                      // EVICT AS CACHE LINE NEEDED AND OCCUPIED
+                    busy = 1; if( SDRAM.busy ) { while( SDRAM.busy ) {} }                                                       // WAIT FOR SDRAM IF BUSY
+                    if( |Devict ) {                                                                                             // EVICT AS CACHE LINE NEEDED AND OCCUPIED
+                        SDRAM.address = Devict[0,1] ? DCACHE.cacheaddressL : DCACHE.cacheaddressH;                              //      EVICT FIRST ( possibly only ) 16 BITS
+                        SDRAM.writedata = DCACHE.rdata[ Devict[0,1] ? 0 : 16, 16 ]; SDRAM.writeflag = 1;
+                        switch( Devict ) {
                             case 2b00: {}
-                            case 2b01: {
-                                SDRAM.address = DCACHE.cacheaddressL; SDRAM.writedata = DCACHE.rdata[0,16]; SDRAM.writeflag = 1;
-                                while( ~sio.done ) {}
-                            }
-                            case 2b10: {
-                                SDRAM.address = DCACHE.cacheaddressH; SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1;
-                                while( ~sio.done ) {}
-                            }
+                            case 2b01: {}
+                            case 2b10: {}
                             case 2b11: {
-                                SDRAM.address = DCACHE.cacheaddressH; SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1;
-                                while( ~sio.done ) {} SDRAM.address = DCACHE.cacheaddressL; SDRAM.writedata = DCACHE.rdata[0,16]; SDRAM.writeflag = 1;
-                                while( ~sio.done ) {}
+                                while( ~sio.done ) {} SDRAM.address = DCACHE.cacheaddressH;                                     //      EVICT SECOND 16 BITS
+                                SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1;
                             }
                         }
+                        if( doreadsdram & |Dread ) { while( ~sio.done ) {} }                                                    // ONLY WAIT IF READ IS TO FOLLOW
                     }
-                    if( doreadsdram ) {
-                        switch( Dread ) {                                                                                       // READ FROM SDRAM FOR READ / 8 BIT WRITE
+                    if( doreadsdram & |Dread) {                                                                                 // READ FROM SDRAM FOR READ / 8 BIT WRITE
+                        SDRAM.address = Dread[0,1] ? address : address2; SDRAM.readflag = 1; while( ~sio.done ) {}              //      READ FIRST ( possibly only ) 16 BITS
+                        switch( Dread ) {
                             case 2b00: {}
-                            case 2b01: {
-                                SDRAM.address = address; SDRAM.readflag = 1;
-                                while( ~sio.done ) {} sdramreaddata = { 16b0, SDRAM.readdata };
-                            }
-                            case 2b10: {
-                                SDRAM.address = address2; SDRAM.readflag = 1;
-                                while( ~sio.done ) {} sdramreaddata = { SDRAM.readdata, 16b0 };
-                            }
+                            case 2b01: { sdramreaddata = { 16b0, SDRAM.readdata }; }                                            //      LATCH LOWER 16 BITS
+                            case 2b10: { sdramreaddata = { SDRAM.readdata, 16b0 }; }                                            //      LATCH UPPER 16 BITS
                             case 2b11: {
-                                SDRAM.address = address; SDRAM.readflag = 1;
-                                while( ~sio.done ) {} sdramreaddata[0,16] = SDRAM.readdata; SDRAM.address = address2; SDRAM.readflag = 1;
-                                while( ~sio.done ) {} sdramreaddata[16,16] = SDRAM.readdata;
+                                sdramreaddata[0,16] = SDRAM.readdata;                                                           //      LATCH LOWER 16 BITS
+                                SDRAM.address = address2; SDRAM.readflag = 1;                                                   //      READ UPPER 16 BITS
+                                while( ~sio.done ) {} sdramreaddata[16,16] = SDRAM.readdata;                                    //      LATCH UPPER 16 BITS
                             }
                         }
                     }
