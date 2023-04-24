@@ -52,7 +52,8 @@ int             scaledviewwidth;
 int             viewheight;
 int             viewwindowx;
 int             viewwindowy;
-byte*           ylookup[SCREENHEIGHT];
+byte*           ylookup[SCREENHEIGHT*2];
+int             yloffset;
 int             columnofs[SCREENWIDTH];
 
 // Color tables for different players,
@@ -224,7 +225,7 @@ void R_DrawColumn (void)
     // Framebuffer destination address.
     // Use ylookup LUT to avoid multiply with ScreenWidth.
     // Use columnofs LUT for subwindows?
-    dest = ylookup[dc_yl] + columnofs[dc_x];
+    dest = ylookup[yloffset+dc_yl] + columnofs[dc_x];
 
     // Determine scaling,
     //  which is the only mapping to be done.
@@ -294,7 +295,7 @@ void R_DrawTranslatedColumn (void)
         return;
 
     // FIXME. As above.
-    dest = ylookup[dc_yl] + columnofs[dc_x];
+    dest = ylookup[yloffset+dc_yl] + columnofs[dc_x];
 
     // Looks familiar.
     fracstep = dc_iscale;
@@ -384,7 +385,7 @@ void R_DrawSpan (void)
     xfrac = ds_xfrac;
     yfrac = ds_yfrac;
 
-    dest = ylookup[ds_y] + columnofs[ds_x1];
+    dest = ylookup[yloffset+ds_y] + columnofs[ds_x1];
 
     R_DrawSpanKernel (
         dest, ds_source, ds_colormap, xfrac, ds_xstep, yfrac, ds_ystep, count);
@@ -420,8 +421,10 @@ R_InitBuffer
         viewwindowy = (SCREENHEIGHT-SBARHEIGHT-height) >> 1;
 
     // Preclaculate all row offsets.
-    for (i=0 ; i<height ; i++)
-        ylookup[i] = screens[0] + (i+viewwindowy)*SCREENWIDTH;
+    for (i=0 ; i<height ; i++) {
+        ylookup[i] = (byte*)0x2020000 + (i+viewwindowy)*SCREENWIDTH;
+        ylookup[i+SCREENHEIGHT] = (byte*)0x2000000 + (i+viewwindowy)*SCREENWIDTH;
+    }
 }
 
 //

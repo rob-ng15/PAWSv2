@@ -1,5 +1,4 @@
-// Runs at 25MHz
-unit apu(
+unit apu(                                                                                                                       //Single channel audio output, outputs 8 bits for PWM. 25MHz
     simple_dualport_bram_port0  bit_samples,
     simple_dualport_bram_port0  wave_samples,
     input   uint3   waveform,
@@ -11,7 +10,13 @@ unit apu(
     output  uint1   audio_active,
     output  uint8   audio_output
 ) <reginputs> {
-    waveform WAVEFORM( active <: COUNTER.active, bit_samples <:> bit_samples, wave_samples <:> wave_samples, start <: apu_write, update <: COUNTER.updatepoint, selected_waveform <: waveform, staticGenerator <: staticGenerator );
+    waveform WAVEFORM(
+        active <: COUNTER.active,
+        bit_samples <:> bit_samples, wave_samples <:> wave_samples,
+        start <: apu_write, update <: COUNTER.updatepoint,
+        selected_waveform <: waveform,
+        staticGenerator <: staticGenerator
+    );
     audiocounter COUNTER( selected_frequency <: frequency, selected_duration <: duration, start <: apu_write, active :> audio_active );
 
     always_after {
@@ -48,21 +53,21 @@ unit waveform(
         40,43,45,47,50,52,55,57,60,63,65,68,71,74,77,79,
         82,85,88,91,94,97,100,103,106,109,112,116,119,122,125
     };
-    sines.addr := point[0,8]; bit_samples.addr0 := point[3,7]; wave_samples.addr0 := { selected_waveform == 6 ? 1b1 : 1b0, point[0,8] };
+    sines.addr := point[0,8];                                                                                       // POINTER INTO SINE TABLE
+    bit_samples.addr0 := point[3,7]; wave_samples.addr0 := { selected_waveform == 6 ? 1b1 : 1b0, point[0,8] };      // POINTERS INTO BITSAMPLES AND USER WAVEFORM TABLES
+
+    point := ~active ? 0 : point + update;                                                                           // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE, ALLOWS BIT SAMPLES TO REPEAT
 
     always_after {
-        {
-            switch( selected_waveform ) {
-                case 0: { audio_output = { point[7,1], 7b1111111 }; }                                               // SQUARE
-                case 1: { audio_output = point; }                                                                   // SAWTOOTH
-                case 2: { audio_output = ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ); }             // TRIANGLE
-                case 3: { audio_output = sines.rdata; }                                                             // SINE
-                case 4: { audio_output = staticGenerator; }                                                         // NOISE
-                default: { audio_output = wave_samples.rdata0; }                                                    // USER DEFINED UD1 = 5, UD2 = 6 ( UD1 in samples 0-255, UD2 in samples 256-511 )
-                case 7: { audio_output = {8{bit_samples.rdata0[ point[0,3], 1]}}; }                                 // 1 BIT SAMPLES, TRANSLATE TO SQUARE WAVE
-            }
+        switch( selected_waveform ) {
+            case 0: { audio_output = { point[7,1], 7b1111111 }; }                                                   // SQUARE
+            case 1: { audio_output = point; }                                                                       // SAWTOOTH
+            case 2: { audio_output = ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ); }                 // TRIANGLE
+            case 3: { audio_output = sines.rdata; }                                                                 // SINE
+            case 4: { audio_output = staticGenerator; }                                                             // NOISE
+            default: { audio_output = wave_samples.rdata0; }                                                        // USER DEFINED UD1 = 5, UD2 = 6 ( UD1 in samples 0-255, UD2 in samples 256-511 )
+            case 7: { audio_output = {8{bit_samples.rdata0[ point[0,3], 1]}}; }                                     // 1 BIT SAMPLES, TRANSLATE TO SQUARE WAVE
         }
-        { point = ~active ? 0 : point + update; }                                                                   // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE, ALLOWS BIT SAMPLES TO REPEAT
     }
 }
 
@@ -78,17 +83,15 @@ unit audiocounter(
     uint16  duration = uninitialised;
     uint1   updateduration <:: active & ( ~|counter1khz );
 
+    active := ( |duration ); updatepoint := active & ( ~|counter25mhz );
+
     always_after {
-        {
-            if( start ) {
-                counter25mhz = 0; counter1khz = 25000; duration = selected_duration;
-            } else {
-                if( updatepoint ) { counter25mhz = selected_frequency; } else { counter25mhz = counter25mhz - 1; }
-                if( updateduration ) { counter1khz = 25000; duration = duration - 1; } else { counter1khz = counter1khz - 1; }
-            }
+        if( start ) {
+            counter25mhz = 0; counter1khz = 25000; duration = selected_duration;
+        } else {
+            if( updatepoint ) { counter25mhz = selected_frequency; } else { counter25mhz = counter25mhz - 1; }
+            if( updateduration ) { counter1khz = 25000; duration = duration - 1; } else { counter1khz = counter1khz - 1; }
         }
-        { active = ( |duration );  }
-        { updatepoint = active & ( ~|counter25mhz ); }
     }
 }
 
@@ -100,7 +103,7 @@ unit octave(
     output  uint3   shift
 ) <reginputs> {
     always_after {
-        { shift = ( frequency > 120 ) ? 5 : ( frequency > 96 ) ? 4 : ( frequency > 72 ) ? 3 : ( frequency > 48 ) ? 2 : ( frequency > 24 ) ? 1 : 0; }
-        { basefrequency = frequency - ( shift * 24 ); }
+        shift = ( frequency > 120 ) ? 5 : ( frequency > 96 ) ? 4 : ( frequency > 72 ) ? 3 : ( frequency > 48 ) ? 2 : ( frequency > 24 ) ? 1 : 0;
+        basefrequency = frequency - ( shift * 24 );
     }
 }

@@ -15,25 +15,18 @@ unit terminal(
     input   uint1   showterminal,
     input   uint7   terminal_x
 ) <reginputs> {
-    // Character ROM 8x8
-    characterrom256 CGROM <@clockCG> ( tile <: terminal.rdata0, y <: pix_y[0,3] );
+    characterrom256 CGROM <@clockCG> ( tile <: terminal.rdata0, y <: pix_y[0,3] );                                              // Character ROM 8x8
 
-    // Character position on the terminal x 0-79, y 0-7 * 80 ( fetch it one pixel ahead of the actual x pixel, so it is always ready )
-    uint6   yterminalpos <:: ( pix_vblank ? 0 : pix_y - 416 );
+    uint6   yterminalpos <:: ( pix_vblank ? 0 : pix_y - 416 );                                                                  // Character position on the terminal x 0-79, y 0-7 * 80
+    uint1   terminalpixel <:: CGROM.line[ ~pix_x[0,3], 1 ];                                                                     // Derive the actual pixel in the current terminal
 
-    // Determine if cursor, and if cursor is flashing
-    uint1 is_cursor <:: blink & ( ( pix_x >> 3 ) == terminal_x ) & ( &yterminalpos[3,3] );
+    terminal.addr0 := pix_x1[3,7] + yterminalpos[3,3] * 80;                                                                      // Setup the reading of the terminal memory
 
-    // Derive the actual pixel in the current terminal
-    uint1 terminalpixel <:: CGROM.line[ ~pix_x[0,3], 1 ];
-
-    // Setup the reading of the terminal memory
-    terminal.addr0 := pix_x1[3,7] + yterminalpos[3,3] * 80;
-
-    // Default to transparent and active pixels always blue
     always_after {
-        { terminal_display = pix_active & showterminal & ( pix_y > 415 );  }
-        { pixel = terminalpixel ^ is_cursor; }
+        uint1 is_cursor = blink & ( ( pix_x >> 3 ) == terminal_x ) & ( &yterminalpos[3,3] );                                    // Determine if cursor, and if cursor is flashing
+
+        terminal_display = pix_active & showterminal & ( pix_y > 415 );                                                         // In terminal window range and displayed?
+        pixel = terminalpixel ^ is_cursor;                                                                                      // Pixel or cursor?
     }
 }
 
@@ -45,10 +38,10 @@ unit terminalcursor(
     output  uint10  ADDRESS
 ) <reginputs> {
     always_after {
-        { endofline = ( terminal_x == 79 ); }
-        { NEXT = endofline ? 0 : terminal_x + 1; }
-        { PREV = terminal_x - 1; }
-        { ADDRESS = terminal_x + 560; }
+        endofline = ( terminal_x == 79 );
+        NEXT = endofline ? 0 : terminal_x + 1;
+        PREV = terminal_x - 1;
+        ADDRESS = terminal_x + 560;
     }
 }
 
@@ -63,15 +56,17 @@ unit terminal_writer(
     terminalcursor TC( terminal_x <: terminal_x );
 
     // Terminal active (scroll) flag and temporary storage for scrolling
-    uint10  terminal_scroll = uninitialised;        uint10  terminal_scroll_next <:: terminal_scroll + 1;
+    uint10  terminal_scroll = uninitialised;
+    uint10  terminal_scroll_next <:: terminal_scroll + 1;
     uint10  terminal_scroll_next_line <:: terminal_scroll + 80;
-    uint1   scrolling <:: ( terminal_scroll < 560 );
-    uint1   working <:: ( terminal_scroll != 640 );
 
     // Setup the writing to the terminal memory
     terminal.wenable1 := 0;
 
     algorithm <autorun> {
+        uint1   scrolling <:: ( terminal_scroll < 560 );
+        uint1   working <:: ( terminal_scroll != 640 );
+
         while(1) {
             if( |terminal_active ) {
                 while( working ) {

@@ -1102,10 +1102,7 @@ void D_DoomMain (void)
     p = M_CheckParm ("-loadgame");
     if (p && p < myargc-1)
     {
-        if (M_CheckParm("-cdrom"))
-            sprintf(file, "c:\\doomdata\\"SAVEGAMENAME"%c.dsg",myargv[p+1][0]);
-        else
-            sprintf(file, SAVEGAMENAME"%c.dsg",myargv[p+1][0]);
+        sprintf(file, "doomsav%c.dsg",myargv[p+1][0]);
         G_LoadGame (file);
     }
 
@@ -1118,7 +1115,7 @@ void D_DoomMain (void)
     }
 
     // RESET TERMINAL AND SET DEFAULT PALETTE
-    autorefresh( FALSE ); curs_set( FALSE ); ps2_keyboardmode( PS2_KEYBOARD ); tpu_cs(); gpu_cs();
+    autorefresh( FALSE ); curs_set( FALSE ); ps2_keyboardmode( PS2_KEYBOARD ); tpu_cs();
     I_SetPalette (W_CacheLumpName ("PLAYPAL",PU_CACHE));
 
     D_DoomLoop ();  // never returns

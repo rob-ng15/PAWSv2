@@ -123,7 +123,7 @@ int I_StartSound (int id, int vol, int sep, int pitch, int priority)
     beep( __lastchannel, 0, 0, 0 );         // STOP CHANNEL
 
     sample_upload( __lastchannel,  s_sfx_lengths[id] - 4, S_sfx[id].data + 4 );
-    beep( __lastchannel, WAVE_SAMPLE, 1, 16 );
+    beep( __lastchannel, WAVE_SAMPLE, 1, 12 );
     return id;
 }
 
