@@ -511,7 +511,10 @@ void M_ReadSaveStrings(void)
 
     for (i = 0;i < load_end;i++)
     {
-        sprintf(name,"doomsav%d.dsg",i);
+        if (M_CheckParm("-cdrom"))
+            sprintf(name,"c:\\doomdata\\"SAVEGAMENAME"%d.dsg",i);
+        else
+            sprintf(name,SAVEGAMENAME"%d.dsg",i);
 
         handle = open (name, O_RDONLY | 0, 0666);
         if (handle == -1)
@@ -567,7 +570,10 @@ void M_LoadSelect(int choice)
 {
     char    name[256];
 
-    sprintf(name,"doomsav%d.dsg",choice);
+    if (M_CheckParm("-cdrom"))
+        sprintf(name,"c:\\doomdata\\"SAVEGAMENAME"%d.dsg",choice);
+    else
+        sprintf(name,SAVEGAMENAME"%d.dsg",choice);
     G_LoadGame (name);
     M_ClearMenus ();
 }

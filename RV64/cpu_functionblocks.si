@@ -85,6 +85,29 @@ unit control(
         IS_FASTFPU :> IS_FASTFPU
     );
 
+    // DETERMINE MEMORY ACCESS FLAGS
+    memsize MEMACCESSFLAGS(
+        cacheselect <: cacheselect,
+        DMAACTIVE <: DMAACTIVE,
+        DMAACCESSSIZE <: DMAACCESSSIZE,
+        function3 <: Rtype(instruction).function3[0,2],
+        I1R <: I1R.rdata0[0,1],
+        I20 <: instruction[20,1],
+        I7 <: instruction[7,1],
+        IS_ATOMIC <: FLAGS.IS_ATOMIC,
+        IS_LOAD <: FLAGS.IS_LOAD,
+        IS_STORE <: FLAGS.IS_STORE,
+        IS_MA :> IS_MA,
+        IS_MEM64 :> IS_MEM64,
+        accesssize :> accesssize
+    );
+
+    // ADDRESS GENERATORS
+    loadaddress LA( instruction <: instruction, IS_ATOMIC <: FLAGS.IS_ATOMIC, I1R <: I1R.rdata0, loadAddress :> loadAddress );
+    storeaddress SA( instruction <: instruction, IS_ATOMIC <: FLAGS.IS_ATOMIC, I1R <: I1R.rdata0, storeAddress :> storeAddress );
+    jumpaddress JA( instruction <: instruction, IS_BRANCH <: FLAGS.IS_BRANCH, PC <: PC );
+    auipclui AUI( instruction <: instruction, PC <: PC, AUIPCLUI :> AUIPCLUI );
+
     // REGISTERS I integer x 2 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
     $$for i=0,1 do
@@ -103,16 +126,8 @@ unit control(
     // ABSOLUTE VALUES OF sourceReg1 and sourceReg2
     abs3264 S1_abs( sourceReg <: I1R.rdata0, abs32 :> S1_abs32, abs64 :> S1_abs64 ); abs3264 S2_abs( sourceReg <: I2R.rdata0, abs32 :> S2_abs32, abs64 :> S2_abs64 );
 
-    // JUMP AND BRANCH DESTINATIONS
-    uint$addr_width$ jumpAddress <:: ( FLAGS.IS_BRANCH ?
-                                     { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } :
-                                     { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 }
-                                     ) + PC;
-
     // COMPARISONS AND BRANCHES
     int64   operand2 <:: opCode[3,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate };
-    uint1   takeBranch <:: Rtype(instruction).function3[0,1] ^ flags[ Rtype(instruction).function3[1,2], 1 ];
-    uint4   flags <:: { COMPARE.LTU, COMPARE.LT, 1b0, COMPARE.EQ };
     integercomparisons COMPARE(
         sourceReg1 <: I1R.rdata0,
         operand2 <: operand2,
@@ -120,25 +135,17 @@ unit control(
         LTU :> LTU,
         EQ :> EQ
     );
+    uint4   flags <:: { COMPARE.LTU, COMPARE.LT, 1b0, COMPARE.EQ };
 
-    accesssize := DMAACTIVE ? DMAACCESSSIZE : cacheselect ? IS_MA ? 2b00 : Rtype(instruction).function3[0,2] : 2b10;            // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32
-                                                                                                                                // ELSE BY function3 ( IS_MA AS BYTES )
-    IS_MA := ~FLAGS.IS_ATOMIC & |Rtype(instruction).function3[0,2] & (                                                          // ATOMIC OPERATIONS CANNOT BE MISALIGNED
-             ( FLAGS.IS_LOAD & ( instruction[20,1] ^ I1R.rdata0[0,1] ) ) |                                                      // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
-             ( FLAGS.IS_STORE & ( instruction[7,1] ^ I1R.rdata0[0,1] ) ) );                                                     // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
-    IS_MEM64 := &Rtype(instruction).function3[0,2];                                                                             // DETECT 64 BIT MEMORY ACCESSES
+    always_after {
+        opCode = instruction[2,5]; function3 = Rtype(instruction).function3; function7 = Rtype(instruction).function7;          // EXTRACT BITFIELDS FROM INSTRUCTION
+        immediateValue = { {52{instruction[31,1]}}, Itype(instruction).immediate };                                             // EXTRACT AND SIGN EXTEND IMMEDIATE VALUE FROM INSTRUCTION
+        rs1 = Rtype(instruction).sourceReg1; rs2 = Rtype(instruction).sourceReg2;                                               // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
 
-    opCode := instruction[2,5]; function3 := Rtype(instruction).function3; function7 := Rtype(instruction).function7;           // EXTRACT BITFIELDS FROM INSTRUCTION
-    immediateValue := { {52{instruction[31,1]}}, Itype(instruction).immediate };                                                // EXTRACT AND SIGN EXTEND IMMEDIATE VALUE FROM INSTRUCTION
-    rs1 := Rtype(instruction).sourceReg1; rs2 := Rtype(instruction).sourceReg2;                                                 // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
-
-    AUIPCLUI := { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );      // ADDRESS GENRATION
-    loadAddress := ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Itype(instruction).immediate } ) +
-                   I1R.rdata0[0,$addr_width$];
-    storeAddress := ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) +
-                    I1R.rdata0[0,$addr_width$];
-    nextPC := PC + ( compressed ? 2 : 4 );
-    newPC := FLAGS.incPC ? ( FLAGS.IS_BRANCH & takeBranch ? jumpAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress );
+        newPC = FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).function3[0,1] ^ flags[ Rtype(instruction).function3[1,2], 1 ] ) ? JA.jumpAddress : nextPC ) :
+                              ( instruction[3,1] ? JA.jumpAddress : LA.loadAddress );
+        nextPC = PC + ( compressed ? 2 : 4 );
+    }
 }
 
 unit float_control(
@@ -206,6 +213,76 @@ unit float_control(
     );
 }
 
+// DETERMINE MEMORY ACCESS FLAGS
+unit memsize(
+    input   uint1   cacheselect,
+    input   uint1   DMAACTIVE,
+    input   uint2   DMAACCESSSIZE,
+    input   uint2   function3,
+    input   uint1   I1R,
+    input   uint1   I20,
+    input   uint1   I7,
+    input   uint1   IS_ATOMIC,
+    input   uint1   IS_LOAD,
+    input   uint1   IS_STORE,
+    output  uint1   IS_MA,
+    output  uint1   IS_MEM64,
+    output  uint2   accesssize
+) <reginputs> {
+    always_after {
+        accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? IS_MA ? 2b00 : function3 : 2b10;                                 // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32
+                                                                                                                                // ELSE BY function3 ( IS_MA AS BYTES )
+        IS_MA = ~IS_ATOMIC & |function3 & (                                                                                     // ATOMIC OPERATIONS CANNOT BE MISALIGNED
+                ( IS_LOAD & ( I20 ^ I1R ) ) |                                                                                   // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
+                ( IS_STORE & ( I7 ^ I1R ) ) );                                                                                  // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
+        IS_MEM64 = &function3;                                                                                                  // DETECT 64 BIT MEMORY ACCESSES
+    }
+}
+
+// ADDRESS GENERATORS
+unit loadaddress(
+    input   uint32  instruction,
+    input   uint1   IS_ATOMIC,
+    output  uint$addr_width$  loadAddress,
+    input   uint$addr_width$  I1R
+) <reginputs> {
+    always_after {
+        loadAddress = ( IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Itype(instruction).immediate } ) + I1R;
+    }
+}
+unit storeaddress(
+    input   uint32  instruction,
+    input   uint1   IS_ATOMIC,
+    output  uint$addr_width$  storeAddress,
+    input   uint$addr_width$  I1R
+) <reginputs> {
+    always_after {
+        storeAddress = ( IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R;
+    }
+}
+unit jumpaddress(
+    input   uint32  instruction,
+    input   uint1   IS_BRANCH,
+    output  uint$addr_width$  jumpAddress,
+    input   uint$addr_width$  PC
+) <reginputs> {
+    always_after {
+        jumpAddress = ( IS_BRANCH ?
+                        { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } :
+                        { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 }
+                      ) + PC;
+    }
+}
+unit auipclui(
+    input   uint32  instruction,
+    output  uint64  AUIPCLUI,
+    input   uint$addr_width$  PC
+) <reginputs> {
+    always_after {
+        AUIPCLUI = { {32{instruction[31,1]}},Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
+    }
+}
+
 // REGISTER READ AND WRITE BLOCKS
 unit regR(
     input   uint1   SMT,
@@ -214,7 +291,9 @@ unit regR(
     input   uint5   addr0,
     output  uint64  rdata0
 ) <reginputs> {
-        regfile0.addr0 := addr0; regfile1.addr0 := addr0; rdata0 := SMT ? regfile1.rdata0 : regfile0.rdata0;
+    always_after {
+        regfile0.addr0 = addr0; regfile1.addr0 = addr0; rdata0 = SMT ? regfile1.rdata0 : regfile0.rdata0;
+    }
 }
 unit regW(
     input   uint1   SMT,
@@ -224,8 +303,10 @@ unit regW(
     input   uint1   wenable1,
     input   uint64  wdata1
 ) <reginputs> {
-    regfile0.addr1 := addr1; regfile0.wdata1 := wdata1; regfile0.wenable1 := ~SMT & wenable1;
-    regfile1.addr1 := addr1; regfile1.wdata1 := wdata1; regfile1.wenable1 := SMT & wenable1;
+    always_after {
+        regfile0.addr1 = addr1; regfile0.wdata1 = wdata1; regfile0.wenable1 = ~SMT & wenable1;
+        regfile1.addr1 = addr1; regfile1.wdata1 = wdata1; regfile1.wenable1 = SMT & wenable1;
+    }
 }
 
 // ABSOLUTE VALUES FOR 32 AND 64 BIT REGISTER CONTENTS
@@ -234,8 +315,10 @@ unit abs3264(
     output  uint32  abs32,
     output  uint64  abs64
 ) <reginputs> {
-    abs32 := sourceReg[31,1] ? -sourceReg[0,32] : sourceReg[0,32];
-    abs64 := sourceReg[63,1] ? -sourceReg : sourceReg;
+    always_after {
+        abs32 = sourceReg[31,1] ? -sourceReg[0,32] : sourceReg[0,32];
+        abs64 = sourceReg[63,1] ? -sourceReg : sourceReg;
+    }
 }
 
 // CLASSIFY INSTRUCTION TYPE AND DETIMINE CPU CONTROL FLAGS
@@ -308,6 +391,7 @@ unit controlflags(
         uint1   REGREG = ( opCode == 5b01100 ) | ( opCode == 5b01110 );                                                         // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
         IS_ALUMD = REGREG & ( function7 == 7b0000001 ) & function3[2,1];                                                        // INTEGER DIVISION DETECTED FLAG
         IS_ALUCLM = 0; // IS_ALUCLM = REGREG & ( function7 == 7b0000101 ) & ~function3[2,1];                                   // CARRYLESS MULTIPLICATION DETECTED FLAG { f3 == 0xx, f3 == 1xx is min/max (
+
     }
 }
 
@@ -516,59 +600,70 @@ unit csrf(
         }
     }
 }
+unit csr_timer(
+    output  uint$CWIDTH$  counter(0)
+) <reginputs> {
+    always_after {
+        counter = counter + 1;
+    }
+}
+unit csr_smt_counter(
+    input   uint1   SMT,
+    input   uint1   trigger,
+    output  uint$CWIDTH$  counter0(0),
+    output  uint$CWIDTH$  counter1(0),
+
+) <reginputs> {
+    always_after {
+        counter0 = counter0 + ( ~SMT & trigger );
+        counter1 = counter1 + ( SMT & trigger );
+    }
+}
+
 unit CSRblock(
     input   uint1   start,
     input   uint1   SMT,
     input   uint12  csrRegister,
     input   uint3   function3,
     input   uint5   rs1,
-    input   uint8  sourceReg1,
+    input   uint8   sourceReg1,
     input   uint1   incCSRinstret,
     input   uint1   updateFPUflags,
     input   uint5   FPUnewflags,
     output  uint8   FPUflags,
     output  uint64  result
 ) <reginputs> {
-    uint$CWIDTH$  TIMER(0);                                                                                                     // CYCLES SINCE BOOT
-    uint$CWIDTH$  CYCLE0(0);                        uint$CWIDTH$  CYCLE1(0);                                                    // CYCLES HART ACTIVE
-    uint$CWIDTH$  INSTRET0(0);                      uint$CWIDTH$  INSTRET1(0);                                                  // INSTRUCTIONS RETIRED PER HARY
-
-    uint$CWIDTH$ CYCLEP1 <:: ( SMT ? CYCLE1 : CYCLE0 ) + 1;                                                                     // INCREASE CYCLES BY 1
-    uint$CWIDTH$ INSTRETP1 <:: ( SMT ? INSTRET1 : INSTRET0 ) + incCSRinstret;                                                   // INCREASE INSTRET BY 1
+    csr_timer TIMER();
+    csr_smt_counter CYCLE( SMT <: SMT );
+    csr_smt_counter INSTRET( SMT <: SMT, trigger <: incCSRinstret );
 
     // SWITCH BETWEEN IMMEDIATE OR REGISTER VALUE TO WRITE TO CSR
-    uint32  writevalue <: function3[2,1] ? rs1 : sourceReg1;
+    uint32  writevalue <:: function3[2,1] ? rs1 : sourceReg1;
 
     // FLOATING-POINT CSR FOR BOTH THREADS
     csrf CSRF0( csr <: csrRegister[0,2], writevalue <: writevalue );                                                            // MAIN CSRf ( csrRegister[0,2] )
     csrf CSRF1( csr <: csrRegister[0,2], writevalue <: writevalue );                                                            // SMT CSRf  ( csrRegister[0,2] )
 
-    // UPDATE FLAGS FOR TIMERS, COUNTERS AND FPU-FLAGS
+    // UPDATE FLAGS FPU-FLAGS
     CSRF0.writetype := 0; CSRF1.writetype := 0; CSRF0.update := updateFPUflags & ~SMT;  CSRF1.update := updateFPUflags & SMT;
 
-    FPUflags := SMT ? CSRF1.CSRf : CSRF0.CSRf;
-    TIMER := TIMER + 1;
-    CYCLE0 := SMT ? CYCLE0 : CYCLEP1; INSTRET0 := SMT ? INSTRET1 : INSTRETP1;
-    CYCLE1 := SMT ? CYCLEP1 : CYCLE1; INSTRET1 := SMT ? INSTRETP1 : INSTRET1;
-
-    algorithm <autorun> {
-        while(1) {
-            if( start & ~|csrRegister[4,8] ) {
-                switch( function3[0,2] ) {
-                    case 2b00: {} // ECALL / EBBREAK
-                    case 2b01: {
-                        switch( { ~|rs1, function3[2,1] } ) {                                                                   // CSRRW / CSRRWI
-                            case 2b10: {}
-                            default: { if( SMT ) { CSRF1.writetype = 1; } else { CSRF0.writetype = 1; } }
-                        }
-                    }
-                    default: { if( |rs1 ) { if( SMT ) { CSRF1.writetype = function3[0,2]; } else { CSRF0.writetype = function3[0,2]; } } }
-                }
-            }
-        }
-    }
+    //UPDATE FLAGS FOR COUNTERS AND TIMERS
+    CYCLE.trigger := 1;
 
     always_after {
+        if( start & ~|csrRegister[4,8] ) {
+            switch( function3[0,2] ) {
+                case 2b00: {} // ECALL / EBBREAK
+                case 2b01: {
+                    switch( { ~|rs1, function3[2,1] } ) {                                                                   // CSRRW / CSRRWI
+                        case 2b10: {}
+                        default: { if( SMT ) { CSRF1.writetype = 1; } else { CSRF0.writetype = 1; } }
+                    }
+                }
+                default: { if( |rs1 ) { if( SMT ) { CSRF1.writetype = function3[0,2]; } else { CSRF0.writetype = function3[0,2]; } } }
+            }
+        }
+
         result = 0;
         switch( csrRegister[8,4] ) {
             case 4h0: {
@@ -582,14 +677,16 @@ unit CSRblock(
             case 4h3: { result = $CPUISA$; }
             case 4hc: {
                 switch( { csrRegister[7,1], csrRegister[0,2] } ) {
-                    case 3h0: { result = SMT ? CYCLE1 : CYCLE0; }
-                    case 3h1: { result = TIMER; }
-                    case 3h2: { result = SMT ? INSTRET1 : INSTRET0; }
+                    case 3h0: { result = SMT ? CYCLE.counter1 : CYCLE.counter0; }
+                    case 3h1: { result = TIMER.counter; }
+                    case 3h2: { result = SMT ? INSTRET.counter1 : INSTRET.counter0; }
                     default: {}
                 }
                 }
             case 4hf: { result = SMT; }                                                                                     // HART ID
             default: {}
         }
+
+        FPUflags = SMT ? CSRF1.CSRf : CSRF0.CSRf;
     }
 }

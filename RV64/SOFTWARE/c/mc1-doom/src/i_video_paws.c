@@ -18,8 +18,6 @@
 
 #define FB_WIDTH 320
 #define FB_HEIGHT 240
-extern int yloffset;
-int paws_fb = 0;
 
 unsigned char PAWSKEYlookup[] = {
     0x00, KEY_F9, 0x00, KEY_F5, KEY_F3, KEY_F1, KEY_F2, KEY_F12, 0x00, KEY_F10, KEY_F8, KEY_F6, KEY_F4, KEY_TAB, 0x00, 0x00,     // 0x00 - 0x0f
@@ -46,8 +44,9 @@ void I_InitGraphics (void) {
     static int initialized = 0;
     if (initialized)
         return;
+
     initialized = 1;
-    screens[0] = (byte*)0x2020000; paws_fb = 1; yloffset = 0; bitmap_display( 1 );
+    screens[0] = (byte*)0x2020000; bitmap_display( 1 );
     screen_mode( 0, MODE_RGBM, 0 ); bitmap_256( TRUE ); use_palette( TRUE );
 }
 
@@ -92,11 +91,7 @@ void I_UpdateNoBlit (void) {
 }
 
 void I_FinishUpdate (void) {
-    if( paws_fb ) {
-        screens[0] = (byte*)0x2000000; paws_fb = 0; yloffset = SCREENHEIGHT; bitmap_display( 2 );
-    } else {
-        screens[0] = (byte*)0x2020000; paws_fb = 1; yloffset = 0; bitmap_display( 1 );
-    }
+    memcpy( (byte*)0x2000000, (byte*)0x2020000, SCREENWIDTH * SCREENHEIGHT );
 }
 
 void I_ReadScreen (byte* scr) {

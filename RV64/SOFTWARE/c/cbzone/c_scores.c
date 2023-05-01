@@ -44,7 +44,7 @@
 extern int errno;
 int x, y, ydelta;
 
- 
+
 void xprintf(s, output)                 /* print to the X screen */
      char* s;
      Bool output;
@@ -58,7 +58,7 @@ void nprintf(s, output)                 /* print to the parent tty   */
      Bool output;
 {
   if (output)
-    printf("%s\n", s);
+    fprintf(stderr,"%s\n", s);
 }
 
 void printandwait(s, c)                 /* print a string and then */
@@ -69,7 +69,7 @@ void printandwait(s, c)                 /* print a string and then */
   xprintf(s, True);
   waitforkey(c);
 }
- 
+
 LONG scores(score)
      LONG score;
 {
@@ -151,22 +151,8 @@ LONG scores(score)
     else
       sfile = fopen(buf,"w");
 
-    if (sfile != NULL) {
-      if (flock(fileno(sfile),LOCK_EX) < 0) {
-        if (errno == EWOULDBLOCK && AFS) {
-          fclose(sfile);
-          sleep(AFS_SLEEP);
-          if (tries--)
-            goto retry;
-        }
-        p("File not lockable, scores will not be saved.", opt->output);
-        file_writeable = False;
-      }
-    }
-    else {
-      p("File not writeable, scores will not be saved.", opt->output);
-      file_writeable = False;
-    }
+
+  file_writeable = False;
 
     /* okay, it's possible we could have closed the file and never
      * reopened it.  Also, we just may not have been able to lock
@@ -238,23 +224,9 @@ LONG scores(score)
     /* try to get it from the passwd file first, just in case this
      * person su'd from another acct.
      */
-    player.uid = getuid();
+    player.uid = 0;
     player.score = score;
-    pw = getpwuid(player.uid);
-    if (pw == NULL)
-      if ((login = getlogin()) != NULL)
-        strcpy(player.name, login);
-      else {
-        p("Can't find out who you are....bye.", opt->output);
-        fclose(sfile);
-        (void) signal(SIGINT, SIG_DFL);
-        (void) signal(SIGHUP, SIG_DFL);
-        if (!scoresonly)
-          printandwait("Press any key to continue...", 0);
-        return 1;
-      }
-    else
-      strcpy(player.name, pw->pw_name);
+      strcpy(player.name, "PAWSv2");
 
     if (numscore < NUMHIGH || player.score > prev_score->score) {
       score_printed = True;

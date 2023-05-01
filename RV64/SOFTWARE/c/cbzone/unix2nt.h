@@ -10,7 +10,7 @@
 #define TANKDIR "."
 #define fork() 0 // HACK HACK disable fork
 #ifdef WIN31
-#define printf();
+#define fprintf(stderr,);
 #endif
 
 #include <stdlib.h>

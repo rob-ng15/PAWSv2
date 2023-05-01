@@ -13,43 +13,14 @@
  * since the execl will block on tty output.  To allow this we create
  * yet another flag that specifies that motd is not to be read.
  */
- 
+
 int pager(file)
      char* file;
 {
-  char buf[100], *pager, *getenv();
-  static char defaultpager[] = PAGER;
-  FILE *f;
 
-  if ((pager = getenv("PAGER")) == NULL)
-    pager = defaultpager;
-  sprintf(buf,"%s%s",TANKDIR,file);
-  if ((f=fopen(buf,"r")) != NULL) {
-    fclose(f);
-    switch (fork()) {
-    case 0:
-#ifndef WIN31
-      execl(pager,pager,buf,0);
-#endif
-      fprintf(stderr,"Exec of %s failed\n", pager);
-      return 1;
-    case -1:
-      fprintf(stderr,"Unable to fork process\n");
-      return 1;
-    default:
-#ifndef WIN31
-      wait(0);
-#endif
-      break;
-    }
-  }
-  else {
-    fprintf(stderr,"File %s not found or unreadable.\n", buf);
-    return 1;
-  }
   return 0;
 }
- 
+
 int getoptionint(s)
      char *s;
 {
@@ -57,13 +28,13 @@ int getoptionint(s)
   int num;
 
   if (sscanf(s, "%d%s", &num, rest) != 1) {
-    printf("Error in optional argument %s; use -help for help.\n",
+    fprintf(stderr,"Error in optional argument %s; use -help for help.\n",
            s);
     exit(0);
   }
   return(num);
 }
- 
+
 /*
  * the following routine may be called in one of two ways...
  *  either w/ the display set or without...if without, then we
@@ -177,10 +148,10 @@ void parseopt(argc, argv, status)
       scores(-1);
 
     if (opt->version)
-      printf("\nVersion \"%s\"\n", VERSION);
+      fprintf(stderr,"\nVersion \"%s\"\n", VERSION);
 
     if (opt->help && pager("cbzone.help"))
-      printf("Sorry help information not available.\n");
+      fprintf(stderr,"Sorry help information not available.\n");
   }
 
   if (early_exit)
@@ -211,7 +182,7 @@ void parseopt(argc, argv, status)
   opt->menemies = (opt->mtanks > opt->mmissiles ?
                    opt->mtanks : opt->mmissiles);
   if (!opt->menemies) {
-    printf("Must have at least one missile or tank.\n");
+    fprintf(stderr,"Must have at least one missile or tank.\n");
 #ifdef WIN32
      return;
 #else //X11

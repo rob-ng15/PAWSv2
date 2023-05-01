@@ -596,6 +596,89 @@ void gpu_circle( unsigned char colour, short x1, short y1, short radius, unsigne
     }
 }
 
+// DRAW AN (optional filled) ELLIPSE at centre (xc,yc) of radii radius_x and radius_y
+void gpu_ellipse_plot4( unsigned char colour, short xc, short yc, short xd, short yd ) {
+    gpu_pixel( colour, xc + xd, yc + yd );
+    gpu_pixel( colour, xc - xd, yc + yd );
+    gpu_pixel( colour, xc - xd, yc - yd );
+    gpu_pixel( colour, xc + xd, yc -yd );
+}
+
+void gpu_ellipse_fill4( unsigned char colour, short xc, short yc, short xd, short yd ) {
+    gpu_rectangle( colour, xc + xd, yc + yd, xc + xd, yc -yd );
+    gpu_rectangle( colour, xc - xd, yc + yd, xc - xd, yc -yd );
+}
+
+void gpu_ellipse( unsigned char colour, short xc, short yc, short radius_x, short radius_y, int filled ) {
+    short active_x, active_y;
+    int Xchange, Ychange, ellipseERROR, Asquare2, Bsquare2, Xstop, Ystop;
+
+    if( !radius_x && !radius_y ) return;
+    if( !radius_x ) {
+        if( filled ) {
+            gpu_rectangle( colour, xc, yc - radius_y, xc, yc + radius_y );
+        } else {
+            gpu_line( colour, xc, yc - radius_y, xc, yc + radius_y );
+        }
+        return;
+    }
+    if( !radius_y ) {
+        if( filled ) {
+            gpu_rectangle( colour, xc - radius_x, yc, xc + radius_x, yc );
+        } else {
+            gpu_line( colour, xc - radius_x, yc, xc + radius_x, yc );
+        }
+        return;
+    }
+
+    Asquare2 = 2* radius_x * radius_x;
+    Bsquare2 = 2 * radius_y * radius_y;
+
+    active_x = radius_x;
+    active_y = 0;
+    Xchange = radius_y * radius_y * ( 1 - 2 * radius_x );
+    Ychange = radius_x * radius_x;
+    ellipseERROR= 0;
+    Xstop = Bsquare2 * radius_x;
+    Ystop = 0;
+
+    while( Xstop >= Ystop ) {
+        if( filled ) gpu_ellipse_fill4( colour, xc, yc, active_x, active_y ); else  gpu_ellipse_plot4( colour, xc, yc, active_x, active_y );
+        active_y++;
+        Ystop += Asquare2;
+        ellipseERROR += Ychange;
+        Ychange += Asquare2;
+        if( ( 2 * ellipseERROR + Xchange ) > 0 ) {
+            active_x--;
+            Xstop -= Bsquare2;
+            ellipseERROR += Xchange;
+            Xchange += Bsquare2;
+        }
+    }
+
+    active_x = 0;
+    active_y = radius_y;
+    Xchange = radius_y * radius_y;
+    Ychange = radius_x * radius_x * ( 1 - 2 * radius_y );
+    ellipseERROR= 0;
+    Xstop = 0;
+    Ystop = Asquare2 * radius_y;
+
+    while( Xstop <= Ystop ) {
+        if( filled ) gpu_ellipse_fill4( colour, xc, yc, active_x, active_y ); else  gpu_ellipse_plot4( colour, xc, yc, active_x, active_y );
+        active_x++;
+        Xstop += Bsquare2;
+        ellipseERROR += Xchange;
+        Xchange += Bsquare2;
+        if( ( 2 * ellipseERROR + Ychange ) > 0 ) {
+            active_y--;
+            Ystop -= Asquare2;
+            ellipseERROR += Ychange;
+            Ychange += Asquare2;
+        }
+    }
+}
+
 // BLIT A 16 x 16 ( blit_size == 1 doubled to 32 x 32 ) TILE ( from tile 0 to 31 ) to (x1,y1) in colour
 // REFLECT { y, x }
 void gpu_blit( unsigned char colour, short x1, short y1, short tile, unsigned char blit_size, unsigned char action ) {

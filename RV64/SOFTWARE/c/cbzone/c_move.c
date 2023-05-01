@@ -53,8 +53,8 @@ void placeobjects(o, missilerun, score)
       if (!(g->attr & STILL_THERE))
         break;
     if (g == o+opt->lstart) {
-      printf("Help! Did not have space available for enemy!\n");
-      printf("Should not have been possible.\n");
+      fprintf(stderr,"Help! Did not have space available for enemy!\n");
+      fprintf(stderr,"Should not have been possible.\n");
 #ifdef WIN32
       return;
 #else //X11
@@ -69,10 +69,8 @@ void placeobjects(o, missilerun, score)
        */
       tonetime();
       clock.tv_usec = 40000;
-      select(0, 0, 0, 0, &clock);
       tonetime();
       clock.tv_usec = 40000;
-      select(0, 0, 0, 0, &clock);
       tonetime();
       odds = score / 500000.0;
       if (score < 75000)
@@ -97,8 +95,8 @@ void placeobjects(o, missilerun, score)
       if (frand() > 0.5)
         dazm = - dazm;
       dazm += pl->azm;
-      ca = cos(dazm);
-      sa = sin(dazm);
+      ca = cosf(dazm);
+      sa = sinf(dazm);
       g->x = pl->x - r * sa;
       g->y = pl->y + r * ca;
       g->attr = START_LIVING;
@@ -121,8 +119,8 @@ void placeobjects(o, missilerun, score)
       }
       r = 800.0 + 1200.0 * frand();
       dazm = frand() * PI2;
-      g->x = pl->x + r * cos(dazm);
-      g->y = pl->y + r * sin(dazm);
+      g->x = pl->x + r * cosf(dazm);
+      g->y = pl->y + r * sinf(dazm);
       g->z = 0.0;
       g->azm = frand() * PI2;
       g->attr = START_LIVING;
@@ -136,8 +134,8 @@ void placeobjects(o, missilerun, score)
       if (!(g->attr & STILL_THERE))
         break;
     if (g == o+opt->sstart) {
-      printf("Help! Did not have space available for lander!\n");
-      printf("Should not have been possible.\n");
+      fprintf(stderr,"Help! Did not have space available for lander!\n");
+      fprintf(stderr,"Should not have been possible.\n");
 #ifdef WIN32
       return;
 #else //X11
@@ -147,8 +145,8 @@ void placeobjects(o, missilerun, score)
 
     r = 1500.0 + 500.0 * frand();
     dazm = frand() * PI2;
-    g->x = pl->x + r * cos(dazm);
-    g->y = pl->y + r * sin(dazm);
+    g->x = pl->x + r * cosf(dazm);
+    g->y = pl->y + r * sinf(dazm);
     g->z = 0.0;
     g->azm = frand() * PI2;
     g->speed = frand() * 10.0;
@@ -176,12 +174,12 @@ void placeobjects(o, missilerun, score)
       else
         r = 2000.0;
       dazm = frand() * PI2;
-      g->x = pl->x + r * cos(dazm);
-      g->y = pl->y + r * sin(dazm);
+      g->x = pl->x + r * cosf(dazm);
+      g->y = pl->y + r * sinf(dazm);
       g->z = 0.0;
     }
 }
- 
+
 void movesuper(g, pl)
      Genericp g;
      Genericp pl;
@@ -300,10 +298,10 @@ void movesuper(g, pl)
     g->fcount = 0;
     cp = pl->ca;
     sp = pl->sa;
-    dcp = cos(pl->rotate);
-    dsp = sin(pl->rotate);
-    cm = cos(g->azm);
-    sm = sin(g->azm);
+    dcp = cosf(pl->rotate);
+    dsp = sinf(pl->rotate);
+    cm = cosf(g->azm);
+    sm = sinf(g->azm);
     i = 0;
     xmt = g->x;
     ymt = g->y;
@@ -336,7 +334,7 @@ void movesuper(g, pl)
     }
   }
 }
- 
+
 void movemissile(g, pl, first)
      Genericp g;
      Genericp pl;
@@ -410,7 +408,7 @@ void movemissile(g, pl, first)
     }
   }
 }
- 
+
 void movecopter(g, pl)
      Genericp g;
      Genericp pl;
@@ -516,10 +514,10 @@ void movecopter(g, pl)
      * toward it or straight away from it.
      */
     cp = sp = 0;
-    dcp = cos(pl->rotate);
-    dsp = sin(pl->rotate);
-    cm = cos(g->azm);
-    sm = sin(g->azm);
+    dcp = cosf(pl->rotate);
+    dsp = sinf(pl->rotate);
+    cm = cosf(g->azm);
+    sm = sinf(g->azm);
     xmt = g->x;
     ymt = g->y;
     xpt = pl->x;
@@ -551,7 +549,7 @@ void movecopter(g, pl)
     }
   }
 }
- 
+
 void movetank(g, pl)
      Genericp g;
      Genericp pl;
@@ -671,10 +669,10 @@ void movetank(g, pl)
     g->fcount = 0;
     cp = pl->ca;
     sp = pl->sa;
-    dcp = cos(pl->rotate);
-    dsp = sin(pl->rotate);
-    cm = cos(g->azm);
-    sm = sin(g->azm);
+    dcp = cosf(pl->rotate);
+    dsp = sinf(pl->rotate);
+    cm = cosf(g->azm);
+    sm = sinf(g->azm);
     i = 0;
     xmt = g->x;
     ymt = g->y;
@@ -707,7 +705,7 @@ void movetank(g, pl)
     }
   }
 }
- 
+
 void movelander(g, pl)
      Genericp g;
      Genericp pl;

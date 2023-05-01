@@ -144,7 +144,7 @@ int main(
   pl = o = (Genericp) calloc(opt->mobjects,sizeof(Generic));
 
   if (o == NULL) {
-    printf("Malloc failed...trying to create too many objects?\n");
+    fprintf(stderr,"Malloc failed...trying to create too many objects?\n");
 #ifdef WIN32
      return;
 #else //X11
@@ -172,8 +172,8 @@ int main(
   /* now calculate ranges to all the objects and translate them */
   /* into a player-centric coordinate system                    */
 
-  pl->ca = cos(pl->azm);
-  pl->sa = sin(pl->azm);
+  pl->ca = cosf(pl->azm);
+  pl->sa = sinf(pl->azm);
   for (g=o+opt->estart; g<o+opt->mobjects; g++)
     if (g->attr & IS_ALIVE) {
       dx = g->x - pl->x;
@@ -280,8 +280,8 @@ int main(
         pl->azm -= PI2;
       if (pl->azm <= 0.0)
         pl->azm += PI2;
-      pl->ca = cos(pl->azm);
-      pl->sa = sin(pl->azm);
+      pl->ca = cosf(pl->azm);
+      pl->sa = sinf(pl->azm);
     }
     if (pl->attr & IS_ALIVE) {
       pl->x -=  pl->sa * pl->speed;
@@ -308,7 +308,7 @@ int main(
         case IS_LANDER:
           movelander(g, pl); break;
         default:
-          printf("Help! Something's alive and I don't know what...\n");
+          fprintf(stderr,"Help! Something's alive and I don't know what...\n");
 #ifdef WIN32
           return;
 #else //X11
@@ -321,15 +321,15 @@ int main(
     for (g=o+opt->estart; g<o+opt->lstart; g++) {
       if (g->attr & IS_ALIVE && !(g->attr & IS_BLOCKED))
         g->azm += g->rotate;
-      g->ca = cos(g->azm);
-      g->sa = sin(g->azm);
+      g->ca = cosf(g->azm);
+      g->sa = sinf(g->azm);
       g->x -=  g->sa * g->speed;
       g->y +=  g->ca * g->speed;
     }
     for (g=o+opt->lstart; g<o+opt->bstart; g++)
       if (g->attr & IS_ALIVE) {
-        g->ca = cos(g->azm);
-        g->sa = sin(g->azm);
+        g->ca = cosf(g->azm);
+        g->sa = sinf(g->azm);
         g->x -= g->sa * g->speed;
         g->y += g->ca * g->speed;
       }
@@ -650,7 +650,7 @@ int main(
         case IS_SUPER:
           explodeobject(g, pl); break;
         default:
-          printf("Help! Cannot explode what doesn't exist.\n");
+          fprintf(stderr,"Help! Cannot explode what doesn't exist.\n");
 #ifdef WIN32
           return;
 #else //X11
@@ -701,7 +701,7 @@ int main(
 #ifdef DEVELOPER
           gettimeofday(&game_end, 0);
           if (opt->output)
-            printf("The game took an average %10.8f secs.\n",
+            fprintf(stderr,"The game took an average %10.8f secs.\n",
                    (game_end.tv_sec-game_start.tv_sec +
                     (game_end.tv_usec-game_start.tv_usec)*1.0e-6)/passes);
 #endif //DEVELOPER
@@ -786,7 +786,6 @@ int main(
     if (tdiff > 0) {
       tend.tv_sec = 0;
       tend.tv_usec = tdiff;
-      select(0, 0, 0, 0, &tend);
     }
 #ifdef DEVELOPER
     passes++;

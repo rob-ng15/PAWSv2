@@ -1237,7 +1237,10 @@ void G_DoSaveGame (void)
     int         length;
     int         i;
 
-    sprintf (name,"doomsav%d.dsg",savegameslot);
+    if (M_CheckParm("-cdrom"))
+        sprintf(name,"c:\\doomdata\\"SAVEGAMENAME"%d.dsg",savegameslot);
+    else
+        sprintf (name,SAVEGAMENAME"%d.dsg",savegameslot);
     description = savedescription;
 
     save_p = savebuffer = screens[1]+0x4000;
