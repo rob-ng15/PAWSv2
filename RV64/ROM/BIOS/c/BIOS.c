@@ -51,15 +51,13 @@ void DMASTART( const void *restrict source, void *restrict destination, unsigned
 }
 
 // STANDARD C FUNCTIONS ( from @sylefeb mylibc )
-void *memset(void *dest, int val, size_t len) {
+void bios_memset(void *dest, int val, size_t len) {
     *DMASET = val;
     DMASTART( (const void *restrict)DMASET, dest, len, 4 );
-    return dest;
 }
 
-void *memcpy( void *dest, void *src, size_t len ) {
+void memcpy( void *dest, void *src, size_t len ) {
     DMASTART( src, dest, len, 3 );
-    return dest;
 }
 
 int strlen( char *s ) {
@@ -89,17 +87,17 @@ void await_vblank( void ) {
 }
 
 // AUDIO CONTROLS
-void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
-    *AUDIO_WAVEFORM = waveform; *AUDIO_FREQUENCY = note; *AUDIO_DURATION = duration; *AUDIO_START = channel_number;
+void beep( unsigned char waveform, unsigned char note, unsigned short duration ) {
+    *AUDIO_WAVEFORM = waveform; *AUDIO_FREQUENCY = note; *AUDIO_DURATION = duration; *AUDIO_START = CHANNEL_BOTH;
 }
-void volume( unsigned char left, unsigned char right ) {
-    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
+void volume( unsigned char newvolume ) {
+    *AUDIO_L_VOLUME = *AUDIO_R_VOLUME = newvolume;
 }
-void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_SAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
+void sample_upload( unsigned short length, unsigned char *samples ) {
+    beep( 0, 0, 0 );
+    *AUDIO_NEW_SAMPLE = CHANNEL_BOTH;
+    DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 );
+    DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 );
 }
 
 // BACKGROUND GENERATOR
@@ -223,7 +221,6 @@ void draw_paws_logo( void ) {
 
 void reset_display( void ) {
     // WAIT FOR THE GPU TO FINISH
-    gpu_pixelblock_stop();
     while( !*GPU_FINISHED );
 
     set_background( BLACK, BLACK, BKG_SOLID );
@@ -261,12 +258,9 @@ void tpu_outputstring( char *s ) {
 void displayfilename( unsigned char *filename, unsigned char type ) {
     char displayname[10], i, j;
     gpu_outputstringcentre( UK_BLUE, 144, 1, "P64 File:", 0 );
-    memset( displayname, 0, 10 );
+    bios_memset( displayname, 0, 10 );
 
-    j = type - 1;
-    if( j == 1 ) {
-        displayname[0] = 16;
-    }
+    j = type - 1; displayname[0] = 16;
     for( i = 0; i < 8; i++ ) {
         if( filename[i] != ' ' ) {
             displayname[j++] = filename[i];
@@ -344,7 +338,7 @@ void swapentries( unsigned int i, unsigned int j ) {
     memcpy( &directorynames[j], &temporary, sizeof( DirectoryEntry ) );
 }
 
-static inline long _rv64_rev8(long rs1) { long rd; __asm__ ("rev8     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+static inline long _rv64_rev8(long rs1) { long rd; __asm__ ("rev8 %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
 void sortdirectoryentries( unsigned int entries ) {
     if( !entries )
         return;
@@ -366,6 +360,8 @@ void sortdirectoryentries( unsigned int entries ) {
     } while( changes );
 }
 
+static inline long _rv64_bext(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("bexti %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & rs2)); else __asm__ ("bext %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
 // WAIT FOR USER TO SELECT A VALID PAW FILE, BROWSING SUBDIRECTORIES
 unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) {
     unsigned int thisdirectorycluster = startdirectorycluster, entries, present_entry, temp;
@@ -376,7 +372,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
         if( rereaddirectory ) {
             entries = -1; present_entry = 0;
             fileentry = (FAT32DirectoryEntry *) directorycluster;
-            memset( &directorynames[0], 0, sizeof( DirectoryEntry ) * 256 );
+            bios_memset( &directorynames[0], 0, sizeof( DirectoryEntry ) * 256 );
         }
 
         while( rereaddirectory ) {
@@ -425,7 +421,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
             // NO ENTRIES FOUND
             gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
             gpu_outputstringcentre( RED, 192, 1, "IN DIRECTORY", 1 );
-            beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
+            beep( WAVE_SAW, 27, 1000 );
             sleep( 1000 );
             return(0);
         }
@@ -517,7 +513,7 @@ __attribute__((used)) void scrollbars( void ) {
 
 void smtthread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp, 0x4000");
+    asm volatile ("li sp, 0x5f80000");
     asm volatile ("j scrollbars");
 }
 
@@ -525,10 +521,10 @@ int main( void ) {
     unsigned int i, j, x, y, selectedfile = 0;
 
     // STOP SMT AND PIXELBLOCK
-    SMTSTOP(); *PB_STOP = *PB_MODE = 0;
+    SMTSTOP(); *PB_STOP = 3; *PB_MODE = 0;
 
     // CLEAR BSS MEMORY AND DEFINE HEAPEND AND ALLOCATE FAT32 MEMORY
-    memset( &_bss_start, 0, &_bss_end - &_bss_start );
+    bios_memset( &_bss_start, 0, &_bss_end - &_bss_start );
     HEAPEND = (void *)((long)*RAMTOP);
     BOOTRECORD = bios_malloc( 512 );
     PARTITIONS = (PartitionTable *)&BOOTRECORD[446];
@@ -538,7 +534,7 @@ int main( void ) {
 
     // RESET THE DISPLAY, AUDIO AND VOLUME
     reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
-    beep( 3, 0, 0, 0 ); volume( 7, 7 );
+    beep( 0, 0, 0 ); volume( 7 );
 
     // KEYBOARD INTO JOYSTICK MODE
     *PS2_MODE = 0; *PS2_CAPSLOCK = 0; *PS2_NUMLOCK = 0;
@@ -556,18 +552,18 @@ int main( void ) {
     SMTSTART( smtthread );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV64GC+ CPU", 0 );
-    gpu_outputstringcentre( UK_BLUE, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
+    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV64GC+", 0 );
+    gpu_outputstringcentre( UK_BLUE, 224, 0, "PAWSv2 on ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS
     while( ( *UART_STATUS & 1 ) | *PS2_AVAILABLE ) { (void)*UART_DATA;( void)*PS2_DATA; }
 
-    gpu_outputstringcentre( RED, 72, 0, "Waiting for SDCARD", 0 );
+    gpu_outputstringcentre( RED, 72, 0, "SDCARD...", 0 );
     gpu_outputstringcentre( RED, 88, 0, "Press RESET", 0 );
     sdcard_readsector( 0, BOOTRECORD );
     PARTITIONS = (PartitionTable *) &BOOTRECORD[ 0x1BE ];
 
-    // NO FAT16 PARTITION FOUND
+    // NO FAT32 PARTITION FOUND
     if( ( PARTITIONS[0].partition_type != 0x0b ) && ( PARTITIONS[0].partition_type != 0x0c ) ) {
         gpu_outputstringcentre( RED, 72, 1, "ERROR", 2 );
         gpu_outputstringcentre( RED, 120, 1, "Insert SDCARD", 0 );
@@ -592,12 +588,10 @@ int main( void ) {
 
     // CALL FILEBROWSER
     int starting_cluster = filebrowser( VOLUMEID -> startof_root, VOLUMEID -> startof_root );
-    if( !starting_cluster ) {
-        while(1) {}
-    }
+    if( !starting_cluster ) { while(1) {} }
 
     // ACKNOWLEDGE SELECTION AND STOP SMT TO ALLOW FASTER LOADING
-    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 63 ); SMTSTOP();
+    sample_upload( 4, &chime[0] ); beep( WAVE_SINE | WAVE_SAMPLE, 0, 63 ); SMTSTOP();
 
     *LEDS = 255;
     gpu_outputstringcentre( WHITE, 72, 1, "P64 File", 0 );
@@ -611,8 +605,7 @@ int main( void ) {
     sleep(500);
 
     // RESET THE DISPLAY AND TURN OFF LEDS
-    reset_display();
-    *LEDS = 0;
+    reset_display(); *LEDS = 0;
 
     // CALL SDRAM LOADED PROGRAM
     ((void(*)(void))((long)*RAMBASE))();

@@ -1899,23 +1899,12 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
     return(1);
 }
 
-// newlib support routines - define standard malloc memory size 16MB
-#ifndef MALLOC_MEMORY
-#define MALLOC_MEMORY ( 16 * 1024 * 1024 )
-#endif
-
-void *__bram_point = (void *)0x1000;
-void *malloc_bram( int size ) {
-    void *previous = __bram_point;
-    __bram_point += size;
-    return( previous );
-}
-
-// Standard i/o directs to the curses terminal, input is from the ps_keyboard
+// PAWS Keyboard Drivers
 extern unsigned char ps2_character_available( void );
 extern unsigned short ps2_inputcharacter( void );
 extern void ps2_keyboardmode( unsigned char mode );
 
+// PAWS newlib support routines
 char *_heap = NULL;
 char *_sbrk( int incr ) {
     char *prev_heap;

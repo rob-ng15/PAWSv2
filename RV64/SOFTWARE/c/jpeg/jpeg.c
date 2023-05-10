@@ -6,7 +6,7 @@ int main( int argc, char **argv ) {
     int width, height; unsigned int filesize;
     unsigned char *imagebuffer, colour, *filebuffer;
 
-    filebuffer = sdcard_selectfile( "", "Please select a JPEG", "JPG", &filesize, "Decoding" );
+    filebuffer = sdcard_selectfile( "Please select a JPEG", "JPG", &filesize, "Decoding" );
 
     // JPEG LIBRARY
     if( filebuffer ) {

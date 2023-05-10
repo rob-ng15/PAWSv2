@@ -194,9 +194,6 @@ extern void netppm_decoder( unsigned char *, unsigned char *);
 // SDCARD using PAWS fat32
 extern unsigned char *sdcard_selectfile( char *, char *, unsigned int *, char *);
 
-// ALLOCATION OF FAST BRAM MEMORY
-extern void *malloc_bram( int size );
-
 // EXTRA DMA MEMCPY MEMSET OPERATIONS
 #ifdef __cplusplus
 extern void paws_memcpy_step( const void *, const void *, size_t, int, int );

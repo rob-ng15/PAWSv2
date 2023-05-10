@@ -31,10 +31,6 @@
  *           placed.
  */
 
-// PAWS BITSMAPS
-unsigned char moon_bitmap[] = {
-    #include "bitmaps/MOON64x66.h"
-};
 
 #include "bitmaps/moon.bit"
 #include "bitmaps/joystick.bit"
@@ -52,7 +48,7 @@ unsigned char paws_colour, paws_text_colour;
 
 #define NUMPIXMAPS 5
 Bmap bmaps[NUMPIXMAPS] = {
-  64, 66, moon_bitmap, NULL, COLOR_MOON,
+  moon_width, moon_height, moon_bits, NULL, COLOR_MOON,
   joystick_width, joystick_height, joystick_bits, NULL, COLOR_JOYSTICK,
   hswitch_width, hswitch_height, hswitch_bits, NULL, COLOR_TEXT,
   lswitch_width, lswitch_height, lswitch_bits, NULL, COLOR_TEXT,
@@ -342,14 +338,33 @@ void putpixmap(i, p)
      int i;
      int* p;
 {
-     if(i) return;
-  //gpu_pixelblock( p[0] * xscale, p[1] * yscale, bmaps[i].width, bmaps[i].height, TRANSPARENT, bmaps[i].p );
+     short x = p[0] * xscale, y = p[1] * yscale;
+
+     switch(i) {
+          case 0:
+               gpu_ellipse( paws_colourmap[COLOR_MOON], x, y, moon_width * xscale, moon_height * yscale, FALSE );
+               break;
+          case 1:
+               gpu_ellipse( paws_colourmap[COLOR_JOYSTICK], x, y, joystick_width * xscale, joystick_height * yscale, TRUE );
+          default:
+               break;
+     }
+
 }
 
 void removepixmap(i, p)
      int i;
      int* p;
 {
-     if(i) return;
-  //gpu_rectangle( TRANSPARENT, p[0] * xscale, p[1] * yscale, ( p[0] * xscale ) + bmaps[i].width, ( p[1] * yscale )  + bmaps[i].height );
+     short x = p[0] * xscale, y = p[1] * yscale;
+
+     switch(i) {
+          case 0:
+               gpu_ellipse( TRANSPARENT, x, y, moon_width * xscale, moon_height * yscale, FALSE );
+               break;
+          case 1:
+               gpu_ellipse( TRANSPARENT, x, y, joystick_width * xscale, joystick_height * yscale, TRUE );
+          default:
+               break;
+     }
 }

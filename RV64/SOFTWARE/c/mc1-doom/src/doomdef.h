@@ -92,9 +92,9 @@ typedef enum
 #define SCREENWIDTH 320
 #define SCREENHEIGHT 240
 
-// Convert 320x200 coordinates to rendering coordinates.
+// Convert 320x200 coordinates to rendering coordinates. ( 200->240 = *1.2 using floating point is faster than integer multiply and divide)
 #define TOSCREENX(x) (x)
-#define TOSCREENY(y) (((y)*SCREENHEIGHT+(BASE_HEIGHT/2))/BASE_HEIGHT)
+#define TOSCREENY(y) (int)((float)y*1.2)
 
 // The maximum number of players, multiplayer/networking.
 #define MAXPLAYERS              4

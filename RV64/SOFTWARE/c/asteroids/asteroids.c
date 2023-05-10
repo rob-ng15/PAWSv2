@@ -652,7 +652,7 @@ void check_crash( void ) {
 // MAIN GAME LOOP STARTS HERE
 void smt_thread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp, 0x4000");
+    asm volatile ("li sp, 0x5f80000");
     asm volatile ("j move_asteroids");
 }
 

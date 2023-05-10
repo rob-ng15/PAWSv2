@@ -278,13 +278,14 @@ $$end
 
     // LINK CPU TO MEMORY CONTROLLERS
     uint1   memorybusy <: DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT );
+    //uint1   memorybusy <: DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & ( SDRAM ) ) | ( CPU.readmemory & ( VIDEODIRECT | BRAM ) );
     uint32  readdata <: SDRAM ? DRAM.readdata :
-                    VIDEODIRECT ? VIDEO_Map.readDataDirect :
-                    BRAM ? RAM.readdata :
-                    TIMERS ? TIMERS_Map.readData :
-                    VIDEO ? VIDEO_Map.readData :
-                    AUDIO ? AUDIO_Map.readData :
-                    IO ? IO_Map.readData : 0;
+                                VIDEODIRECT ? VIDEO_Map.readDataDirect :
+                                BRAM ? RAM.readdata :
+                                TIMERS ? TIMERS_Map.readData :
+                                VIDEO ? VIDEO_Map.readData :
+                                AUDIO ? AUDIO_Map.readData :
+                                IO ? IO_Map.readData : 0;
     PAWSCPU CPU <@clock_cpu> (
         clock_CPUdecoder <: clock_decode,
         clock_cache <: clock_cache,
@@ -303,36 +304,39 @@ $$end
     );
 }
 
-// RAM - BRAM controller
+// RAM - 32 bit BRAM controller
+$$if not SIMULATION then
+$$ brambits = 12
+$$else
+$$ brambits = 13
+$$end
 unit bramcontroller(
-    input   uint15  address,
+    input   uint$brambits$  address,
     input   uint2   accesssize,
     input   uint1   writeflag,
     input   uint32  writedata,
     output  uint32  readdata
 ) <reginputs> {
-    // BRAM (for BIOS AND FAST BRAM ) SELECT BIOS FOR FPGA OR SIMULATION
     $$config['dualport_bram_wmask_byte_wenable0_width'] = 'data'
     $$config['dualport_bram_wmask_byte_wenable1_width'] = 'data'
     $$if not SIMULATION then
-        // RISC-V FAST BRAM and BIOS
-        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [16384] = {file("ROM/BIOS.bin"), pad(uninitialized)};
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [2048] = {file("ROM/BIOS.bin"), pad(uninitialized)};              // RISC-V BIOS ( 4k of BRAM )
     $$else
-        // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
-        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/VBIOS.bin"), pad(uninitialized)};             // RISC-V BIOS FOR VERILATOR - TEST FOR SMT AND FPU ( 8k of BRAM )
     $$end
 
-    // BRAM FLAGS ram0 lower 16 bits, ram1 upper 16 bits, COMBINE ram0 AND ram1 TO 32 BIT READ
-    ram.wenable0 := 0; ram.addr0 := address[1,14];
-    ram.wenable1 := 0; ram.addr1 := address[1,14] + 1; ram.wdata1 := writedata[16,16];
-    readdata := { ram.rdata1, ram.rdata0 };
+    ram.wenable0 := 0; ram.addr0 := address[1,$brambits-1$];                                                                    // BRAM FLAGS ram0 lower 16 bits
+    ram.wenable1 := 0; ram.addr1 := address[1,$brambits-1$] + 1;                                                                // BRAM FLAGS ram1 upper 16 bits ( next address )
+    readdata := { ram.rdata1, ram.rdata0 };                                                                                     // COMBINE { ram1, ram0 } for 32 bit read
+    ram.wdata0 := writedata[0,16];                                                                                              // ram0 16/32 bit write lower 16 bits ( default )
+    ram.wdata1 := writedata[16,16];                                                                                             // ram1 32 bit write upper 16 bits
 
     always_after {
-        if( writeflag ) {
+        if( writeflag ) {                                                                                                       // BRAM write
             switch( accesssize ) {
-                case 2b00: { ram.wdata0 = { {2{writedata[0,8]}} }; ram.wenable0 = address[0,1] ? 2b10 : 2b01; }
-                case 2b01: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; }
-                default: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; ram.wenable1 = 2b11; }
+                case 2b00: { ram.wdata0 = { {2{writedata[0,8]}} }; ram.wenable0 = address[0,1] ? 2b10 : 2b01; }                 // 8 bit, duplicate and write to correct part of ram0
+                case 2b01: { ram.wenable0 = 2b11; }                                                                             // 16 bit
+                default: { ram.wenable1 = 2b11; }                                                                               // 32/64 bit
             }
         }
     }

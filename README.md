@@ -63,6 +63,12 @@ When I first started programming for FPGAs, Asteroids was my first game implemen
 ![3D MAZE](Reference/Graphics/ASTEROIDS-1.jpg)
 ![3D MAZE](Reference/Graphics/ASTEROIDS-2.jpg)
 
+## CBZONE (GAMES)
+
+A work in progress porting [CBZONE](https://github.com/jrrk/cbzone) to PAWSv2 graphics and controls.
+
+Video on Youtube of the [CBZONE WIP](https://www.youtube.com/watch?v=X1RFik2zZbU)
+
 ## CHIP-8 (COMPUTER/CHIP-8)
 A CHIP-8 interpreter (only for RV64), capable of running CHIP-8, CHIP-48, SUPERCHIP and XO-CHIP programs (with varying success). Runs as 2 threads, 1 for input and display, 1 for the interpreter. This was done not for any particular reason other than to try and have 2 threads interacting. NO MEMORY PROTECTION IN PAWSv2!
 
@@ -113,6 +119,8 @@ An implementation of [Pseudo 3d Racer](https://www.lexaloffle.com/bbs/?tid=35767
 ![OUTRUN](Reference/Graphics/OUTRUN-1.jpg)
 ![OUTRUN](Reference/Graphics/OUTRUN-2.jpg)
 ![OUTRUN](Reference/Graphics/OUTRUN-3.jpg)
+
+Video on Youtube of the [OUTRUN DEMO](https://youtu.be/XMiMhzwnLIE)
 
 A full view of the cityscape backdrop (forced, not normally visible), showing the background sprites and tilemaps.
 

@@ -250,7 +250,7 @@ __attribute__((used)) void interactivity( void ) {
 }
 
 void smt_thread( void ) {
-    asm volatile ("li sp, 0x4000");
+    asm volatile ("li sp, 0x5f80000");
     asm volatile ("j interactivity");
 }
 
