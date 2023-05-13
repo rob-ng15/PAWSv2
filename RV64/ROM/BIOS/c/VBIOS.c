@@ -506,7 +506,7 @@ void smtmandel( void ) {
 
 void smtthread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp, 0x5f80000");
+    asm volatile ("li sp ,0x5f80000");
     smtmandel();
     SMTSTOP();
 }

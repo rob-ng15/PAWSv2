@@ -206,7 +206,6 @@ char volatile *TPU_REGS_B = (char volatile *) 0xd500;
 int volatile *PAWSMAGIC = (int volatile *) 0xf700;
 unsigned int volatile *RAMBASE = (unsigned int volatile *) 0xf704;
 unsigned int volatile *RAMTOP = (unsigned int volatile *) 0xf708;
-unsigned int volatile *STACKTOP = (unsigned int volatile *) 0xf70c;
 
 // TYPES AND STRUCTURES
 typedef unsigned int size_t;

@@ -1,25 +1,13 @@
 module hdmi_clock (
-        input  clk,
-        input  rst,
-        output pixel_clk,     // 25 MHz
+        input  clk,           //  25 MHz
         output half_hdmi_clk  // 125 MHz
     );
 
 `ifdef MOJO
 
-mojo_clk_50_25_125_125n mclk(
-  .CLK_IN1(clk),
-  .CLK_OUT2(pixel_clk),
-  .CLK_OUT3(half_hdmi_clk),
-  .CLK_OUT4(half_hdmi_clk_n),
-  .RESET(rst)
-);
-
 `else
 
 `ifdef DE10NANO
-
-// not yet implemented
 
 `else
 
@@ -71,8 +59,6 @@ EHXPLLL #(
         .LOCK(locked)
 	);
 
-assign pixel_clk = clk;
-
 `else
 
 `ifdef ICARUS
@@ -85,7 +71,6 @@ initial begin
 end
 
 assign half_hdmi_clk = genclk;
-assign pixel_clk     = clk;
 
 `endif
     

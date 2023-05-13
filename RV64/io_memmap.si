@@ -88,37 +88,42 @@ $$end
     rtc RTC( clk <: clock, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );                                                // EMARD verilog version
     //mcp7940n RTC <@clock_25mhz> ( sda <:> gpdi_sda, scl <:> gpdi_scl );                                                       // Silice translation (not yet working)
 
+
 $$if not SIMULATION then
     // I/O FLAGS
     UART_IN.inread := 0; UART_OUT.outwrite := 0; PS2.inread := 0;
     SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0;
 $$end
-
-    RTC.wr := 0; RTC.addr := 7; RESETSTATUS := 0;
+    RTC.wr := 0; RESETSTATUS := 0;
 
     always_after {
-        uint1 MAGICVALUE(0);                                                                                                    // WRITE 32h50415357 { 'P', 'A', 'W', 'S' } TO ALLOW WRITING TO SDCARD SECTOR 0
-        uint20  mouse_latch = uninitialised;                                                                                    // MOUSE LATCH TIMER AFTER MOVE
-        uint64  LATCHrtc = uninitialised;                                                                                       // RTC LATCH WHEN READING
+        uint1   MAGICVALUE = uninitialised;                                                                                     // WRITE 32h50415357 { 'P', 'A', 'W', 'S' } TO ALLOW WRITING TO SDCARD SECTOR 0
+        uint20  mouse_latch = uninitialised;                                                                                    // MOUSE LATCH AFTER MOVE
+        uint64  LATCHrtc = uninitialised;                                                                                       // LATCH RTC ON READ SO SAME VALUE IS RETURNED FOR FULL 64 BIT READ
+
+        if( reset ) {
+            $$if not SIMULATION then
+                PS2.outputkeycodes = 0;
+            $$end
+            RTC.addr = 7; MAGICVALUE = 0;
+        }
 
         $$if not SIMULATION then
-        if( reset ) { PS2.outputkeycodes = 0; }
-
-        if( |mouse_latch ) {
-            mouse_latch = mouse_latch - 1;
-        } else {
-            switch( btns[3,2] ) {
-                case 2b01: { mouse_y = mouse_y - ( |mouse_y ); }
-                case 2b10: {  mouse_y = mouse_y + ( mouse_y != 479 ); }
-                default: {}
+            if( |mouse_latch ) {
+                mouse_latch = mouse_latch - 1;
+            } else {
+                switch( btns[3,2] ) {
+                    case 2b01: { mouse_y = mouse_y - ( |mouse_y ); }
+                    case 2b10: {  mouse_y = mouse_y + ( mouse_y != 479 ); }
+                    default: {}
+                }
+                switch( btns[5,2] ) {
+                    case 2b01: { mouse_x = mouse_x - ( |mouse_x ); }
+                    case 2b10: { mouse_x = mouse_x + ( mouse_x != 639 ); }
+                    default: {}
+                }
+                mouse_latch = |btns[3,4] ? 20h80000 : 0;
             }
-            switch( btns[5,2] ) {
-                case 2b01: { mouse_x = mouse_x - ( |mouse_x ); }
-                case 2b10: { mouse_x = mouse_x + ( mouse_x != 639 ); }
-                default: {}
-            }
-            mouse_latch = |btns[3,4] ? 20h80000 : 0;
-        }
         $$end
 
         // READ IO Memory
@@ -228,7 +233,6 @@ $$end
                 default: {}
             }
         }
-
         if( DMAACTIVE ) { DMAMODE = 0; }                                                                                        // CANCEL DMA REQUEST ONCE DMA STARTS
     }
 }
@@ -252,7 +256,6 @@ unit timers_memmap(
     timers_rng timers <@clock_25mhz> ( seconds :> cursor, g_noise_out :> static16bit );
 
     always_after {
-
         uint1   LATCHmemoryWrite = uninitialized;                                                                               // LATCH MEMORYWRITE SO AS NOT TO SEND DOUBLE REQUESTS
         uint64  LATCHseconds = uninitialised; uint25  LATCHmilliseconds = uninitialised;                                        // LATCH TIME OF DAY SO READ RETURNS THE SAME TIME
 
@@ -659,7 +662,7 @@ unit sdcardcontroller(
   simple_dualport_bram_port0 buffer_out,
   simple_dualport_bram_port1 buffer_in
 ) <reginputs> {
-    // SDCARD - Code for the SDCARD from @sylefeb
+    // SDCARD - Code for the SDCARD from @sylefeb with write support added by self
     sdcardio sdcio; sdcard sd( sd_clk :> sd_clk, sd_mosi :> sd_mosi, sd_csn :> sd_csn, sd_miso <: sd_miso, io <:> sdcio, buffer_read <:> buffer_in, buffer_write <:> buffer_out );
 
     // SDCARD Commands
