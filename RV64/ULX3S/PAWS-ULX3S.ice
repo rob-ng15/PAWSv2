@@ -12,27 +12,20 @@ $$ addr_width = sdram_addr_width + 1
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 
 // L0 CACHE SIZES FOR HART ID 0 AND 1
-// MAX size is 64 due to bram limits ( 32 is 1k )
+// 256 is 1k
 // size and blocks must be a power of 2
-$$ L0Isize = 32
-$$ L0Icacheaddrwidth = clog2(L0Isize)
-
 // HART 0 - MAIN
-$$ L00Iblocks = 8
+$$ L00Iblocks = 1024
 $$ L00Icount = clog2(L00Iblocks)
-$$ L00Itags = L0Isize * L00Iblocks
-$$ L00Itagscount = clog2(L00Itags)
-$$ L00Ipartaddresswidth = addr_width - 1 - L00Icount - L0Icacheaddrwidth
-$$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
+$$ L00Ipartaddresswidth = addr_width - 1 - L00Icount
+$$ L00Ipartaddressstart = 1 + L00Icount
 bitfield L00cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
 
 // HART 1 - SMT
-$$ L01Iblocks = 2
+$$ L01Iblocks = 64
 $$ L01Icount = clog2(L01Iblocks)
-$$ L01Itags = L0Isize * L01Iblocks
-$$ L01Itagscount = clog2(L01Itags)
-$$ L01Ipartaddresswidth = addr_width - 1 - L01Icount - L0Icacheaddrwidth
-$$ L01Ipartaddressstart = 1 + L01Icount + L0Icacheaddrwidth
+$$ L01Ipartaddresswidth = addr_width - 1 - L01Icount
+$$ L01Ipartaddressstart = 1 + L01Icount
 bitfield L01cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
 
 // SDRAM CACHE DEFINITIONS
