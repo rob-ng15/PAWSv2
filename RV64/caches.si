@@ -151,10 +151,10 @@ unit cachecontroller(
     cache_read DCACHE <@clock_cache> ( cache0 <:> Dcache0, tags0 <:> Dtags0, cache1 <:> Dcache1, tags1 <:> Dtags1, address <: address );
     cache_write DCACHEW( cache0 <:> Dcache0, tags0 <:> Dtags0, cache1 <:> Dcache1, tags1 <:> Dtags1, needwritetosdram <: dowrite, address <: address, writedata <: cachewritevalue );
 
-    uint32  sdramreaddata = uninitialized;          sdramcontroller SDRAM( sio <:> sio );                                       // SDRAM CONTROLLER
+    uint32  sdramreaddata = uninitialized;                                                 // SDRAM CONTROLLER
     uint1   dowrite = uninitialized;                                                                                            // MEMORY WRITE OPERATION FLAG
 
-    SDRAM.readflag := 0; SDRAM.writeflag := 0; DCACHEW.update := 0;                                                             // SDRAM ACCESS AND CACHE UPDATE FLAGS
+    sio.in_valid := 0; DCACHEW.update := 0;                                                             // SDRAM ACCESS AND CACHE UPDATE FLAGS
 
     algorithm <autorun> {
         uint1   doread = uninitialized;                                                                                         // MEMORY READ OPERATION FLAG
@@ -174,24 +174,26 @@ unit cachecontroller(
                         DCACHEW.update = accessmask;                                                                            // UPDATE CACHE IF WRITE
                     }
                 } else {                                                                                                        // CACHE MISS
-                    busy = 1; if( SDRAM.busy ) { while( SDRAM.busy ) {} }                                                       // WAIT FOR SDRAM IF BUSY
+                    busy = 1;
                     if( |Devict ) {                                                                                             // EVICT AS PARTS OF CACHE LINE NEEDED AND OCCUPIED
-                        SDRAM.address = Devict[0,1] ? DCACHE.cacheaddressL : DCACHE.cacheaddressH;                              //      EVICT FIRST ( possibly only ) 16 BITS
-                        SDRAM.writedata = DCACHE.rdata[ Devict[0,1] ? 0 : 16, 16 ]; SDRAM.writeflag = 1;
+                        sio.rw = 1;
+                        sio.addr = Devict[0,1] ? DCACHE.cacheaddressL : DCACHE.cacheaddressH;                              //      EVICT FIRST ( possibly only ) 16 BITS
+                        sio.data_in = DCACHE.rdata[ Devict[0,1] ? 0 : 16, 16 ]; sio.in_valid = 1;
                         if( &Devict ) {
-                            while( ~sio.done ) {} SDRAM.address = DCACHE.cacheaddressH;                                         //      EVICT SECOND 16 BITS
-                            SDRAM.writedata = DCACHE.rdata[16,16]; SDRAM.writeflag = 1;
+                            while( ~sio.done ) {} sio.addr = DCACHE.cacheaddressH;                                         //      EVICT SECOND 16 BITS
+                            sio.data_in = DCACHE.rdata[16,16];sio.in_valid = 1;
                         }
-                        if( doreadsdram & |Dread ) { while( ~sio.done ) {} }                                                    // ONLY WAIT IF READ IS TO FOLLOW
+                        while( ~sio.done ) {}
                     }
                     if( doreadsdram & |Dread) {                                                                                 // READ FROM SDRAM FOR READ / 8 BIT WRITE
-                        SDRAM.address = Dread[0,1] ? address : address2; SDRAM.readflag = 1; while( ~sio.done ) {}              //      READ FIRST ( possibly only ) 16 BITS
+                        sio.rw = 0;
+                        sio.addr = Dread[0,1] ? address : address2; sio.in_valid = 1; while( ~sio.done ) {}              //      READ FIRST ( possibly only ) 16 BITS
                         if( &Dread ) {
-                            sdramreaddata[0,16] = SDRAM.readdata;                                                               //      LATCH LOWER 16 BITS FOR ALL 32 BIT READ
-                            SDRAM.address = address2; SDRAM.readflag = 1;                                                       //      READ UPPER 16 BITS
-                            while( ~sio.done ) {} sdramreaddata[16,16] = SDRAM.readdata;                                        //      LATCH UPPER 16 BITS
+                            sdramreaddata[0,16] = sio.data_out;                                                               //      LATCH LOWER 16 BITS FOR ALL 32 BIT READ
+                            sio.addr = address2; sio.in_valid = 1;                                                       //      READ UPPER 16 BITS
+                            while( ~sio.done ) {} sdramreaddata[16,16] = sio.data_out;                                        //      LATCH UPPER 16 BITS
                         } else {
-                            sdramreaddata = Dread[0,1] ? { 16b0, SDRAM.readdata } : { SDRAM.readdata, 16b0 };                   //      LTACH LOWER OR UPPER 16 BITS FOR ONLY 16 BIT READ
+                            sdramreaddata = Dread[0,1] ? { 16b0, sio.data_out } : { sio.data_out, 16b0 };                   //      LTACH LOWER OR UPPER 16 BITS FOR ONLY 16 BIT READ
                         }
                     }
                     DCACHEW.update = doreadsdram ? Dread : accessmask;                                                          // UPDATE CACHE READ AND 8 BIT WRITE : 32/16 WRITE
@@ -281,22 +283,3 @@ unit cache_write(
     }
 }
 
-// START READ/WRITE FROM SDRAM, 16BIT
-unit sdramcontroller(
-    sdram_user      sio,
-    input   uint$sdram_addr_width$  address,
-    input   uint1   writeflag,
-    input   uint16  writedata,
-    input   uint1   readflag,
-    output! uint16  readdata,
-    output  uint1   busy(0)
-) <reginputs> {
-    uint1   rw <: readflag | writeflag;
-    uint1   dR = uninitialized;
-
-    sio.addr := address; sio.data_in := writedata; sio.rw := writeflag; sio.in_valid := rw;
-    busy := rw ? 1 : sio.done ? 0 : busy;
-
-    dR := rw ? readflag : dR;
-    readdata := ( sio.done & dR ) ? sio.data_out : readdata;
-}

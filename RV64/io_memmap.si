@@ -374,18 +374,22 @@ unit audio_memmap(
     input  uint8   static8bit
 ) <reginputs> {
     // BLOCK STORAGE FOR "DOOM SAMPLES" - A SERIES OF NOTES TO BE PLAYED FOR A GIVEN NUMBER OF MILLISECONDS
-    uint8   maxSL = uninitialised;                  uint8   maxSR = uninitialised;                                              // DOOM SAMPLE BUFFERS
     simple_dualport_bram uint7 samples_left <@clock_25mhz,@clock> [256] = uninitialized;
     simple_dualport_bram uint7 samples_right <@clock_25mhz,@clock> [256] = uninitialized;
+    doom_samples_writer DSL( doom_samples <:> samples_left, samples <: writeData[0,7] );
+    doom_samples_writer DSR( doom_samples <:> samples_right, samples <: writeData[0,7] );
 
     // BLOCK STORAGE FOR "BIT SAMPLES" - 1024 x 1 bit SAMPLES ( very crude digital sounds ), STORED AS 128 x 8 bits PER CHANNEL
     simple_dualport_bram uint8 bit_samples_left <@clock_25mhz,@clock> [128] = uninitialized;
     simple_dualport_bram uint8 bit_samples_right <@clock_25mhz,@clock> [128] = uninitialized;
+    bitsample_writer BSL( bit_samples <:> bit_samples_left, samples <: writeData[0,8] );
+    bitsample_writer BSR( bit_samples <:> bit_samples_right, samples <: writeData[0,8] );
 
     // BLOCK STORAGE FOR USER DEFINED WAVEFORMS - 256 x 8 BIT SAMPLES, 2 PER CAHNNEL, STORED AS 2 X 256 x 8 BITS PER CHANNEL
     simple_dualport_bram uint8 wave_samples_left <@clock_25mhz,@clock> [512] = uninitialized;
     simple_dualport_bram uint8 wave_samples_right <@clock_25mhz,@clock> [512] = uninitialized;
-
+    wave_samples_writer WSL( wave_samples <:> wave_samples_left, samples <: writeData[0,8], high <: writeData[2,1] );
+    wave_samples_writer WSR( wave_samples <:> wave_samples_right, samples <: writeData[0,8], high <: writeData[2,1] );
 
     // Left and Right audio channels
     audio apu_processor <@clock_25mhz> (
@@ -398,21 +402,20 @@ unit audio_memmap(
         staticGenerator <: static8bit,
         audio_l :> audio_l,
         audio_r :> audio_r,
-        samples_MAX_L <: maxSL,
-        samples_MAX_R <: maxSR
+        samples_MAX_L <: DSL.max,
+        samples_MAX_R <: DSR.max
     );
 
     // SAMPLE MEMORY CONTROLS
-    samples_left.wenable1 := 1; samples_right.wenable1 := 1; bit_samples_left.wenable1 := 1; bit_samples_right.wenable1 := 1; wave_samples_left.wenable1 := 1; wave_samples_right.wenable1 := 1;
+    DSL.newsample := 0; DSR.newsample := 0; DSL.load := 0; DSR.load := 0;                                                       // DOOM STYLE PC SPEAKER SAMPLES
+    BSL.newsample := 0; BSR.newsample := 0; BSL.load := 0; BSR.load := 0;                                                       // CHIP8 1 BIT SAMPLES
+    WSL.newsample := 0; WSR.newsample := 0; WSL.load := 0; WSR.load := 0;                                                       // USER DEFINED WAVEFORM SAMPLES
 
     always_after {
         uint1   LATCHmemoryWrite = uninitialized;                                                                               // LATCH MEMORYWRITE 50MHz -> 25 MHz
-        uint7   maxBL = uninitialised; uint7   maxBR = uninitialised;                                                           // 1 BIT SAMPLE BUFFERS
-        uint9   maxWL = uninitialised; uint9   maxWR = uninitialised;                                                           // USER DEFINED WAVEFORM BUFFERS
 
         if( reset ) { apu_processor.volume_l = 7; apu_processor.volume_r = 7; }
         readData = memoryAddress[1,1] ? apu_processor.audio_active_r : apu_processor.audio_active_l;
-
 
         // WRITE IO Memory
         switch( { memoryWrite, LATCHmemoryWrite } ) {
@@ -422,24 +425,17 @@ unit audio_memmap(
                     case 4h1: { apu_processor.frequency = writeData; }
                     case 4h2: { apu_processor.duration = writeData; }
                     case 4h3: { apu_processor.apu_write = writeData; }
-                    case 4h4: { if( writeData[0,1] ) { maxSL = 0; } if( writeData[1,1] ) { maxSR = 0; } }                       // RESET SAMPLES
-                    case 4h5: { samples_left.addr1 = maxSL; samples_left.wdata1 = writeData; maxSL = maxSL + 1; }               // WRITE TO LEFT SAMPLE MEMORY
-                    case 4h6: { samples_right.addr1 = maxSR; samples_right.wdata1 = writeData; maxSR = maxSR + 1; }             // WRITE TO RIGHT SAMPLE MEMORY
+                    case 4h4: { DSL.newsample = writeData[0,1]; DSR.newsample = writeData[1,1]; }                               // RESET SAMPLES
+                    case 4h5: { DSL.load = 1; }                                                                                 // WRITE TO LEFT SAMPLE MEMORY
+                    case 4h6: { DSR.load = 1; }                                                                                 // WRITE TO RIGHT SAMPLE MEMORY
                     case 4h8: { apu_processor.volume_l = writeData; }                                                           // SET VOLUME LEFT
                     case 4h9: { apu_processor.volume_r = writeData; }                                                           // SET VOLUME RIGHT
-                    case 4ha: { if( writeData[0,1] ) { maxBL = 0; } if( writeData[1,1] ) { maxBR = 0; } }                       // RESET BIT SAMPLES}
-                    case 4hb: { bit_samples_left.addr1 = maxBL; bit_samples_left.wdata1 = writeData; maxBL = maxBL + 1; }       // WRITE TO LEFT BIT SAMPLE MEMORY
-                    case 4hc: { bit_samples_right.addr1 = maxBR; bit_samples_right.wdata1 = writeData; maxBR = maxBR + 1; }     // WRITE TO RIGHT BIT SAMPLE MEMORY
-                    case 4hd: {                                                                                                 // RESET WAVE SAMPLES TO 0 OR 256 ( WAVE UD1 OR WAVE UD2 )
-                        if( writeData[0,1] ) {
-                            maxWL = writeData[2,1] ? 256 : 0;
-                        }
-                        if( writeData[1,1] ) {
-                            maxWR = writeData[2,1] ? 256 : 0;
-                        }
-                    }
-                    case 4he: { wave_samples_left.addr1 = maxWL; wave_samples_left.wdata1 = writeData; maxWL = maxWL + 1; }     // WRITE TO LEFT WAVE SAMPLE MEMORY
-                    case 4hf: { wave_samples_right.addr1 = maxWR; wave_samples_right.wdata1 = writeData; maxWR = maxWR + 1; }   // WRITE TO RIGHT WAVE SAMPLE MEMORY
+                    case 4ha: { BSL.newsample = writeData[0,1]; BSR.newsample = writeData[1,1]; }                               // RESET BIT SAMPLES}
+                    case 4hb: { BSL.load = 1; }                                                                                 // WRITE TO LEFT BIT SAMPLE MEMORY
+                    case 4hc: { BSR.load = 1;  }                                                                                // WRITE TO RIGHT BIT SAMPLE MEMORY
+                    case 4hd: { WSL.newsample = writeData[0,1]; WSR.newsample = writeData[1,1]; }                               // RESET WAVE SAMPLES TO 0 OR 256 ( WAVE UD1 OR WAVE UD2 )
+                    case 4he: { WSL.load = 1; }                                                                                 // WRITE TO LEFT WAVE SAMPLE MEMORY
+                    case 4hf: { WSR.load = 1;  }                                                                                // WRITE TO RIGHT WAVE SAMPLE MEMORY
                     default: {}
                 }
             }

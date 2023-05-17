@@ -39,7 +39,7 @@
 //
 
 // The actual lengths of all sound effects.
-short *s_sfx_lengths = (short *)0x2700; // // moved to BRAM from //static short s_sfx_lengths[NUMSFX];
+static short s_sfx_lengths[NUMSFX];
 
 //
 // This function loads the sound data from the WAD lump, for single sound.

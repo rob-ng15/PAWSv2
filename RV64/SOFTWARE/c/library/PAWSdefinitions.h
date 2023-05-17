@@ -219,7 +219,7 @@ struct copper_command {
 #define WAVE_SINE 3
 #define WAVE_NOISE 4
 #define WAVE_UD1 5
-#define WAVE UD2 6
+#define WAVE_UD2 6
 #define WAVE_BITS 7
 #define WAVE_SAMPLE 8
 #define SAMPLE_REPEAT 16
