@@ -344,6 +344,7 @@ $$end
 
         // READ IO Memory
         switch( memoryAddress[8,4] ) {
+            case 4h0: { readData = BACKGROUND.readData; }
             case 4h1: { readData = memoryAddress[1,1] ? LOWER_TILE.tm_lastaction : memoryAddress[2,1] ? LOWER_TILE.tm_read : LOWER_TILE.tm_active; }
             case 4h2: { readData = memoryAddress[1,1] ? UPPER_TILE.tm_lastaction : memoryAddress[2,1] ? UPPER_TILE.tm_read : UPPER_TILE.tm_active; }
             case 4h3: {
@@ -459,18 +460,19 @@ unit background_memmap(
     input   uint6   memoryAddress,
     input   uint1   memoryWrite,
     input   uint16  writeData,
+    output  uint10  readData,
 
     input   uint2   colourmode,
     input   uint2   static2bit
 ) <reginputs> {
     // BACKGROUND CO-PROCESSOR PROGRAM STORAGE
-    // { 3 bit command, 3 bit mask, { 1 bit for cpuinput flag, 10 bit coordinate }, 4 bit mode, 8 bit colour 2, 8 bit colour 1 }
-    simple_dualport_bram uint3  copper_commands <@video_clock,@clock> [ 256 ] = uninitialised;
-    simple_dualport_bram uint3  copper_conditions <@video_clock,@clock> [ 256 ] = uninitialised;
-    simple_dualport_bram uint11 copper_coordinates <@video_clock,@clock> [ 256 ] = uninitialised;
-    simple_dualport_bram uint4  copper_modes <@video_clock,@clock> [ 256 ] = uninitialised;
-    simple_dualport_bram uint8  copper_alts <@video_clock,@clock> [ 256 ] = uninitialised;
-    simple_dualport_bram uint8  copper_colours <@video_clock,@clock> [ 256 ] = uninitialised;
+    simple_dualport_bram uint4  OP <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint3  OPD <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint1  OPF <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint10 OPL <@video_clock,@clock> [ 128 ] = uninitialised;
+
+    uint3   mempos = uninitialised;
+    uint80  memoryinit = uninitialised;
 
     // BACKGROUND GENERATOR
     background_display BACKGROUND <@video_clock,!video_reset> (
@@ -485,32 +487,29 @@ unit background_memmap(
         b_mode <: BACKGROUND_COPPER.BACKGROUNDmode,
         colourmode <: colourmode
     );
-    background_copper BACKGROUND_COPPER  <@video_clock,!video_reset> (
+    new_copper BACKGROUND_COPPER  <@video_clock,!video_reset> (
         pix_x <: pix_x,
         pix_y <: pix_y,
-        pix_active <: pix_active,
         pix_vblank <: pix_vblank,
         backgroundcolour <: BACKGROUND_WRITER.BACKGROUNDcolour,
         backgroundcolour_alt <: BACKGROUND_WRITER.BACKGROUNDalt,
         backgroundcolour_mode <: BACKGROUND_WRITER.BACKGROUNDmode,
-        copper_commands <:> copper_commands,
-        copper_conditions <:> copper_conditions,
-        copper_coordinates <:> copper_coordinates,
-        copper_modes <:> copper_modes,
-        copper_alts <:> copper_alts,
-        copper_colours <:> copper_colours
+        OP <:> OP,
+        OPD <:> OPD,
+        OPF <:> OPF,
+        OPL <:> OPL,
+        memoryinit <: memoryinit
     );
-    background_writer BACKGROUND_WRITER(
-        copper_commands <:> copper_commands,
-        copper_conditions <:> copper_conditions,
-        copper_coordinates <:> copper_coordinates,
-        copper_modes <:> copper_modes,
-        copper_alts <:> copper_alts,
-        copper_colours <:> copper_colours
+    new_background_writer BACKGROUND_WRITER(
+        OP <:> OP,
+        OPD <:> OPD,
+        OPF <:> OPF,
+        OPL <:> OPL
     );
     BACKGROUND_WRITER.background_update := 0; BACKGROUND_WRITER.copper_program := 0;
 
     always_after {
+
         if( memoryWrite ) {
             switch( memoryAddress[1,4] ) {
                 case 4h0: { BACKGROUND_WRITER.backgroundcolour = writeData; BACKGROUND_WRITER.background_update = 1; }
@@ -520,15 +519,17 @@ unit background_memmap(
                 case 4h4: { BACKGROUND_COPPER.copper_cpu_input = writeData; }
                 case 4h5: { BACKGROUND_WRITER.copper_program = 1; }
                 case 4h6: { BACKGROUND_WRITER.copper_address = writeData; }
-                case 4h7: { BACKGROUND_WRITER.copper_command = writeData; }
-                case 4h8: { BACKGROUND_WRITER.copper_condition = writeData; }
-                case 4h9: { BACKGROUND_WRITER.copper_coordinate = writeData; }
-                case 4ha: { BACKGROUND_WRITER.copper_mode = writeData; }
-                case 4hb: { BACKGROUND_WRITER.copper_alt = writeData; }
-                case 4hc: { BACKGROUND_WRITER.copper_colour = writeData; }
+                case 4h7: { BACKGROUND_WRITER.copper_op = writeData; }
+                case 4h8: { BACKGROUND_WRITER.copper_opd = writeData; }
+                case 4h9: { BACKGROUND_WRITER.copper_opf = writeData; }
+                case 4ha: { BACKGROUND_WRITER.copper_opl = writeData; }
+                case 4hb: { mempos = 0; }
+                case 4hc: { memoryinit[ mempos * 10, 10 ] = writeData; mempos = mempos + 1; }
                 default: {}
             }
         }
+
+        readData = BACKGROUND_COPPER.copper_cpu_output;
     }
 }
 

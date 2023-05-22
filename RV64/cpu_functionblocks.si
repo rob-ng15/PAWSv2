@@ -291,7 +291,9 @@ unit regR(
     input   uint5   addr0,
     output  uint64  rdata0
 ) <reginputs> {
-        regfile0.addr0 := addr0; regfile1.addr0 := addr0; rdata0 := SMT ? regfile1.rdata0 : regfile0.rdata0;
+    always_after {
+        regfile0.addr0 = addr0; regfile1.addr0 = addr0; rdata0 = SMT ? regfile1.rdata0 : regfile0.rdata0;
+    }
 }
 unit regW(
     input   uint1   SMT,
@@ -301,8 +303,10 @@ unit regW(
     input   uint1   wenable1,
     input   uint64  wdata1
 ) <reginputs> {
-    regfile0.addr1 := addr1; regfile0.wdata1 := wdata1; regfile0.wenable1 := ~SMT & wenable1;
-    regfile1.addr1 := addr1; regfile1.wdata1 := wdata1; regfile1.wenable1 := SMT & wenable1;
+    always_after {
+        regfile0.addr1 = addr1; regfile0.wdata1 = wdata1; regfile0.wenable1 = ~SMT & wenable1;
+        regfile1.addr1 = addr1; regfile1.wdata1 = wdata1; regfile1.wenable1 = SMT & wenable1;
+    }
 }
 
 // ABSOLUTE VALUES FOR 32 AND 64 BIT REGISTER CONTENTS
@@ -347,44 +351,41 @@ unit controlflags(
     IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;     // NON-ALU/FPU INSTRUCTION DETECTED FLAGS
     IS_FPU := 0; IS_FASTFPU := 0;                                                                                               // FLOATING-POINT UNIT DETECTION FLAGS
 
-    algorithm <autorun> {
-        while(1) {
-            switch( opCode ) {                                                                                                  // DETERMINE CPU CONTROL FLAGS BY OPCODE
-                case 5b01101: { IS_AUIPCLUI = 1; }                                                                              // LUI
-                case 5b00101: { IS_AUIPCLUI = 1; }                                                                              // AUIPC
-                case 5b11011: { IS_JAL = 1; incPC = 0; }                                                                        // JAL
-                case 5b11001: { IS_JAL = 1; incPC = 0; }                                                                        // JALR
-                case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                                             // BRANCH
-                case 5b00000: { IS_LOAD = 1; }                                                                                  // LOAD
-                case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                                              // FLOAT LOAD
-                case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                                              // STORE
-                case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                                              // FLOAT STORE
-                case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                                               // FENCE[I]
-                case 5b11100: { IS_CSR = 1; IS_FAST = 0; }                                                                      // CSR ECALL EBBREAK
-                case 5b00100: { IS_ALU = 1; }                                                                                   // REGISTER-IMMEDIATE ALU
-                case 5b01100: { IS_ALU = 1; IS_FAST = ~( IS_ALUCLM | IS_ALUMD ); }                                              // REGISTER-REGISTER ALU ( FAST NOT DIVIDE OR CLMUL )
-                case 5b00110: {                                                                                                 // REGISTER-IMMEDIATE ALU 32BIT
-                    IS_ALU = 1; IS_ALU32 = 1;
-                    if( function3 == 3b001 ) { IS_ALU32SIGNX = ( function7[1,6] != 6b000010 ); }                                // DETECT SLLI.UW
-                }
-                case 5b01110: {                                                                                                 // REGISTER-REGISTER ALU 32BIT ( FAST NOT DIVIDE )
-                    IS_ALU = 1; IS_ALU32 = 1; IS_FAST = ~IS_ALUMD;
-                    if( ~function3[0,1] ) {
-                        switch( function3[1,2] ) {
-                            case 2b00: { IS_ALU32SIGNX = ( function7 != 7b0000100 ); }                                          // DETECT ADD.UW
-                            default: { IS_ALU32SIGNX = ( function7 != 7b0010000 ); }                                            // DETECT SHxADD.UW
-                        }
-                    }
-                }
-                case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                                                   // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
-                case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }                       // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
-                default: { IS_FPU = 1; IS_FAST = 0; }                                                                           // FUSED-FPU
-            }
-        }
-    }
-
     always_after {
         uint1   REGREG = ( opCode == 5b01100 ) | ( opCode == 5b01110 );                                                         // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
+
+        switch( opCode ) {                                                                                                  // DETERMINE CPU CONTROL FLAGS BY OPCODE
+            case 5b01101: { IS_AUIPCLUI = 1; }                                                                              // LUI
+            case 5b00101: { IS_AUIPCLUI = 1; }                                                                              // AUIPC
+            case 5b11011: { IS_JAL = 1; incPC = 0; }                                                                        // JAL
+            case 5b11001: { IS_JAL = 1; incPC = 0; }                                                                        // JALR
+            case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                                             // BRANCH
+            case 5b00000: { IS_LOAD = 1; }                                                                                  // LOAD
+            case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                                              // FLOAT LOAD
+            case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                                              // STORE
+            case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                                              // FLOAT STORE
+            case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                                               // FENCE[I]
+            case 5b11100: { IS_CSR = 1; IS_FAST = 0; }                                                                      // CSR ECALL EBBREAK
+            case 5b00100: { IS_ALU = 1; }                                                                                   // REGISTER-IMMEDIATE ALU
+            case 5b01100: { IS_ALU = 1; IS_FAST = ~( IS_ALUCLM | IS_ALUMD ); }                                              // REGISTER-REGISTER ALU ( FAST NOT DIVIDE OR CLMUL )
+            case 5b00110: {                                                                                                 // REGISTER-IMMEDIATE ALU 32BIT
+                IS_ALU = 1; IS_ALU32 = 1;
+                if( function3 == 3b001 ) { IS_ALU32SIGNX = ( function7[1,6] != 6b000010 ); }                                // DETECT SLLI.UW
+            }
+            case 5b01110: {                                                                                                 // REGISTER-REGISTER ALU 32BIT ( FAST NOT DIVIDE )
+                IS_ALU = 1; IS_ALU32 = 1; IS_FAST = ~IS_ALUMD;
+                if( ~function3[0,1] ) {
+                    switch( function3[1,2] ) {
+                        case 2b00: { IS_ALU32SIGNX = ( function7 != 7b0000100 ); }                                          // DETECT ADD.UW
+                        default: { IS_ALU32SIGNX = ( function7 != 7b0010000 ); }                                            // DETECT SHxADD.UW
+                    }
+                }
+            }
+            case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                                                   // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
+            case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }                       // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
+            default: { IS_FPU = 1; IS_FAST = 0; }                                                                           // FUSED-FPU
+        }
+
         IS_ALUMD = REGREG & ( function7 == 7b0000001 ) & function3[2,1];                                                        // INTEGER DIVISION DETECTED FLAG
         IS_ALUCLM = 0; // IS_ALUCLM = REGREG & ( function7 == 7b0000101 ) & ~function3[2,1];                                   // CARRYLESS MULTIPLICATION DETECTED FLAG { f3 == 0xx, f3 == 1xx is min/max (
 
