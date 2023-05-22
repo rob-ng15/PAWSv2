@@ -48,7 +48,7 @@ static void* getsfx (const char* sfxname, short* len)
 {
     // Get the sound data from the WAD, allocate lump in zone memory.
     char name[20];
-    sprintf (name, "ds%s", sfxname);
+    sprintf (name, "dp%s", sfxname);
 
     // Now, there is a severe problem with the sound handling, in it is not
     // (yet/anymore) gamemode aware. That means, sounds from DOOM II will be
@@ -59,7 +59,7 @@ static void* getsfx (const char* sfxname, short* len)
     // default sound for replacement.
     int sfxlump;
     if (W_CheckNumForName (name) == -1)
-        sfxlump = W_GetNumForName ("dspistol");
+        sfxlump = W_GetNumForName ("dppistol");
     else
         sfxlump = W_GetNumForName (name);
 
@@ -112,7 +112,7 @@ void I_SetMusicVolume (int volume)
 int I_GetSfxLumpNum (sfxinfo_t* sfx)
 {
     char namebuf[9];
-    sprintf (namebuf, "ds%s", sfx->name);
+    sprintf (namebuf, "dp%s", sfx->name);
     return W_GetNumForName (namebuf);
 }
 
@@ -122,8 +122,8 @@ int I_StartSound (int id, int vol, int sep, int pitch, int priority)
     __lastchannel = 3 - __lastchannel;      // MOVE TO NEXT CHANNEL
     beep( __lastchannel, 0, 0, 0 );         // STOP CHANNEL
 
-    pcmsample_upload( __lastchannel, s_sfx_lengths[id] - 40, S_sfx[id].data + 0x18 );       // UPLOAD TO SAMPLE BUFFER, WILL CLEAR PREVIOUS SAMPLE BUFFER
-    beep( __lastchannel, WAVE_PCM, 13, ( 1000 * (s_sfx_lengths[id] - 40) ) / 11025 + 1 );   // START SAMPLE, NOTE 13 ~11025KHz
+    sample_upload( __lastchannel,  s_sfx_lengths[id] - 4, S_sfx[id].data + 4 );
+    beep( __lastchannel, WAVE_SAMPLE, 1, 12 );
     return id;
 }
 
