@@ -513,6 +513,73 @@ void smtthread( void ) {
 
 unsigned char ufo_sample[] = { 75, 83, 89, 0 };
 
+// BACKGROUND COPPER
+void copper_startstop( unsigned char status ) {
+    await_vblank();
+    *BACKGROUND_COPPER_STARTSTOP = status;
+}
+
+void copper_program( unsigned char address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 ) {
+    *BACKGROUND_COPPER_ADDRESS = address;
+    *BACKGROUND_COPPER_OP = command;
+    *BACKGROUND_COPPER_OPD = reg1;
+    *BACKGROUND_COPPER_OPF = flag;
+    *BACKGROUND_COPPER_OPL = reg2;
+    *BACKGROUND_COPPER_PROGRAM = 1;
+}
+
+void copper_set_memory( unsigned short *memory ) {
+    *BACKGROUND_COPPER_MEMRESET = 0;
+    for( int i = 0; i <8; i++ )
+        *BACKGROUND_COPPER_MEMVINIT = memory[i];
+}
+
+void set_copper_cpuinput( unsigned short value ) {
+    *BACKGROUND_COPPER_CPUINPUT = value;
+}
+
+unsigned short get_copper_cpuoutput( void ) {
+    return( *BACKGROUND_COPPER_CPUINPUT );
+}
+
+// PROGRAM THE BACKGROUND COPPER FOR THE FALLING STARS
+void program_background( void ) {
+    copper_startstop( 0 );
+
+    unsigned short memoryinit[8] = {
+        WHITE,
+        RED,
+        ORANGE,
+        YELLOW,
+        GREEN,
+        LTBLUE,
+        PURPLE,
+        MAGENTA
+    };
+
+    copper_set_memory( memoryinit );                                                                                            // PROGRAM COPPER MEMORY ARRAY OF COLOURS
+
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );                                                                        // BACKGROUND SNOW GENERATOR
+    copper_program( 1, CU_SET, CU_BC, CU_RL, WHITE );                                                                           // BACKGROUND BLACK
+    copper_program( 2, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT WHITE
+
+    copper_program( 3, CU_SET, CU_R0, CU_RL, 0 );                                                                               // SET R0 = 0
+
+    copper_program( 4, CU_SET, CU_R1, CU_RR, CU_R0 );                                                                           // SET R1 = R0
+    copper_program( 5, CU_SHL, CU_R1, CU_RL, 6 );                                                                               // R1 = R1 * 64
+    copper_program( 6, CU_LFM, CU_R2, CU_RR, CU_R0 );                                                                           // R2 = MEM[ R0 ]
+
+    copper_program( 7, CU_SEQ, CU_RY, CU_RR, CU_R1 );                                                                           // Y == R1 ?
+    copper_program( 8, CU_JMP, FALSE, CU_RL, 7 );                                                                               // SKIP YES, ELSE GO TO 7
+
+    copper_program( 9, CU_SET, CU_BC, CU_RR, CU_R2 );                                                                           // SET BACKGROUND ALT = R2
+    copper_program( 10, CU_ADD, CU_R0, CU_RL, 1 );                                                                              // R0 = R0 + 1
+    copper_program( 11, CU_AND, CU_R0, CU_RL, 7 );                                                                              // R0 = R0 & 7
+    copper_program( 12, CU_JMP, FALSE, CU_RL, 4 );                                                                              // JUMP 4
+
+    copper_startstop( 1 );
+}
+
 extern int _bss_start, _bss_end;
 static inline long _rv64_rol(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
 
@@ -528,6 +595,7 @@ void main( void ) {
 
     // RESET THE DISPLAY
     reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
+    //program_background();
 
     // SETUP INITIAL WELCOME MESSAGE
     draw_paws_logo();

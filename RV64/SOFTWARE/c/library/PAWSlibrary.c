@@ -236,24 +236,28 @@ void sample_upload( unsigned char channel_number, unsigned short length, unsigne
 void bitsample_upload_128( unsigned char channel_number, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
     *AUDIO_NEW_BITSAMPLE = channel_number;
-    if( channel_number & 1 ) { for( int i = 0; i < 8; i++ ) DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 16, 1 ); }
-    if( channel_number & 2 ) { for( int i = 0; i < 8; i++ ) DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 16, 1 ); }
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 16, 1 ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 16, 1 ); }
 }
 
-// 1024 x 1 BIT SAMPLES
-void bitsample_upload_1024( unsigned char channel_number, unsigned char *samples ) {
+// 256 ENTRY USER DEFINED WAVEFORM
+void wavesample_upload( unsigned char channel_number, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_BITSAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 128, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 128, 1 ); }
-}
-
-// 256 ENTRY USER DEFINED WAVEFORMS ( 2 per channel )
-void wavesample_upload( unsigned char channel_number, unsigned char wave, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_WAVEFORM = channel_number + ( ( wave - 1 ) << 2 );
+    *AUDIO_NEW_WAVEFORM = channel_number;
     if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_WAVESAMPLE, 256, 1 ); }
     if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_WAVESAMPLE, 256, 1 ); }
+}
+
+// PCM SAMPLES UPLOAD
+void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples ) {
+    beep( channel_number, 0, 0, 0 );
+    *AUDIO_NEW_PCMSAMPLE = channel_number; *DMASET = 0;
+    if( channel_number & 1 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_LEFT_PCMSAMPLE, 20480, 5 ); }
+    if( channel_number & 2 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, 20480, 5 );}
+
+    *AUDIO_NEW_PCMSAMPLE = channel_number;
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_PCMSAMPLE, count, 1 ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, count, 1 ); }
 }
 
 // SDCARD FUNCTIONS
@@ -306,7 +310,7 @@ void get_mouse( short *x, short *y, short *buttons ) {
 
 // DISPLAY FUNCTIONS
 // FUNCTIONS ARE IN LAYER ORDER: BACKGROUND, TILEMAP, SPRITES (for LOWER ), BITMAP & GPU, ( UPPER SPRITES ), CHARACTERMAP & TPU
-// colour is in the form { Arrggbb } { ALPHA - show layer below, RED, GREEN, BLUE } or { rrggbb } { RED, GREEN, BLUE } giving 64 colours + transparent
+// colour is in the form { RRGGGBBM } { COLOUR 64 ALPHA - show layer below }
 // INTERNAL FUNCTION - WAIT FOR THE GPU TO BE ABLE TO RECEIVE A NEW COMMAND
 void wait_gpu( void ) {
     while( *GPU_STATUS );
@@ -315,7 +319,6 @@ void wait_gpu( void ) {
 void wait_gpu_finished( void ) {
     while( !*GPU_FINISHED );
 }
-
 // WAIT FOR VBLANK TO START/FINISH
 int is_vblank( void ) {
     return( *VBLANK );
@@ -327,7 +330,7 @@ void await_vblank_finish( void ) {
     while( *VBLANK );
 }
 
-// SET THE LAYER ORDER FOR THE DISPLAY
+// SET THE LAYER ORDER FOR THE DISPLAY, COLOUR MODE ( RRGGGBBM OR GREY ), TILES AND CHARACTER MAP DOUBLE FLAGS
 void screen_mode( unsigned char screenmode, unsigned char colour, unsigned char resolution ) {
     *SCREENMODE = screenmode;
     *COLOUR = colour;
@@ -390,19 +393,27 @@ void copper_startstop( unsigned char status ) {
     *BACKGROUND_COPPER_STARTSTOP = status;
 }
 
-void copper_program( unsigned char address, unsigned char command, unsigned char condition, unsigned short coordinate, unsigned char mode, unsigned char altcolour, unsigned char colour ) {
+void copper_program( unsigned char address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 ) {
     *BACKGROUND_COPPER_ADDRESS = address;
-    *BACKGROUND_COPPER_COMMAND = command;
-    *BACKGROUND_COPPER_CONDITION = condition;
-    *BACKGROUND_COPPER_COORDINATE = coordinate;
-    *BACKGROUND_COPPER_MODE = mode;
-    *BACKGROUND_COPPER_ALT = altcolour;
-    *BACKGROUND_COPPER_COLOUR = colour;
+    *BACKGROUND_COPPER_OP = command;
+    *BACKGROUND_COPPER_OPD = reg1;
+    *BACKGROUND_COPPER_OPF = flag;
+    *BACKGROUND_COPPER_OPL = reg2;
     *BACKGROUND_COPPER_PROGRAM = 1;
+}
+
+void copper_set_memory( unsigned short *memory ) {
+    *BACKGROUND_COPPER_MEMRESET = 0;
+    for( int i = 0; i <8; i++ )
+        *BACKGROUND_COPPER_MEMVINIT = memory[i];
 }
 
 void set_copper_cpuinput( unsigned short value ) {
     *BACKGROUND_COPPER_CPUINPUT = value;
+}
+
+unsigned short get_copper_cpuoutput( void ) {
+    return( *BACKGROUND_COPPER_CPUINPUT );
 }
 
 // SCROLLABLE TILEMAP

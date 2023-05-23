@@ -60,7 +60,8 @@ extern unsigned short get_beep_active( unsigned char );
 extern void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
 extern void bitsample_upload_128( unsigned char channel_number, unsigned char *samples );
 extern void bitsample_upload_1024( unsigned char channel_number, unsigned char *samples );
-extern void wavesample_upload( unsigned char channel_number, unsigned char wave, unsigned char *samples );
+extern void wavesample_upload( unsigned char channel_number, unsigned char *samples );
+extern void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples );
 
 // DISPLAY
 extern int is_vblank( void );
@@ -79,8 +80,10 @@ extern void status_lights( unsigned char display, unsigned char background );
 // BACKGROUND GENERATOR
 extern void set_background( unsigned char, unsigned char, unsigned char );
 extern void copper_startstop( unsigned char ) ;
-extern void copper_program( unsigned char, unsigned char, unsigned char, unsigned short, unsigned char, unsigned char, unsigned char );
-void set_copper_cpuinput( unsigned short );
+extern void copper_program( unsigned char address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 );
+extern void copper_set_memory( unsigned short *memory );
+extern void set_copper_cpuinput( unsigned short );
+extern unsigned short get_copper_cpuoutput( void );
 
 // TILEMAP
 extern void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action );

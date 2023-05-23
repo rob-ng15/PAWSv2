@@ -39,12 +39,12 @@ unsigned char volatile *BACKGROUND_COPPER_STARTSTOP = (unsigned char volatile *)
 unsigned short volatile *BACKGROUND_COPPER_CPUINPUT = (unsigned short volatile *) 0xd008;
 unsigned char volatile *BACKGROUND_COPPER_PROGRAM = (unsigned char volatile *) 0xd00a;
 unsigned char volatile *BACKGROUND_COPPER_ADDRESS = (unsigned char volatile *) 0xd00c;
-unsigned char volatile *BACKGROUND_COPPER_COMMAND = (unsigned char volatile *) 0xd00e;
-unsigned char volatile *BACKGROUND_COPPER_CONDITION = (unsigned char volatile *) 0xd010;
-unsigned short volatile *BACKGROUND_COPPER_COORDINATE = (unsigned short volatile *) 0xd012;
-unsigned char volatile *BACKGROUND_COPPER_MODE = (unsigned char volatile *) 0xd014;
-unsigned char volatile *BACKGROUND_COPPER_ALT = (unsigned char volatile *) 0xd016;
-unsigned char volatile *BACKGROUND_COPPER_COLOUR = (unsigned char volatile *) 0xd018;
+unsigned char volatile *BACKGROUND_COPPER_OP = (unsigned char volatile *) 0xd00e;
+unsigned char volatile *BACKGROUND_COPPER_OPD = (unsigned char volatile *) 0xd010;
+unsigned short volatile *BACKGROUND_COPPER_OPF = (unsigned short volatile *) 0xd012;
+unsigned char volatile *BACKGROUND_COPPER_OPL = (unsigned char volatile *) 0xd014;
+unsigned char volatile *BACKGROUND_COPPER_MEMRESET = (unsigned char volatile *) 0xd016;
+unsigned short volatile *BACKGROUND_COPPER_MEMVINIT = (unsigned short volatile *) 0xd018;
 
 unsigned char volatile *LOWER_TM_X = (unsigned char volatile *) 0xd100;
 unsigned char volatile *LOWER_TM_Y = (unsigned char volatile *) 0xd102;
@@ -308,6 +308,9 @@ typedef struct {
 #define WHITE 0xff
 #define GREY1 0x5b
 #define GREY2 0xad
+#define ORANGE 0xe9
+#define PURPLE 0x86
+#define LTBLUE 0x1f
 
 #define UK_GOLD 241
 #define UK_BLUE 30
@@ -335,3 +338,58 @@ typedef struct {
 #define WAVE_SAMPLE 8
 #define SAMPLE_REPEAT 16
 
+// BACKGROUND PATTERN GENERATOR
+#define BKG_SOLID 0
+#define BKG_5050_V 1
+#define BKG_5050_H 2
+#define BKG_CHKBRD_5 3
+#define BKG_RAINBOW 4
+#define BKG_SNOW 5
+#define BKG_STATIC 6
+#define BKG_CHKBRD_1 7
+#define BKG_CHKBRD_2 8
+#define BKG_CHKBRD_3 9
+#define BKG_CHKBRD_4 10
+#define BKG_HATCH 11
+#define BKG_LSLOPE 12
+#define BKG_RSLOPE 13
+#define BKG_VSTRIPE 14
+#define BKG_HSTRIPE 15
+
+// NEW CU BACKGROUND CO-PROCESSOR
+// OPCODES
+#define CU_JMP 0
+#define CU_SET 1
+#define CU_ADD 2
+#define CU_SUB 3
+#define CU_AND 4
+#define CU_OR  5
+#define CU_XOR 6
+#define CU_SHL 7
+#define CU_SHR 8
+#define CU_SEQ 9
+#define CU_SNE 10
+#define CU_SLT 11
+#define CU_SLE 12
+#define CU_RND 13
+#define CU_LFM 14
+#define CU_STM 15
+
+// REGISTER NAMES { VBLANK, X, Y, CPU, R0, R1, R2, R3 }
+#define CU_RB 0
+#define CU_RX 1
+#define CU_RY 2
+#define CU_RC 3
+#define CU_R0 4
+#define CU_R1 5
+#define CU_R2 6
+#define CU_R3 7
+
+// BACKGROUND GENERATOR REGISTER NAMES { MODE, COLOUR, ALT COLOUR } REPLACE { VBLANK, X, Y } WHEN WRITING
+#define CU_BM 0
+#define CU_BC 1
+#define CU_BA 2
+
+// REG2 IS REG OR LITERAL
+#define CU_RR 0
+#define CU_RL 1
