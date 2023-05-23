@@ -79,14 +79,17 @@ Uses 64-bit integers to implement the display, and uses the ROR/ROL instructions
 ![CHIP-8 SK8](Reference/Graphics/CHIP8-3.jpg)
 
 ## DOOM (GAMES)
-A conversion of [MC1-DOOM](https://github.com/mbitsnbites/mc1-doom) to the PAWSv2 graphics, sound and input system. The images are drawn to the screen using the DMA engine, with the display being in 256 colour mode, and uses the DOOM palette, no the PAWSv2 default RGBM palette. DOOM style PC speaker sound support was added to PAWSv2 for DOOM.
+A conversion of [MC1-DOOM](https://github.com/mbitsnbites/mc1-doom) to the PAWSv2 graphics, sound and input system. The images are drawn to the screen using the DMA engine, with the display being in 256 colour mode, and uses the DOOM palette, not the PAWSv2 default RGBM palette.
+
+DOOM style PC speaker sound support was added to PAWSv2 for DOOM. An upgrade to PAWSv2 to use the digital sound samples was recently added.
 
 To make the game playable, when the demo starts press the "-" key on the keyboard 3 times to shrink the display area. Movement keys are "WASD", not as on the help screen.
 <br>
 ![DOOM](Reference/Graphics/DOOM-1.jpg)
 ![DOOM](Reference/Graphics/DOOM-2.jpg)
 
-Video on Youtube of the [DOOM DEMO](https://youtu.be/Ab7kMK2R0Xw)
+Video on Youtube of the [DOOM PC Speaker Sounds](https://youtu.be/Ab7kMK2R0Xw)
+Video on Youtube of the [DOOM Digital Sound Samples](https://youtu.be/4Cr6M8t17Ak)
 
 ## IMGUI (DEMO)
 A test running the IMGUI DEMO to check PAWSv2 against other people's code, specially heavy on the floating-point unit. The generated image is tranferred to the display using the DMA engine, translating the RGBA image to PAWSv2 via the pixelblock.
