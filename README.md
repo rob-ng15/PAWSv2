@@ -45,27 +45,32 @@ This will initialise the BIOS and allow the selection of a .PAW or .P64 file to 
 
 ## 3DMAZE (GAMES)
 Based upon the ZX-81 3D MONSTER MAZE using PacMan Ghosts instead of the dinorsaur, as I don't have graphics for a Tyrannosaurus Rex.
-<br>
+
 ![3D MAZE](Reference/Graphics/MAZE-1.jpg)
 
 ![3D MAZE](Reference/Graphics/MAZE-2.jpg)
 
 ## ANT (DEMO)
 A simple test of[Langton's Ant](https://en.wikipedia.org/wiki/Langton%27s_ant) which I discovered after reading [Science of the Discworld](https://en.wikipedia.org/wiki/The_Science_of_Discworld) by Terry Pratchett, Ian Stewart and Jack Cohen.
-<br>
+
 ![Langton's Ant](Reference/Graphics/ANT.jpg)
 
 ## ASTROIDS (GAMES)
 An implementation of the arcade games Asteroids, written from scratch, using the PAWSv2 sprites. The asteroid sprites are moved in the SMT thread.
 
 When I first started programming for FPGAs, Asteroids was my first game implemented (j1eforth on the DE10-Nano and ULX3S, it probably doesn't build and run now, but I'll update it), and the development of the features for SoC was driven by the requirements for Asteroids, i.e. sprites for the ships, bullets, asteroids and UFOs, initially in single colour, and eventually in 256 colour sprites; input, the FPGA board buttons, and eventually the PS/2 keyboard; simple sound, initially tone generators, expanded to include waveforms, square, triangle, saw and sine, plus eventually user-defined waveforms, simple 1-bit samples, DOOM style PC speaker sounds, which can be used for playing tunes.
-<br>
+
 ![3D MAZE](Reference/Graphics/ASTEROIDS-1.jpg)
+
 ![3D MAZE](Reference/Graphics/ASTEROIDS-2.jpg)
 
 ## CBZONE (GAMES)
 
 A work in progress porting [CBZONE](https://github.com/jrrk/cbzone) to PAWSv2 graphics and controls.
+
+![CBZONE](Reference/Graphics/CBZONE-1.jpg)
+
+![CBZONE](Reference/Graphics/CBZONE-2.jpg)
 
 Video on Youtube of the [CBZONE WIP](https://www.youtube.com/watch?v=X1RFik2zZbU)
 
@@ -73,9 +78,11 @@ Video on Youtube of the [CBZONE WIP](https://www.youtube.com/watch?v=X1RFik2zZbU
 A CHIP-8 interpreter (only for RV64), capable of running CHIP-8, CHIP-48, SUPERCHIP and XO-CHIP programs (with varying success). Runs as 2 threads, 1 for input and display, 1 for the interpreter. This was done not for any particular reason other than to try and have 2 threads interacting. NO MEMORY PROTECTION IN PAWSv2!
 
 Uses 64-bit integers to implement the display, and uses the ROR/ROL instructions for scrolling, and the BINV/BEXT instructions for setting bits in the display, so not presently support on the RV32 CPU.
-<br>
+
 ![CHIP-8 ROCKTO](Reference/Graphics/CHIP8-1.jpg)
+
 ![CHIP-8 TANKS](Reference/Graphics/CHIP8-2.jpg)
+
 ![CHIP-8 SK8](Reference/Graphics/CHIP8-3.jpg)
 
 ## DOOM (GAMES)
@@ -84,25 +91,29 @@ A conversion of [MC1-DOOM](https://github.com/mbitsnbites/mc1-doom) to the PAWSv
 DOOM style PC speaker sound support was added to PAWSv2 for DOOM. An upgrade to PAWSv2 to use the digital sound samples was recently added.
 
 To make the game playable, when the demo starts press the "-" key on the keyboard 3 times to shrink the display area. Movement keys are "WASD", not as on the help screen.
-<br>
+
 ![DOOM](Reference/Graphics/DOOM-1.jpg)
+
 ![DOOM](Reference/Graphics/DOOM-2.jpg)
 
 Video on Youtube of the [DOOM PC Speaker Sounds](https://youtu.be/Ab7kMK2R0Xw)
+
 Video on Youtube of the [DOOM Digital Sound Samples](https://youtu.be/4Cr6M8t17Ak)
 
 ## IMGUI (DEMO)
 A test running the IMGUI DEMO to check PAWSv2 against other people's code, specially heavy on the floating-point unit. The generated image is tranferred to the display using the DMA engine, translating the RGBA image to PAWSv2 via the pixelblock.
 
 Press FIRE 1 and FIRE 2 buttons simultaneously to exit.
-<br>
+
 ![IMGUI Test](Reference/Graphics/IMGUI.jpg)
 
 ## INVADERS (GAMES)
 An implementation of the arcade games Space Invaders. The space invaders, bunkers and UFO are drawn using the blitter; the Galaxian aliens using the colour blitter. The background images and score are drawm using the two tilemaps. The player ship and the bullets are sprites, using the sprite to background detection. Written after reading [Space Invaders From Scratch](http://nicktasios.nl/posts/space-invaders-from-scratch-part-1.html)
-<br>
+
 ![Space Invaders Welcome Screen](Reference/Graphics/INVADERS-1.jpg)
+
 ![Space Invaders](Reference/Graphics/INVADERS-2.jpg)
+
 ![Space Invaders with Galaxian Aliens](Reference/Graphics/INVADERS-3.jpg)
 
 Video on Youtube of the [INVADERS Attract Screen](https://youtu.be/YjKU3FVaQbMI)
@@ -111,16 +122,20 @@ Video on Youtube of the [INVADERS Attract Screen](https://youtu.be/YjKU3FVaQbMI)
 A simple test of the pixelblock (hardware transfer from memory to the display), in this case remapping RGB data in the PAWSv2 RGBM (256 colour) display, and the 256 greyscale display. Also tests the file selector, based upon the BIOS file selector. NOTE: The JPEG decoder is only tested with 320x240 pixel images, and they must be non-progressive, and colour.
 
 The image displayed below, shows our PAWS, for whom the project is named. From left to right, Rydie, the brains of the outfit, Arrow, the beeps and squeaks (the noise he makes), and Dougie (our rescue dog and my walking companion) the graphical display as he is always in your face!
-<br>
+
 ![JPEG File Selector](Reference/Graphics/JPEG-1.jpg)
+
 ![JPEG Colour Output](Reference/Graphics/JPEG-2.jpg)
+
 ![JPEG Greyscale Output](Reference/Graphics/JPEG-3.jpg)
 
 ## OUTRUN (DEMO)
 An implementation of [Pseudo 3d Racer](https://www.lexaloffle.com/bbs/?tid=35767) using the GPU and DrawList2D from the PAWSv2 library, and the floating-point unit. The car is a pixelblock sprite ported from [Spriters Resource Graphics](https://www.spriters-resource.com/genesis_32x_scd/outrun/sheet/25458/) with no animation. The cityscape and clouds are drawn on the two tilemaps. There are vehicles running in front of the cityscape that are just visible in one frame of the demonstration using sprites. Press FIRE2 to exit.
-<br>
+
 ![OUTRUN](Reference/Graphics/OUTRUN-1.jpg)
+
 ![OUTRUN](Reference/Graphics/OUTRUN-2.jpg)
+
 ![OUTRUN](Reference/Graphics/OUTRUN-3.jpg)
 
 Video on Youtube of the [OUTRUN DEMO](https://youtu.be/XMiMhzwnLIE)
@@ -131,19 +146,23 @@ A full view of the cityscape backdrop (forced, not normally visible), showing th
 
 ## PACMAN (GAMES)
 A conversion of [floooh's Pacman](https://github.com/floooh/pacman.c) to the PAWSv2 graphics, sound and input system.
-<br>
+
 ![PacMan Welcome Screen](Reference/Graphics/PACMAN-1.jpg)
+
 ![PacMan Start Screen](Reference/Graphics/PACMAN-2.jpg)
+
+Video on Youtube of [PACMAN](https://youtu.be/geUnh_m6LKU)
 
 ## RAYTRACE (DEMO)
 A test of the floating-point unit. Runs first in 256 colours, then in 256 greys.
-<br>
+
 ![RAYTRACING Colour](Reference/Graphics/RAY-1.jpg)
+
 ![RAYTRACING Grey](Reference/Graphics/RAY-2.jpg)
 
 ## SMURFS (DEMO)
 A test of the dual bitmap display to provide the two parallel scrolling layers, transfer to the display by the DMA engine, extracting sections from the bitmap images in memory. The sky images are on the tilemaps. The Smurf theme is played in an SMT thread and uses a user-defined waveform (a 4 layer harmonic sine-wave). The smurf sprite uses the PAWSv2 library 32x32 sprites to combine 4 16x16 sprites, handling reflection and rotation.
-<br>
+
 ![SPRITES](Reference/Graphics/SMURFS.jpg)
 
-Video on Youtube of [Smurfs Youtube Demo](https://youtu.be/fKbj2br4cLI)
+Video on Youtube of [SMURFS Youtube Demo](https://youtu.be/fKbj2br4cLI)
