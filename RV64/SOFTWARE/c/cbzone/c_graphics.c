@@ -56,6 +56,8 @@ void staticscreen()
   static short scrn[] = {75, 64, 925, 64, 936, 75, 936, 425, 925, 436,
                            75, 436, 64, 425, 64, 75, 75, 64};
 
+  bitmap_draw(1); bitmap_display(3);
+
   gprsetclippingactive(False);
   gprsettextbackgroundvalue(opt->cpi[COLOR_BG]);
   gprsetdrawvalue(opt->cpi[COLOR_FG]);
@@ -132,6 +134,8 @@ void staticscreen()
   pt[1] = 355;
   gprsetcursorposition(pt);
   gprsetclippingactive(True);
+
+  bitmap_draw(2);
 }
 
 void updatedisplay (missile, lander, score, numleft, sens, reset)

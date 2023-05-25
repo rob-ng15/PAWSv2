@@ -364,8 +364,10 @@ void V_Init (void)
 
     // stick these in low dos memory on PCs
 
-    base = I_AllocLow (SCREENWIDTH*SCREENHEIGHT*4);
+    base = I_AllocLow (SCREENWIDTH*SCREENHEIGHT*3);
 
-    for (i=0 ; i<4 ; i++)
-        screens[i] = base + i*SCREENWIDTH*SCREENHEIGHT;
+    for (i=1 ; i<4 ; i++)
+        screens[i] = base + (i-1)*SCREENWIDTH*SCREENHEIGHT;
+
+    screens[0] = (byte*)0x2020000;
 }

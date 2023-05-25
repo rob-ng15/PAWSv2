@@ -77,24 +77,38 @@ struct DrawList2D PlayerShip[] = {
 // PROGRAM THE BACKGROUND COPPER FOR THE FALLING STARS
 void program_background( void ) {
     copper_startstop( 0 );
-    copper_program( 0, COPPER_WAIT_VBLANK, 7, 0, BKG_SNOW, BLACK, WHITE );
-    copper_program( 1, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, WHITE );
-    copper_program( 2, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 64, 0, 0, 1 );
-    copper_program( 3, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, RED );
-    copper_program( 4, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 128, 0, 0, 3 );
-    copper_program( 5, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, ORANGE );
-    copper_program( 6, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 160, 0, 0, 5 );
-    copper_program( 7, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, YELLOW );
-    copper_program( 8, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 192, 0, 0, 7 );
-    copper_program( 9, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, GREEN );
-    copper_program( 10, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 224, 0, 0, 9 );
-    copper_program( 11, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, LTBLUE );
-    copper_program( 12, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 256, 0, 0, 11 );
-    copper_program( 13, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, PURPLE );
-    copper_program( 14, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 288, 0, 0, 13 );
-    copper_program( 15, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, MAGENTA );
-    copper_program( 16, COPPER_JUMP, COPPER_JUMP_ON_VBLANK_EQUAL, 0, 0, 0, 15 );
-    copper_program( 17, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 1 );
+
+    unsigned short memoryinit[8] = {
+        WHITE,
+        RED,
+        ORANGE,
+        YELLOW,
+        GREEN,
+        LTBLUE,
+        PURPLE,
+        MAGENTA
+    };
+
+    copper_set_memory( memoryinit );                                                                                            // PROGRAM COPPER MEMORY ARRAY OF COLOURS
+
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );                                                                        // BACKGROUND SNOW GENERATOR
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT BLACK
+    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );                                                                           // BACKGROUND WHITE
+
+    copper_program( 3, CU_SET, CU_R0, CU_RL, 0 );                                                                               // SET R0 = 0
+
+    copper_program( 4, CU_SET, CU_R1, CU_RR, CU_R0 );                                                                           // SET R1 = R0
+    copper_program( 5, CU_SHL, CU_R1, CU_RL, 6 );                                                                               // R1 = R1 * 64
+    copper_program( 6, CU_LFM, CU_R2, CU_RR, CU_R0 );                                                                           // R2 = MEM[ R0 ]
+
+    copper_program( 7, CU_SEQ, CU_RY, CU_RR, CU_R1 );                                                                           // Y == R1 ?
+    copper_program( 8, CU_JMP, FALSE, CU_RL, 7 );                                                                               // SKIP YES, ELSE GO TO 7
+
+    copper_program( 9, CU_SET, CU_BC, CU_RR, CU_R2 );                                                                           // SET BACKGROUND = R2
+    copper_program( 10, CU_ADD, CU_R0, CU_RL, 1 );                                                                              // R0 = R0 + 1
+    copper_program( 11, CU_AND, CU_R0, CU_RL, 7 );                                                                              // R0 = R0 & 7
+    copper_program( 12, CU_JMP, FALSE, CU_RL, 4 );                                                                              // JUMP 4
+
     copper_startstop( 1 );
 }
 
@@ -652,7 +666,7 @@ void check_crash( void ) {
 // MAIN GAME LOOP STARTS HERE
 void smt_thread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp, 0x4000");
+    asm volatile ("li sp, 0x5f80000");
     asm volatile ("j move_asteroids");
 }
 

@@ -15,40 +15,27 @@ unit ps2ascii(
     keycodevalid := 0;
 
     always_after {
-        {
-            if( PS2.valid ) {
-                switch( PS2.data ) {
-                    case 8he0: { startmulti = 1; }
-                    case 8hf0: { startbreak = 1; }
-                    default: {
-                        switch( PS2.data ) {
-                            case 8h11: { button = startmulti ? 8 : 7; }
-                            case 8h14: { button = startmulti ? 10 : 1; }
-                            case 8h1f: { button = 2; }
-                            case 8h27: { button = 9; }
-                            case 8h2f: { button = 15; }
-                            case 8h6b: { button = 5; }
-                            case 8h72: { button = 4; }
-                            case 8h74: { button = 6; }
-                            case 8h75: { button = 3; }
-                            default: { button = 0; }
-                        }
+        if( PS2.valid ) {
+            switch( PS2.data ) {
+                case 8he0: { startmulti = 1; }
+                case 8hf0: { startbreak = 1; }
+                default: {
+                    switch( PS2.data ) {
+                        case 8h11: { button = startmulti ? 8 : 7; }
+                        case 8h14: { button = startmulti ? 10 : 1; }
+                        case 8h1f: { button = 2; }
+                        case 8h27: { button = 9; }
+                        case 8h2f: { button = 15; }
+                        case 8h6b: { button = 5; }
+                        case 8h72: { button = 4; }
+                        case 8h74: { button = 6; }
+                        case 8h75: { button = 3; }
+                        default: { button = 0; }
                     }
-                }
-            }
-        }
-
-        {
-            if( PS2.valid ) {
-                switch( PS2.data ) {
-                    case 8he0: {}
-                    case 8hf0: {}
-                    default: {
-                        keycode = { ~startbreak, startmulti, PS2.data }; keycodevalid = outputkeycodes;
-                        joystick[ button, 1 ] = ~startbreak;
-                        if( startmulti ) { startmulti = 0; }
-                        if( startbreak ) { startbreak = 0; }
-                    }
+                    keycode = { ~startbreak, startmulti, PS2.data }; keycodevalid = outputkeycodes;
+                    joystick[ button, 1 ] = ~startbreak;
+                    if( startmulti ) { startmulti = 0; }
+                    if( startbreak ) { startbreak = 0; }
                 }
             }
         }
@@ -103,40 +90,33 @@ unit ps2(
     output  uint1   error,
     output  uint8   data
 ) < reginputs> {
-    uint1   clk_edge(0);                            uint4   clk(4b1111);
+    uint1   clk_edge = uninitialised;   uint4   clk = 4b1111;   clk := { ps2clk_ext, clk[1,3] };                                // BUFFER THE CLOCK ACROSS THE CLOCK DOMAINS
 
     valid := 0; error := 0; clk_edge := 0;
 
-    always_after {
-        {
-            // BUFFER THE CLOCK ACROSS THE CLOCK DOMAINS
-            clk = { ps2clk_ext, clk[1,3] };
-        }
 
-        {
-            // SET THE CLK_EDGE ACCORDING TO THE FILTERED CLOCK
-            uint1   ps2_clk_in(1);
-            switch( clk ) {
+    algorithm <autorun> {
+        uint1   ps2_clk_in(1);
+
+        while(1) {
+            switch( clk ) {                                                                                                     // FILTER THE CLOCK, WAIT FOR TWO 11s TO GENERATE A POSITIVE SIGNAL
                 case 4b1100: { ps2_clk_in = 1; }
-                case 4b0011: { if( ps2_clk_in ) { clk_edge = 1; } ps2_clk_in = 0; }
+                case 4b0011: { if( ps2_clk_in ) { clk_edge = 1; } ps2_clk_in = 0; }                                             // SET THE CLK_EDGE ACCORDING TO THE FILTERED CLOCK
                 default: {}
             }
         }
+    }
 
-        {
-            // Process the PS/2 data bit
-            uint4   bit_count(0);
-            uint9   shift_reg(0);
-            uint1   parity(0);
-            if( clk_edge ) {
-                switch( bit_count ) {
-                    case 0: { parity = 0; if( ~ps2data_ext ) { bit_count = 1; } }                                                           // Start bit
-                    default: { shift_reg = { ps2data_ext, shift_reg[1,8] }; parity = parity ^ ps2data_ext; bit_count = bit_count + 1; }     // Data bit;
-                    case 10: {
-                        if( ps2data_ext ) {                                                                                                 // Data complete
-                            if( parity ) { data = shift_reg[0,8]; valid = 1; } else { error = 1; }
-                            bit_count = 0;
-                        }
+    always_after {
+        uint4   bit_count(0); uint9   shift_reg(0);     uint1   parity(0);
+        if( clk_edge ) {                                                                                                        // Process the PS/2 data bit
+            switch( bit_count ) {
+                case 0: { parity = 0; if( ~ps2data_ext ) { bit_count = 1; } }                                                           // Start bit
+                default: { shift_reg = { ps2data_ext, shift_reg[1,8] }; parity = parity ^ ps2data_ext; bit_count = bit_count + 1; }     // Data bit;
+                case 10: {
+                    if( ps2data_ext ) {                                                                                                 // Data complete
+                        if( parity ) { data = shift_reg[0,8]; valid = 1; } else { error = 1; }
+                        bit_count = 0;
                     }
                 }
             }

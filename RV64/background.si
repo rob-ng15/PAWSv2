@@ -1,151 +1,3 @@
-// STRUCTURE OF A COPPER PROGRAM ENTRY
-bitfield CU{
-    uint3   command,
-    uint3   flag,
-    uint1   valueflag,
-    uint10  value,
-    uint4   mode,
-    uint8   colour_alt,
-    uint8   colour
-}
-
-unit background_writer(
-    input   uint10  pix_x,
-    input   uint9   pix_y,
-    input   uint1   pix_active,
-    input   uint1   pix_vblank,
-
-    input   uint8   backgroundcolour,
-    input   uint8   backgroundcolour_alt,
-    input   uint4   backgroundcolour_mode,
-    input   uint2   background_update,
-
-    input   uint1   copper_program,
-    input   uint8   copper_address,
-    input   uint3   copper_command,
-    input   uint3   copper_condition,
-    input   uint11  copper_coordinate,
-    input   uint4   copper_mode,
-    input   uint8   copper_alt,
-    input   uint8   copper_colour,
-
-    output  uint8   BACKGROUNDcolour,
-    output  uint8   BACKGROUNDalt,
-    output  uint4   BACKGROUNDmode,
-
-    simple_dualport_bram_port1 copper_commands,
-    simple_dualport_bram_port1 copper_conditions,
-    simple_dualport_bram_port1 copper_coordinates,
-    simple_dualport_bram_port1 copper_modes,
-    simple_dualport_bram_port1 copper_alts,
-    simple_dualport_bram_port1 copper_colours
-) <reginputs> {
-    copper_commands.wenable1 := 1;                  copper_conditions.wenable1 := 1;                    copper_coordinates.wenable1 := 1;
-    copper_modes.wenable1 := 1;                     copper_alts.wenable1 := 1;                          copper_colours.wenable1 := 1;
-
-    always_after {
-        switch( background_update ) {
-            case 2b00: {                                                                                            // CHANGE A PROGRAM LINE IN THE COPPER MEMORY
-                if( copper_program ) {
-                    copper_commands.addr1 = copper_address; copper_commands.wdata1 = copper_command;
-                    copper_conditions.addr1 = copper_address; copper_conditions.wdata1 = copper_condition;
-                    copper_coordinates.addr1 = copper_address; copper_coordinates.wdata1 = copper_coordinate;
-                    copper_modes.addr1 = copper_address; copper_modes.wdata1 = copper_mode;
-                    copper_alts.addr1 = copper_address; copper_alts.wdata1 = copper_alt;
-                    copper_colours.addr1 = copper_address; copper_colours.wdata1 = copper_colour;
-                }
-            }
-            case 2b01: { BACKGROUNDcolour = backgroundcolour; }                                                     // UPDATE THE BACKGROUND FROM RISC-V
-            case 2b10: { BACKGROUNDalt = backgroundcolour_alt; }
-            case 2b11: { BACKGROUNDmode = backgroundcolour_mode; }
-        }
-    }
-}
-unit background_copper(
-    input   uint10  pix_x,
-    input   uint9   pix_y,
-    input   uint1   pix_active,
-    input   uint1   pix_vblank,
-
-    input   uint8   backgroundcolour,
-    input   uint8   backgroundcolour_alt,
-    input   uint4   backgroundcolour_mode,
-
-    input   uint1   copper_status,
-    input   uint10  copper_cpu_input,
-
-    output! uint8   BACKGROUNDcolour,
-    output! uint8   BACKGROUNDalt,
-    output! uint4   BACKGROUNDmode,
-
-    simple_dualport_bram_port0 copper_commands,
-    simple_dualport_bram_port0 copper_conditions,
-    simple_dualport_bram_port0 copper_coordinates,
-    simple_dualport_bram_port0 copper_modes,
-    simple_dualport_bram_port0 copper_alts,
-    simple_dualport_bram_port0 copper_colours
-) <reginputs> {
-    uint1   copper_execute = uninitialised;         uint8   PC = 0;                                 uint8   PCplus1 <:: PC + 1;
-    uint10  copper_variable = 0;
-
-    // COPPER PROGRAM ENTRY
-    uint10  value <:: copper_coordinates.rdata0[10,1]? copper_cpu_input : copper_coordinates.rdata0[0,10];
-
-    // COMPARISON
-    uint1   lessthan <:: ( ( copper_conditions.rdata0 == 3b101 ) ? copper_variable : copper_conditions.rdata0[2,1] ? pix_x : pix_y ) < value;
-    uint1   equal <:: ( ( copper_commands.rdata0 == 3b101 ) ? copper_variable : copper_conditions.rdata0[2,1] ? pix_x : pix_y ) ==
-                    ( ( copper_commands.rdata0 == 3b101 ) ? ( value[0,1] ? pix_x : pix_y ) : value );
-
-    // COPPER FLAGS
-    copper_commands.addr0 := PC;                    copper_conditions.addr0 := PC;                      copper_coordinates.addr0 := PC;
-    copper_modes.addr0 := PC;                       copper_alts.addr0 := PC;                            copper_colours.addr0 := PC;
-    copper_execute := 0;
-
-    always_after {
-        {
-            if( copper_status ) {
-                switch( copper_commands.rdata0 ) {
-                    case 3b000: {                                                                                                                                               // JUMP ON CONDITION
-                        switch( copper_conditions.rdata0 ) {
-                            default: { copper_execute = 1; }
-                            case 3b001: { copper_execute = ( pix_vblank == value[0,1] ); }                                                                                          // VBLANK
-                            case 3b010: { copper_execute = ( pix_active == value[0,1] ); }                                                                                          // HBLANK
-                            case 3b011: { copper_execute = |value ? lessthan : pix_vblank; }                                                                                        // Y <
-                            case 3b100: { copper_execute = |value ? lessthan : pix_active; }                                                                                        // X <
-                            case 3b101: { copper_execute = lessthan; }                                                                                                              // VAR <
-                        }
-                    }                                                                                                                                                           // WAIT
-                    case 3b001: { copper_execute = pix_vblank; }                                                                                                                    // VBLANK
-                    case 3b010: { copper_execute = ~pix_active; }                                                                                                                   // ACTIVE DISPLAY
-                    case 3b011: { copper_execute = equal; }                                                                                                                         // Y =
-                    case 3b100: { copper_execute = equal; }                                                                                                                         // X =
-                    case 3b101: { copper_execute = equal; }                                                                                                                         // VAR = X or Y
-                    case 3b110: { copper_variable = copper_conditions.rdata0[0,1] ? value : copper_variable + ( copper_conditions.rdata0[2,1] ? ( -value ) : value ); }         // SET VAR
-                    case 3b111: {                                                                                                                                               // SET FROM COPPER
-                        if( copper_conditions.rdata0[0,1] ) { BACKGROUNDcolour = copper_variable; }
-                        if( copper_conditions.rdata0[1,1] ) { BACKGROUNDalt = copper_variable; }
-                        if( copper_conditions.rdata0[2,1] ) { BACKGROUNDmode = copper_variable;}
-                    }
-                }
-            } else{
-                BACKGROUNDcolour = backgroundcolour; BACKGROUNDalt = backgroundcolour_alt; BACKGROUNDmode = backgroundcolour_mode;              // UPDATE THE BACKGROUND GENERATOR FROM THE CPU
-                PC = 0;
-            }
-        }
-        {
-            if( copper_status ) {
-                if( copper_execute & |copper_commands.rdata0 ) {                                                                                // CHANGE BACKGROUND PROGRAM
-                    if( copper_conditions.rdata0[0,1] ) { BACKGROUNDcolour = copper_colours.rdata0; }
-                    if( copper_conditions.rdata0[1,1] ) { BACKGROUNDalt = copper_alts.rdata0; }
-                    if( copper_conditions.rdata0[2,1] ) { BACKGROUNDmode = copper_modes.rdata0; }
-                }
-                if( ~|copper_commands.rdata0 | &copper_commands.rdata0[1,2] | copper_execute ) {                                                // MOVE TO NEXT INSTRUCTION
-                    PC = ( ~|copper_commands.rdata0 & copper_execute ) ? copper_colours.rdata0 : PCplus1;
-                }
-            }
-        }
-    }
-}
 unit background_display(
     input   uint10  pix_x,
     input   uint9   pix_y,
@@ -199,6 +51,163 @@ unit background_display(
         }
     }
 }
+unit background_writer(
+    input   uint10  pix_x,
+    input   uint9   pix_y,
+    input   uint1   pix_active,
+    input   uint1   pix_vblank,
+
+    input   uint8   backgroundcolour,
+    input   uint8   backgroundcolour_alt,
+    input   uint4   backgroundcolour_mode,
+    input   uint2   background_update,
+
+    input   uint1   copper_program,
+    input   uint7   copper_address,
+    input   uint4   copper_op,
+    input   uint3   copper_opd,
+    input   uint1   copper_opf,
+    input   uint10  copper_opl,
+
+    output  uint8   BACKGROUNDcolour,
+    output  uint8   BACKGROUNDalt,
+    output  uint4   BACKGROUNDmode,
+
+    simple_dualport_bram_port1  OP,                                                                                             // OPCODE
+    simple_dualport_bram_port1  OPD,                                                                                            // DEST REG NUMBER
+    simple_dualport_bram_port1  OPF,                                                                                            // LITERAL/REGISTER FLAG
+    simple_dualport_bram_port1  OPL,                                                                                            // 2ND REG NUMBER OR LITERAL
+) <reginputs> {
+    OP.wenable1 := 1;                  OPD.wenable1 := 1;                    OPF.wenable1 := 1;
+    OPL.wenable1 := 1;
+
+    always_after {
+        switch( background_update ) {
+            case 2b00: {                                                                                            // CHANGE A PROGRAM LINE IN THE COPPER MEMORY
+                if( copper_program ) {
+                    OP.addr1 = copper_address; OP.wdata1 = copper_op;
+                    OPD.addr1 = copper_address; OPD.wdata1 = copper_opd;
+                    OPF.addr1 = copper_address; OPF.wdata1 = copper_opf;
+                    OPL.addr1 = copper_address; OPL.wdata1 = copper_opl;
+                }
+            }
+            case 2b01: { BACKGROUNDcolour = backgroundcolour; }                                                     // UPDATE THE BACKGROUND FROM RISC-V
+            case 2b10: { BACKGROUNDalt = backgroundcolour_alt; }
+            case 2b11: { BACKGROUNDmode = backgroundcolour_mode; }
+        }
+    }
+}
+unit nucu(
+    input   uint10  pix_x,
+    input   uint9   pix_y,
+    input   uint1   pix_vblank,
+
+    input   uint4   backgroundcolour_mode,                                                                                      // FROM CPU BACKGROUND MODE
+    input   uint8   backgroundcolour,                                                                                           // FROM CPU BACKGROUND COLOUR
+    input   uint8   backgroundcolour_alt,                                                                                       // FROM CPU BACKGROUND COLOUR ALT
+
+    input   uint1   copper_status,                                                                                              // START COPPER EXECUTING
+    input   uint10  copper_cpu_input,                                                                                           // FROM CPU VALUE
+    output  uint10  copper_cpu_output,                                                                                          // TO CPU VALUE
+    input   uint10  staticGenerator,                                                                                            // RANDOM NUMBER GENERATOR
+
+    output! uint4   BACKGROUNDmode,                                                                                             // COPPER/CPU BACKGROUND MODE TO GENERATOR
+    output! uint8   BACKGROUNDcolour,                                                                                           // COPPER/CPU BACKGROUND COLOUR TO GENERATOR
+    output! uint8   BACKGROUNDalt,                                                                                              // COPPER/CPU BACKGROUND COLOUR ALT TO GENERATOR
+
+    simple_dualport_bram_port0  OP,                                                                                             // OPCODE
+    simple_dualport_bram_port0  OPD,                                                                                            // DEST REG NUMBER
+    simple_dualport_bram_port0  OPF,                                                                                            // LITERAL/REGISTER FLAG
+    simple_dualport_bram_port0  OPL,                                                                                            // 2ND REG NUMBER OR LITERAL
+    input   uint80  memoryinit                                                                                                  // INITIAL SETTINGS OF THE MEMORY
+) <reginputs> {
+    uint7   PC = 0;                                                                                                             // PROGRAM COUNTER
+    uint2   PCinc = uninitialised;                                                                                              // PC ACTION FLAG == 0 PCnext, == 1 PCskip, == 2 RL value
+    uint1   WR = uninitialised;                                                                                                 // WRITE TO REGISTERS FLAG
+    uint1   WM = uninitialised;                                                                                                 // WRITE TO MEMORY FLAG
+
+    uint10  MEM[8] = uninitialised;                                                                                             // STORAGE FOR 8 MEMORY LOCATIONS
+
+    PCinc := 0; WR := 1; WM := 0;
+
+    always_after {
+        uint7   PCnext = PC + 1;                                                                                                // NEXT INSTRUCTION
+        uint7   PCskip = PC + 2;                                                                                                // NEXT INSTRUCTION IF SKIP
+        uint10  reg1 = uninitialised;                                                                                           // CONTENTS OF REG 1
+        uint10  reg2 = uninitialised;                                                                                           // CONTENTS OF REG 2 OR LITERAL VALUE
+        uint10  result = uninitialised;                                                                                         // RESULT OF OP
+        uint10  REGS[4] = uninitialised;                                                                                        // STORAGE FOR 4 REGISTERS
+
+        switch( OPD.rdata0 ) {                                                                                                  // EXTRACT REG1
+            case 0: { reg1 = pix_vblank; }                                                                                      // VBLANK
+            case 1: { reg1 = pix_x; }                                                                                           // X COORD
+            case 2: { reg1 = pix_y; }                                                                                           // Y COORD
+            case 3: { reg1 = copper_cpu_input; }                                                                                // CPU TO COPPER
+            default: { reg1 = REGS[ OPD.rdata0[0,2] ]; }                                                                        // COPPER REGISTER
+        }
+
+        if( OPF.rdata0 ) {                                                                                                      // EXTRACT REG2
+            reg2 = OPL.rdata0;                                                                                                  // LITERAL VALUE
+        } else {
+            switch( OPL.rdata0[0,3] ) {
+                case 0: { reg2 = pix_vblank; }                                                                                  // VBLANK
+                case 1: { reg2 = pix_x; }                                                                                       // X COORD
+                case 2: { reg2 = pix_y; }                                                                                       // Y COORD
+                case 3: { reg2 = copper_cpu_input; }                                                                            // CPU TO COPPER
+                default: { reg2 = REGS[ OPL.rdata0[0,2] ]; }                                                                    // COPPER REGISTER
+            }
+        }
+
+        if( copper_status ) {
+            switch( OP.rdata0 ) {
+                case 4h0: { WR = 0; PCinc = 2; }                                                                                // JUMP
+                case 4h1: { result = reg2; }                                                                                    // SET
+                case 4h2: { result = reg1 + reg2; }                                                                             // ADD
+                case 4h3: { result = reg1 - reg2; }                                                                             // SUB
+                case 4h4: { result = reg1 & reg2; }                                                                             // AND
+                case 4h5: { result = reg1 | reg2; }                                                                             // OR
+                case 4h6: { result = reg1 ^ reg2; }                                                                             // XOR
+                case 4h7: { result = reg1 << reg2; }                                                                            // SHL
+                case 4h8: { result = reg1 >> reg2; }                                                                            // SHR
+                case 4h9: { WR = 0; PCinc = ( reg1 == reg2 ); }                                                                 // SKIP =
+                case 4ha: { WR = 0; PCinc = ( reg1 != reg2 ); }                                                                 // SKIP !=
+                case 4hb: { WR = 0; PCinc = ( reg1 < reg2 ); }                                                                  // SKIP <
+                case 4hc: { WR = 0; PCinc = ( reg1 <= reg2 ); }                                                                 // SKIP <=
+                case 4hd: { result = staticGenerator & reg2; }                                                                  // RANDOM
+                case 4he: { result = MEM[ reg2[0,3] ]; }                                                                        // LOAD FROM MEMORY
+                case 4hf: { WR = 0; WM = 1; result = reg2; }                                                                    // STORE TO MEMORY
+            }
+
+            if( WR ) {                                                                                                          // WRITE TO REGISTERS?
+                switch( OPD.rdata0 ) {
+                    case 0: { BACKGROUNDmode = result; }                                                                        // BACKGROUND MODE
+                    case 1: { BACKGROUNDcolour = result; }                                                                      // BACKGROUND COLOUR
+                    case 2: { BACKGROUNDalt = result; }                                                                         // BACKGROUND COLOUR ALT
+                    case 3: { copper_cpu_output = result; }                                                                     // COPPER TO CPU
+                    default: { REGS[ OPD.rdata0[0,2] ] = result; }                                                              // COPPER REGISTER
+                }
+            }
+
+            if( WM ) { MEM[ reg1[0,3] ] = result; }                                                                             // WRITE TO MEMORY
+
+            switch( PCinc ) {                                                                                                   // UPDATE PC
+                default: { PC = PCnext; }                                                                                       // NEXT INSTRUCTION
+                case 1: { PC = PCskip; }                                                                                        // SKIP TRUE
+                case 2: { PC = reg2; }                                                                                          // JUMP
+            }
+        } else {
+            PC = 0;                                                                                                             // set PC to 0
+            $$for i=0,7 do
+                MEM[$i$] = memoryinit[ $i*10$, 10 ];                                                                            // COPY CPU MEMORY INITIALISATION VALUES
+            $$end
+            BACKGROUNDmode = backgroundcolour_mode;                                                                             // UPDATE THE BACKGROUND GENERATOR FROM THE CPU
+            BACKGROUNDcolour = backgroundcolour;
+            BACKGROUNDalt = backgroundcolour_alt;
+        }
+
+        OP.addr0 = PC; OPD.addr0 = PC; OPF.addr0 = PC; OPL.addr0 = PC;                                                          // MOVE TO THE NEXT INSTRUCTION
+    }
+}
 
 unit starfield(
     input   uint10  pix_x,
@@ -217,3 +226,4 @@ unit starfield(
         { star = ( pix_y == dotpos ); }
     }
 }
+

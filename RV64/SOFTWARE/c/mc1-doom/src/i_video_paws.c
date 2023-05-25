@@ -1,7 +1,7 @@
 // Emacs style mode select   -*- C++ -*-
 //-----------------------------------------------------------------------------
 //
-//      DOOM graphics renderer for PAWS framebuffer using pixelblock
+//      DOOM graphics renderer for PAWS framebuffer
 //
 //-----------------------------------------------------------------------------
 
@@ -17,7 +17,7 @@
 #include <PAWSlibrary.h>
 
 #define FB_WIDTH 320
-#define FB_HEIGHT 200
+#define FB_HEIGHT 240
 
 unsigned char PAWSKEYlookup[] = {
     0x00, KEY_F9, 0x00, KEY_F5, KEY_F3, KEY_F1, KEY_F2, KEY_F12, 0x00, KEY_F10, KEY_F8, KEY_F6, KEY_F4, KEY_TAB, 0x00, 0x00,     // 0x00 - 0x0f
@@ -38,16 +38,16 @@ unsigned char PAWSKEYlookup[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00                              // 0xf0 - 0xff
 };
 
+
 void I_InitGraphics (void) {
     // Only initialize once.
     static int initialized = 0;
     if (initialized)
         return;
-    initialized = 1; screens[0] = (byte*)0x2020000;
 
-    screen_mode( 0, MODE_RGBM, 0 ); bitmap_256( TRUE );
-    bitmap_display( 1 ); bitmap_draw( 2 ); bitmap_256( TRUE ); use_palette( TRUE ); gpu_pixelblock_mode( PB_WRITEALL );
-    memset( (void *restrict)0x2000000, 0, 320*240 ); memset( (void *restrict)0x2020000, 0, 320*240 );
+    initialized = 1;
+    screens[0] = (byte*)0x2020000; bitmap_display( 1 );
+    screen_mode( 0, MODE_RGBM, 0 ); bitmap_256( TRUE ); use_palette( TRUE );
 }
 
 void I_ShutdownGraphics (void) {
@@ -91,7 +91,7 @@ void I_UpdateNoBlit (void) {
 }
 
 void I_FinishUpdate (void) {
-    memcpy( (void *restrict)0x2001900, screens[0], FB_WIDTH * FB_HEIGHT );
+    memcpy( (byte*)0x2000000, (byte*)0x2020000, SCREENWIDTH * SCREENHEIGHT );
 }
 
 void I_ReadScreen (byte* scr) {

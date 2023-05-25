@@ -372,43 +372,6 @@ void M_LoadDefaults (void)
     }
     else
         defaultfile = basedefault;
-
-    // read the file in, overriding any set defaults
-    f = fopen (defaultfile, "r");
-    if (f)
-    {
-        while (!feof(f))
-        {
-            if (fscanf (f, "%79s %[^\n]\n", def, strparm) == 2)
-            {
-                newstring = NULL;
-                if (strparm[0] == '"')
-                {
-                    // get a string default
-                    len = strlen (strparm);
-                    newstring = (char*)malloc (len);
-                    strparm[len - 1] = 0;
-                    strcpy (newstring, strparm + 1);
-                }
-                else if (strparm[0] == '0' && strparm[1] == 'x')
-                    sscanf (strparm + 2, "%x", (unsigned*)&parm);
-                else
-                    sscanf (strparm, "%i", &parm);
-                for (i = 0; i < numdefaults; i++)
-                    if (!strcmp (def, defaults[i].name))
-                    {
-                        if (defaults[i].location != NULL && newstring == NULL)
-                            *defaults[i].location = parm;
-                        else if (defaults[i].str_location != NULL &&
-                                 newstring != NULL)
-                            *defaults[i].str_location = newstring;
-                        break;
-                    }
-            }
-        }
-
-        fclose (f);
-    }
 }
 
 //

@@ -47,35 +47,43 @@
 #define BKG_VSTRIPE 14
 #define BKG_HSTRIPE 15
 
-// BACKGROUND COPPER COMMANDS
-struct copper_command {
-    unsigned int command:3;
-    unsigned int condition:3;
-    unsigned int coordinate:11;
-    unsigned int mode:4;
-    unsigned int altcolour:7;
-    unsigned int colour:7;
-};
-#define COPPER_JUMP 0
-#define COPPER_JUMP_ALWAYS 0
-#define COPPER_JUMP_ON_VBLANK_EQUAL 1
-#define COPPER_JUMP_ON_HBLANK_EQUAL 2
-#define COPPER_JUMP_IF_Y_LESS 3
-#define COPPER_JUMP_IF_X_LESS 4
-#define COPPER_JUMP_IF_VARIABLE_LESS 5
-#define COPPER_VARIABLE 6
-#define COPPER_SET 7
-#define COPPER_WAIT_VBLANK 1
-#define COPPER_WAIT_HBLANK 2
-#define COPPER_WAIT_Y 3
-#define COPPER_WAIT_X 4
-#define COPPER_WAIT_VARIABLE 5
-#define COPPER_VARIABLE 6
-#define COPPER_SET_VARIABLE 1
-#define COPPER_ADD_VARIABLE 2
-#define COPPER_SUB_VARIABLE 4
-#define COPPER_SET_FROM_VARIABLE 7
-#define COPPER_USE_CPU_INPUT 0x400
+// NEW CU BACKGROUND CO-PROCESSOR
+// OPCODES
+#define CU_JMP 0
+#define CU_SET 1
+#define CU_ADD 2
+#define CU_SUB 3
+#define CU_AND 4
+#define CU_OR  5
+#define CU_XOR 6
+#define CU_SHL 7
+#define CU_SHR 8
+#define CU_SEQ 9
+#define CU_SNE 10
+#define CU_SLT 11
+#define CU_SLE 12
+#define CU_RND 13
+#define CU_LFM 14
+#define CU_STM 15
+
+// REGISTER NAMES { VBLANK, X, Y, CPU, R0, R1, R2, R3 }
+#define CU_RB 0
+#define CU_RX 1
+#define CU_RY 2
+#define CU_RC 3
+#define CU_R0 4
+#define CU_R1 5
+#define CU_R2 6
+#define CU_R3 7
+
+// BACKGROUND GENERATOR REGISTER NAMES { MODE, COLOUR, ALT COLOUR } REPLACE { VBLANK, X, Y } WHEN WRITING
+#define CU_BM 0
+#define CU_BC 1
+#define CU_BA 2
+
+// REG2 IS REG OR LITERAL
+#define CU_RR 0
+#define CU_RL 1
 
 // COLOURS - RGBM MODE
 #define TRANSPARENT 0x40
@@ -219,7 +227,7 @@ struct copper_command {
 #define WAVE_SINE 3
 #define WAVE_NOISE 4
 #define WAVE_UD1 5
-#define WAVE UD2 6
+#define WAVE_PCM 6
 #define WAVE_BITS 7
 #define WAVE_SAMPLE 8
 #define SAMPLE_REPEAT 16

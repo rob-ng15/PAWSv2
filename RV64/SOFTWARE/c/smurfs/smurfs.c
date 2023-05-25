@@ -118,7 +118,7 @@ __attribute__((used)) void playtune( void ) {
 }
 void smt_thread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp, 0x4000");
+    asm volatile ("li sp, 0x5f80000");
     asm volatile ("j playtune");
 }
 

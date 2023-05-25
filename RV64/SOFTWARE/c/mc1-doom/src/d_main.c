@@ -1118,7 +1118,7 @@ void D_DoomMain (void)
     }
 
     // RESET TERMINAL AND SET DEFAULT PALETTE
-    autorefresh( FALSE ); curs_set( FALSE ); ps2_keyboardmode( PS2_KEYBOARD ); tpu_cs(); gpu_cs();
+    autorefresh( FALSE ); curs_set( FALSE ); ps2_keyboardmode( PS2_KEYBOARD ); tpu_cs(); gpu_rectangle( 0, 0, 0, 319, 239 );
     I_SetPalette (W_CacheLumpName ("PLAYPAL",PU_CACHE));
 
     D_DoomLoop ();  // never returns

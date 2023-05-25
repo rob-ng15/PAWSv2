@@ -517,7 +517,7 @@ __attribute__((used)) void scrollbars( void ) {
 
 void smtthread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp, 0x4000");
+    asm volatile ("li sp, 0x5f80000");
     asm volatile ("j scrollbars");
 }
 
@@ -556,14 +556,14 @@ int main( void ) {
     SMTSTART( smtthread );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV64GC+ CPU", 0 );
-    gpu_outputstringcentre( UK_BLUE, 224, 0, "PAWSv2 for ULX3S by Rob S in Silice", 0);
+    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV64GC+", 0 );
+    gpu_outputstringcentre( UK_BLUE, 224, 0, "For ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS
     while( ( *UART_STATUS & 1 ) | *PS2_AVAILABLE ) { (void)*UART_DATA;( void)*PS2_DATA; }
 
-    gpu_outputstringcentre( RED, 72, 0, "Waiting for SDCARD", 0 );
-    gpu_outputstringcentre( RED, 88, 0, "Press RESET", 0 );
+    gpu_outputstringcentre( RED, 72, 0, "SDCARD?", 0 );
+    gpu_outputstringcentre( RED, 88, 0, "RESET", 0 );
     sdcard_readsector( 0, BOOTRECORD );
     PARTITIONS = (PartitionTable *) &BOOTRECORD[ 0x1BE ];
 
@@ -572,7 +572,7 @@ int main( void ) {
         gpu_outputstringcentre( RED, 72, 1, "ERROR", 2 );
         gpu_outputstringcentre( RED, 120, 1, "Insert SDCARD", 0 );
         gpu_outputstringcentre( RED, 128, 1, "WITH FAT32 PARTITION", 0 );
-        gpu_outputstringcentre( RED, 136, 1, "Press RESET", 0 );
+        gpu_outputstringcentre( RED, 136, 1, "RESET", 0 );
         while(1) {}
     }
 

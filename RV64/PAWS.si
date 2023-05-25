@@ -210,8 +210,7 @@ $$end
 
         clock_25mhz <: $clock_25mhz$,
 
-        accesssize <: CPU.accesssize,
-        memoryAddress <: CPU.address[0,12],
+        memoryAddress <: CPU.address,
         writeData <: CPU.writedata,
         memoryWrite <: IO_MapmemoryWrite,
         memoryRead <: IO_MapmemoryRead,
@@ -235,8 +234,7 @@ $$end
     uint1   AUDIO_MapmemoryWrite <: AUDIO & CPU.writememory;
     audio_memmap AUDIO_Map <@clock_system,!reset> (
         clock_25mhz <: $clock_25mhz$,
-        memoryAddress <: CPU.address[0,5],
-        accesssize <: CPU.accesssize,
+        memoryAddress <: CPU.address[1,5],
         writeData <: CPU.writedata,
         memoryWrite <: AUDIO_MapmemoryWrite,
         audio_l :> audio_l,
@@ -266,7 +264,7 @@ $$if VGA then
         video_hs :> video_hs,
         video_vs :> video_vs,
 $$end
-        static8bit <: TIMERS_Map.static16bit[0,8],
+        staticGenerator <: TIMERS_Map.static16bit[0,10],
         blink <: TIMERS_Map.cursor,
 
         sdcardlightcolour <: IO_Map.sdcardlightcolour,
@@ -277,14 +275,15 @@ $$end
     );
 
     // LINK CPU TO MEMORY CONTROLLERS
-    uint1   memorybusy <: DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT );
+    //uint1   memorybusy <: DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT );
+    uint1   memorybusy <: DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & ( SDRAM ) ) | ( CPU.readmemory & ( VIDEODIRECT | BRAM ) );
     uint32  readdata <: SDRAM ? DRAM.readdata :
-                    VIDEODIRECT ? VIDEO_Map.readDataDirect :
-                    BRAM ? RAM.readdata :
-                    TIMERS ? TIMERS_Map.readData :
-                    VIDEO ? VIDEO_Map.readData :
-                    AUDIO ? AUDIO_Map.readData :
-                    IO ? IO_Map.readData : 0;
+                        VIDEODIRECT ? VIDEO_Map.readDataDirect :
+                        BRAM ? RAM.readdata :
+                        TIMERS ? TIMERS_Map.readData :
+                        VIDEO ? VIDEO_Map.readData :
+                        AUDIO ? AUDIO_Map.readData :
+                        IO ? IO_Map.readData : 0;
     PAWSCPU CPU <@clock_cpu> (
         clock_CPUdecoder <: clock_decode,
         clock_cache <: clock_cache,
@@ -305,7 +304,11 @@ $$end
 
 // RAM - BRAM controller
 unit bramcontroller(
-    input   uint15  address,
+$$if not SIMULATION then
+    input   uint12  address,
+$$else
+    input   uint13  address,
+$$end
     input   uint2   accesssize,
     input   uint1   writeflag,
     input   uint32  writedata,
@@ -316,25 +319,24 @@ unit bramcontroller(
     $$config['dualport_bram_wmask_byte_wenable1_width'] = 'data'
     $$if not SIMULATION then
         // RISC-V FAST BRAM and BIOS
-        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [16384] = {file("ROM/BIOS.bin"), pad(uninitialized)};
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [2048] = {file("ROM/BIOS.bin"), pad(uninitialized)};
     $$else
         // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
-        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [16384] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
     $$end
 
     // BRAM FLAGS ram0 lower 16 bits, ram1 upper 16 bits, COMBINE ram0 AND ram1 TO 32 BIT READ
-    ram.wenable0 := 0; ram.addr0 := address[1,14];
-    ram.wenable1 := 0; ram.addr1 := address[1,14] + 1; ram.wdata1 := writedata[16,16];
+    ram.wenable0 := 0; ram.addr0 := address[1,11];
+    ram.wenable1 := 0; ram.addr1 := address[1,11] + 1; ram.wdata1 := writedata[16,16];
     readdata := { ram.rdata1, ram.rdata0 };
 
-    algorithm <autorun> {
-        while(1) {
-            if( writeflag ) {
-                switch( accesssize ) {
-                    case 2b00: { ram.wdata0 = { {2{writedata[0,8]}} }; ram.wenable0 = address[0,1] ? 2b10 : 2b01; }
-                    case 2b01: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; }
-                    default: { ram.wdata0 = writedata[0,16]; ram.wenable0 = 2b11; ram.wenable1 = 2b11; }
-                }
+    always_after {
+        if( writeflag ) {
+            ram.wdata0 = writedata[0,16];
+            switch( accesssize ) {
+                case 2b00: { ram.wdata0 = { {2{writedata[0,8]}} }; ram.wenable0 = address[0,1] ? 2b10 : 2b01; }
+                case 2b01: { ram.wenable0 = 2b11; }
+                default: { ram.wenable0 = 2b11; ram.wenable1 = 2b11; }
             }
         }
     }

@@ -887,37 +887,85 @@ void backgrounddemo( void ) {
     displayreset();
 
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Rainbow Stars Test" );
-    copper_startstop( 0 );
-    copper_program( 0, COPPER_WAIT_VBLANK, 7, 0, BKG_SNOW, BLACK, WHITE );
-    copper_program( 1, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, WHITE );
-    copper_program( 2, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 64, 0, 0, 1 );
-    copper_program( 3, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, RED );
-    copper_program( 4, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 128, 0, 0, 3 );
-    copper_program( 5, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, ORANGE );
-    copper_program( 6, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 160, 0, 0, 5 );
-    copper_program( 7, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, YELLOW );
-    copper_program( 8, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 192, 0, 0, 7 );
-    copper_program( 9, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, GREEN );
-    copper_program( 10, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 224, 0, 0, 9 );
-    copper_program( 11, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, LTBLUE );
-    copper_program( 12, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 256, 0, 0, 11 );
-    copper_program( 13, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, PURPLE );
-    copper_program( 14, COPPER_JUMP, COPPER_JUMP_IF_Y_LESS, 288, 0, 0, 13 );
-    copper_program( 15, COPPER_WAIT_X, 7, 0, BKG_SNOW, BLACK, MAGENTA );
-    copper_program( 16, COPPER_JUMP, COPPER_JUMP_ON_VBLANK_EQUAL, 0, 0, 0, 15 );
-    copper_program( 17, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 1 );
-    copper_startstop( 1 );
-    sleep1khz( 2000, 0 );
 
-    tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Rainbow Stars Test 2 - MAY NOT WORK" );
-    copper_startstop( 0 );
-    copper_program( 0, COPPER_SET, 7, 0, BKG_SNOW, BLACK, WHITE );
-    copper_program( 1, COPPER_VARIABLE, COPPER_SET_VARIABLE, 0, 0, 0, 0 );
-    copper_program( 2, COPPER_VARIABLE, COPPER_ADD_VARIABLE, 1, 0, 0, 0 );
-    copper_program( 3, COPPER_SET_FROM_VARIABLE, 2, 0, 0, 0, 0 );
-    copper_program( 4, COPPER_JUMP, COPPER_JUMP_ALWAYS, 0, 0, 0, 2 );
+    tpu_set( 0, 0, TRANSPARENT, WHITE ); tpu_print( 1, "MEM = { WHITE, RED, ORANGE, YELLOW, GREEN, LTBLUE, PURPLE, MAGENTA }" );
+
+    tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
+    tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
+
+    tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET R0 <- 0            // SET R0 TO 0" );
+
+    tpu_set( 0, 8 , TRANSPARENT, WHITE ); tpu_print( 1, "04 SET R1 <- (R0)         // SET R1 TO R0" );
+    tpu_set( 0, 9 , TRANSPARENT, WHITE ); tpu_print( 1, "05 SHL R1 << 6            // SHIFT LEFT R1 BY 6" );
+    tpu_set( 0, 10, TRANSPARENT, WHITE ); tpu_print( 1, "06 LFM R2 <- [ (R0) ]     // LOAD R2 FROM MEM[R0]" );
+
+    tpu_set( 0, 12, TRANSPARENT, WHITE ); tpu_print( 1, "07 SEQ Y == (R1)          // SKIP IF Y == R1?" );
+    tpu_set( 0, 13, TRANSPARENT, WHITE ); tpu_print( 1, "08 JMP 7                  // ELSE JUMP TO 7" );
+
+    tpu_set( 0, 15, TRANSPARENT, WHITE ); tpu_print( 1, "09 SET BC <- (R2)         // SET COLOUR TO R2" );
+    tpu_set( 0, 16, TRANSPARENT, WHITE ); tpu_print( 1, "10 ADD R0 <- (R0) + 1     // ADD 1 TO R0" );
+    tpu_set( 0, 17, TRANSPARENT, WHITE ); tpu_print( 1, "11 AND R0 <- (R0) & 7     // AND R0 BY 7" );
+    tpu_set( 0, 18, TRANSPARENT, WHITE ); tpu_print( 1, "12 JMP 4                  // JUMP TO 4" );
+
+    unsigned short memoryinit[8] = {
+        WHITE,
+        RED,
+        ORANGE,
+        YELLOW,
+        GREEN,
+        LTBLUE,
+        PURPLE,
+        MAGENTA
+    };
+    copper_set_memory( memoryinit );                                                                                            // PROGRAM COPPER MEMORY ARRAY OF COLOURS
+
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );                                                                        // BACKGROUND SNOW GENERATOR
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT BLACK
+    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );                                                                           // BACKGROUND WHITE
+
+    copper_program( 3, CU_SET, CU_R0, CU_RL, 0 );                                                                               // SET R0 = 0
+
+    copper_program( 4, CU_SET, CU_R1, CU_RR, CU_R0 );                                                                           // SET R1 = R0
+    copper_program( 5, CU_SHL, CU_R1, CU_RL, 6 );                                                                               // R1 = R1 * 64
+    copper_program( 6, CU_LFM, CU_R2, CU_RR, CU_R0 );                                                                           // R2 = MEM[ R0 ]
+
+    copper_program( 7, CU_SEQ, CU_RY, CU_RR, CU_R1 );                                                                           // Y == R1 ?
+    copper_program( 8, CU_JMP, FALSE, CU_RL, 7 );                                                                               // SKIP YES, ELSE GO TO 7
+
+    copper_program( 9, CU_SET, CU_BC, CU_RR, CU_R2 );                                                                           // SET BACKGROUND = R2
+    copper_program( 10, CU_ADD, CU_R0, CU_RL, 1 );                                                                              // R0 = R0 + 1
+    copper_program( 11, CU_AND, CU_R0, CU_RL, 7 );                                                                              // R0 = R0 & 7
+    copper_program( 12, CU_JMP, FALSE, CU_RL, 4 );                                                                              // JUMP 4
+
     copper_startstop( 1 );
-    sleep1khz( 2000, 0 );
+    sleep1khz( 4000, 0 );
+
+    displayreset();
+    copper_startstop( 0 );
+
+    tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Random Colour Stars Test" );
+
+    tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
+    tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
+
+    tpu_set( 0, 5 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET R0 <- RANDOM & 255 // SET R0 TO RANDOM & 255" );
+    tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
+    tpu_set( 0, 7 , TRANSPARENT, WHITE ); tpu_print( 1, "05 JMP 3                  // JUMP TO 3" );
+
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );                                                                        // BACKGROUND SNOW GENERATOR
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT BLACK
+    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );                                                                           // BACKGROUND WHITE
+
+    copper_program( 3, CU_RND, CU_R0, CU_RL, 255 );                                                                             // SET R0 = RAND & 255
+    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );                                                                           // SET BACKGROUND = R0
+    copper_program( 5, CU_JMP, FALSE, CU_RL, 3 );                                                                               // JUMP 3
+
+    copper_startstop( 1 );
+    sleep1khz( 4000, 0 );
+
+
 }
 
 // PUT SOME OBJECTS ON THE TILEMAP AND WRAP LOWER LAYER UP AND LEFT , UPPER LAYER DOWN AND RIGHT
@@ -1148,7 +1196,7 @@ void spritedemo( void ) {
     char ghost_direction[4] = { 0, 1, 2, 3 };
     unsigned short trebleposition = 0, bassposition = 0, updateflag;
 
-    wavesample_upload( CHANNEL_BOTH, 1, harmonic_wave );
+    wavesample_upload( CHANNEL_BOTH, harmonic_wave );
 
     displayreset();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "SPRITE Demo" );
