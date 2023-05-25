@@ -908,8 +908,6 @@ void backgrounddemo( void ) {
     tpu_set( 0, 17, TRANSPARENT, WHITE ); tpu_print( 1, "11 AND R0 <- (R0) & 7     // AND R0 BY 7" );
     tpu_set( 0, 18, TRANSPARENT, WHITE ); tpu_print( 1, "12 JMP 4                  // JUMP TO 4" );
 
-    copper_startstop( 0 );
-
     unsigned short memoryinit[8] = {
         WHITE,
         RED,
@@ -942,6 +940,31 @@ void backgrounddemo( void ) {
 
     copper_startstop( 1 );
     sleep1khz( 4000, 0 );
+
+    displayreset();
+    copper_startstop( 0 );
+
+    tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Random Colour Stars Test" );
+
+    tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
+    tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
+
+    tpu_set( 0, 5 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET R0 <- RANDOM & 255 // SET R0 TO RANDOM & 255" );
+    tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
+    tpu_set( 0, 7 , TRANSPARENT, WHITE ); tpu_print( 1, "05 JMP 3                  // JUMP TO 3" );
+
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );                                                                        // BACKGROUND SNOW GENERATOR
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT BLACK
+    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );                                                                           // BACKGROUND WHITE
+
+    copper_program( 3, CU_RND, CU_R0, CU_RL, 255 );                                                                             // SET R0 = RAND & 255
+    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );                                                                           // SET BACKGROUND = R0
+    copper_program( 5, CU_JMP, FALSE, CU_RL, 3 );                                                                               // JUMP 3
+
+    copper_startstop( 1 );
+    sleep1khz( 4000, 0 );
+
 
 }
 
