@@ -965,7 +965,53 @@ void backgrounddemo( void ) {
     copper_startstop( 1 );
     sleep1khz( 4000, 0 );
 
+    displayreset();
+    copper_startstop( 0 );
 
+    tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Vertical Coloured Bars" );
+
+    tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SOLID    // SET MODE TO SOLID" );
+    tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- BLACK        // SET COLOUR TO BLACK" );
+
+    tpu_set( 0, 5 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET R0 <- (RX)         // SET R0 TO RX" );
+    tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
+    tpu_set( 0, 7 , TRANSPARENT, WHITE ); tpu_print( 1, "05 JMP 3                  // JUMP TO 3" );
+
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SOLID );                                                                        // BACKGROUND SNOW GENERATOR
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT BLACK
+    copper_program( 2, CU_SET, CU_BC, CU_RL, BLACK );                                                                           // BACKGROUND WHITE
+
+    copper_program( 3, CU_SET, CU_R0, CU_RR, CU_RX );                                                                             // SET R0 = RAND & 255
+    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );                                                                           // SET BACKGROUND = R0
+    copper_program( 5, CU_JMP, FALSE, CU_RL, 3 );                                                                               // JUMP 3
+
+    copper_startstop( 1 );
+    sleep1khz( 2000, 0 );
+
+    displayreset();
+    copper_startstop( 0 );
+
+    tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Horizontal Coloured Bars" );
+
+    tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SOLID    // SET MODE TO SOLID" );
+    tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- BLACK        // SET COLOUR TO BLACK" );
+
+    tpu_set( 0, 5 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET R0 <- (RY)         // SET R0 TO RY" );
+    tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
+    tpu_set( 0, 7 , TRANSPARENT, WHITE ); tpu_print( 1, "05 JMP 3                  // JUMP TO 3" );
+
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SOLID );                                                                        // BACKGROUND SNOW GENERATOR
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT BLACK
+    copper_program( 2, CU_SET, CU_BC, CU_RL, BLACK );                                                                           // BACKGROUND WHITE
+
+    copper_program( 3, CU_SET, CU_R0, CU_RR, CU_RY );                                                                             // SET R0 = RAND & 255
+    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );                                                                           // SET BACKGROUND = R0
+    copper_program( 5, CU_JMP, FALSE, CU_RL, 3 );                                                                               // JUMP 3
+
+    copper_startstop( 1 );
+    sleep1khz( 2000, 0 );
 }
 
 // PUT SOME OBJECTS ON THE TILEMAP AND WRAP LOWER LAYER UP AND LEFT , UPPER LAYER DOWN AND RIGHT

@@ -293,45 +293,6 @@ unit alu(
     }
 }
 
-unit alu_multicycle(
-    input   uint1   size32,
-    input   uint1   start,
-    output  uint1   busy(0),
-    input   uint2   function3,
-    input   int64   sourceReg1,
-    input   uint32  S1_abs32,
-    input   uint64  S1_abs64,
-    input   int64   sourceReg2,
-    input   uint32  S2_abs32,
-    input   uint64  S2_abs64,
-    output  int64   result,
-    input   uint1   isALUMD,
-    input   uint1   isALUCLM
-) <reginputs> {
-    // M EXTENSION - DIVISION
-    aludivision ALUMD(
-        size32 <: size32, function3 <: function3,
-        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64,
-        sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
-    );
-
-    // B EXTENSION - CARRYLESS MULTIPLY
-    alucarrylessmultiply ALUCLMUL( function3 <: function3, sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
-
-    ALUMD.start := start & isALUMD; ALUCLMUL.start := start & isALUCLM;
-    busy := start | ALUMD.busy | ALUCLMUL.busy;
-
-    algorithm <autorun> {
-        while(1) {
-            if( start ) { while( ALUMD.busy | ALUCLMUL.busy ) {} }
-        }
-    }
-
-    always_after {
-        if( busy ) { result = isALUMD ? ALUMD.result : ALUCLMUL.result; }
-    }
-}
-
 // INTEGER DIVISION
 unit dointegerdivide(
     input   uint1   start,
@@ -396,38 +357,6 @@ unit aludivision(
                               ( ( ~function3[0,1] & ( sign1 ^ sign2 ) ) ? -DODIVIDE.quotient :                                  // RETURN QUOTIENT ( correcting sgn )
                                                                            DODIVIDE.quotient ) :                                // RETURN QUOTIENT ( unsigned or positive )
                               function3[1,1] ? sourceReg1 : 64hffffffffffffffff;                                                // DIVIDE BY ZERO, dividend if remainder, -1 if quotient
-    }
-}
-
-// ALU FOR CARRYLESS MULTIPLY FROM B-EXTENSION
-unit alucarrylessmultiply(
-    input   uint1   start,
-    output  uint1   busy(0),
-    input   uint2   function3,
-    input   uint64  sourceReg1,
-    input   uint64  sourceReg2,
-    output  uint64  result
-) <reginputs> {
-    uint64  resultNEXT <:: result ^ ( ( function3[1,1] ) ? ( sourceReg1 >> ( stopat - count ) ) : ( sourceReg1 << count ) );
-    uint7   startat <:: &function3;
-    uint7   stopat <:: ( function3 == 2b10 ) ? 64 : 63;
-    uint7   count = uninitialised;
-    uint7   countNEXT <:: count + 1;
-    uint1   update = uninitialised;
-
-    update := 0;
-
-    algorithm <autorun> {
-        while(1) {
-            if( start ) { busy = 1; result = 0; count = start; while( count != stopat ) { update = 1; } busy = 0; }
-        }
-    }
-
-    always_after {
-        if( update ) {
-            if( sourceReg2[ count, 1 ] ) { result = resultNEXT; }
-            count = countNEXT;
-        }
     }
 }
 

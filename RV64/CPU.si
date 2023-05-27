@@ -103,6 +103,7 @@ unit PAWSCPU(
     // EXECUTE MULTICYCLE INSTRUCTIONS, INTEGER DIVIDE, CSR AND ALU-A
     cpuexecuteSLOWPATH EXECUTESLOW(
         size32 <: RV64CONTROL.IS_ALU32,
+        size32extend <: RV64CONTROL.IS_ALU32SIGNX,
         SMT <: SMT,
         function3 <: RV64CONTROL.function3,
         function7 <: RV64CONTROL.function7,
@@ -112,8 +113,6 @@ unit PAWSCPU(
         memoryinput <: memoryinput,
         incCSRinstret <: COMMIT,
         isALU <: RV64CONTROL.IS_ALU,
-        isALUMD <: RV64CONTROL.IS_ALUMD,
-        isALUCLM <: RV64CONTROL.IS_ALUCLM,
         isCSR <: RV64CONTROL.IS_CSR,
         isATOMIC <: RV64CONTROL.IS_ATOMIC,
         FPUnewflags <: EXECUTEFPU.FPUnewflags,
@@ -267,10 +266,11 @@ unit PAWSCPU(
                 }
                 cacheselect = 1; ICACHEUPDATE = 1; ++:                                                                          // SWITCH TO DATA CACHE, UPDATE ICACHE, ALLOW ADDRESS GENERATION, REGISTER FETCH
 
-                START_STORE = ( RV64CONTROL.IS_FAST & RV64CONTROL.IS_STORE );                                                   // START STORE IF FAST
+                START_STORE = RV64CONTROL.IS_FAST & RV64CONTROL.IS_STORE;                                                       // START STORE ( ONLY IN FAST MODE TO AVOID ATOMIC )
                 START_LOAD = RV64CONTROL.IS_LOAD;                                                                               // START LOAD
                 EXECUTEFPU.start = RV64CONTROL.IS_FPU;                                                                          // START FPU
-                EXECUTESLOW.start = ~RV64CONTROL.IS_FPU & ~|OPERATION;                                                          // START DIVISION / CSR
+                EXECUTESLOW.start = ( RV64CONTROL.IS_ALU & ~RV64CONTROL.IS_FAST ) |                                             // START DIVISION
+                                    ( RV64CONTROL.IS_CSR );                                                                     // START CSR
 
                 switch( OPERATION ) {
                     case 3b000: { while( EXECUTESLOW.busy | EXECUTEFPU.busy ) {} }                                              // DIVISION, CSR, FLOATIUNG POINT
@@ -364,6 +364,7 @@ unit cpuexecuteFASTPATH(
 
 unit cpuexecuteSLOWPATH(
     input   uint1   size32,
+    input   uint1   size32extend,
     input   uint1   start,
     output  uint1   busy(0),
     input   uint1   SMT,
@@ -384,8 +385,6 @@ unit cpuexecuteSLOWPATH(
     input   uint1   isCSR,
     input   uint1   isATOMIC,
     input   uint1   isALU,
-    input   uint1   isALUMD,
-    input   uint1   isALUCLM,
     output  uint8   FPUflags,
     input   uint5   FPUnewflags,
     input   uint1   CSRupdateFPUflags
@@ -407,13 +406,14 @@ unit cpuexecuteSLOWPATH(
         incCSRinstret <: incCSRinstret
     );
 
-    alu_multicycle ALU(                                                                                                         // MULTI-CYCLE INTEGER ALU FOR DIVISION AND CARRYLESS MULTIPLICATION
-        size32 <: size32, function3 <: function3[0,2], isALUMD <: isALUMD, isALUCLM <: isALUCLM,
+    aludivision ALUMD(
+        size32 <: size32, function3 <: function3,
         sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64,
         sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
     );
 
-    CSR.start := start & isCSR & |function3; ALU.start := start & isALU;                                                        // START FLAGS
+
+    CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                        // START FLAGS
 
     algorithm <autorun> {
         while(1) {
@@ -421,7 +421,7 @@ unit cpuexecuteSLOWPATH(
                 busy = 1;
                 onehot( operation ) {                                                                                           // PROVIDE WAIT STATES
                     default: { ++: }                                                                                            //  CSR AND ATOMIC OPERATIONS
-                    case 2: { while( ALU.busy ) {} }                                                                            //  INTEGER DIVISION AND CARRYLESS MULTIPLY
+                    case 2: { while( ALUMD.busy ) {} }                                                                            //  INTEGER DIVISION AND CARRYLESS MULTIPLY
                 }
                 busy = 0;
             }
@@ -439,7 +439,7 @@ unit cpuexecuteSLOWPATH(
                 }
                 memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                                       //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORUOUTPUT
             }
-            case 2: { result = size32 ? { {32{ALU.result[31,1]}}, ALU.result[0,32] } : ALU.result; }                            //  INTEGER DIVISION AND CARRYLESS MULTIPLY
+            case 2: { result = size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; }      //  INTEGER DIVISION AND CARRYLESS MULTIPLY
         }
     }
 }
