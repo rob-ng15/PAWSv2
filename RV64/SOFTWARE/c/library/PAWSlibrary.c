@@ -371,15 +371,6 @@ void use_palette( unsigned char mode ) {
 }
 
 // BACKGROUND GENERATOR
-// backgroundmode ==
-//  0 SOLID in colour
-//  1, 2, 3, 4 checkerboard in colour/altcolour in increasing sizes of squares
-//  5 rainbow
-//  6 static
-//  7 @sylefeb's snow/starfield with colour stars and altcolour background
-//  8 split vertical
-//  9 split horizontal
-//  10 quarters
 void set_background( unsigned char colour, unsigned char altcolour, unsigned char backgroundmode ) {
     *BACKGROUND_COPPER_STARTSTOP = 0;
     *BACKGROUND_COLOUR = colour;
@@ -1140,7 +1131,7 @@ void DoDrawList2Dscale( struct DrawList2D *list, int numentries, int xc, int yc,
 // TWO SPRITE LAYERS ( 0 == lower, 1 == upper )
 // WITH 16 SPRITES ( 0 to 15 ) each with 8 16 x 16 pixel bitmaps
 
-// SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 pixel bitmaps ( 2048 ARRGGBB pixels )
+// SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 pixel bitmaps ( 2048 RRGGGBBM pixels )
 void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
     *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = sprite_number;
     DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, 1 );
@@ -1172,14 +1163,14 @@ void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_layer, unsig
 }
 
 // SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
-void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
+void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_actions ) {
     switch( sprite_layer ) {
         case 0:
             LOWER_SPRITE_ACTIVE[sprite_number] = active;
             LOWER_SPRITE_TILE[sprite_number] = tile;
             LOWER_SPRITE_X[sprite_number] = x;
             LOWER_SPRITE_Y[sprite_number] = y;
-            LOWER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
+            LOWER_SPRITE_ACTIONS[sprite_number] = sprite_actions;
             break;
 
         case 1:
@@ -1187,13 +1178,13 @@ void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsign
             UPPER_SPRITE_TILE[sprite_number] = tile;
             UPPER_SPRITE_X[sprite_number] = x;
             UPPER_SPRITE_Y[sprite_number] = y;
-            UPPER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
+            UPPER_SPRITE_ACTIONS[sprite_number] = sprite_actions;
             break;
     }
 }
 
 // SET 4 SPRITES AS A 32x32 BLOCK, REFLECTING/ROTATING AS REQUIRED. POSITION IS THE CENTRE OF THE 32x32 BLOCK (CAN BE DOUBLED TO 64x64)
-void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
+void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_actions ) {
     static unsigned char positions[][4] = {
         { 0, 1, 2, 3 }, // NO ACTION
         { 2, 3, 0, 1 }, // REFLECT X
@@ -1204,12 +1195,12 @@ void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsi
         { 3, 2, 1, 0 }, // ROTATE 180
         { 1, 3, 0, 2 }, // ROTATE 270
     };
-    int size = ( sprite_attributes & 16 ) ? 64 : ( sprite_attributes & 8 ) ? 32 : 16;
+    int size = ( sprite_actions & 16 ) ? 64 : ( sprite_actions & 8 ) ? 32 : 16;
 
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][0], active, x - size, y - size, tile, sprite_attributes );
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][1], active, x - size, y, tile, sprite_attributes );
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][2], active, x, y - size, tile, sprite_attributes );
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][3], active, x, y, tile, sprite_attributes );
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_actions & 7 ][0], active, x - size, y - size, tile, sprite_actions );
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_actions & 7 ][1], active, x - size, y, tile, sprite_actions );
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_actions & 7 ][2], active, x, y - size, tile, sprite_actions );
+    set_sprite( sprite_layer, sprite_number + positions[ sprite_actions & 7 ][3], active, x, y, tile, sprite_actions );
 }
 
 // SET or GET ATTRIBUTES for sprite_number in sprite_layer

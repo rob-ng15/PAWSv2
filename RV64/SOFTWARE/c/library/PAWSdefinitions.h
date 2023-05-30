@@ -66,7 +66,7 @@
 #define CU_LFM 14
 #define CU_STM 15
 
-// REGISTER NAMES { VBLANK, X, Y, CPU, R0, R1, R2, R3 }
+// REGISTER NAMES { VBLANK, X, Y, RC, R0, R1, R2, R3 } WHEN READING ( RC, R0, R1, R2, R3 ) ALSO WHEN WRITING
 #define CU_RB 0
 #define CU_RX 1
 #define CU_RY 2

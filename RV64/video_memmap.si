@@ -133,7 +133,8 @@ $$end
     uint1   vblank = uninitialized;
     uint1   pix_active = uninitialized;
     uint10  pix_x  = uninitialized;
-    uint10  pix_y  = uninitialized;
+    uint9   pix_y  = uninitialized;
+    uint1   pix_end <:: ( pix_x == 639 ) & ( pix_y == 479 );
 $$if VGA then
   vga vga_driver<@video_clock,!video_reset>(
     vga_hs :> video_hs,
@@ -166,7 +167,6 @@ $$else
     uint10  xscreenp1 <: pix_active ? ( pix_x + 1 ) : 0;
     uint9   yscreen <: vblank ? 0 : pix_y;
 $$end
-
     uint3   hilorez = 0;                                                                                                        // FLAG FOR hi or lo  SWITCH FOR TILEMAPS, CHARACTERMAP { cm, tm_u, tm_l }
 
     // BACKGROUND
@@ -174,10 +174,10 @@ $$end
         video_clock <: video_clock,
         video_reset <: video_reset,
         colourmode <: display.colour,
-        pix_x      <: pix_x,
-        pix_y      <: pix_y,
-        pix_active <: pix_active,
+        pix_x      <: xscreen,
+        pix_y      <: yscreen,
         pix_vblank <: vblank,
+        pix_end <: pix_end,
         memoryAddress <: memoryAddress,
         writeData <: writeData,
         staticGenerator <: staticGenerator[0,10]
@@ -225,6 +225,7 @@ $$end
         pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
+        pix_end <: pix_end,
         memoryAddress <: memoryAddress,
         writeData <: writeData,
         collision_layer_1 <: BITMAP.pixel_display,
@@ -240,6 +241,7 @@ $$end
         pix_y      <: yscreen,
         pix_active <: pix_active,
         pix_vblank <: vblank,
+        pix_end <: pix_end,
         memoryAddress <: memoryAddress,
         writeData <: writeData,
         collision_layer_1 <: BITMAP.pixel_display,
@@ -326,7 +328,7 @@ $$end
     );
 
     BACKGROUND.memoryWrite := 0; BITMAP.memoryWrite := 0; CHARACTER_MAP.memoryWrite := 0; LOWER_SPRITE.memoryWrite := 0; UPPER_SPRITE.memoryWrite := 0; TERMINAL.memoryWrite := 0;
-    LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0; palette.wenable1 := 0;
+    LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0; palette.wenable1 := 0; palette.wdata1 := writeData;
 
     always_after {
         uint4   dimmer = 0;
@@ -410,7 +412,7 @@ $$end
                         if( memoryAddress[2,1] ) {
                             if( memoryAddress[0,1] ) { display.usepalette = writeData; } else { palette.addr1 = writeData; }
                         } else {
-                            palette.wdata1 = writeData; palette.wenable1 = 1;
+                            palette.wenable1 = 1;
                         }
                     } else {
                         switch( memoryAddress[0,3] ) {
@@ -450,9 +452,9 @@ unit background_memmap(
 
     // Pixels
     input   uint10  pix_x,
-    input   uint10  pix_y,
-    input   uint1   pix_active,
+    input   uint9   pix_y,
     input   uint1   pix_vblank,
+    input   uint1   pix_end,
     output! uint8   pixel,
 
     // Memory access
@@ -477,8 +479,7 @@ unit background_memmap(
     background_display BACKGROUND <@video_clock,!video_reset> (
         pix_x <: pix_x,
         pix_y <: pix_y,
-        pix_active <: pix_active,
-        pix_vblank <: pix_vblank,
+        pix_end <: pix_end,
         pixel :> pixel,
         staticGenerator <: staticGenerator[0,2],
         b_colour <: BACKGROUND_COPPER.BACKGROUNDcolour,
@@ -486,7 +487,7 @@ unit background_memmap(
         b_mode <: BACKGROUND_COPPER.BACKGROUNDmode,
         colourmode <: colourmode
     );
-    nucu BACKGROUND_COPPER  <@video_clock,!video_reset> (
+    nucu BACKGROUND_COPPER <@video_clock,!video_reset> (
         pix_x <: pix_x,
         pix_y <: pix_y,
         pix_vblank <: pix_vblank,
@@ -509,7 +510,6 @@ unit background_memmap(
     BACKGROUND_WRITER.background_update := 0; BACKGROUND_WRITER.copper_program := 0;
 
     always_after {
-
         if( memoryWrite ) {
             switch( memoryAddress[1,4] ) {
                 case 4h0: { BACKGROUND_WRITER.backgroundcolour = writeData; BACKGROUND_WRITER.background_update = 1; }
@@ -541,7 +541,7 @@ unit bitmap_memmap(
 
     // Pixels
     input   uint10  pix_x,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     output! uint8   pixel,
@@ -636,7 +636,7 @@ unit bitmap_memmap(
 
     always_after {
     // ADJUST FOR 11bit underflow/overflow for pixel coordinates
-        uint11  minmax = ( __signed( writeData[0,16] ) < __signed( -11d512 ) ) ? -11d512 : ( __signed( writeData[0,16] ) > __signed( 11d511 ) ) ? 11d511 : writeData[0,11];
+        uint11  minmax = ( __signed( writeData ) < __signed( -1024 ) ) ? -11d1024 : ( __signed( writeData ) > __signed( 1023 ) ) ? 11d1023 : writeData[0,11];
         uint8   RGBM = { writeData[22,2], writeData[13,3], writeData[6,2], writeData[21,1] & writeData[5,1] };
 
         // LATCH MEMORYWRITE
@@ -832,9 +832,10 @@ unit sprite_memmap(
     // Pixels
     input   uint10  pix_x,
     input   uint10  pix_x1,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
+    input   uint1   pix_end,
     output(!) uint8   pixel,
     output(!) uint1   pixel_display,
 
@@ -871,6 +872,7 @@ unit sprite_memmap(
         pix_y      <: pix_y,
         pix_active <: pix_active,
         pix_vblank <: pix_vblank,
+        pix_end <: pix_end,
         pixel    :> pixel,
         sprite_layer_display :> pixel_display,
         collision_layer_1 <: collision_layer_1,
@@ -943,7 +945,7 @@ unit terminal_memmap(
     // Pixels
     input   uint10  pix_x,
     input   uint10  pix_x1,
-    input   uint10  pix_y,
+    input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
     output! uint1   pixel,
