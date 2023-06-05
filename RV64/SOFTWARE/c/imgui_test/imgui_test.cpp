@@ -227,7 +227,6 @@ int main(int, char**)
     }
 
     while( get_buttons() != 1 );
-    printf("DestroyContext()\n");
     ImGui::DestroyContext();
     return 0;
 }

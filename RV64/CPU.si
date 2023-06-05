@@ -473,13 +473,17 @@ unit cpuexecuteFPU(
     output  uint5   FPUnewflags,
     output  uint1   CSRupdateFPUflags
 ) <reginputs> {
-    uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( ( function7[2,5] == 5b11010 ) |                                            // FPU CONVERSION TO/FROM INT OR CHANGE OF PRECISION DETECTION
-                           ( function7[2,5] == 5b11000 ) | ( function7[2,5] == 5b01000 ) );
+    uint3   converttype <:: {
+                                ( function7[2,5] == 5b11000 ),                                                                  // FD2IL
+                                ( function7[2,5] == 5b11010 ),                                                                  // IL2FD
+                                ( function7[2,5] == 5b01000 )                                                                   // F2D or D2F
+                            };
+    uint1   fpuconvert <:: ( opCode == 5b10100 ) & |converttype;                                                                // FPU CONVERSION TO/FROM INT OR CHANGE OF PRECISION DETECTION
     uint1   fpufast <:: isFASTFPU | fpuconvert;                                                                                 // SINGLE CYCLE OR CONVERSION DETECTION
     uint1   fpucalc <:: ~fpufast;                                                                                               // CALCULATION DETECTION
     uint3   operation <:: { fpucalc, fpuconvert, fpufast & ~fpuconvert };                                                       // PRESENT INSTRUCTION ROUTE
 
-    uint64  qNAN <:: function7[0,1] ? 64h7FF8000000000000 : function7[1,1] ? 64hffffffffffff7e00 : 64hffffffff7fc00000;         // RETURN qNAN FOR DOUBLE/SINGLE/HALF
+    gen_qNAN qNAN( dsh <: function7[0,2] );                                                                                     // GENERATE qNAN FOR RETURN DOUBLE/SINGLE/HALF
 
     fpuSINGLECYCLE FPUFAST(                                                                                                     // FLOATING POINT SINGLE CYCLE OPERATIONS
         dsh <: function7[0,2],
@@ -487,7 +491,7 @@ unit cpuexecuteFPU(
         function3 <: function3[0,2], function7 <: function7[2,5],
         sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
         typeAF <: typeAF, typeBF <: typeBF,
-        qNAN <: qNAN,
+        qNAN <: qNAN.value,
         FLT <: FLT, FEQ <: FEQ
     );
 
@@ -497,7 +501,7 @@ unit cpuexecuteFPU(
         opCode <: opCode, function3 <: function3, function7 <: function7[2,5],
         sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx, sourceReg3Fx <: sourceReg3Fx,
         typeAF <: typeAF, typeBF <: typeBF, typeCF <: typeCF,
-        qNAN <: qNAN
+        qNAN <: qNAN.value
     );
 
     // FLOATING POINT CONVERSIONS
@@ -519,11 +523,6 @@ unit cpuexecuteFPU(
     }
 
     always_after {
-        uint3   converttype = {
-                                    ( function7[2,5] == 5b11000 ),                                                              // FD2IL
-                                    ( function7[2,5] == 5b11010 ),                                                              // IL2FD
-                                    ( function7[2,5] == 5b01000 )                                                               // F2D or D2F
-                                };
         uint64  convertresult = converttype[2,1] ? FPUF2IL.result : converttype[1,1] ? FPUIL2F.result : FPUF_CP.result;
         uint5   convertflags = FPUflags | ( converttype[2,1] ? FPUF2IL.FPUflags : converttype[1,1] ? FPUIL2F.FPUflags : FPUF_CP.FPUflags );
 
@@ -775,12 +774,12 @@ unit dma_flags(
     output  uint1   multi32
 ) <reginputs> {
     always_after {
-        uint1   srcBRAM = ~DMASOURCE[26,1] & ~DMASOURCE[25,1] & ~DMASOURCE[15,1];                                               // SOURCE IS BRAM
-        uint1   destBRAM = ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[15,1];                                                    // DEST IS BRAM
-        uint1   dest16bit = ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                       // DESTINATION IS 16 BIT CAPABLE
+        uint1   srcBRAM = ~DMASOURCE[26,1] & ~DMASOURCE[25,1] & ~DMASOURCE[24,1] & ~DMASOURCE[15,1];                            // SOURCE IS BRAM
+        uint1   destBRAM = ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[24,1] & ~DMADEST[15,1];                                   // DEST IS BRAM
+        uint1   dest16bit = ( DMADEST[26,1] | DMADEST[25,1] | DMADEST[24,1] | destBRAM ) & ~DMADEST[0,1];                       // DESTINATION IS 16 BIT CAPABLE ( SDRAM, BRAM, BITMAP, CMAP )
 
         srcSET = ( DMASOURCE == $addr_width$hfe0e );                                                                            // SOURCE IS THE SET VALUE REGISTER, NO LOADING REQUIRED
-        src16bit = ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~DMASOURCE[0,1];                                  // SOURCE IS 16 BIT CAPABLE
+        src16bit = ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | DMASOURCE[24,1] | srcBRAM ) & ~DMASOURCE[0,1];                // SOURCE IS 16 BIT CAPABLE
 
         SD16 = src16bit & dest16bit & ~DMACOUNT[0,1];                                                                           // 16/32 BIT FLAGS FOR SOURCE&DEST + SET&DEST
         SSD16 = srcSET & dest16bit & ~DMACOUNT[0,1];
@@ -791,8 +790,8 @@ unit dma_flags(
         ADD32 = ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2];
 
         multi16 = ( DMADEST == 27hd642 );                                                                                       // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
-        multi32 = ( DMADEST == 27hd680 ) | ( DMADEST == 27hd684 ) |                                                             // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
-                ( DMADEST == 27hd688 ) | ( DMADEST == 27hd68c );
+        multi32 = ( DMADEST == 27hd680 ) | ( DMADEST == 27hd684 ) |                                                             // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA AND CHARACTERMAP
+                  ( DMADEST == 27hd688 ) | ( DMADEST == 27hd68c );
     }
 }
 unit dma_src_add(

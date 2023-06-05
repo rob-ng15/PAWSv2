@@ -169,26 +169,14 @@ extern void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_layer
 
 // CHARACTER MAP
 extern void tpu_cs( void );
-extern void tpu_clearline( unsigned char );
 extern void tpu_set(  unsigned char, unsigned char, unsigned char, unsigned char );
 extern void tpu_move(  unsigned char, unsigned char );
-extern unsigned short tpu_read_cell( unsigned char x, unsigned char y );
-extern unsigned short tpu_read_colour( unsigned char x, unsigned char y );
 extern void tpu_outputstring( char attribute, char *s );
-extern void tpu_write( short );
 extern void tpu_output_character( short );
 extern void tpu_printf( char, const char *,... );
 extern void tpu_printf_centre( unsigned char, unsigned char, unsigned char, char, const char *,... );
 extern void tpu_print( char, char *);
 extern void tpu_print_centre( unsigned char, unsigned char, unsigned char, char, char *);
-
-// TERMINAL WINDOW
-extern void terminal_cs( void );
-extern void terminal_showhide( unsigned char );
-extern void terminal_output_character( char );
-extern void terminal_outputstring( char *s );
-extern void terminal_print( char *);
-extern void terminal_printf( const char *,... );
 
 // IMAGE DECODERS
 extern void netppm_display( unsigned char *, unsigned char );

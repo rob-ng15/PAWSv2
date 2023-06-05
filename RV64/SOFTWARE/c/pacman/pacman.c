@@ -899,12 +899,12 @@ static void vid_text(int2_t tile_pos, const char* text) {
 */
 static void vid_color_score(int2_t tile_pos, uint8_t color_code, uint32_t score) {
     tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-    tpu_write( '0' );
+    tpu_output_character( '0' );
     tile_pos.x--;
     for (int digit = 0; digit < 8; digit++) {
         char chr = (score % 10) + '0';
         tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-        tpu_write( chr );
+        tpu_output_character( chr );
         tile_pos.x--;
         score /= 10;
         if (0 == score) {

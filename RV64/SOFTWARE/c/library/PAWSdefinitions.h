@@ -275,47 +275,12 @@ typedef struct paws_timeval {
     unsigned int    ptv_usec;
 } paws_timeval;
 
-// SIMPLE CURSES
-typedef unsigned char chtype;
-typedef void WINDOW;
-
 // PIXELBLOCK SCALEABLE SPRITES
 typedef struct {
     int width;
     int height;
     unsigned char *bitmap;
 } bitmap_sprite;
-
-#define COLORS 256
-#define A_NOACTION 2048
-#define A_NORMAL 256
-#define A_BOLD 512
-#define A_STANDOUT 512
-#define A_UNDERLINE A_NOACTION
-#define A_REVERSE 1024
-#define A_BLINK A_NOACTION
-#define A_DIM A_NORMAL
-#define A_PROTECT A_NOACTION
-#define A_INVIS A_NOACTION
-#define A_ALTCHARSET A_NOACTION
-#define A_CHARTEXT A_NOACTION
-#define COLOR_PAIRS 256
-#define COLOR_PAIRS_MASK (COLOR_PAIRS-1)
-#define COLOR_PAIR(a) a|COLORS
-
-// COLOURS
-#define COLOR_BLACK BLACK
-#define COLOR_BLUE BLUE
-#define COLOR_GREEN GREEN
-#define COLOR_CYAN CYAN
-#define COLOR_RED RED
-#define COLOR_MAGENTA MAGENTA
-#define COLOR_YELLOW YELLOW
-#define COLOR_WHITE WHITE
-#define COLOR_ORANGE ORANGE
-
-#define COLS 80
-#define LINES 60
 
 // PACK RGB MACRO
 #define PACKRGB(r,g,b) _rv64_packw( _rv64_packh( b, g ), _rv64_packh( r, 0 ) )

@@ -827,7 +827,6 @@ void displayreset( void ) {
     screen_mode( 0, MODE_RGBM, 0 ); bitmap_256( false );
     gpu_cs();
     tpu_cs();
-    terminal_showhide( FALSE ); terminal_cs();
     tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
     tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
     set_background( BLACK, BLACK, BKG_SOLID );
@@ -855,22 +854,6 @@ void colourtable( void ) {
         screen_mode( 0, i, 0 );
         sleep1khz( 2000, 0 );
     }
-}
-
-// BLUE TERMINAL WINDOW TEST
-void terminaldemo( void ) {
-    displayreset();
-    terminal_showhide( TRUE );
-
-    terminal_outputstring( "The Blue Terminal Window\n\n" );
-    sleep1khz( 1000, 0 );
-
-    for( short i = 0; i < 7; i++ ) {
-        terminal_outputstring( "Hello World!\n" );
-        sleep1khz( 200, 0 );
-    }
-
-    sleep1khz( 1000, 0 );
 }
 
 // DISPLAY THE BACKGROUNDS
@@ -911,7 +894,7 @@ void backgrounddemo( void ) {
     copper_program( 6, CU_LFM, CU_R2, CU_RR, CU_R0 );       tpu_set( 0, 10, TRANSPARENT, WHITE ); tpu_print( 1, "06 LFM R2 <- [ (R0) ]     // LOAD R2 FROM MEM[R0]" );
 
     copper_program( 7, CU_SEQ, CU_RY, CU_RR, CU_R1 );       tpu_set( 0, 12, TRANSPARENT, WHITE ); tpu_print( 1, "07 SEQ Y == (R1)          // SKIP IF Y == R1?" );
-    copper_program( 8, CU_JMP, FALSE, CU_RL, 7 )            tpu_set( 0, 13, TRANSPARENT, WHITE ); tpu_print( 1, "08 JMP 7                  // ELSE JUMP TO 7" );
+    copper_program( 8, CU_JMP, FALSE, CU_RL, 7 );           tpu_set( 0, 13, TRANSPARENT, WHITE ); tpu_print( 1, "08 JMP 7                  // ELSE JUMP TO 7" );
 
     copper_program( 9, CU_SET, CU_BC, CU_RR, CU_R2 );       tpu_set( 0, 15, TRANSPARENT, WHITE ); tpu_print( 1, "09 SET BC <- (R2)         // SET COLOUR TO R2" );
     copper_program( 10, CU_ADD, CU_R0, CU_RL, 1 );          tpu_set( 0, 16, TRANSPARENT, WHITE ); tpu_print( 1, "10 ADD R0 <- (R0) + 1     // ADD 1 TO R0" );
@@ -1406,8 +1389,6 @@ void floatdemo() {
 int main( int argc, char **argv ) {
 	for( int loop = 0; loop < 4; loop++ ) {
         colourtable();
-
-        terminaldemo();
 
         backgrounddemo();
 

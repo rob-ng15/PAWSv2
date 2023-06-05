@@ -138,16 +138,6 @@ unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd506;
 unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd508;
 unsigned char volatile *TPU_COMMIT = (unsigned char volatile *) 0xd50a;
 unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd50c;
-unsigned char volatile *CURSES_BACKGROUND = (unsigned char volatile *) 0xd50e;
-unsigned char volatile *CURSES_FOREGROUND = (unsigned char volatile *) 0xd50f;
-unsigned short volatile *TPUREAD_CHARACTER = (unsigned short volatile *) 0xd514;
-unsigned char volatile *TPUREAD_BACKGROUND = (unsigned char volatile *) 0xd516;
-unsigned char volatile *TPUREAD_FOREGROUND = (unsigned char volatile *) 0xd518;
-
-unsigned char volatile *TERMINAL_COMMIT = (unsigned char volatile *) 0xd700;
-unsigned char volatile *TERMINAL_STATUS = (unsigned char volatile *) 0xd700;
-unsigned char volatile *TERMINAL_SHOW = (unsigned char volatile *) 0xd702;
-unsigned char volatile *TERMINAL_RESET = (unsigned char volatile *) 0xd704;
 
 unsigned char volatile *AUDIO_WAVEFORM = (unsigned char volatile *) 0xe000;
 unsigned char volatile *AUDIO_FREQUENCY = (unsigned char volatile *) 0xe002;
@@ -202,3 +192,7 @@ unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
 unsigned int volatile *DMASETRGB = (unsigned int volatile *) 0xfe0c;
+
+unsigned char *FRAMEBUFFER0 = (unsigned char *)0x2000000;
+unsigned char *FRAMEBUFFER1 = (unsigned char *)0x2020000;
+unsigned char *TPUBUFFER = (unsigned char *)0x1000000;

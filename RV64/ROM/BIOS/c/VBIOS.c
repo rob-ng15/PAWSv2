@@ -149,6 +149,10 @@ void *memset(void *dest, int val, size_t len) {
     DMASTART( (const void *restrict)DMASET, dest, len, 4 );
     return dest;
 }
+void *memset32( void *restrict destination, int value, size_t count ) {
+    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    return( destination );
+}
 
 short strlen( char *s ) {
     short i = 0;
@@ -301,17 +305,14 @@ void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
 
 // CLEAR THE CHARACTER MAP
 void tpu_cs( void ) {
-    while( *TPU_COMMIT );
-    *TPU_COMMIT = 3;
+    memset32( ( void *)0x1000000, ( 64 << 17 ), 4800 * 4 );
 }
 // POSITION THE CURSOR to (x,y) and set background and foreground colours
 void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
-    while( *TPU_COMMIT );
     *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
 }
 // OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
 void tpu_output_character( short c ) {
-    while( *TPU_COMMIT );
     *TPU_CHARACTER = c; *TPU_COMMIT = 2;
 }
 void tpu_outputstring( char *s ) {

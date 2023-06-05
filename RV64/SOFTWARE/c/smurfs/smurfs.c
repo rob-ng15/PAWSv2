@@ -186,7 +186,7 @@ void display_village( void ) {
 }
 
 int main( void ) {
-    wavesample_upload( CHANNEL_BOTH, CHANNEL_BOTH, harmonic_wave );
+    wavesample_upload( CHANNEL_BOTH, harmonic_wave );
     displayreset();
     display_village();
 

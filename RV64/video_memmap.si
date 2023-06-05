@@ -96,10 +96,12 @@ unit video_memmap(
     input   uint32  writeData,
     output  uint32  readData,
 
-    // Memory access direct to bitmap
-    input!  uint18  memoryAddressDirect,
-    input   uint1   memoryWriteDirect,
-    output! uint32  readDataDirect,
+    // Memory access direct to bitmap / character map
+    input   uint18  memoryAddressDirect,
+    input   uint1   BITMAPWriteDirect,
+    output! uint32  BITMAPreadDataDirect,
+    input   uint1   CMAPWriteDirect,
+    output! uint32  CMAPreadDataDirect,
 
 $$if HDMI then
     // HDMI OUTPUT
@@ -183,7 +185,7 @@ $$end
         staticGenerator <: staticGenerator[0,10]
     );
 
-    uint2   writeDirectDo = 0;                                                                                                  // I/O TO VIDEO CLOCK WRITE 2 CYCLE FLAG
+    uint2   writeDirectBITMAP = 0;                                                                                                  // I/O TO VIDEO CLOCK WRITE 2 CYCLE FLAG
     bitmap_memmap BITMAP(
         video_clock <: video_clock,
         video_reset <: video_reset,
@@ -195,8 +197,8 @@ $$end
         memoryAddress <: memoryAddress,
         writeData <: writeData,
         memoryAddressDirect <: memoryAddressDirect,
-        memoryWriteDirect <: writeDirectDo[0,1],
-        readDataDirect :> readDataDirect,
+        memoryWriteDirect <: writeDirectBITMAP[0,1],
+        readDataDirect :> BITMAPreadDataDirect,
         accesssize <: accesssize,
         static8bit <: staticGenerator[0,8]
     );
@@ -213,7 +215,11 @@ $$end
         pix_vblank <: vblank,
         blink <: blink,
         memoryAddress <: memoryAddress,
-        writeData <: writeData
+        writeData <: writeData,
+        memoryAddressDirect <: memoryAddressDirect,
+        memoryWriteDirect <: CMAPWriteDirect,
+        readDataDirect :> CMAPreadDataDirect
+
     );
 
     // Sprite Layers - Lower and Upper
@@ -248,21 +254,6 @@ $$end
         collision_layer_2 <: LOWER_TILE.pixel_display,
         collision_layer_3 <: UPPER_TILE.pixel_display,
         collision_layer_4 <: LOWER_SPRITE.pixel_display
-    );
-
-    // Terminal Window
-    uint2   terminal_active = uninitialized;
-    terminal_memmap TERMINAL(
-        video_clock <: video_clock,
-        video_reset <: video_reset,
-        pix_x      <: xscreen,
-        pix_x1     <: xscreenp1,
-        pix_y      <: yscreen,
-        pix_active <: pix_active,
-        pix_vblank <: vblank,
-        blink <: blink,
-        memoryAddress <: memoryAddress,
-        writeData <: writeData
     );
 
     // Tilemaps - Lower and Upper
@@ -321,13 +312,11 @@ $$end
         bitmap_display <: BITMAP.pixel_display,
         character_map_p <: CHARACTER_MAP.pixel,
         character_map_display <: CHARACTER_MAP.pixel_display,
-        terminal_p <: TERMINAL.pixel,
-        terminal_display <: TERMINAL.pixel_display,
         status_p <: STATUS.pixel,
         status_display <: STATUS.pixel_display
     );
 
-    BACKGROUND.memoryWrite := 0; BITMAP.memoryWrite := 0; CHARACTER_MAP.memoryWrite := 0; LOWER_SPRITE.memoryWrite := 0; UPPER_SPRITE.memoryWrite := 0; TERMINAL.memoryWrite := 0;
+    BACKGROUND.memoryWrite := 0; BITMAP.memoryWrite := 0; CHARACTER_MAP.memoryWrite := 0; LOWER_SPRITE.memoryWrite := 0; UPPER_SPRITE.memoryWrite := 0;
     LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0; palette.wenable1 := 0; palette.wdata1 := writeData;
 
     always_after {
@@ -386,13 +375,12 @@ $$end
                 }
             }
             case 4h6: { readData = memoryAddress[1,1] ? BITMAP.gpu_queue_full : BITMAP.gpu_queue_complete; }
-            case 4h7: { readData = TERMINAL.terminal_active; }
             case 4hf: { readData = vblank; }
             default: {}
         }
 
         // WRITE BITMAP MEMORY DIRECTLY, TAKES 2 CYCLES DUE TO THE VIDEO CLOCK BEING 25 MHz
-        if( memoryWriteDirect ) { writeDirectDo = 2b11; } else { writeDirectDo = writeDirectDo[1,1]; }
+        if( BITMAPWriteDirect ) { writeDirectBITMAP = 2b11; } else { writeDirectBITMAP = writeDirectBITMAP[1,1]; }
 
         // WRITE IO Memory
         if( memoryWrite ) {
@@ -404,7 +392,6 @@ $$end
                 case 4h4: { UPPER_SPRITE.memoryWrite = 1; UPPER_SPRITE.bitmapwriter = 0;  }
                 case 4h5: { CHARACTER_MAP.memoryWrite = 1; }
                 case 4h6: { BITMAP.memoryWrite = 1; }
-                case 4h7: { TERMINAL.memoryWrite = 1; }
                 case 4h8: { LOWER_SPRITE.memoryWrite = 1; LOWER_SPRITE.bitmapwriter = 1; }
                 case 4h9: { UPPER_SPRITE.memoryWrite = 1; UPPER_SPRITE.bitmapwriter = 1; }
                 case 4hf: {
@@ -553,7 +540,7 @@ unit bitmap_memmap(
     input   uint32  writeData,
 
     // Memory access direct to bitmap
-    input!  uint18  memoryAddressDirect,
+    input   uint18  memoryAddressDirect,
     input   uint2   accesssize,
     input   uint1   memoryWriteDirect,
     output! uint32  readDataDirect,
@@ -769,7 +756,12 @@ unit charactermap_memmap(
     // Memory access
     input   uint4   memoryAddress,
     input   uint1   memoryWrite,
-    input   uint16  writeData,
+    input   uint25  writeData,
+
+    // Memory access direct to charactermap
+    input   uint15  memoryAddressDirect,
+    input   uint1   memoryWriteDirect,
+    output! uint25  readDataDirect,
 
     output  uint5   tpu_active,
     output  uint25  tpu_cell,
@@ -797,18 +789,10 @@ unit charactermap_memmap(
     );
 
     // CHARACTER MAP WRITER
-    character_map_writer CMW(
-        charactermap <:> charactermap,
-        tpu_active :> tpu_active,
-        tpu_cell :> tpu_cell,
-        curses_cell :> curses_cell
-    );
+    character_map_writer CMW( charactermap <:> charactermap, writeDataDirect <: writeData, memoryAddressDirect <: memoryAddressDirect[2,13], memoryWriteDirect <: memoryWriteDirect, readDataDirect :> readDataDirect );
     CMW.tpu_write := 0;
 
     always_after {
-        // HIDE CURSOR AT RESET + SET CURESES INITIAL TERMINAL TO WHITE ON BLACK
-        if( reset ) { character_map_window.tpu_showcursor = 0; CMW.curses_wipe_background = 0; CMW.curses_wipe_foreground = 255; }
-
         if( memoryWrite ) {
             switch( memoryAddress[1,3] ) {
                 case 3h0: { CMW.tpu_x = writeData; }
@@ -818,7 +802,7 @@ unit charactermap_memmap(
                 case 3h4: { CMW.tpu_foreground = writeData; character_map_window.tpu_foreground = writeData; }
                 case 3h5: { CMW.tpu_write = writeData; }
                 case 3h6: { character_map_window.tpu_showcursor = writeData; }
-                case 3h7: { if( memoryAddress[0,1] ) { CMW.curses_wipe_foreground = writeData; } else { CMW.curses_wipe_background = writeData; } }
+                default: {}
             }
         }
     }
@@ -932,62 +916,6 @@ unit sprite_memmap(
             } else {
                 // SET SPRITE ATTRIBUTE
                 SLW.sprite_layer_write = memoryAddress[5,3] + 1;
-            }
-        }
-    }
-}
-
-unit terminal_memmap(
-    // Clocks
-    input   uint1   video_clock,
-    input   uint1   video_reset,
-
-    // Pixels
-    input   uint10  pix_x,
-    input   uint10  pix_x1,
-    input   uint9   pix_y,
-    input   uint1   pix_active,
-    input   uint1   pix_vblank,
-    output! uint1   pixel,
-    output! uint1   pixel_display,
-    input   uint1   blink,
-
-    // Memory access
-    input   uint3   memoryAddress,
-    input   uint1   memoryWrite,
-    input   uint16  writeData,
-
-    output  uint2   terminal_active
-) <reginputs> {
-    // 80 x 8 character buffer for the input/output terminal
-    dualport_bram uint8 terminal <@video_clock,@clock> [640] = uninitialized;
-
-    terminal terminal_window <@video_clock,!video_reset> (
-        clockCG <: clock,
-        terminal <:> terminal,
-        pix_x      <: pix_x,
-        pix_x1     <: pix_x1,
-        pix_y      <: pix_y,
-        pix_active <: pix_active,
-        pix_vblank <: pix_vblank,
-        pixel    :> pixel,
-        terminal_display :> pixel_display,
-        blink <: blink,
-        terminal_x <: TW.terminal_x
-    );
-
-    terminal_writer TW(
-        terminal <:> terminal,
-        terminal_active :> terminal_active
-    );
-    TW.terminal_write := 0;
-
-    always_after {
-        if( memoryWrite) {
-            switch( memoryAddress[1,2] ) {
-                case 2h0: { TW.terminal_character = writeData; TW.terminal_write = 1; }
-                case 2h1: { terminal_window.showterminal = writeData; }
-                default: { TW.terminal_write = 2; }
             }
         }
     }

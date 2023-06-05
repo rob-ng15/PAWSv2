@@ -754,7 +754,7 @@ void paintAlienRow(int row, int clean) {
                     attron(COLOR_PAIR(4));
                     break;
                 case ALIEN30:
-                    attron(COLOR_PAIR(6));
+                    attron(COLOR_PAIR(5));
                     printw("%s", alien30[line + i]);
                     attron(COLOR_PAIR(4));
                     break;

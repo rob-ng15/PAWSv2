@@ -83,20 +83,6 @@ unsigned char volatile *GPU_WRITE = (unsigned char volatile *) 0xd616;
 unsigned char volatile *GPU_STATUS = (unsigned char volatile *) 0xd616;
 unsigned char volatile *GPU_FINISHED = (unsigned char volatile *) 0xd618;
 
-unsigned char volatile *VECTOR_DRAW_BLOCK = (unsigned char volatile *) 0xd620;
-unsigned char volatile *VECTOR_DRAW_COLOUR = (unsigned char volatile *) 0xd622;
-short volatile *VECTOR_DRAW_XC = (short volatile *) 0xd624;
-short volatile *VECTOR_DRAW_YC = (short volatile *) 0xd626;
-unsigned char volatile *VECTOR_DRAW_SCALE = (unsigned char volatile *) 0xd628;
-unsigned char volatile *VECTOR_DRAW_ACTION = (unsigned char volatile *) 0xd62a;
-unsigned char volatile *VECTOR_DRAW_START = (unsigned char volatile *) 0xd62c;
-unsigned char volatile *VECTOR_DRAW_STATUS = (unsigned char volatile *) 0xd62a;
-unsigned char volatile *VECTOR_WRITER_BLOCK = (unsigned char volatile *) 0xd630;
-unsigned char volatile *VECTOR_WRITER_VERTEX = (unsigned char volatile *) 0xd632;
-char volatile *VECTOR_WRITER_DELTAX = (char volatile *) 0xd634;
-char volatile *VECTOR_WRITER_DELTAY = (char volatile *) 0xd636;
-unsigned char volatile *VECTOR_WRITER_ACTIVE = (unsigned char volatile *) 0xd638;
-
 unsigned char volatile *BLIT_WRITER_TILE = (unsigned char volatile *) 0xd640;
 unsigned short volatile *BLIT_WRITER_BITMAP = (unsigned short volatile *) 0xd642;
 unsigned char volatile *BLIT_CHWRITER_TILE = (unsigned char volatile *) 0xd650;
@@ -153,13 +139,6 @@ unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd506;
 unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd508;
 unsigned char volatile *TPU_COMMIT = (unsigned char volatile *) 0xd50a;
 unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd50c;
-unsigned char volatile *CURSES_BACKGROUND = (unsigned char volatile *) 0xd50e;
-unsigned char volatile *CURSES_FOREGROUND = (unsigned char volatile *) 0xd50f;
-
-unsigned char volatile *TERMINAL_COMMIT = (unsigned char volatile *) 0xd700;
-unsigned char volatile *TERMINAL_STATUS = (unsigned char volatile *) 0xd700;
-unsigned char volatile *TERMINAL_SHOW = (unsigned char volatile *) 0xd702;
-unsigned char volatile *TERMINAL_RESET = (unsigned char volatile *) 0xd704;
 
 unsigned char volatile *AUDIO_WAVEFORM = (unsigned char volatile *) 0xe000;
 unsigned char volatile *AUDIO_FREQUENCY = (unsigned char volatile *) 0xe002;
@@ -194,11 +173,13 @@ unsigned int volatile *SMTPC = (unsigned int volatile *) 0xff00;
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
 int volatile *DMADESTADD = (int volatile *) 0xfd04;
 unsigned char volatile *DMACYCLES = (unsigned char volatile *) 0xfd08;
+unsigned int volatile *DMASET32 = (unsigned int volatile *) 0xfd0c;
 unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xfe00;
 unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
 unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
+unsigned int volatile *DMASETRGB = (unsigned int volatile *) 0xfe0c;
 
 int volatile *AUDIO_REGS = (int volatile *) 0xe000;
 char volatile *TPU_REGS_B = (char volatile *) 0xd500;

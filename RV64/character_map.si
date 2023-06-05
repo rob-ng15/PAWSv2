@@ -1,4 +1,4 @@
-bitfield  cmentry {
+bitfield  cmentry{
     uint8   background,
     uint8   foreground,
     uint9   character
@@ -74,71 +74,32 @@ unit cmaddresses(
 unit character_map_writer(
     dualport_bram_port1 charactermap,
 
+    input!  uint13  memoryAddressDirect,                                                                                        // CPU MEMORY ADDRESS
+    input   uint1   memoryWriteDirect,                                                                                          // CPU WRITE FLAG
+    input   uint25  writeDataDirect,                                                                                            // CPU WRITE DATA
+    output! uint25  readDataDirect,                                                                                             // CPU READ DATA
+
     // TPU to SET characters, background, foreground
     input   uint7   tpu_x,
     input   uint6   tpu_y,
     input   uint9   tpu_character,
     input   uint8   tpu_foreground,
     input   uint8   tpu_background,
-    input   uint4   tpu_write,
-    output  uint5   tpu_active,
-
-    output  uint25  tpu_cell,
-    output  uint25  curses_cell,
-
-    input   uint8   curses_wipe_background,
-    input   uint8   curses_wipe_foreground,
+    input   uint2   tpu_write,
 
     output  uint7   cursor_x,
     output  uint6   cursor_y
 ) <reginputs> {
-    simple_dualport_bram uint25 charactermap_copy[4800] = uninitialized;                                                        // COPY OF CHARCTER MAP FOR THE CURSES BUFFER
-
-    // Counter for clearscreen/copyscreen/scroll
-    uint13  tpu_start_cs_addr = uninitialized;      uint13  tpu_cs_addr = uninitialized;                uint13  tpu_cs_addr_next <:: tpu_cs_addr + 1;
-    uint13  tpu_max_count = uninitialized;          uint13  tpu_cs_addr_prevline <:: tpu_cs_addr - 80;  uint1   tpu_cs_addr_lastline <:: ( tpu_cs_addr > 4719 );
-    uint1   tpu_cs_working <:: ( tpu_cs_addr != tpu_max_count );
-    uint25  curses_wipe <:: { curses_wipe_background, curses_wipe_foreground, 9h0 };
-
     cmcursorx TPUX( tpu_active_x <: cursor_x );     cmcursory TPUY( tpu_active_y <: cursor_y );                                 // TPU character position
     cmaddresses TPUA( tpu_active_x <: cursor_x, tpu_active_y <: cursor_y, tpu_y <: tpu_y );                                     // ADDRESS CALCULATIONS AND BRAM write access for the TPU
 
-    charactermap.addr1 := |tpu_write ? TPUA.WRITEADDR : tpu_cs_addr; charactermap.wenable1 := 0;                                // SET WRITE ADDRESS OF CM AS PRESENT CURSOR OR PROCESSED ADDRESS
-    charactermap.wdata1 := |tpu_write ? { tpu_background, tpu_foreground, tpu_character } :                                     // WRITE CPU INPUT
-                                        tpu_active[0,1] ? { 8h40, 8h40, 9h0 } :                                                 // BLANK
-                                        charactermap_copy.rdata0;                                                               // COPY FROM CURSES BUFFER
-    curses_cell := charactermap_copy.rdata0; tpu_cell := charactermap.rdata1;                                                   // OUTPUT FROM TPU/CURSES BUFFER
-    charactermap_copy.addr0 := ( |tpu_active[2,2] ) ? tpu_cs_addr : TPUA.WRITEADDR; charactermap_copy.wenable1 := 1;            // SET WRITE ADDRESS OF CURSES BUFFER AS PROCESSED OR PRESENT CURSOR
+    charactermap.addr1 := memoryWriteDirect ? memoryAddressDirect : TPUA.WRITEADDR;                                             // SET ADDRESS AS TPU ADDRESS FOR WRITE OR CPU ADDRESS
+    charactermap.wdata1 := memoryWriteDirect ? writeDataDirect :                                                                // WRITE CPU INPUT DIRECT
+                           { tpu_background, tpu_foreground, tpu_character };                                                   // VIA TPU OUTPUT
 
-    algorithm <autorun> {
-        while(1) {
-            if( |tpu_active ) {
-                tpu_cs_addr = tpu_start_cs_addr;
-                while( tpu_cs_working ) {
-                    ++:
-                    onehot( tpu_active ) {
-                        case 0: { charactermap.wenable1 = 1; }                                                                   // TPU WIPE - WHOLE OR PARTIAL SCREEN (LINE)
-                        case 1: { charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe; }               // CURSES WIPE
-                        case 2: { charactermap.wenable1 = 1; }                                                                   // CURSES COPY
-                        case 3: {                                                                                                // CURSES SCROLL UP / DELETELN
-                            charactermap_copy.addr1 = tpu_cs_addr_prevline; charactermap_copy.wdata1 = charactermap_copy.rdata0; // MOVE CHARACTERS UP
-                            if( tpu_cs_addr_lastline ) {
-                                ++:
-                                charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe;                   // WIPE LAST LINE
-                            }
-                        }
-                        case 4: { charactermap_copy.addr1 = tpu_cs_addr; charactermap_copy.wdata1 = curses_wipe; }               // CURSES CLEAR TO EOL/BOT
-                    }
-                    tpu_cs_addr = tpu_cs_addr_next;
-                }
-                tpu_active = 0;
-            }
-        }
-    }
+    charactermap.wenable1 := memoryWriteDirect;
 
     always_after {
-        if( |tpu_write ) { tpu_start_cs_addr = 0; tpu_max_count = 4800; }                                                       // Set default start and end points
-
         switch( tpu_write ) {
             default: {}
             case 1: { ( cursor_x, cursor_y ) = copycoordinates( tpu_x, tpu_y ); }                                               // Set cursor position
@@ -150,19 +111,6 @@ unit character_map_writer(
                     cursor_x = TPUX.NEXT;
                 }
             }
-            case 3: { cursor_x = 0; cursor_y = 0; tpu_active = 1; }                                                             // Start tpucs
-            case 4: { tpu_active = 1; tpu_start_cs_addr = TPUA.YSTARTADDR; tpu_max_count = TPUA.YENDADDR; }                     // Start tpu_clearline
-            case 5: {                                                                                                           // Write character, foreground, background to curses buffer
-                charactermap_copy.addr1 = TPUA.WRITEADDR;
-                charactermap_copy.wdata1 = { tpu_background, tpu_foreground, tpu_character };
-            }
-            case 6: { tpu_active = 2;  }                                                                                        // Start curses wipe
-            case 7: { tpu_active = 4; }                                                                                         // Start curses copy
-            case 8: { tpu_active = 8; tpu_start_cs_addr = 80; }                                                                 // Start curses scroll up
-            case 9: { tpu_active = 8; tpu_start_cs_addr = TPUA.YSTARTADDR; }                                                    // Start curses deleteln
-            case 10: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; tpu_max_count = TPUA.YENDADDR; }                    // Start curses clear to eol
-            case 11: { tpu_active = 16; tpu_start_cs_addr = TPUA.WRITEADDR; }                                                   // Start curses clear to bot
-            case 12: { charactermap.wenable1 = 1; }                                                                             // Write directly to cell
         }
     }
 }

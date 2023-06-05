@@ -870,7 +870,7 @@ extern void paws_clearerr( void *fd );
 extern int paws_ungetc( int c, void *fd );
 extern void *paws_tmpfile(void);
 
-#define prinf paws_printf
+#define printf paws_printf
 #define fprintf paws_fprintf
 #define vfprintf paws_vfprintf
 #define fscanf paws_fscanf

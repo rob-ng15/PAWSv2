@@ -41,18 +41,18 @@ LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleris
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 
 PAWSBASE=../
-INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I$(PAWSBASE)/library/imgui/ -I$(INCLUDEEXTRA) -I/usr/riscv64-elf/include/
+INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I$(PAWSBASE)/library/imgui/ -I$(INCLUDEEXTRA) -I/usr/$(ARCH)-elf/include/
 
-LIBRARY=	/usr/riscv64-elf/lib/rv64imafdc/lp64d/libc.a \
-		/usr/riscv64-elf/lib/rv64imafdc/lp64d/libm.a \
-		/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv64imafdc/lp64d/libgcc.a \
-		/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv64imafdc/lp64d/crtbegin.o \
-		/usr/lib/gcc/riscv64-elf/$(GCCVER)/rv64imafdc/lp64d/crtend.o
+LIBRARY=	/usr/$(ARCH)-elf/lib/rv64imafdc/lp64d/libc.a \
+		/usr/$(ARCH)-elf/lib/rv64imafdc/lp64d/libm.a \
+		/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/libgcc.a \
+		/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/crtbegin.o \
+		/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/crtend.o
 
 CRT0SOURCE=	$(PAWSBASE)library/crt0.s
 CRT0OBJ=	$(PAWSBASE)library/build/crt0.o
 
-LIBPAWSSOURCE=	$(PAWSBASE)library/PAWS.h $(PAWSBASE)library/PAWSdefinitions.h $(PAWSBASE)library/PAWSlibrary.c
+LIBPAWSSOURCE=	$(PAWSBASE)library/PAWS.h $(PAWSBASE)library/PAWSdefinitions.h $(PAWSBASE)library/PAWSncurses.c $(PAWSBASE)library/PAWSlibrary.c
 LIBPAWSOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/libPAWS.o
 
 PAWSPS2SOURCE=	$(PAWSBASE)library/PAWSPS2driver.c

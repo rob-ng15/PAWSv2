@@ -1325,45 +1325,23 @@ void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, uns
 
 // CLEAR THE CHARACTER MAP
 void tpu_cs( void ) {
-    while( *TPU_COMMIT );
-    *TPU_COMMIT = 3;
+    paws_memset32( ( void *)TPUBUFFER, ( 64 << 17 ), 4800 * 4 );
 }
-
-// CLEAR A LINE
 void tpu_clearline( unsigned char y ) {
-    while( *TPU_COMMIT );
-    *TPU_Y = y;
-    *TPU_COMMIT = 4;
+    paws_memset32( (void *)TPUBUFFER + 80 * y, ( 64 << 17 ), 80 * 4 );
 }
 
 // POSITION THE CURSOR to (x,y)
 void tpu_move( unsigned char x, unsigned char y ) {
-    while( *TPU_COMMIT );
     *TPU_X = x; *TPU_Y = y; *TPU_COMMIT = 1;
-}
-// READ THE CHARACTER AT (x,y)
-unsigned short tpu_read_cell( unsigned char x, unsigned char y ) {
-    tpu_move( x, y );
-    return( *TPUREAD_CHARACTER );
-}
-// READ THE COLOUR AT (x,y)
-unsigned short tpu_read_colour( unsigned char x, unsigned char y ) {
-    tpu_move( x, y );
-    return( (*TPUREAD_BACKGROUND<<8)+*TPUREAD_FOREGROUND);
-}
-void tpu_write( short c ) {
-     while( *TPU_COMMIT );
-    *TPU_CHARACTER = c; *TPU_COMMIT = 12;
 }
 
 // POSITION THE CURSOR to (x,y) and set background and foreground colours
 void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
-    while( *TPU_COMMIT );
     *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
 }
 // OUTPUT CHARACTER, STRING, and PRINTF EQUIVALENT FOR THE TPU
 void tpu_output_character( short c ) {
-    while( *TPU_COMMIT );
     *TPU_CHARACTER = c; *TPU_COMMIT = 2;
 }
 void tpu_outputstring( char attribute, char *s ) {
@@ -1399,47 +1377,6 @@ void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char
     tpu_clearline( y );
     tpu_set( 40 - ( strlen(buffer) >> 1 ), y, background, foreground );
     tpu_outputstring( attribute, buffer );
-}
-
-// SIMPLE TERMINAL WINDOW FUNCTIONS
-// The terminal is an 80 x 8 character window with a 256 character 8 x 8 pixel character generator ROM )
-// Outputs characters, understands backspace, newline, linefeed and clear
-
-// CLEAR THE TERMINAL
-void terminal_cs( void ) {
-    while( *TERMINAL_STATUS );
-    *TERMINAL_RESET = 1;
-}
-
-// SHOW/HIDE THE TERMINAL WINDOW
-void terminal_showhide( unsigned char flag ) {
-    *TERMINAL_SHOW = flag;
-}
-
-void terminal_output_character( char c ) {
-    while( *TERMINAL_STATUS );
-    *TERMINAL_COMMIT = c;
-    if( c == '\n' ) {
-        while( *TERMINAL_STATUS );
-        *TERMINAL_COMMIT = 13;
-    }
-}
-void terminal_outputstring( char *s ) {
-    while( *s ) {
-        terminal_output_character( *s++ );
-    }
-}
-void terminal_print( char *buffer ) {
-    terminal_outputstring( buffer );
-}
-void terminal_printf( const char *fmt,... ) {
-    static char buffer[1024];
-    va_list args;
-    va_start (args, fmt);
-    vsnprintf( buffer, 1023, fmt, args);
-    va_end(args);
-
-    terminal_outputstring( buffer );
 }
 
 // NETPBM DECODER
@@ -1547,331 +1484,7 @@ void netppm_decoder( unsigned char *netppmimagefile, unsigned char *buffer ) {
     }
 }
 
-// SIMPLE CURSES LIBRARY
-// USES THE CURSES BUFFER IN THE CHARACTER MAP
-char __stdinout_init = FALSE, __sdcard_init = FALSE;
-
-unsigned char   __curses_backgroundcolours[COLOR_PAIRS], __curses_foregroundcolours[COLOR_PAIRS],
-                __curses_scroll = 1, __curses_echo = 0, __curses_bold = 0, __curses_reverse = 0, __curses_autorefresh = 0;
-unsigned short  __curses_x = 0, __curses_y = 0, __curses_fore = WHITE, __curses_back = BLACK;
-
-void *stdscr;
-
-typedef union curses_cell {
-    unsigned int bitfield;
-    struct {
-        unsigned int pad : 7;
-        unsigned int character : 9;
-        unsigned int background : 8;
-        unsigned int foreground : 8;
-    } cell;
-} __curses_cell;
-
-void __position_curses( unsigned short x, unsigned short y ) {
-    while( *TPU_COMMIT );
-    *TPU_X = x; *TPU_Y = y; *TPU_COMMIT = 1;
-}
-
-void __update_tpu( void ) {
-    while( *TPU_COMMIT );
-    *TPU_X = __curses_x; *TPU_Y = __curses_y; *TPU_COMMIT = 1;
-    *TPU_BACKGROUND = __curses_back; *TPU_FOREGROUND = __curses_fore;
-}
-
-__curses_cell __read_curses_cell( unsigned short x, unsigned short y ) {
-    __curses_cell storage;
-    __position_curses( x, y );
-    storage.cell.character = *TPU_CHARACTER;
-    storage.cell.background = *TPU_BACKGROUND;
-    storage.cell.foreground = *TPU_FOREGROUND;
-    return( storage );
-}
-
-void __write_curses_cell( unsigned short x, unsigned short y, __curses_cell writecell ) {
-    while( *TPU_COMMIT );
-    __position_curses( x, y );
-    *TPU_CHARACTER = writecell.cell.character;
-    *TPU_BACKGROUND = writecell.cell.background;
-    *TPU_FOREGROUND = writecell.cell.foreground;
-    *TPU_COMMIT = 5;
-}
-
-void initscr( void ) {
-    while( *TPU_COMMIT );
-    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE; *TPU_COMMIT = 6; while( *TPU_COMMIT );
-    __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
-    *TPU_CURSOR = TRUE;
-    __stdinout_init = TRUE;
-}
-
-int endwin( void ) {
-    return( true );
-}
-
-int refresh( void ) {
-    while( *TPU_COMMIT ); *TPU_COMMIT = 7;
-    return( true );
-}
-
-int clear( void ) {
-    while( *TPU_COMMIT ); *TPU_COMMIT = 6;
-    __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; __curses_bold = 0; __update_tpu();
-    return( true );
-}
-
-void cbreak( void ) {
-}
-
-void echo( void ) {
-}
-
-void noecho( void ) {
-}
-
-void scroll( void ) {
-    __curses_scroll = 1;
-}
-
-void noscroll( void ) {
-    __curses_scroll = 0;
-}
-
-void curs_set( int visibility ) {
-    *TPU_CURSOR = visibility;
-}
-
-void autorefresh( int flag ) {
-    __curses_autorefresh = flag;
-}
-
-int start_color( void ) {
-    for( unsigned short i = 0; i < 15; i++ ) {
-        __curses_foregroundcolours[i] = BLACK;
-        __curses_backgroundcolours[i] = BLACK;
-    }
-    __curses_foregroundcolours[0] = BLACK;
-    __curses_foregroundcolours[1] = RED;
-    __curses_foregroundcolours[2] = GREEN;
-    __curses_foregroundcolours[3] = YELLOW;
-    __curses_foregroundcolours[4] = BLUE;
-    __curses_foregroundcolours[5] = MAGENTA;
-    __curses_foregroundcolours[6] = CYAN;
-    __curses_foregroundcolours[7] = WHITE;
-
-    return( true );
-}
-
-bool has_colors( void ) {
-    return( true );
-}
-
-bool can_change_color( void ) {
-    return( true );
-}
-
-int init_color(short color, short r, short g, short b) {
-    return( true );
-}
-
-int init_pair( short pair, short f, short b ) {
-    __curses_foregroundcolours[ pair ] = f;
-    __curses_backgroundcolours[ pair ] = b;
-    return( true );
-}
-
-
-int move( int y, int x ) {
-    __curses_x = ( unsigned short ) ( x < 0 ) ? 0 : ( x > COLS-1 ) ? COLS-1 : x;
-    __curses_y = ( unsigned short ) ( y < 0 ) ? 0 : ( y > LINES-1 ) ? LINES-1 : y;
-    __position_curses( __curses_x, __curses_y );
-    return( true );
-}
-
-int getyx( int *y, int *x ) {
-    *y = (int)__curses_y;
-    *x = (int)__curses_x;
-    return( true );
-}
-
-void __scroll( void ) {
-    while( *TPU_COMMIT );
-    *TPU_COMMIT = 8;
-}
-
-int addch( unsigned char ch ) {
-    __curses_cell temp;
-    short gonextline = 0;
-
-    switch( ch ) {
-        case '\b': {
-            // BACKSPACE
-            if( __curses_x ) {
-                __curses_x--;
-            } else {
-                if( __curses_y ) {
-                    __curses_y--;
-                    __curses_x = COLS-1;
-                }
-            }
-            break;
-        }
-        case '\n': {
-            // LINE FEED
-            __curses_x = 0;
-            gonextline = 1;
-            break;
-        }
-        case '\r': {
-            // CARRIAGE RETURN
-            __curses_x = 0;
-            break;
-        }
-        case '\t': {
-            // TAB
-            __curses_x = ( 1 + __curses_x / 8 ) * 8;
-            if( __curses_x >= COLS ) {
-                __curses_x = 0;
-                gonextline = 1;
-            }
-            break;
-        }
-
-        default: {
-            if( __curses_autorefresh ) {
-                tpu_set( __curses_x, __curses_y, __curses_back, __curses_fore );
-                tpu_output_character( ( __curses_bold ? 256 : 0 ) + ch );
-            }
-            temp.cell.character = ( __curses_bold ? 256 : 0 ) + ch;
-            temp.cell.background = __curses_back;
-            temp.cell.foreground = __curses_fore;
-            __write_curses_cell( __curses_x, __curses_y, temp );
-            if( __curses_x == COLS-1 ) {
-                __curses_x = 0;
-                gonextline = 1;
-            } else {
-                __curses_x++;
-            }
-        }
-    }
-
-    // GO TO NEXT LINE, SCROLL/WRAP IF REQUIRED
-    if( gonextline ) {
-        if( __curses_y == LINES-1 ) {
-            if( __curses_scroll ) {
-                __scroll();
-                if( __curses_autorefresh )
-                    refresh();
-            } else {
-                __curses_y = 0;
-            }
-        } else {
-            __curses_y++;
-        }
-    }
-
-    __position_curses( __curses_x, __curses_y );
-    return( true );
-}
-
-int mvaddch( int y, int x, unsigned char ch ) {
-    (void)move( y, x );
-    return( addch( ch ) );
-}
-
-void __curses_print_string(const char* s) {
-   for(const char* p = s; *p; ++p) {
-      addch(*p);
-   }
-}
-
-int printw( const char *fmt,... ) {
-    static char buffer[1024];
-    va_list args;
-    va_start (args, fmt);
-    vsnprintf( buffer, 1023, fmt, args);
-    va_end(args);
-
-    __curses_print_string( buffer );
-    return( true );
-}
-
-int mvprintw( int y, int x, const char *fmt,... ) {
-    static char buffer[1024];
-    va_list args;
-    va_start (args, fmt);
-    vsnprintf( buffer, 1023, fmt, args);
-    va_end(args);
-
-    move( y, x );
-    __curses_print_string( buffer );
-
-    return( true );
-}
-
-int attron( int attrs ) {
-    if( attrs & COLORS ) {
-        __curses_fore = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ];
-        __curses_back = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ];
-        __update_tpu();
-    }
-    if( attrs & A_NORMAL ) {
-        __curses_bold = 0;
-        __curses_reverse = 0;
-    }
-
-    if( attrs & A_BOLD )
-        __curses_bold = 1;
-
-    if( attrs & A_REVERSE )
-        __curses_reverse = 1;
-
-    return( true );
-}
-
-int attroff( int attrs ) {
-   if( attrs & A_BOLD ) {
-        __curses_bold = 0;
-    }
-
-    if( attrs & A_REVERSE )
-        __curses_reverse = 0;
-
-    return( true );
-}
-
-void bkgdset( int attrs ) {
-    __curses_fore = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ]; *CURSES_FOREGROUND = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ];
-    __curses_back = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ]; *CURSES_BACKGROUND = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ];
-}
-
-int deleteln( void ) {
-     while( *TPU_COMMIT );
-    *TPU_COMMIT = 9;
-
-    return( true );
-}
-
-int clrtoeol( void ) {
-     while( *TPU_COMMIT );
-    *TPU_COMMIT = 10;
-
-    return( true );
-}
-
-int clrtobot( void ) {
-     while( *TPU_COMMIT );
-    *TPU_COMMIT = 11;
-
-    return( true );
-}
-
-int intrflush( WINDOW *win, bool bf ) {
-    return( 0 );
-}
-
-int keypad( WINDOW *win, bool bf ) {
-    return( 0 );
-}
+#include "PAWSncurses.c"
 
 // FAT16/32 File IO Library from Ultra-Embedded.com
 #ifdef feof
@@ -1922,7 +1535,7 @@ char *_sbrk( int incr ) {
 
 // PAWS INITIALISATION FOR THE TERMNAL AND THE SDCARD for fat_io_lib
 void __start_stdinout( void ) {
-    initscr(); start_color(); autorefresh( TRUE ); ps2_keyboardmode( PS2_KEYBOARD );
+    initscr(); __pnc_start_color( stdscr ); __pnc_autorefresh( stdscr, TRUE ); ps2_keyboardmode( PS2_KEYBOARD );
     __stdinout_init = TRUE;
 }
 void __start_sdmedia( void ) {
@@ -2064,7 +1677,7 @@ long _write( int fd, const void *buf, size_t cnt ) {
     while( cnt-- ) {
         switch( fd ) {
             case STDOUT_FILENO:
-                addch( *buffer++ );
+                __pnc_addch( stdscr, *buffer++ );
                 break;
             case STDERR_FILENO:
                 uart_outputcharacter( *buffer++ );
@@ -2185,7 +1798,7 @@ int paws_fgetc( void *fd ) {
     char input;
     if( fd == stdin ) {
         input = ps2_inputcharacter();
-        addch( input );
+        __pnc_addch( stdscr, input );
         return ( input );
     } else {
         return( fl_fgetc( fd ) );
@@ -2201,9 +1814,9 @@ char *paws_fgets( char *s, int cnt, void *fd ) {
             input = ps2_inputcharacter();
             if( input != 0x0d ) {
                 *buffer++ = input;
-                addch( input );
+                __pnc_addch( stdscr, input );
             } else {
-                addch( '\n' );
+                __pnc_addch( stdscr, '\n' );
                 *buffer = 0;
                 return( s);
             }
@@ -2217,7 +1830,7 @@ int paws_fputc( int c, void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
     if( ( fd == stdout ) || ( fd == stderr ) )  {
-        if( fd == stdout ) addch( c );
+        if( fd == stdout ) __pnc_addch( stdscr, c );
         if( fd == stderr ) uart_outputcharacter( c );
         return( c );
     } else {
@@ -2244,7 +1857,7 @@ int paws_fwrite(const void *data, int size, int count, void *fd ) {
         for( int i = 0; i < count; i++ ) {
             buffer = (unsigned char *)data;
             for( int j = 0; j < size; j++ ) {
-                if( fd == stdout ) addch( *buffer++ );
+                if( fd == stdout ) __pnc_addch( stdscr, *buffer++ );
                 if( fd == stderr ) uart_outputcharacter(  *buffer++  );
             }
         }

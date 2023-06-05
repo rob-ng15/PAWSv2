@@ -56,6 +56,10 @@ void *memset(void *dest, int val, size_t len) {
     DMASTART( (const void *restrict)DMASET, dest, len, 4 );
     return dest;
 }
+void *memset32( void *restrict destination, int value, size_t count ) {
+    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    return( destination );
+}
 
 void *memcpy( void *dest, void *src, size_t len ) {
     DMASTART( src, dest, len, 3 );
@@ -221,6 +225,25 @@ void draw_paws_logo( void ) {
     gpu_blit( UK_GOLD, 2, 2, 3, 2 );
 }
 
+// CLEAR THE CHARACTER MAP
+void tpu_cs( void ) {
+    memset32( ( void *)0x1000000, ( 64 << 17 ), 4800 * 4 );
+}
+// POSITION THE CURSOR to (x,y) and set background and foreground colours
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
+    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
+}
+// OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
+void tpu_output_character( short c ) {
+    *TPU_CHARACTER = c; *TPU_COMMIT = 2;
+}
+void tpu_outputstring( char *s ) {
+    while( *s ) {
+        tpu_output_character( *s );
+        s++;
+    }
+}
+
 void reset_display( void ) {
     // WAIT FOR THE GPU TO FINISH
     gpu_pixelblock_stop();
@@ -231,29 +254,11 @@ void reset_display( void ) {
     *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
     *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
     *SCREENMODE = 0; *COLOUR = 0; *REZ = 0; *DIMMER = 0; *STATUS_DISPLAY = 1; *STATUS_BACKGROUND = 0x40;
-    *TPU_CURSOR = 0; *TPU_COMMIT = 3;
-    *TERMINAL_SHOW = 0; *TERMINAL_RESET = 1;
+    *TPU_CURSOR = 0; tpu_cs();
     *LOWER_TM_SCROLLWRAPCLEAR = *UPPER_TM_SCROLLWRAPCLEAR = 5;
     *UPPER_TM_SCROLLWRAPAMOUNT = *LOWER_TM_SCROLLAMOUNT = 1;
     for( unsigned short i = 0; i < 16; i++ ) {
         LOWER_SPRITE_ACTIVE[i] = UPPER_SPRITE_ACTIVE[i] = 0;
-    }
-}
-
-// POSITION THE CURSOR to (x,y) and set background and foreground colours
-void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
-    while( *TPU_COMMIT );
-    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
-}
-// OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
-void tpu_output_character( short c ) {
-    while( *TPU_COMMIT );
-    *TPU_CHARACTER = c; *TPU_COMMIT = 2;
-}
-void tpu_outputstring( char *s ) {
-    while( *s ) {
-        tpu_output_character( *s );
-        s++;
     }
 }
 
