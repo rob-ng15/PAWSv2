@@ -1,8 +1,12 @@
 // SIMPLE CURSES LIBRARY
 #include "curses.h"
 
-WINDOW __curses_stdscr, *stdscr = &__curses_stdscr;
+WINDOW __curses_stdscr, *stdscr = &__curses_stdscr, *curscr = &__curses_stdscr;
 char __stdinout_init = FALSE, __sdcard_init = FALSE;
+
+extern unsigned char ps2_character_available( void );
+extern unsigned short ps2_inputcharacter( void );
+extern void ps2_keyboardmode( unsigned char );
 
 void __position_curses( unsigned short x, unsigned short y ) {
     tpu_move( x, y );
@@ -29,18 +33,74 @@ void initscr( void ) {
     paws_memset32( (void *)( stdscr -> buffer ), temp.bitfield, stdscr -> w *  stdscr -> h * TPUCELLSIZE  );
 
     *TPU_CURSOR = TRUE; __update_tpu( stdscr );
-    __stdinout_init = TRUE;
+    __stdinout_init = TRUE; ps2_keyboardmode( TRUE );
 }
 
 int endwin( void ) {
     return( true );
 }
 
+WINDOW *newwin( int nlines, int ncols, int begin_y, int begin_x ) {
+    WINDOW *tempwin = malloc( sizeof( WINDOW ) );
+    if( !tempwin ) return NULL;
+    memset( tempwin, 0, sizeof( WINDOW ) );
+
+    tempwin -> buffer = malloc( nlines * ncols * TPUCELLSIZE );
+    if( !tempwin -> buffer ) {
+        free( tempwin );
+        return( NULL );
+    }
+
+    tempwin -> y = begin_y; tempwin -> x = begin_x; tempwin -> w = ncols; tempwin -> h = nlines;
+    tempwin -> cx = 0; tempwin-> cy = 0;
+    tempwin -> background = BLACK; tempwin -> foreground = WHITE;
+    tempwin -> scroll = 0; tempwin -> echo = 0; tempwin -> bold = 0; tempwin -> reverse = 0; tempwin -> autorefresh = 0;
+
+    __curses_cell temp;
+    temp.cell.background = tempwin -> reverse ? tempwin -> foreground : tempwin -> background;
+    temp.cell.foreground = tempwin -> reverse ? tempwin -> background : tempwin -> foreground;
+    paws_memset32( (void *)( tempwin -> buffer ), temp.bitfield, tempwin -> w *  tempwin -> h * TPUCELLSIZE  );
+
+    return tempwin;
+}
+
+WINDOW *subwin( WINDOW *parent, int nlines, int ncols, int begin_y, int begin_x ) {
+    WINDOW *tempwin = malloc( sizeof( WINDOW ) );
+    if( !tempwin ) return NULL;
+    memset( tempwin, 0, sizeof( WINDOW ) );
+
+    tempwin -> buffer = malloc( nlines * ncols * TPUCELLSIZE );
+    if( !tempwin -> buffer ) {
+        free( tempwin );
+        return( NULL );
+    }
+
+    tempwin -> y = begin_y; tempwin -> x = begin_x; tempwin -> w = ncols; tempwin -> h = nlines;
+    tempwin -> cx = 0; tempwin-> cy = 0;
+    tempwin -> background = BLACK; tempwin -> foreground = WHITE;
+    tempwin -> scroll = 0; tempwin -> echo = 0; tempwin -> bold = 0; tempwin -> reverse = 0; tempwin -> autorefresh = 0;
+
+    __curses_cell temp;
+    temp.cell.background = tempwin -> reverse ? tempwin -> foreground : tempwin -> background;
+    temp.cell.foreground = tempwin -> reverse ? tempwin -> background : tempwin -> foreground;
+    paws_memset32( (void *)( tempwin -> buffer ), temp.bitfield, tempwin -> w *  tempwin -> h * TPUCELLSIZE  );
+
+    tempwin -> parent = parent;
+    return tempwin;
+}
+
+int delwin( WINDOW *window ) {
+    free( window -> buffer );
+    free( window );
+    return( true );
+}
+
 int __pnc_refresh( WINDOW *window ) {
-    if( window == stdscr )
-        paws_memcpy( (void *)TPUBUFFER, window -> buffer, window -> w *  window -> h * TPUCELLSIZE );
-    else
-        paws_memcpy_rectangle( (void *)&TPUBUFFER[ window -> y * COLS + window -> x ], window -> buffer, window -> w * TPUCELLSIZE, COLS * 4, 0, window -> h );
+    if( window == stdscr ) {
+        paws_memcpy( (void *)TPUBUFFER, window -> buffer, window -> w * window -> h * TPUCELLSIZE );
+    } else {
+        paws_memcpy_rectangle( (void *)&TPUBUFFER[ window -> y * COLS + window -> x ], window -> buffer, window -> w * TPUCELLSIZE, COLS * TPUCELLSIZE, window -> w * TPUCELLSIZE, window -> h );
+    }
     return( true );
 }
 
@@ -52,6 +112,7 @@ int __pnc_clear( WINDOW *window ) {
     paws_memset32( (void *)( window -> buffer ), temp.bitfield, window -> w *  window -> h * TPUCELLSIZE  );
     if( window -> autorefresh )
         __pnc_refresh( window );
+
     return( true );
 }
 
@@ -59,17 +120,15 @@ void __pnc_cbreak( WINDOW *window ) {
 }
 
 void __pnc_echo( WINDOW *window ) {
+    window -> echo = 1;
 }
 
 void __pnc_noecho( WINDOW *window ) {
+    window -> echo = 0;
 }
 
-void __pnc_scroll( WINDOW *window ) {
-    window -> scroll = 1;
-}
-
-void __pnc_noscroll( WINDOW *window ) {
-    window -> scroll = 0;
+void __pnc_scrollok( WINDOW *window, bool flag ) {
+    window -> scroll = flag;
 }
 
 void __pnc_curs_set( WINDOW *window, int visibility ) {
@@ -117,13 +176,13 @@ int __pnc_init_pair( WINDOW *window, short pair, short f, short b ) {
 
 
 int __pnc_move( WINDOW *window, int y, int x ) {
-    window -> cx = ( unsigned short ) ( x < 0 ) ? 0 : ( x > window -> w - 1 ) ? window -> w - 1 : x;
     window -> cy = ( unsigned short ) ( y < 0 ) ? 0 : ( y > window -> h - 1 ) ? window -> h - 1 : y;
+    window -> cx = ( unsigned short ) ( x < 0 ) ? 0 : ( x > window -> w - 1 ) ? window -> w - 1 : x;
     __position_curses( window -> cx + window -> x, window -> cy + window -> y );
     return( true );
 }
 
-void __scroll( WINDOW *window ) {
+void __pnc_scroll( WINDOW *window ) {
     __curses_cell temp;
     temp.cell.background = window -> reverse ? window -> foreground : window -> background;
     temp.cell.foreground = window -> reverse ? window -> background : window -> foreground;
@@ -132,7 +191,7 @@ void __scroll( WINDOW *window ) {
     paws_memset32( (void *)&window -> buffer[ window -> w * ( window -> h - 1 ) ], temp.bitfield, window -> w * TPUCELLSIZE );
 }
 
-int __pnc_addch( WINDOW *window, unsigned char ch ) {
+int __pnc_addch( WINDOW *window, char ch ) {
     short gonextline = 0;
     __curses_cell temp;
     switch( ch ) {
@@ -175,8 +234,15 @@ int __pnc_addch( WINDOW *window, unsigned char ch ) {
             temp.cell.character = ( window -> bold ? TPUBOLD : 0 ) + ch;
 
             if( window -> autorefresh )
-                TPUBUFFER[ window -> cy * COLS + window -> cx ] = temp.bitfield;
+                TPUBUFFER[ ( window -> y + window -> cy ) * COLS + window -> x + window -> cx ] = temp.bitfield;
             window -> buffer[ window -> cy * window -> w + window -> cx ] = temp.bitfield;
+
+            if( window -> parent ) {
+                WINDOW *parent = window -> parent;
+                int offset_y = window -> y - parent -> y + window -> cy;
+                int offset_x = window -> x - parent -> x + window -> cx;
+                parent -> buffer[ offset_y * parent -> w + offset_x ] = temp.bitfield;
+            }
 
             if( window -> cx == window -> w - 1 ) {
                 window -> cx = 0;
@@ -191,7 +257,7 @@ int __pnc_addch( WINDOW *window, unsigned char ch ) {
     if( gonextline ) {
         if( window -> cy == window -> h - 1 ) {
             if( window -> scroll ) {
-                __scroll( window );
+                __pnc_scroll( window );
                 if( window -> autorefresh )
                     __pnc_refresh( window );
             } else {
@@ -206,15 +272,22 @@ int __pnc_addch( WINDOW *window, unsigned char ch ) {
     return( true );
 }
 
-int __pnc_mvaddch( WINDOW *window, int y, int x, unsigned char ch ) {
+int __pnc_mvaddch( WINDOW *window, int y, int x, char ch ) {
     (void)__pnc_move( window, y, x );
     return( __pnc_addch( window, ch ) );
 }
 
-void __curses_print_string( WINDOW *window, const char* s ) {
+int __pnc_addstr( WINDOW *window, char* s ) {
    for(const char* p = s; *p; ++p) {
       __pnc_addch( window, *p );
    }
+
+   return( true );
+}
+
+int __pnc_mvaddstr( WINDOW *window, int y, int x, char *s ) {
+    (void)__pnc_move( window, y, x );
+    return( __pnc_addstr( window, s ) );
 }
 
 int printw( const char *fmt,... ) {
@@ -224,7 +297,7 @@ int printw( const char *fmt,... ) {
     vsnprintf( buffer, 1023, fmt, args);
     va_end(args);
 
-    __curses_print_string( stdscr, buffer );
+    __pnc_addstr( stdscr, buffer );
     return( true );
 }
 
@@ -236,7 +309,7 @@ int mvprintw( int y, int x, const char *fmt,... ) {
     va_end(args);
 
     __pnc_move( stdscr, y, x );
-    __curses_print_string( stdscr, buffer );
+    __pnc_addstr( stdscr, buffer );
 
     return( true );
 }
@@ -294,7 +367,7 @@ int __pnc_clrtobot( WINDOW *window ) {
     temp.cell.foreground = window -> reverse ? window -> background : window -> foreground;
 
     for( int i = window -> cy * window -> w + window -> cx; i < window -> h * window -> w; i ++ )
-        window -> buffer[ i ] = temp;
+        window -> buffer[ i ] = temp.bitfield;
 
     return( true );
 }
@@ -306,3 +379,24 @@ int intrflush( WINDOW *win, bool bf ) {
 int keypad( WINDOW *win, bool bf ) {
     return( 0 );
 }
+
+int __pnc_getch( WINDOW *window ) {
+    int temp;
+    temp = (int)ps2_inputcharacter();
+    if( window -> echo )
+        __pnc_addch( window, temp );
+    return( temp );
+}
+
+int __pnc_erasechar( void ) {
+    return( 0x08 );
+}
+
+int __pnc_killchar( void ) {
+    return( 0x1b );
+}
+
+int __pnc_raw( void ) {
+    return( true );
+}
+

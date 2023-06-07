@@ -1954,6 +1954,10 @@ unsigned int paws_sleep( unsigned int seconds ) {
     return(0);
 }
 
+int paws_select(int nfds, fd_set *restrict readfds, fd_set *restrict writefds, fd_set *restrict exceptfds, struct timeval *restrict timeout) {
+    return(0);
+}
+
 // PAWS RISC-V B EXTENSION OPTIMISED strcmp strlen
 int paws_strcmp ( const char *string1, const char *string2 ) {
 }

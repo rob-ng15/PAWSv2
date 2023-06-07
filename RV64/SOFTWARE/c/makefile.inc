@@ -52,7 +52,7 @@ LIBRARY=	/usr/$(ARCH)-elf/lib/rv64imafdc/lp64d/libc.a \
 CRT0SOURCE=	$(PAWSBASE)library/crt0.s
 CRT0OBJ=	$(PAWSBASE)library/build/crt0.o
 
-LIBPAWSSOURCE=	$(PAWSBASE)library/PAWS.h $(PAWSBASE)library/PAWSdefinitions.h $(PAWSBASE)library/PAWSncurses.c $(PAWSBASE)library/PAWSlibrary.c
+LIBPAWSSOURCE=	$(PAWSBASE)library/PAWS.h $(PAWSBASE)library/PAWSdefinitions.h $(PAWSBASE)library/PAWSncurses.c $(PAWSBASE)library/curses.h $(PAWSBASE)library/PAWSlibrary.c
 LIBPAWSOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/libPAWS.o
 
 PAWSPS2SOURCE=	$(PAWSBASE)library/PAWSPS2driver.c
