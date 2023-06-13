@@ -26,18 +26,14 @@ unit framebuffer_read(
     bitmap_000.addr0 := baseaddress0[2,15]; bitmap_001.addr0 := baseaddress[2,15]; bitmap_010.addr0 := baseaddress[2,15]; bitmap_011.addr0 := baseaddress[2,15];
     bitmap_100.addr0 := baseaddress0[2,15]; bitmap_101.addr0 := baseaddress[2,15]; bitmap_110.addr0 := baseaddress[2,15]; bitmap_111.addr0 := baseaddress[2,15];
 
-    algorithm <autorun> {
-        while(1) {
-            switch( baseaddress[0,2] ) {                                                                                        // SELECT PIXEL FROM EACH FRAMEBUFFER ACCORDING TO (X.Y) SCREEN COORDINATES
-                case 2b00: { pixel0 = bitmap_000.rdata0; pixel1 = bitmap_100.rdata0; }
-                case 2b01: { pixel0 = bitmap_001.rdata0; pixel1 = bitmap_101.rdata0; }
-                case 2b10: { pixel0 = bitmap_010.rdata0; pixel1 = bitmap_110.rdata0; }
-                case 2b11: { pixel0 = bitmap_011.rdata0; pixel1 = bitmap_111.rdata0; }
-            }
-        }
-    }
-
     always_after {
+        switch( baseaddress[0,2] ) {                                                                                            // SELECT PIXEL FROM EACH FRAMEBUFFER ACCORDING TO (X.Y) SCREEN COORDINATES
+            case 2b00: { pixel0 = bitmap_000.rdata0; pixel1 = bitmap_100.rdata0; }
+            case 2b01: { pixel0 = bitmap_001.rdata0; pixel1 = bitmap_101.rdata0; }
+            case 2b10: { pixel0 = bitmap_010.rdata0; pixel1 = bitmap_110.rdata0; }
+            case 2b11: { pixel0 = bitmap_011.rdata0; pixel1 = bitmap_111.rdata0; }
+        }
+
         pixel = display256 ? framebuffer[1,1] ? pixel1 : framebuffer[0,1] ? pixel0 : 0 :                                        // DISPLAY256 MODE, IF NO BITMAP SELECTED DISPLAY BLACK (0)
                              framebuffer[1,1] & ( pixel1 != 64 ) ? pixel1 : framebuffer[0,1] & ( pixel0 != 64 ) ? pixel0 : 64;  // ELSE SELECT SELECTED BITMAP OR TRANSPARENT IF NOTHING SELECTED OR TRANSPARENT
         bitmap_display = pix_active & |framebuffer & ( ( pixel != 64 ) | display256 );                                          // OUTPUT IF DISPLAY256 OR NOT TRANSPARENT
@@ -76,12 +72,7 @@ unit framebuffer_write(
 ) <reginputs> {
     // DITHER PATTERN GENERATOR
     dither DODITHER( bitmap_x_write <: bitmap_x_write, bitmap_y_write <: bitmap_y_write, dithermode <: gpu_active_dithermode, static1bit <: static8bit[0,1] );
-    uint8   pixeltowrite <:: ( gpu_active_dithermode == 14 ) ? ( static8bit == 64 ) ? 65 : static8bit :
-                             DODITHER.condition ? bitmap_colour_write : bitmap_colour_write_alt;
 
-    // Write in range?
-    uint1   write_pixel <:: ( bitmap_x_write >= bitmap_crop_left ) & ( bitmap_x_write <= bitmap_crop_right ) &
-                            ( bitmap_y_write >= bitmap_crop_top ) & ( bitmap_y_write <= bitmap_crop_bottom ) & bitmap_write;
 
     uint17  address <:: bitmap_write ? bitmap_y_write[0,8] * 320 + bitmap_x_write[0,9] : memoryAddressDirect;                   // PRIORITISE GPU WRITE OVER CPU (SET MEMORY ADDRESS IN BITMAP )
     uint17  addressL <:: memoryAddressDirect + memoryAddressDirect[1,1] ? 2 : 0;                                                // HANDLE MISALIGNED 32 BIT READS/WRITES
@@ -101,6 +92,14 @@ unit framebuffer_write(
     bitmap_110.addr1 := bm1L ? addressL[2,15] : address[2,15]; bitmap_111.addr1 := bm1L ? addressL[2,15] : address[2,15];
 
     always_after {
+        uint8   pixeltowrite = ( gpu_active_dithermode == 14 ) ? ( static8bit == 64 ) ? 65 : static8bit :                       // DETERMINE COLOUR OF PIXEL
+                                                                   DODITHER.condition ? bitmap_colour_write :
+                                                                                        bitmap_colour_write_alt;
+
+        uint1   write_pixel = ( bitmap_x_write >= bitmap_crop_left ) & ( bitmap_x_write <= bitmap_crop_right ) &                // IS PIXEL IN THE CROPPING RECTANGLE?
+                              ( bitmap_y_write >= bitmap_crop_top ) & ( bitmap_y_write <= bitmap_crop_bottom ) &
+                              bitmap_write;
+
         if( memoryAddressDirect[17,1] ) {                                                                                       // RETURN CPU READ DATA ( ONLY VALID IF CPU IS ACTUALLY READING MEMORY )
             readDataDirect = memoryAddressDirect[1,1] ? { bitmap_101.rdata1, bitmap_100.rdata1, bitmap_111.rdata1, bitmap_110.rdata1 } :
                                                         { bitmap_111.rdata1, bitmap_110.rdata1, bitmap_101.rdata1, bitmap_100.rdata1 };
@@ -305,7 +304,6 @@ unit dither(
         // == 8 RIGHT SLOPE == 9 LEFT TRIANGLE == 10 RIGHT TRIANGLE == 11 X
         // == 12 + == 13 BRICK == 14 COLOUR STATIC == 15 STATIC
         uint2   checkmode = dithermode[0,2] - 1;
-        uint3   revbitmapx = ~bitmap_x_write[0,3];
 
         switch( dithermode ) {
             case 0: { condition = 1; }                                                                                          // SOLID
@@ -316,8 +314,8 @@ unit dither(
             case 7: { condition = ( bitmap_x_write[0,2] == bitmap_y_write[0,2] ); }                                             // LEFT SLOPE
             case 8: { condition = ( bitmap_x_write[0,2] == ~bitmap_y_write[0,2] ); }                                            // RIGHT SLOPE
             case 9: { condition = ( bitmap_x_write[0,3] <= bitmap_y_write[0,3] ); }                                             // LEFT TRIANGLE
-            case 10: { condition = ( revbitmapx <= bitmap_y_write[0,3] ); }                                                     // RIGHT TRIANGLE
-            case 11: { condition = ( bitmap_x_write[0,3] == bitmap_y_write[0,3] ) | ( revbitmapx == bitmap_y_write[0,3] ); }    // X
+            case 10: { condition = ( ~bitmap_x_write[0,3] <= bitmap_y_write[0,3] ); }                                                     // RIGHT TRIANGLE
+            case 11: { condition = ( bitmap_x_write[0,3] == bitmap_y_write[0,3] ) | ( ~bitmap_x_write[0,3] == bitmap_y_write[0,3] ); }    // X
             case 12: { condition = ( bitmap_x_write[1,2] == 2b10 ) | ( bitmap_y_write[1,2] == 2b10 ); }                         // +
             case 13: { condition = ( ~|bitmap_y_write[0,2] ) | ( bitmap_x_write[0,2] == { bitmap_y_write[2,1], 1b0 } ); }       // BRICK
             case 14: {}                                                                                                         // COLOUR STATIC (placeholder, done in main)

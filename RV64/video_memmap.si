@@ -15,8 +15,8 @@ unit characterrom256(
 
     // Setup the reading of the characterGenerator8x16 ROM
     always_after {
-        { characterGenerator8x8.addr = { tile, y }; }
-        { line = characterGenerator8x8.rdata; }
+        characterGenerator8x8.addr = { tile, y };
+        line = characterGenerator8x8.rdata;
     }
 }
 
@@ -31,8 +31,8 @@ unit characterrom512(
 
     // Setup the reading of the characterGenerator8x16 ROM
     always_after {
-        { characterGenerator8x8.addr = { tile, y }; }
-        { line = characterGenerator8x8.rdata; }
+        characterGenerator8x8.addr = { tile, y };
+        line = characterGenerator8x8.rdata;
     }
 }
 
@@ -320,7 +320,7 @@ $$end
     LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0; palette.wenable1 := 0; palette.wdata1 := writeData;
 
     always_after {
-        uint4   dimmer = 0;
+        uint4   dimmer = uninitialised;
 
         // SET DEFAULT DISPLAY ORDER, COLOUR MODE AND DIMMER
         if( reset ) { STATUS.display = 1; STATUS.background = 64; display.display_order = 0; display.colour = 0; display.usepalette = 0; dimmer = 0; }
@@ -453,14 +453,11 @@ unit background_memmap(
     input   uint2   colourmode,
     input   uint10  staticGenerator
 ) <reginputs> {
-    // BACKGROUND CO-PROCESSOR PROGRAM STORAGE
-    simple_dualport_bram uint4  OP <@video_clock,@clock> [ 128 ] = uninitialised;
+    simple_dualport_bram uint4  OP <@video_clock,@clock> [ 128 ] = uninitialised;                                               // BACKGROUND CO-PROCESSOR PROGRAM STORAGE
     simple_dualport_bram uint3  OPD <@video_clock,@clock> [ 128 ] = uninitialised;
     simple_dualport_bram uint1  OPF <@video_clock,@clock> [ 128 ] = uninitialised;
     simple_dualport_bram uint10 OPL <@video_clock,@clock> [ 128 ] = uninitialised;
-
-    uint3   mempos = uninitialised;
-    uint80  memoryinit = uninitialised;
+    uint80  memoryinit = uninitialised;                                                                                         // COPPER MEMORY ( 8 x 10 BIT ENTRIES )
 
     // BACKGROUND GENERATOR
     background_display BACKGROUND <@video_clock,!video_reset> (
@@ -497,6 +494,8 @@ unit background_memmap(
     BACKGROUND_WRITER.background_update := 0; BACKGROUND_WRITER.copper_program := 0;
 
     always_after {
+        uint3   mempos = uninitialised;
+
         if( memoryWrite ) {
             switch( memoryAddress[1,4] ) {
                 case 4h0: { BACKGROUND_WRITER.backgroundcolour = writeData; BACKGROUND_WRITER.background_update = 1; }
@@ -591,18 +590,13 @@ unit bitmap_memmap(
         static8bit <: static8bit
     );
 
-    // 64 x 16 x 16 1 bit tilemap for blit1tilemap
-    simple_dualport_bram uint16 blit1tilemap <@video_clock,@clock> [ 1024 ] = uninitialized;
-    // Character ROM 8x8 x 512 for character blitter
-    simple_dualport_bram uint8 characterGenerator8x8 <@video_clock,@clock> [] = {
+
+    simple_dualport_bram uint16 blit1tilemap <@video_clock,@clock> [ 1024 ] = uninitialized;                                    // 64 x 16 x 16 1 bit tilemap for blit1tilemap
+    simple_dualport_bram uint8 characterGenerator8x8 <@video_clock,@clock> [] = {                                               // Character ROM 8x8 x 512 for character blitter
         $include('ROM/FONTS/CODE437-THINBOLD.inc')
     };
-
-    // 64 x 16 x 16 7 bit tilemap for colour
-    simple_dualport_bram uint8 colourblittilemap <@video_clock,@clock> [ 16384 ] = uninitialized;
-
-    // 256 colour remapper
-    simple_dualport_bram uint8 pb_colourmap <@video_clock,@clock> [ 256 ] = uninitialized;
+    simple_dualport_bram uint8 colourblittilemap <@video_clock,@clock> [ 16384 ] = uninitialized;                               // 64 x 16 x 16 8 bit tilemap for colourblittilemap
+    simple_dualport_bram uint8 pb_colourmap <@video_clock,@clock> [ 256 ] = uninitialized;                                      // 256 colour remapper
 
     // GPU
     bitmapwriter pixel_writer <@gpu_clock,!video_reset> (
@@ -615,16 +609,15 @@ unit bitmap_memmap(
         gpu_active :> gpu_active
     );
 
-
     blit1tilemap.wdata1 := writeData; blit1tilemap.wenable1 := 0;
     characterGenerator8x8.wdata1 := writeData; characterGenerator8x8.wenable1 := 0;
     colourblittilemap.wdata1 := writeData; colourblittilemap.wenable1 := 0;
     pb_colourmap.wenable1 := 1;
 
     always_after {
-    // ADJUST FOR 11bit underflow/overflow for pixel coordinates
-        uint11  minmax = ( __signed( writeData ) < __signed( -1024 ) ) ? -11d1024 : ( __signed( writeData ) > __signed( 1023 ) ) ? 11d1023 : writeData[0,11];
-        uint8   RGBM = { writeData[22,2], writeData[13,3], writeData[6,2], writeData[21,1] & writeData[5,1] };
+        uint11  minmax = ( __signed( writeData ) < __signed( -1024 ) ) ? -11d1024 :                                         // ADJUST FOR 11bit underflow/overflow for pixel coordinates
+                         ( __signed( writeData ) > __signed( 1023 ) ) ? 11d1023 : writeData[0,11];
+        uint8   RGBM = { writeData[22,2], writeData[13,3], writeData[6,2], writeData[21,1] & writeData[5,1] };              // CONVERT RGB COLOUR TO RGBM COLOUR
 
         // LATCH MEMORYWRITE
         uint1   LATCHmemoryWrite = uninitialized;
@@ -771,7 +764,6 @@ unit charactermap_memmap(
     dualport_bram uint25 charactermap <@video_clock,@clock> [4800] = uninitialized;
 
     // CHARACTER MAP DISPLAY
-    uint1   tpu_showcursor = uninitialized;
     uint10  dopix_x <: lorez ? pix_x[1,9] : pix_x;  uint10  dopix_x1 <: lorez ? pix_x1[1,9] : pix_x1; uint9  dopix_y <: lorez ? pix_y[1,8] : pix_y;
     character_map character_map_window <@video_clock,!video_reset> (
         clockCG <: clock,
@@ -967,7 +959,7 @@ unit tilemap_memmap(
         pad(uninitialized)
     };
 
-    // 42 x 32 tile map, allows for pixel scrolling with border { 2 bit rotation/reflection, 6 bits tile number }
+    // 42 x 32 tile map, allows for pixel scrolling with border { 3 bits rotation/reflection, 6 bits tile number }
     dualport_bram uint9 tiles <@video_clock,@clock> [1344] = uninitialized;
 
     uint10  dopix_x <: lorez ? pix_x[1,9] : pix_x; uint10  dopix_x1 <: lorez ? pix_x1[1,9] : pix_x1; uint9  dopix_y <: lorez ? pix_y[1,8] : pix_y;

@@ -42,7 +42,8 @@ int endwin( void ) {
 
 WINDOW *newwin( int nlines, int ncols, int begin_y, int begin_x ) {
     WINDOW *tempwin = malloc( sizeof( WINDOW ) );
-    if( !tempwin ) return NULL;
+    if( !tempwin )
+        return NULL;
     memset( tempwin, 0, sizeof( WINDOW ) );
 
     tempwin -> buffer = malloc( nlines * ncols * TPUCELLSIZE );
@@ -65,25 +66,22 @@ WINDOW *newwin( int nlines, int ncols, int begin_y, int begin_x ) {
 }
 
 WINDOW *subwin( WINDOW *parent, int nlines, int ncols, int begin_y, int begin_x ) {
-    WINDOW *tempwin = malloc( sizeof( WINDOW ) );
-    if( !tempwin ) return NULL;
-    memset( tempwin, 0, sizeof( WINDOW ) );
+    int x = begin_x, y = begin_y, w = ncols, h = nlines;
 
-    tempwin -> buffer = malloc( nlines * ncols * TPUCELLSIZE );
-    if( !tempwin -> buffer ) {
-        free( tempwin );
-        return( NULL );
-    }
+    if( !x || ( x < parent -> x ) ) x = parent -> x;
+    if( !y || ( y < parent -> y ) ) y = parent -> y;
+    if( !w ) w = parent -> w;
+    if( !h ) h = parent -> h;
 
-    tempwin -> y = begin_y; tempwin -> x = begin_x; tempwin -> w = ncols; tempwin -> h = nlines;
-    tempwin -> cx = 0; tempwin-> cy = 0;
-    tempwin -> background = BLACK; tempwin -> foreground = WHITE;
-    tempwin -> scroll = 0; tempwin -> echo = 0; tempwin -> bold = 0; tempwin -> reverse = 0; tempwin -> autorefresh = 0;
+    if( ( x + w ) > ( parent -> x + parent -> w ) )
+        w = ( parent -> x + parent -> w ) - x;
 
-    __curses_cell temp;
-    temp.cell.background = tempwin -> reverse ? tempwin -> foreground : tempwin -> background;
-    temp.cell.foreground = tempwin -> reverse ? tempwin -> background : tempwin -> foreground;
-    paws_memset32( (void *)( tempwin -> buffer ), temp.bitfield, tempwin -> w *  tempwin -> h * TPUCELLSIZE  );
+    if( ( y + h ) > ( parent -> y + parent -> h ) )
+        h = ( parent -> y + parent -> h ) - x;
+
+    WINDOW *tempwin = newwin( h, w, y, x );
+    if( !tempwin )
+        return NULL;
 
     tempwin -> parent = parent;
     return tempwin;
@@ -101,6 +99,9 @@ int __pnc_refresh( WINDOW *window ) {
     } else {
         paws_memcpy_rectangle( (void *)&TPUBUFFER[ window -> y * COLS + window -> x ], window -> buffer, window -> w * TPUCELLSIZE, COLS * TPUCELLSIZE, window -> w * TPUCELLSIZE, window -> h );
     }
+
+    __position_curses( window -> cx + window -> x, window -> cy + window -> y );
+
     return( true );
 }
 
@@ -178,7 +179,10 @@ int __pnc_init_pair( WINDOW *window, short pair, short f, short b ) {
 int __pnc_move( WINDOW *window, int y, int x ) {
     window -> cy = ( unsigned short ) ( y < 0 ) ? 0 : ( y > window -> h - 1 ) ? window -> h - 1 : y;
     window -> cx = ( unsigned short ) ( x < 0 ) ? 0 : ( x > window -> w - 1 ) ? window -> w - 1 : x;
-    __position_curses( window -> cx + window -> x, window -> cy + window -> y );
+
+    if( window -> autorefresh )
+        __position_curses( window -> cx + window -> x, window -> cy + window -> y );
+
     return( true );
 }
 
@@ -268,7 +272,9 @@ int __pnc_addch( WINDOW *window, char ch ) {
         }
     }
 
-    __position_curses( window -> cx + window -> x, window -> cy + window -> y );
+    if( window -> autorefresh )
+        __position_curses( window -> cx + window -> x, window -> cy + window -> y );
+
     return( true );
 }
 

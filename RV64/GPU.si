@@ -75,12 +75,10 @@ unit gpu_queue(
         uint9   queue_cropL = uninitialised;            uint8   queue_cropT = uninitialised;
         uint9   queue_cropR = uninitialised;            uint8   queue_cropB = uninitialised;
 
-        uint1   dispatch = queue_busy & ~gpu_active;                                                                            // ABLE TO DISPATCH TO GPU?
-
         bitmap_crop_left = GPU.crop_left; bitmap_crop_right = GPU.crop_right;                                                   // SEND CROPPING RECTANGLE TO BITMAP WRITER
         bitmap_crop_top = GPU.crop_top; bitmap_crop_bottom = GPU.crop_bottom;
 
-        if( dispatch ) {                                                                                                        // DISPATCH FROM QUEUE
+        if( queue_busy & ~gpu_active ) {                                                                                        // DISPATCH FROM QUEUE
             GPU.gpu_dithermode = queue_dithermode; GPU.gpu_colour = queue_colour; GPU.gpu_colour_alt = queue_colour_alt;
             ( GPU.gpu_x, GPU.gpu_y ) = copycoordinates( queue_x, queue_y );
             ( GPU.gpu_param0, GPU.gpu_param1 ) = copycoordinates( queue_param0, queue_param1 );
@@ -318,9 +316,8 @@ unit drawrectangle(
     output  uint8   bitmap_y_write,
     output  uint1   bitmap_write
 ) <reginputs> {
-    uint9   xNEXT <:: bitmap_x_write + 1;           uint8   yNEXT <:: bitmap_y_write + 1;
+    uint8   yNEXT <:: bitmap_y_write + 1;
     uint1   lineend <:: ( bitmap_x_write == max_x );
-    uint1   finished <:: lineend & ( yNEXT == max_y );
 
     always_after {
         switch( { start, busy } ) {
@@ -328,9 +325,9 @@ unit drawrectangle(
                 if( lineend ) {                                                                                                 // Move to next pixel
                     ( bitmap_x_write, bitmap_y_write ) = copycoordinates(min_x, yNEXT );
                 } else {
-                    bitmap_x_write = xNEXT;
+                    bitmap_x_write = bitmap_x_write + 1;
                 }
-                busy = ~finished;
+                busy = ~( lineend & ( yNEXT == max_y ) );                                                                       // More to do?
             }
             case 2b10: { busy = 1; }
             default: { ( bitmap_x_write, bitmap_y_write ) = copycoordinates(min_x, min_y ); }                                   // Move to 1st pixel
@@ -437,32 +434,28 @@ unit drawline(
     bitmap_write := 0;
 
     algorithm <autorun> {
-        int11   xNEXT <:: x + n2dx;                         int11   yNEXT <:: n2dy ? (y + ( dv ? 1 : -1 )) : y;
-        int11   numerator = uninitialized;                  int11   newnumerator <:: numerator - ( n2dx ? dy : 0 ) + ( n2dy ? dx : 0 );
+        int11   numerator = uninitialized;
         uint1   n2dx <:: numerator > (-dx);                 uint1   n2dy <:: numerator < dy;
         uint1   dxdy <:: dx > dy;
-        int11   count = uninitialized;                      int11   countNEXT <:: count + 1;
-        uint1   working <:: ( count != max_count );
+        int11   count = uninitialized;
         int11   offset_start <:: -( width[1,7] );
-        int11   offset_xNEXT <:: offset_x + ~dxdy;          int11   offset_yNEXT <:: offset_y + dxdy;
-        uint8   pixel_count = uninitialised;                uint8   pixel_countNEXT <:: pixel_count + 1;
-        uint1   singlepixel <:: ( width == 1 );             uint1   morepixels <:: ( pixel_count != width );
+        uint8   pixel_count = uninitialised;
 
         while(1) {
             if( start ) {
                 busy = 1; ( x, y ) = copycoordinates( start_x, start_y ); numerator = start_numerator; count = 0; offset_x = 0; offset_y = 0;
-                while( working ) {
-                    if( singlepixel ) {
+                while( count != max_count ) {
+                    if( width == 1 ) {
                         bitmap_write = 1;
                     } else {
                         pixel_count = 0; offset_x = dxdy ? 0 : offset_start; offset_y = dxdy ? offset_start : 0;
-                        while( morepixels ) {
+                        while( pixel_count != width ) {
                             bitmap_write = 1;
-                            ( offset_x, offset_y ) = copycoordinates(  offset_xNEXT, offset_yNEXT );
-                            pixel_count = pixel_countNEXT;
+                            offset_x = offset_x + ~dxdy; offset_y = offset_y + dxdy;
+                            pixel_count = pixel_count + 1;
                         }
                     }
-                    numerator = newnumerator; count = countNEXT; ( x, y ) = copycoordinates( xNEXT, yNEXT );
+                    numerator = numerator - ( n2dx ? dy : 0 ) + ( n2dy ? dx : 0 ); count = count + 1; x = x + n2dx; y = n2dy ? (y + ( dv ? 1 : -1 )) : y;
                 }
                 busy = 0;
             }
@@ -515,19 +508,16 @@ unit arccoords(
 ) <reginputs> {
     always_after {
         // PLUS OR MINUS OFFSETS
-        int11   xcpax = xc + active_x;                      int11   xcpc = xc + count;
-        int11   xcmax = xc - active_x;                      int11   xcmc = xc - count;
         int11   ycpax = yc + active_x;                      int11   ycpc = yc + count;
-        int11   ycmax = yc - active_x;                      int11   ycmc = yc - count;
 
         switch( arc ) {
-            case 0: { bitmap_x_write = xcpax; bitmap_y_write = ycpc; }
-            case 1: { bitmap_y_write = ycmc; }
-            case 2: { bitmap_x_write = xcmax; }
+            case 0: { bitmap_x_write = xc + active_x; bitmap_y_write = ycpc; }
+            case 1: { bitmap_y_write = yc - count; }
+            case 2: { bitmap_x_write = xc - active_x; }
             case 3: { bitmap_y_write = ycpc; }
-            case 4: { bitmap_x_write = xcpc; bitmap_y_write = ycpax; }
-            case 5: { bitmap_y_write = ycmax; }
-            case 6: { bitmap_x_write = xcmc; }
+            case 4: { bitmap_x_write = xc + count; bitmap_y_write = ycpax; }
+            case 5: { bitmap_y_write = yc - active_x; }
+            case 6: { bitmap_x_write = xc - count; }
             case 7: { bitmap_y_write = ycpax; }
         }
 
@@ -557,33 +547,26 @@ unit drawcircle(
 
     algorithm <autorun> {
         int11   numerator = uninitialised;
-        int11   new_numerator <:: numerator[10,1] ? numerator + { active_x, 2b00 } + 6 : numerator + { (active_x - active_y), 2b00 } + 10;
-        uint1   positivenumerator <:: ~numerator[10,1] & ( |numerator );
-        int11   active_xNEXT <:: active_x + 1;
-        int11   active_yNEXT <:: active_y - positivenumerator;
         int11   countNEXT <:: filledcircle ? count - 1 : min_count;
         int11   min_count = uninitialised;
-        int11   min_countNEXT <:: min_count + 1;
-        uint1   drawingcircle <:: ( active_y >= active_x );
-        uint1   finishsegment <:: ( countNEXT == min_count );
-        uint4   arcNEXT <:: arc + 1;
 
         while(1) {
             if( start ) {
                 busy = 1;
                 active_x = 0; active_y = radius; count = radius; min_count = (-1); numerator = start_numerator;
-                while( drawingcircle ) {
+                while( active_y >= active_x ) {
                     if( ARC.centrepixel ) {
                         bitmap_write = |draw_sectors;                                                                        // DETECT IF CENTRE PIXEL, OUTPUT ONCE
                     } else {
                         arc = 0;
                         while( ~arc[3,1] ) {
-                            bitmap_write = draw_sectors[arc,1]; arc = arcNEXT;                                          // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
+                            bitmap_write = draw_sectors[arc,1]; arc = arc + 1;                                          // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
                         }
                     }
-                    if( finishsegment ) {
-                        ( active_x, active_y ) = copycoordinates( active_xNEXT, active_yNEXT );
-                        count = active_yNEXT; min_count = min_countNEXT; numerator = new_numerator;
+                    if( countNEXT == min_count ) {
+                        active_x = active_x + 1; active_y = active_y - ( ~numerator[10,1] & |numerator );
+//                        ( active_x, active_y ) = copycoordinates( active_xNEXT, active_yNEXT );
+                        count = active_y; min_count = min_count + 1; numerator = numerator[10,1] ? numerator + { active_x, 2b00 } + 6 : numerator + { (active_x - active_y), 2b00 } + 10;
                     } else {
                         count = countNEXT;
                     }
@@ -815,7 +798,6 @@ unit triangle(
         x <: x, y <: y, param0 <: x1, param1 <: y1, param2 <: x2, param3 <: y2
     );
 
-    uint1   TRIANGLEbusy = uninitialised;
     drawtriangle TRIANGLE(
         min_x <: PREP.min_x, max_x <: PREP.max_x, min_y <: PREP.min_y, max_y <: PREP.max_y,
         x0 <: PREP.x1, y0 <: PREP.y1, x1 <: PREP.x2, y1 <: PREP.y2, x2 <: PREP.x3, y2 <: PREP.y3,
@@ -926,25 +908,17 @@ unit blit(
         uint5   max_pixels <:: { tilecharacter, ~tilecharacter, 3b000 };
         uint4   max_count <:: ( 1 << scale );
 
-        int11   y2NEXT <:: y2 + 1;
-        uint1   x2working <:: x2 != max_count;
-        uint1   y2working <:: y2 != max_count;
-        int11   pxNEXT <:: PXS.base + 1;
-        uint1   pxworking <:: PXS.offset != max_pixels;
-        int11   pyNEXT <:: PYS.base + 1;
-        uint1   pyworking <:: PYS.offset != max_pixels;
-
         while(1) {
             if( |start ) {
                 busy = start; PYS.offset = 0;
-                while( pyworking ) {
+                while( PYS.offset != max_pixels ) {
                     PXS.offset = 0;
-                    while( pxworking ) {
+                    while( PXS.offset != max_pixels ) {
                         y2 = 0;
-                        while( y2working ) { x2 = 0; while( x2working ) { dooutput = 1; } y2 = y2NEXT; }
-                        PXS.offset = pxNEXT;
+                        while( y2 != max_count ) { x2 = 0; while( x2 != max_count ) { dooutput = 1; } y2 =  y2 + 1; }
+                        PXS.offset = PXS.base + 1;
                     }
-                    PYS.offset = pyNEXT;
+                    PYS.offset = PYS.base + 1;
                 }
                 busy = 0;
             }
@@ -989,7 +963,6 @@ unit pixelblock(
     output  uint1   bitmap_write
 ) <reginputs> {
     uint2   toprocess = uninitialised;              uint1   dooutput = uninitialised;
-    int11   xSTART <:: x - 1;
     int11   xNEXT <:: bitmap_x_write + 1;           int11   yNEXT <:: bitmap_y_write + 1;
 
     colourmap.addr0 := colour;                                                                                                  // LOOKUP THE COLOUR FROM THE REMAPPER
@@ -998,7 +971,7 @@ unit pixelblock(
     algorithm <autorun> {
         while(1) {
             if( start ) {
-                busy = 1; ( bitmap_x_write, bitmap_y_write ) = copycoordinates( xSTART, y );                                    // COPY STARTING COORDINATES ( one to the left as moved before drawing )
+                busy = 1; bitmap_x_write = x - 1; bitmap_y_write = y;                                                           // COPY STARTING COORDINATES ( one to the left as moved before drawing )
                 while( ~&toprocess ) { dooutput = |toprocess; }                                                                 // KEEP GOING UNTIL STOP RECEIVED
                 busy = 0;
             }
@@ -1008,7 +981,6 @@ unit pixelblock(
     always_after {
         uint8   rrgggbbm = { colour8r[6,2], colour8g[5,3], colour8b[6,2], colour8r[5,1] & colour8b[5,1] };                      // RGB -> RGBM
         uint8   grey = ( ( colour8r * 3 + colour8g * 6 + colour8b ) * 205 ) >> 11;                                              // RGB -> GREYSCALE
-        uint1   lineend = ( bitmap_x_write == ( x + width - 1) );                                                               // MOVE TO NEXT LINE?
 
         if( reset ) { busy = 0; }
 
@@ -1017,7 +989,7 @@ unit pixelblock(
                                                                ( rrgggbbm == 64 ) & ~mode[1,1] ? 128 : rrgggbbm;                // RGB -> RGBM
 
         if( dooutput ) {                                                                                                        // OUTPUT A PIXEL
-            if( lineend ) {
+            if( bitmap_x_write == ( x + width - 1) ) {
                 ( bitmap_x_write, bitmap_y_write ) = copycoordinates( x, yNEXT );                                               // MOVE TO NEXT LINE
             } else {                                                                                                            // OR
                 bitmap_x_write = xNEXT;                                                                                         // MOVE TO NEXT PIXEL
