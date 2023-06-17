@@ -38,11 +38,11 @@ unsigned char volatile *BACKGROUND_MODE = (unsigned char volatile *) 0xd004;
 unsigned char volatile *BACKGROUND_COPPER_STARTSTOP = (unsigned char volatile *) 0xd006;
 unsigned short volatile *BACKGROUND_COPPER_CPUINPUT = (unsigned short volatile *) 0xd008;
 unsigned char volatile *BACKGROUND_COPPER_PROGRAM = (unsigned char volatile *) 0xd00a;
-unsigned char volatile *BACKGROUND_COPPER_ADDRESS = (unsigned char volatile *) 0xd00c;
+unsigned short volatile *BACKGROUND_COPPER_ADDRESS = (unsigned short volatile *) 0xd00c;
 unsigned char volatile *BACKGROUND_COPPER_OP = (unsigned char volatile *) 0xd00e;
 unsigned char volatile *BACKGROUND_COPPER_OPD = (unsigned char volatile *) 0xd010;
-unsigned short volatile *BACKGROUND_COPPER_OPF = (unsigned short volatile *) 0xd012;
-unsigned char volatile *BACKGROUND_COPPER_OPL = (unsigned char volatile *) 0xd014;
+unsigned char volatile *BACKGROUND_COPPER_OPF = (unsigned char volatile *) 0xd012;
+unsigned short volatile *BACKGROUND_COPPER_OPL = (unsigned short volatile *) 0xd014;
 unsigned char volatile *BACKGROUND_COPPER_MEMRESET = (unsigned char volatile *) 0xd016;
 unsigned short volatile *BACKGROUND_COPPER_MEMVINIT = (unsigned short volatile *) 0xd018;
 

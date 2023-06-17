@@ -9,11 +9,18 @@ $$ sdram_addr_width = 26
 $$ reg_width = 64
 $$ addr_width = sdram_addr_width + 1
 
+// NuCU COPPER BACKGROUND PROCESSOR DEFINITIONS
+// blocks number of program entries, mem number of memory registers, stack number of rstack and dstack entries
+$$ NUCUblocks = 128
+$$ NUCUaddr = clog2(NUCUblocks)
+$$ NUCUmem = 8
+$$ NUCUstack = 8
+
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 
 // L0 CACHE SIZES FOR HART ID 0 AND 1
 // 256 is 1k
-// size and blocks must be a power of 2
+// blocks must be a power of 2
 // HART 0 - MAIN
 $$ L00Iblocks = 1024
 $$ L00Icount = clog2(L00Iblocks)
@@ -30,7 +37,7 @@ bitfield L01cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
 
 // SDRAM CACHE DEFINITIONS
 
-// CACHES SIZES - L1 2 x L1size for DATA
+// CACHES SIZES - L1 2 x L1size for SDRAM CACHE
 $$if VERILATOR then
 $$ L1size = 128
 $$else

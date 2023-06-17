@@ -384,7 +384,7 @@ void copper_startstop( unsigned char status ) {
     *BACKGROUND_COPPER_STARTSTOP = status;
 }
 
-void copper_program( unsigned char address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 ) {
+void copper_program( unsigned short address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 ) {
     *BACKGROUND_COPPER_ADDRESS = address;
     *BACKGROUND_COPPER_OP = command;
     *BACKGROUND_COPPER_OPD = reg1;

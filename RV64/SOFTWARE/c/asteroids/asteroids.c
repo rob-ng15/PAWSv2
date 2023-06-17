@@ -82,9 +82,8 @@ void program_background( void ) {
     copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT BLACK
     copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );                                                                           // BACKGROUND WHITE
 
-    copper_program( 3, CU_RND, CU_R0, CU_RL, 255 );                                                                             // SET R0 = RAND & 255
-    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );                                                                           // SET BACKGROUND = R0
-    copper_program( 5, CU_JMP, FALSE, CU_RL, 3 );                                                                               // JUMP 3
+    copper_program( 3, CU_RND, CU_BC, CU_RL, 255 );                                                                             // SET BACKGROUND = RAND & 255
+    copper_program( 4, CU_JPL, 3 );                                                                                             // JUMP 3
 
     copper_startstop( 1 );
 }

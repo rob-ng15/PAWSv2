@@ -48,8 +48,21 @@
 #define BKG_HSTRIPE 15
 
 // NEW CU BACKGROUND CO-PROCESSOR
-// OPCODES
-#define CU_JMP 0
+// OPCODES, NOTE OPCODE 0 IS MULTI-USE, JPL JSL AND SLI REQUIRE 1 OTHER ARGUMENT, THE LITERAL VALUE, JPx AND JSx REQUIRE 1 OTHER ARGUMENT, THE REGISTER WITH ADDRESS TO JUMP TO
+#define CU_JPL 0,0,1
+#define CU_JPR 0,0,0
+#define CU_JSL 0,1,1
+#define CU_JSR 0,0,0
+#define CU_RET 0,2,0,0
+#define CU_SLI 0,3,1
+#define CU_SR0 0,3,0,4
+#define CU_SR1 0,3,0,5
+#define CU_SR2 0,3,0,6
+#define CU_SR3 0,3,0,7
+#define CU_LR0 0,4,0,0
+#define CU_LR1 0,5,0,0
+#define CU_LR2 0,6,0,0
+#define CU_LR3 0,7,0,0
 #define CU_SET 1
 #define CU_ADD 2
 #define CU_SUB 3

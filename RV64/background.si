@@ -53,7 +53,7 @@ unit background_writer(
     input   uint2   background_update,
 
     input   uint1   copper_program,
-    input   uint7   copper_address,
+    input   uint$NUCUaddr$   copper_address,
     input   uint4   copper_op,
     input   uint3   copper_opd,
     input   uint1   copper_opf,
@@ -73,7 +73,7 @@ unit background_writer(
 
     always_after {
         switch( background_update ) {
-            case 2b00: {                                                                                            // CHANGE A PROGRAM LINE IN THE COPPER MEMORY
+            case 2b00: {                                                                                                        // CHANGE A PROGRAM LINE IN THE COPPER MEMORY
                 if( copper_program ) {
                     OP.addr1 = copper_address; OP.wdata1 = copper_op;
                     OPD.addr1 = copper_address; OPD.wdata1 = copper_opd;
@@ -81,7 +81,7 @@ unit background_writer(
                     OPL.addr1 = copper_address; OPL.wdata1 = copper_opl;
                 }
             }
-            case 2b01: { BACKGROUNDcolour = backgroundcolour; }                                                     // UPDATE THE BACKGROUND FROM RISC-V
+            case 2b01: { BACKGROUNDcolour = backgroundcolour; }                                                                 // UPDATE THE BACKGROUND FROM RISC-V
             case 2b10: { BACKGROUNDalt = backgroundcolour_alt; }
             case 2b11: { BACKGROUNDmode = backgroundcolour_mode; }
         }
@@ -111,18 +111,21 @@ unit nucu(
     simple_dualport_bram_port0  OPL,                                                                                            // 2ND REG NUMBER OR LITERAL
     input   uint80  memoryinit                                                                                                  // INITIAL SETTINGS OF THE MEMORY
 ) <reginputs> {
-    uint7   PC = 0;                                                                                                             // PROGRAM COUNTER
+    uint$NUCUaddr$   PC = 0;                                                                                                    // PROGRAM COUNTER
     uint2   PCinc = uninitialised;                                                                                              // PC ACTION FLAG == 0 PCnext, == 1 PCskip, == 2 RL value
     uint1   WR = uninitialised;                                                                                                 // WRITE TO REGISTERS FLAG
     uint1   WM = uninitialised;                                                                                                 // WRITE TO MEMORY FLAG
 
-    uint10  MEM[8] = uninitialised;                                                                                             // STORAGE FOR 8 MEMORY LOCATIONS
+    uint10  MEM[$NUCUmem$] = uninitialised;                                                                                     // STORAGE FOR 8 MEMORY LOCATIONS
 
-    PCinc := 0; WR := 1; WM := 0;
+    bram uint10 dstack[$NUCUstack$] = uninitialised;                                                                            // DATA STACK
+    bram uint$NUCUaddr$ rstack[$NUCUstack$] = uninitialised;                                                                    // RETURN STACK
+
+    PCinc := 0; WR := 1; WM := 0; dstack.wenable := 0; rstack.wenable := 0;
 
     always_after {
-        uint7   PCnext = PC + 1;                                                                                                // NEXT INSTRUCTION
-        uint7   PCskip = PC + 2;                                                                                                // NEXT INSTRUCTION IF SKIP
+        uint$NUCUaddr$   PCnext = PC + 1;                                                                                       // NEXT INSTRUCTION
+        uint$NUCUaddr$   PCskip = PC + 2;                                                                                       // NEXT INSTRUCTION IF SKIP
         uint10  reg1 = uninitialised;                                                                                           // CONTENTS OF REG 1
         uint10  reg2 = uninitialised;                                                                                           // CONTENTS OF REG 2 OR LITERAL VALUE
         uint10  result = uninitialised;                                                                                         // RESULT OF OP
@@ -150,7 +153,16 @@ unit nucu(
 
         if( copper_status ) {
             switch( OP.rdata0 ) {
-                case 4h0: { WR = 0; PCinc = 2; }                                                                                // JUMP
+                case 4h0: {                                                                                                     // JMP JSR RET SLI SRx LRx
+                    WR = OPD.rdata0[2,1]; result = dstack.rdata;                                                                // WRITE TO REGISTER IF LRx, RESULT IS TOP OF DSTACK
+                    switch( OPD.rdata0 ) {                                                                                      // reg1 acts as switch
+                        case 0: { PCinc = 2; }                                                                                  // Jump to: JPL literal, JPR register value
+                        case 1: { rstack.addr = rstack.addr + 1; rstack.wdata = PCnext; rstack.wenable = 1; PCinc = 2; }        // Jump to subroutine SAVE NEXT ADDRESS TO RSTACK: JSL to literal, JSR to register value
+                        case 2: { rstack.addr = rstack.addr -1 ; reg2 = rstack.rdata; PCinc = 2; }                              // RET ( pop address from rstack )
+                        case 3: { dstack.addr = dstack.addr + 1; dstack.wdata = reg2; dstack.wenable = 1; }                     // SLI and SRx ( push literal or register value on dstack )
+                        default: { dstack.addr = dstack.addr - 1; }                                                             // LRx ( pop value from dstack, write to reg1 )
+                    }
+                }
                 case 4h1: { result = reg2; }                                                                                    // SET
                 case 4h2: { result = reg1 + reg2; }                                                                             // ADD
                 case 4h3: { result = reg1 - reg2; }                                                                             // SUB
@@ -165,7 +177,7 @@ unit nucu(
                 case 4hc: { WR = 0; PCinc = ( reg1 <= reg2 ); }                                                                 // SKIP <=
                 case 4hd: { result = staticGenerator & reg2; }                                                                  // RANDOM
                 case 4he: { result = MEM[ reg2[0,3] ]; }                                                                        // LOAD FROM MEMORY
-                case 4hf: { WR = 0; WM = 1; result = reg2; }                                                                    // STORE TO MEMORY
+                case 4hf: { WR = 0; WM = 1; }                                                                                   // STORE TO MEMORY
             }
 
             if( WR ) {                                                                                                          // WRITE TO REGISTERS?
@@ -178,7 +190,7 @@ unit nucu(
                 }
             }
 
-            if( WM ) { MEM[ reg1[0,3] ] = result; }                                                                             // WRITE TO MEMORY
+            if( WM ) { MEM[ reg2[0,3] ] = reg1; }                                                                               // WRITE TO MEMORY
 
             PC = PCinc[1,1] ? reg2 : PCinc[0,1] ? PCskip : PCnext;                                                              // UPDATE PC, PCinc == 2 JUMP,  ==1 SKIP, == 0 NEXT
         } else {
@@ -189,6 +201,8 @@ unit nucu(
             BACKGROUNDmode = backgroundcolour_mode;                                                                             // UPDATE THE BACKGROUND GENERATOR FROM THE CPU
             BACKGROUNDcolour = backgroundcolour;
             BACKGROUNDalt = backgroundcolour_alt;
+
+            dstack.addr = -1; rstack.addr = -1;
         }
 
         OP.addr0 = PC; OPD.addr0 = PC; OPF.addr0 = PC; OPL.addr0 = PC;                                                          // MOVE TO THE NEXT INSTRUCTION

@@ -10,10 +10,11 @@ unit aluaddsub(
     input   int64   operand2,
     output  int64   addsub
 ) <reginputs> {
+    uint64  op1 <:: ( size32 ? sourceReg1[0,32] : sourceReg1 ) << function3;                                                    // FIRST OPERAND, SHIFTED FOR SHxADD
+    uint64  op2 <:: ( size32 & ~doadduw ? operand2[0,32] : operand2 );                                                          // SECOND OPERAND, 64 BIT FOR ADD.UW
+
     always_after {
-        addsub = dosub ? ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) - ( size32 ? operand2[0,32] : operand2 ) ) :              // SUB
-                         ( ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) << function3 ) +                                        // ADD
-                           ( size32 & ~doadduw ? operand2[0,32] : operand2 ) );
+        addsub = dosub ? ( op1 - op2 ) : ( op1 + op2 );
     }
 }
 // CALCULATES BCLR BCLRI BEXT BEXTI BIN BINI BSET BSETI
@@ -25,11 +26,10 @@ unit alubits(
     output  uint64  SET,
     output  uint1   EXT
 ) <reginputs> {
+    uint64  bit <:: ( 1 << shiftcount );                                                                                        // BIT MASK
+
     always_after {
-        CLR = sourceReg1 & ~( 1 << shiftcount );
-        INV = sourceReg1 ^ ( 1 << shiftcount );
-        SET = sourceReg1 | ( 1 << shiftcount );
-        EXT = sourceReg1[ shiftcount, 1 ];
+        CLR = sourceReg1 & ~bit; INV = sourceReg1 ^ bit; SET = sourceReg1 | bit; EXT = sourceReg1[ shiftcount, 1 ];
     }
 }
 // CALCULATES BREV8
@@ -75,14 +75,14 @@ unit alucount(
     output  uint7   result
 ) <reginputs> {
     always_after {
-        if( ~|sourceReg1 ) {
-            result = { ~size32 & ~counttype[1,1], size32 & ~counttype[1,1], 5b00000 };
-        } else {
+        if( |sourceReg1 ) {
             switch( counttype ) {
                 case 2b00: { if( size32 ) { ( result ) = clz_silice_32( sourceReg1[0,32] ); } else { ( result ) = clz_silice_64( sourceReg1 ); } }
                 case 2b01: { if( size32 ) { ( result ) = ctz_silice_32( sourceReg1[0,32] ); } else { ( result ) = ctz_silice_64( sourceReg1 ); } }
                 default: { ( result ) = cpop_silice_64( size32 ? sourceReg1[0,32] : sourceReg1 ); }
             }
+        } else {
+            result = { ~size32 & ~counttype[1,1], size32 & ~counttype[1,1], 5b00000 };                                          // REPORT 32/64 FOR CTZ/CLZ AND 0 IF SOURCEREG1 == 0
         }
     }
 }
@@ -105,10 +105,10 @@ unit alulogic(
     output  uint64  OR,
     output  uint64  XOR
 ) <reginputs> {
+    uint64  op2 <:: ( doinv ? ~operand2 : operand2 );
+
     always_after {
-        AND = sourceReg1 & ( doinv ? ~operand2 : operand2 );
-        OR = sourceReg1 | ( doinv ? ~operand2 : operand2 );
-        XOR = sourceReg1 ^ ( doinv ? ~operand2 : operand2 );
+        AND = sourceReg1 & op2; OR = sourceReg1 | op2; XOR = sourceReg1 ^ op2;
     }
 }
 // CALCULATES MAX MAXU MIN MINU
@@ -146,10 +146,12 @@ unit aluorc(
     input   uint64  sourceReg1,
     output  uint64  ORC
 ) <reginputs> {
+    uint8   bits <:: { |sourceReg1[56,8], |sourceReg1[48,8], |sourceReg1[40,8], |sourceReg1[32,8],
+                       |sourceReg1[24,8], |sourceReg1[16,8], |sourceReg1[8,8], |sourceReg1[0,8] };
     always_after {
         ORC = {
-            {8{ |sourceReg1[56,8] }}, {8{ |sourceReg1[48,8] }}, {8{ |sourceReg1[40,8] }}, {8{ |sourceReg1[32,8] }},
-            {8{ |sourceReg1[24,8] }}, {8{ |sourceReg1[16,8] }}, {8{ |sourceReg1[8,8] }}, {8{ |sourceReg1[0,8] }}
+            {8{bits[7,1]}}, {8{bits[6,1]}}, {8{bits[5,1]}}, {8{bits[4,1]}},
+            {8{bits[3,1]}}, {8{bits[2,1]}}, {8{bits[1,1]}}, {8{bits[0,1]}}
         };
     }
 }
@@ -186,12 +188,14 @@ unit alushift(
     output  uint64  SRA,
     output  uint64  ROTATE
 ) <reginputs> {
+    uint7   revshiftcount <:: ( { ~size32, size32, 5b00000 } - shiftcount );                                                    // REVERSED SHIFTCOUNT FOR ROTATION OPERATIONS
+
     always_after {
         SLL = ( size32 ? sourceReg1[0,32] : sourceReg1 ) << shiftcount;
         SRL = ( size32 ? sourceReg1[0,32] : sourceReg1 ) >> shiftcount;
         SRA = __signed( { size32 ? {32{sourceReg1[31,1]}} : sourceReg1[32,32], sourceReg1[0,32] } ) >>> shiftcount;
-        ROTATE = ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) << ( reverse ? ( { ~size32, size32, 5b00000 } - shiftcount ) : shiftcount ) ) |
-                 ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) >> ( reverse ? shiftcount : ( { ~size32, size32, 5b00000 } - shiftcount ) ) );
+        ROTATE = ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) << ( reverse ? revshiftcount : shiftcount ) ) |
+                 ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) >> ( reverse ? shiftcount : revshiftcount ) );
     }
 }
 
@@ -361,9 +365,7 @@ unit integercomparisons(
     output  uint1   EQ
 ) <reginputs> {
     always_after {
-        LT = ( __signed( sourceReg1 ) < __signed( operand2 ) );
-        LTU = ( __unsigned( sourceReg1 ) < __unsigned( operand2 ) );
-        EQ = ( sourceReg1 == operand2 );
+        LT = ( __signed( sourceReg1 ) < __signed( operand2 ) ); LTU = ( __unsigned( sourceReg1 ) < __unsigned( operand2 ) ); EQ = ( sourceReg1 == operand2 );
     }
 }
 
@@ -375,20 +377,17 @@ unit aluA(
     input   uint64  sourceReg2,
     output  uint64  result
 ) <reginputs> {
+    uint1   MINMAX <:: ( function7[2,1] ^ ( function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) : ( __signed(memoryinput) < __signed(sourceReg2) ) ) );
+    uint64  AMOADD <:: ( function3[1,1] ? memoryinput : memoryinput[0,32] ) + ( function3[1,1] ? sourceReg2 : sourceReg2[0,32] );
+
     alulogic LOGIC( sourceReg1 <: memoryinput, operand2 <: sourceReg2 );
 
     always_after {
         if( function7[4,1] ) {                                                                                                  // AMOMAX[U] AMOMIN[U]
-            result = ( function7[2,1] ^ ( function7[3,1] ? ( __unsigned(memoryinput) < __unsigned(sourceReg2) ) :
-                                                           ( __signed(memoryinput) < __signed(sourceReg2) ) ) ) ?
-                                                           memoryinput : sourceReg2;
+            result = MINMAX ? memoryinput : sourceReg2;
         } else {
             switch( function7[0,4] ) {
-                default: {                                                                                                      // AMOADD
-                    result = ( function3[1,1] ? memoryinput : memoryinput[0,32] ) +
-                             ( function3[1,1] ? sourceReg2 : sourceReg2[0,32] );
-
-                }
+                default: { result = AMOADD; }                                                                                   // AMOADD
                 case 4b0001: { result = sourceReg2; }                                                                           // AMOSWAP
                 case 4b0100: { result = LOGIC.XOR; }                                                                            // AMOXOR
                 case 4b1000: { result = LOGIC.OR; }                                                                             // AMOOR

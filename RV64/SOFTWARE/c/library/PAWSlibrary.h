@@ -80,7 +80,7 @@ extern void status_lights( unsigned char display, unsigned char background );
 // BACKGROUND GENERATOR
 extern void set_background( unsigned char, unsigned char, unsigned char );
 extern void copper_startstop( unsigned char ) ;
-extern void copper_program( unsigned char address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 );
+extern void copper_program( unsigned short address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 );
 extern void copper_set_memory( unsigned short *memory );
 extern void set_copper_cpuinput( unsigned short );
 extern unsigned short get_copper_cpuoutput( void );
