@@ -225,7 +225,7 @@ unsigned short get_beep_active( unsigned char channel_number ) {
 }
 
 // USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
-void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
+void tune_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
     *AUDIO_NEW_SAMPLE = channel_number;
     if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }

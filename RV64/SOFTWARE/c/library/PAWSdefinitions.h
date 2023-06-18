@@ -231,6 +231,9 @@
 #define PB_WRITEALL 2
 
 // SOUNDS
+#define AUDIO_SILENCE 3,0,0,0
+#define LEFT_SILENCE 1,0,0,0
+#define RIGHT_SILENCE 2,0,0,0
 #define CHANNEL_LEFT 1
 #define CHANNEL_RIGHT 2
 #define CHANNEL_BOTH 3
@@ -239,10 +242,10 @@
 #define WAVE_TRIANGLE 2
 #define WAVE_SINE 3
 #define WAVE_NOISE 4
-#define WAVE_UD1 5
+#define WAVE_USER 5
 #define WAVE_PCM 6
 #define WAVE_BITS 7
-#define WAVE_SAMPLE 8
+#define WAVE_TUNE 8
 #define SAMPLE_REPEAT 16
 
 // STRUCTURE OF THE SPRITE UPDATE FLAG

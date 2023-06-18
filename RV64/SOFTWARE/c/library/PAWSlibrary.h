@@ -57,9 +57,8 @@ extern void beep( unsigned char, unsigned char, unsigned char, unsigned short );
 extern void set_volume( unsigned char left, unsigned char right );
 extern void await_beep( unsigned char );
 extern unsigned short get_beep_active( unsigned char );
-extern void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
+extern void tune_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
 extern void bitsample_upload_128( unsigned char channel_number, unsigned char *samples );
-extern void bitsample_upload_1024( unsigned char channel_number, unsigned char *samples );
 extern void wavesample_upload( unsigned char channel_number, unsigned char *samples );
 extern void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples );
 
