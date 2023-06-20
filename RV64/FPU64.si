@@ -131,7 +131,9 @@ unit fpuSINGLECYCLE(
     input   uint5   function7,                                                                                                  // SWITCH TO DETERMINE WHICH OPERATIONS
     input   uint64  sourceReg1,                                                                                                 // INTEGER REGISTER FOR FMV
     input   uint64  sourceReg1F,                                                                                                // INPUT FLOAT REGISTER 1
+    input   uint1   sign1F,                                                                                                     // SIGN OF FLOAT REGISTYER 1
     input   uint64  sourceReg2F,                                                                                                // INPUT FLOAT REGISTER 2
+    input   uint1   sign2F,                                                                                                     // SIGN OF FLOAT REGISTYER 2
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1
     input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 2
     input   uint1   FLT,                                                                                                        // sourceReg1F < sourceReg2F
@@ -141,9 +143,6 @@ unit fpuSINGLECYCLE(
     output  uint64  result,                                                                                                     // RESULT ( NAN boxed if single/half, sign extended if int )
     output  uint1   frd                                                                                                         // IS RESULT FLOAT/DOUBLE OR INT/LONG
 ) <reginputs> {
-    uint1   sign1F <:: sourceReg1F[ dsh[0,1] ? 63 : dsh[1,1] ? 15 : 31, 1 ];                                                    // EXTRACT SIGN OF sourceReg1F @ bit 63/31/15 for double/single/half
-    uint1   sign2F <:: sourceReg2F[ dsh[0,1] ? 63 : dsh[1,1] ? 15 : 31, 1 ];                                                    // EXTRACT SIGN OF sourceReg2F @ bit 63/31/15 for double/single/half
-
     floatclass FPUclass(                                                                                                        // GENERATE FCLASS
         dsh <: dsh,
         sign1F <: sign1F, sourceReg1F <: sourceReg1F, typeAF <: typeAF
@@ -213,6 +212,7 @@ unit do_float_multiply(
 unit floatcalc(
     input   uint1   start,                                                                                                      // START FLAG
     output  uint1   busy(0),                                                                                                    // BUSY FLAG
+    input   uint1   rm,                                                                                                         // ROUND UP ALLOWED
     input   uint2   dsh,                                                                                                        // DOUBLE/SINGLE/HALF FLAG ( to determine start bit for diviade and squareroot )
     input   uint10  BIAS,                                                                                                       // FLOATING POINT BIAS
     input   uint5   opCode,                                                                                                     // OPCODE, SINGLE OR FUSED OPERATIONS
@@ -228,7 +228,6 @@ unit floatcalc(
     output  uint5   FPUnewflags,                                                                                                // NEW FPUFLAGS
     output  uint64  result                                                                                                      // CALCULATION RESULT
 ) <reginputs> {
-    uint3   rm <:: &FPUflags[5,3] ? function3 : FPUflags[5,3];                                                                  // SET ROUNDING FLAG ( ONLY RNE AND RTZ SUPPORTED ), FCSR UNLESS 111
     doroundcombine MAKERESULT( dsh <: dsh, BIAS <: BIAS, rm <: rm );                                                            // DO ROUNDING AND COMBINING ( leave in double bitfields )
 
     uint64  b <:: { function7[0,1] ^ fp64( sourceReg2Fx ).sign, sourceReg2Fx[0,63] };                                           // SWITCH SIGN OF B FOR SUBTRACTION IF REQUIRED
@@ -255,16 +254,19 @@ unit floatcalc(
         OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined                                               // ROUNDED AND COMBINED RESULT
     );
 
+    uint7   startbit <:: dsh[0,1] ? 107 : dsh[1,1] ? 23 : 49;                                                                   // DETERMINE STARTING BIT FOR THE LONG DIVISION ( HALVED FOR SQUAREROOT )
     floatdivide FPUdivide(                                                                                                      // FLOAT DIVISION
         dsh <: dsh,                                                                                                             // DOUBLE/SINGLE/HALF FLAG
         a <: sourceReg1Fx, typeAF <: typeAF,                                                                                    // A OPERAND FOR A/B
         b <: sourceReg2Fx, typeBF <: typeBF,                                                                                    // B OPERAND FOR A/B
+        startbit <: startbit,                                                                                                   // PASS STARTING BIT
         OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined                                               // ROUNDED AND COMBINED RESULT
     );
 
     floatsqrt FPUsqrt(                                                                                                          // FLOAT SQUARE ROOT https://projectf.io/posts/square-root-in-verilog/
-        dsh <: dsh, BIAS <: BIAS,                                                                                               // DOUBLE/SINGLE/HALF FLAG AND BIAS
+        BIAS <: BIAS,                                                                                                           // BIAS
         a <: sourceReg1Fx, typeAF <: typeAF,                                                                                    // A OPERAND FOR SQRT(A)
+        startbit <: startbit[1,6],                                                                                              // PASS STARTING BIT ( HALF OF DIVISION )
         OF <: MAKERESULT.OF, UF <: MAKERESULT.UF, combined <: MAKERESULT.combined                                               // ROUNDED AND COMBINED RESULT
     );
 
@@ -470,7 +472,7 @@ unit donormalexp(
 // COMBINE COMPONENTS TO FLOATING POINT NUMBER IN DOUBLE BITFIELDS  - USED BY CALCULATIONS
 // UNDERFLOW return 0, OVERFLOW return infinity
 unit doroundcombine(
-    input   uint3   rm,                                                                                                         // ROUNDING MODE ( RNE OR RTZ SUPPORTED )
+    input   uint1   rm,                                                                                                         // ROUNDING MODE ( RNE OR RTZ SUPPORTED )
     input   uint2   dsh,                                                                                                        // DOUBLE/SINGLE/HALF FLAG
     input   uint10  BIAS,                                                                                                       // FLOATING POINT BIAS FOR DESTINATION DOUBLE/SINGLE/HALF
     input   uint1   sign,                                                                                                       // RESULT SIGN
@@ -480,7 +482,7 @@ unit doroundcombine(
     output  uint1   UF,                                                                                                         // UNDERFLOW FLAG
     output  uint64  combined                                                                                                    // COMBIUNED DOUBLE/SINGLE/HALF ROUNDED AND COMBINED
 ) <reginputs> {
-    uint1   lsb <:: ( rm == 3b001 ) ? 0 : bitstream[ dsh[0,1] ? 0 : dsh[1,1] ? 42 : 29, 1 ];                                    // EXTRACT TRAILING BIT AFTER FRACTIONAL PART FOR ROUNDING OR 0 IF RTZ
+    uint1   lsb <:: bitstream[ dsh[0,1] ? 0 : dsh[1,1] ? 42 : 29, 1 ] & rm;                                                     // EXTRACT TRAILING BIT AFTER FRACTIONAL PART FOR ROUNDING OR 0 IF RTZ
     uint52  roundfraction <:: ( dsh[0,1] ? bitstream[1,52] : dsh[1,1] ? bitstream[43,10] : bitstream[30,23] ) + lsb;            // EXTRACT RESULT FRACTION AND PERFORM ROUNDING
     int13   newexponent <:: ( ~|( dsh[0,1] ? roundfraction : dsh[1,1] ? roundfraction[0,10] : roundfraction[0,23] ) & lsb )     // IF ROUNDING OVERFLOWED INCREASE EXPONENT BY 1
                             + BIAS + exponent;                                                                                  // WHEN ADDING BIAS
@@ -492,10 +494,7 @@ unit doroundcombine(
         OF = __signed(newexponent) > __signed( { 1b0, BIAS, 1b0 } );                                                            // OVERFLOW IF EXPONENT IS GREATER THAN ( 2 * BIAS )
         UF = newexponent[12,1];                                                                                                 // UNDERFLOW IF EXPONENT IS STILL NEGATIVE AFTER BIAS ADDED
         combined = UF ? xZERO.value : OF ? xINF.value :                                                                         // UNDERFLOW RETURN SIGNED ZERO, OVERFLOW RETTURN SIGNED INFINITY
-                                      { sign,                                                                                   // RETURN SIGN
-                                              dsh[0,1] ? newexponent[0,11] :                                                    // RETURN EXPONENT
-                                              dsh[1,1] ? { 6b0, newexponent[0,5] } :                                            //  PADDED INTO DOUBLE
-                                                         { 3b0, newexponent[0,8] },                                             //  FOR REPACKING
+                                      { sign, newexponent[0,11],                                                                // RETURN SIGN AND EXPONENT
                                               dsh[0,1] ? roundfraction :                                                        // RETURN DOUBLE/SINGLE/HALF FRACTION
                                               dsh[1,1] ? { roundfraction[0,10], 42h0 } :                                        //  PADDED INTO DOUBLE
                                                          { roundfraction[0,23], 29h0 } };                                       //  FOR REPACKING
@@ -504,7 +503,7 @@ unit doroundcombine(
 
 // CONVERSIONS TO HANDLE FCVT.dest.source
 unit intlong2float(                                                                                                             // 32/64 BIT INTEGER TO 16/32/64 BIT FLOATING POINT
-    input   uint3   rm,                                                                                                         // ROUDNING MODE
+    input   uint1   rm,                                                                                                         // ROUDNING MODE
     input   uint1   dounsigned,                                                                                                 // UNSIGNED CONVERSION FLAG
     input   uint1   il,                                                                                                         // FROM INTEGER == 0 OR LONG == 1
     input   uint2   dsh,                                                                                                        // TO DOUBLE == 01 SINGLE == 00 HALF == 10
@@ -522,7 +521,7 @@ unit intlong2float(                                                             
     uint1   zlt <:: ( CLZ.zeros < ( dsh[0,1] ? 11 : dsh[1,1] ? 53 : 40 ) );                                                     // CHECK IF INEXACT, TOO MANY BITS
     int13   exponent <:: 63 + BIAS - CLZ.zeros;                                                                                 // GENERATE EXPONENT AND ADD BIAS + 63 - CLZ
     uint64  fraction <:: number << CLZ.zeros;                                                                                   // GENERATE FRACTION BY SHIFTING TO THE LEFT
-    uint1   roundingbit <:: fraction[ il ? 10 : 39, 1 ] & ( rm != 3b001 );                                                      // EXTRACT ROUNDING BIT OR ZERO IF ROUND TO ZERO
+    uint1   roundingbit <:: fraction[ il ? 10 : 39, 1 ] & rm;                                                                   // EXTRACT ROUNDING BIT OR ZERO IF ROUND TO ZERO
     uint52  fraction52 <:: fraction[11,52] + roundingbit;                                                                       // GENERATE ROUNDED FRACTION FOR DOUBLE
     uint23  fraction23 <:: fraction[40,23] + roundingbit;                                                                       // GENERATE ROUNDED FRACTION FOR SINGLE
     uint10  fraction10 <:: fraction[53,10] + roundingbit;
@@ -539,10 +538,9 @@ unit intlong2float(                                                             
 }
 
 unit float2intlong(                                                                                                             // 16/32/64 BIT FLOATING POINT TO 32/64 BIT INTEGER
-    input   uint3   rm,                                                                                                         // ROUDNING MODE
+    input   uint1   rm,                                                                                                         // ROUDNING MODE
     input   uint1   dounsigned,                                                                                                 // UNSIGNED CONVERSION FLAG
     input   uint1   il,                                                                                                         // TO INTEGER == 0 OR LONG == 1
-    input   uint2   dsh,                                                                                                        // FROM DOUBLE == 01 SINGLE == 00 HALF == 10
     input   uint10  BIAS,                                                                                                       // BIAS FOR DOUBLE/SINGLE/HALF
     input   uint64  sourceReg1Fx,                                                                                               // REGISTER VALUE TO CONVERT ( repacke into double bitfields )
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT REGISTER
@@ -551,7 +549,7 @@ unit float2intlong(                                                             
 ) <reginputs> {
     int13   exp <:: fp64( sourceReg1Fx ).exponent - BIAS;                                                                       // EXTRACT EXPONENT AND REMOVE BIAS
     uint65  fraction <:: { 1b1, fp64( sourceReg1Fx ).fraction, 12b0 } >> ( 63 - exp );                                          // EXTRACT FRACTION AND EXTEND TO 65 BITS, SHIFT INTO POSITION
-    uint1   roundingbit <:: fraction[0,1] & ( rm != 3b001 );                                                                    // EXTRACT ROUNDING BIT
+    uint1   roundingbit <:: fraction[0,1] & rm;                                                                                 // EXTRACT ROUNDING BIT
     uint64  unsignedfraction <:: fraction[1,64] + roundingbit;                                                                  // GENERATE ROUNDED 64 bit ABSOLUTE INTEGER
     uint32  unsignedfraction32 <:: fraction[1,32] + roundingbit;                                                                // GENERATE ROUNDED 32 bit ABSOLUTE INTEGER
     uint1   NV <:: ( __signed( exp ) > __signed( ( il ? 62 : 30 ) | dounsigned ) ) | ( dounsigned & fp64( sourceReg1Fx ).sign ) // INVALID IF TOO LARGE, UNSIGNED AND NEGATIVE, INFINITY OR NAN
@@ -579,7 +577,7 @@ unit float2intlong(                                                             
 }
 
 unit changeprecision(                                                                                                           // DOUBLE/SINGLE/HALF <-> DOUBLE/SINGLE/HALF ( EXTEND OR TRUNCATE )
-    input   uint3   rm,                                                                                                         // ROUDNING MODE
+    input   uint1   rm,                                                                                                         // ROUDNING MODE
     input   uint2   dest,                                                                                                       // TO DOUBLE(01)/SINGLE(00)/HALF(10)
     input   uint10  DBIAS,                                                                                                      // BIAS FOR DOUBLE/SINGLE/HALF DESTINATION
     input   uint2   source,                                                                                                     // FROM DOUBLE(01)/SINGLE(00)/HALF(10)
@@ -591,11 +589,14 @@ unit changeprecision(                                                           
 ) <reginputs> {
     uint1   NX <:: source[0,1] | ( ~|source & dest[1,1] );                                                                      // NOT EXACT IF DOUBLE -> SINGLE/HALF OR SINGLE -> HALF (need to check dropped bits)
     int13   exp <:: fp64( sourceReg1Fx ).exponent - SBIAS                                                                       // SELECT EXPONENT AND SUBTRACT SOURCE BIAS
-                                                + DBIAS;                                                                        //                     ADD DESTINATION BIAS
+                                                  + DBIAS;                                                                      //                     ADD DESTINATION BIAS
     uint1   truncateOF <:: __signed(exp) > __signed( { 1b0, DBIAS, 1b0 });                                                      // CHECK IF NEW EXPONENT IS TOO LARGE ( > 2*BIAS for single/half)
     uint1   truncateUF <:: exp[12,1];                                                                                           // CHECK IF NEW EXPONENT IS NEGATIVE/TOO SMALL ( for single/half)
 
     actual_special SPECIAL( dsh <: dest[0,2], sign <: fp64( sourceReg1Fx ).sign );                                              // GENERATE xINF, sNAN, qNAN, xZERO FOR DESTINATION FORMAT
+
+    uint64  wide <:: { fp64( sourceReg1Fx ).sign, exp[0,11], fp64( sourceReg1Fx ).fraction };                                   // REPLACE EXPONENT WITH THE NEW EXPONENT
+    repackage_actual REPACK( dsh <: dest, a <: wide );                                                                          // REPACKAGE THE CONVERSION WITH NEW EXPONENT AND NAN-BOXING
 
     uint1   OF = uninitialised;                                                                                                 // OVERFLOW FLAG
     uint1   UF = uninitialised;                                                                                                 // UNDERFLOW FLAG
@@ -612,12 +613,11 @@ unit changeprecision(                                                           
                             if( truncateUF ) {
                                 result = SPECIAL.xZERO; UF = 1;                                                                 // VALID NUMBER, TO SINGLE/HALF BUT UNDERFLOWED RETURN SIGNED ZERO
                             } else {
-                                result = dest[1,1] ? { 48hffffffffffff, fp64( sourceReg1Fx ).sign, exp[0,5], fp64( sourceReg1Fx ).fraction[42,10] } :    // VALID NUMBER, TO HALF ( NAN boxed )
-                                                     { 32hffffffff, fp64( sourceReg1Fx ).sign, exp[0,8], fp64( sourceReg1Fx ).fraction[29,23] };         // VALID NUMBER, TO SINGLE ( NAN boxed )
+                                result = REPACK.repack;                                                                         // VALID NUMBER, TO SINGLE/HALF ( NAN boxed )
                             }
                         }
                     }
-                    case 2b01: { result = { fp64( sourceReg1Fx ).sign, exp[0,11], fp64( sourceReg1Fx ).fraction }; }            // VALID NUMBER, TO DOUBLE ALWAYS SUCEEDS}
+                    case 2b01: { result = REPACK.repack; }                                                                      // VALID NUMBER, TO DOUBLE ALWAYS SUCEEDS}
                 }
             }
             case 4b1000: { result = SPECIAL.xINF; }                                                                             // INPUT IS INFINITY
@@ -809,7 +809,7 @@ unit floatfused(
     input   uint2   opCode,
     input   uint2   dsh,                                                                                                        // DOUBLE/SINGLE/HALF FLAG
     input   uint10  BIAS,                                                                                                       // BIAS FOR DOUBLE/SINGLE/HALF
-    input   uint3   rm,
+    input   uint1   rm,
     input   uint1   signA,                                                                                                      // SIGN OF A INPUT FOR A*B+C and - variations
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } FOR A
     input   uint1   signB,                                                                                                      // SIGN OF B INPUT FOR A*B+C and - variations
@@ -857,7 +857,7 @@ unit floatfused(
         newexponent :> fusedexp,
         normalfraction :> normalfraction
     );
-    doroundcombine MAKERESULT(                                                                                                  // DO ROUNDING AND COMBINING IN CASE OF 0 ADDITION / SUBTRACTION
+    doroundcombine MULTRESULT(                                                                                                  // DO ROUNDING AND COMBINING IN CASE OF 0 ADDITION / SUBTRACTION
         dsh <: dsh, BIAS <: BIAS,                                                                                               // REPLACES ARET IN SINGLE ADDITION OPERATION
         rm <: rm,                                                                                                               // TO RETURN MULTIPLCATION RESULT
         sign <: productsign,
@@ -884,7 +884,7 @@ unit floatfused(
             case 2b01: {                                                                                                        // ZERO INPUT
                 result = ( ( typeAF[0,1] | typeBF[0,1] ) & typeCF[0,1] ) ? 0 :                                                  // MULTIPLY RESULT 0 AND C == 0, RETURN 0
                            ( typeAF[0,1] | typeBF[0,1] ) ? CRET :                                                               // MULTIPLICATION INPUTS 0, RETURN C
-                           MAKERESULT.combined;                                                                                 // ADDITION/SUBTRACTION INPUT 0, RETURN MULTIPLICATION RESULT
+                           MULTRESULT.combined;                                                                                 // ADDITION/SUBTRACTION INPUT 0, RETURN MULTIPLICATION RESULT
             }
             default: {
                 switch( { IF, ZERO } ) {
@@ -973,6 +973,7 @@ unit floatdivide(
     input   uint64  b,                                                                                                          // B INPUT FOR A/B
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } FOR A
     input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } FOR B
+    input   uint7   startbit,                                                                                                   // POINT TO START DIVISION AT 107/49/23 FOR DOUBLE/SINGLE?HALF
     output  uint1   quotientsign,                                                                                               // RESULT SIGN
     output  int13   quotientexp,                                                                                                // RESULT EXPONENT
     output  uint53  normalfraction,                                                                                             // NORMALISED RESULT FRACTION
@@ -989,7 +990,6 @@ unit floatdivide(
     wide_xINF xINF( sign <: PREP.quotientsign );
     wide_xZERO xZERO(  sign <: PREP.quotientsign );
 
-    uint7   startbit <:: dsh[0,1] ? 107 : dsh[1,1] ? 23 : 49;                                                                   // DETERMINE STARTING BIT FOR THE LONG DIVISION
     prep_float_divide PREP(                                                                                                     // PREPARE THE DIVISION INPUTS
         dsh <: dsh,
         a <: a,
@@ -1101,10 +1101,10 @@ unit do_float_sqrt(
 unit floatsqrt(
     input   uint1   start,
     output  uint1   busy(0),
-    input   uint2   dsh,                                                                                                        // DOUBLE/SINGLE/HALF FLAG
     input   uint10  BIAS,                                                                                                       // BIAS FOR DOUBLE/SINGLE/HALF
     input   uint64  a,                                                                                                          // A INPUT FOR SQRT(A)
     input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } FOR A
+    input   uint6   startbit,                                                                                                   // POINT TO START SQUAREROOT AT 53/24/11 FOR DOUBLE/SINGLE/HALF
     output  int13   squarerootexp,                                                                                              // RESULT EXPONENT
     output  uint53  normalfraction,                                                                                             // NORMALISED RESULT FRACTION
     input   uint1   OF,                                                                                                         // OVERFLOW FLAG
@@ -1123,7 +1123,6 @@ unit floatsqrt(
         squarerootexp :> squarerootexp
     );
 
-    uint6   startbit <:: dsh[0,1] ? 53 : dsh[1,1] ? 11 : 24;                                                                    // NUMBER OF BITS REQUIRED IN THE SQUAREROOT
     do_float_sqrt DOSQRT(                                                                                                       // CALCULATE SQUARE ROOT
         startbit <: startbit,
         powTWO <: PREP.powTWO,
