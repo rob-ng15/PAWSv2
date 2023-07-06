@@ -432,32 +432,35 @@ unit drawline(
     int10   x = uninitialized;                      int10   offset_x = uninitialised;
     int10   y = uninitialized;                      int10   offset_y = uninitialised;
 
+    int10   numerator = uninitialized;
+    uint1   n2dx <:: numerator > (-dx);                 uint1   n2dy <:: numerator < dy;
+    uint1   dxdy <:: dx > dy;
+    int10   count = uninitialized;                      int10   count_NEXT <:: count + 1;
+    int10   offset_start <:: -( width[1,7] );
+    int10   offset_x_NEXT <:: offset_x + ~dxdy;         int10   offset_y_NEXT <:: offset_y + dxdy;
+    uint8   pixel_count = uninitialised;                uint8   pixel_count_NEXT <:: pixel_count + 1;
+    int10   x_NEXT <:: x + n2dx;                        int10   y_NEXT <:: n2dy ? ( y + ( dv ? 1 : -1 ) ) : y;
+    uint1   singlepixel <:: ( width == 1 );
+    int10   numerator_NEXT <:: numerator - ( n2dx ? dy : 0 ) + ( n2dy ? dx : 0 );
+
     bitmap_write := 0;
 
     algorithm <autorun> {
-        int10   numerator = uninitialized;
-        uint1   n2dx <:: numerator > (-dx);                 uint1   n2dy <:: numerator < dy;
-        uint1   dxdy <:: dx > dy;
-        int10   count = uninitialized;                      int10   count_NEXT <:: count + 1;
-        int10   offset_start <:: -( width[1,7] );
-        int10   offset_x_NEXT <:: offset_x + ~dxdy;         int10   offset_y_NEXT <:: offset_y + dxdy;
-        uint8   pixel_count = uninitialised;                uint8   pixel_count_NEXT <:: pixel_count + 1;
-
         while(1) {
             if( start ) {
-                busy = 1; ( x, y ) = copycoordinates( start_x, start_y ); numerator = start_numerator; count = 0; offset_x = 0; offset_y = 0;
+                busy = 1; ( x, y ) = copycoordinates( start_x, start_y ); numerator = start_numerator; count = 0;
                 while( count != max_count ) {
-                    if( width == 1 ) {
+                    offset_x = singlepixel ? 0 : dxdy ? 0 : offset_start; offset_y = singlepixel ? 0 : dxdy ? offset_start : 0; pixel_count = 0;
+                    if( singlepixel ) {
                         bitmap_write = 1;
                     } else {
-                        pixel_count = 0; offset_x = dxdy ? 0 : offset_start; offset_y = dxdy ? offset_start : 0;
                         while( pixel_count != width ) {
                             bitmap_write = 1;
                             ( offset_x, offset_y ) = copycoordinates( offset_x_NEXT, offset_y_NEXT );
                             pixel_count = pixel_count_NEXT;
                         }
                     }
-                    numerator = numerator - ( n2dx ? dy : 0 ) + ( n2dy ? dx : 0 ); count = count_NEXT; x = x + n2dx; y = n2dy ? (y + ( dv ? 1 : -1 )) : y;
+                    numerator = numerator_NEXT; count = count_NEXT; ( x, y ) = copycoordinates( x_NEXT, y_NEXT );
                 }
                 busy = 0;
             }
@@ -547,30 +550,32 @@ unit drawcircle(
     uint4   arc = uninitialised;
     arccoords ARC( xc <: xc, yc <: yc, active_x <: active_x, count <: count, arc <: arc );
 
+    int10   numerator = uninitialised;
+    int10   countNEXT <:: filledcircle ? count - 1 : min_count;
+    int10   min_count = uninitialised;
+    int10   min_count_NEXT <:: min_count + 1;
+    int10   active_xNEXT <:: active_x + 1;
+    int10   active_yNEXT <:: active_y - ( ~numerator[9,1] & |numerator );
+    int10   numerator_NEXT <:: numerator[9,1] ? numerator + { active_x, 2b00 } + 6 : numerator + { (active_x - active_y), 2b00 } + 10;
+    uint4   arc_NEXT <:: arc + 1;
+
     bitmap_write := 0;
 
     algorithm <autorun> {
-        int10   numerator = uninitialised;
-        int10   countNEXT <:: filledcircle ? count - 1 : min_count;
-        int10   min_count = uninitialised;
-
         while(1) {
             if( start ) {
                 busy = 1;
                 active_x = 0; active_y = radius; count = radius; min_count = (-1); numerator = start_numerator;
                 while( active_y >= active_x ) {
+                    arc = 0;
                     if( ARC.centrepixel ) {
-                        bitmap_write = |draw_sectors;                                                                        // DETECT IF CENTRE PIXEL, OUTPUT ONCE
+                        bitmap_write = |draw_sectors;                                                                           // DETECT IF CENTRE PIXEL, OUTPUT ONCE
                     } else {
-                        arc = 0;
-                        while( ~arc[3,1] ) {
-                            bitmap_write = draw_sectors[arc,1]; arc = arc + 1;                                          // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
-                        }
+                        while( ~arc[3,1] ) { bitmap_write = draw_sectors[arc,1]; arc = arc_NEXT; }                              // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
                     }
                     if( countNEXT == min_count ) {
-                        active_x = active_x + 1; active_y = active_y - ( ~numerator[9,1] & |numerator );
-//                        ( active_x, active_y ) = copycoordinates( active_xNEXT, active_yNEXT );
-                        count = active_y; min_count = min_count + 1; numerator = numerator[9,1] ? numerator + { active_x, 2b00 } + 6 : numerator + { (active_x - active_y), 2b00 } + 10;
+                        ( active_x, active_y ) = copycoordinates( active_xNEXT, active_yNEXT );
+                        count = active_y; min_count = min_count_NEXT; numerator = numerator_NEXT;
                     } else {
                         count = countNEXT;
                     }
@@ -775,7 +780,7 @@ unit drawtriangle(                                                              
     always_after {
         if( start ) {
             busy = 1; dx = 1; py = min_y; state = 1; beenInTriangle = 0;
-            if( ( y0 == min_y ) & ( x0 > min_x ) & ( x0 <= max_x ) ) { px = x0 - 1; } else { px = min_x; }
+            px = ( ( y0 == min_y ) & ( x0 > min_x ) & ( x0 <= max_x ) ) ? ( x0 - 1 ) : min_x;
          } else {
             if( py != max_y ) {
                 beenInTriangle = IS.IN | beenInTriangle;                                                                        // SET TO 1 IF EVER BEEN IN TRIANGLE ON THIS LINE

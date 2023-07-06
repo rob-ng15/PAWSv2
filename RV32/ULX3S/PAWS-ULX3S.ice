@@ -5,6 +5,15 @@ $$ uart_in_clock_freq_mhz = 50
 $$ reg_width = 32
 $$ addr_width = 27
 
+// NuCU COPPER BACKGROUND PROCESSOR DEFINITIONS
+// blocks number of program entries, mem number of memory registers, stack number of rstack and dstack entries
+// NUCUmem must be at least 8, which can be set by the CPU before NUCU program starts
+$$ NUCUblocks = 128
+$$ NUCUaddr = clog2(NUCUblocks)
+$$ NUCUmem = 8
+$$ NUCUmemaddr = clog2(NUCUmem)
+$$ NUCUstack = 8
+
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 
 // L0 CACHE SIZES FOR HART ID 0 AND 1

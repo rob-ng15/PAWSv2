@@ -5,10 +5,9 @@ unit tile1616(
     input  uint4   y,
     output! uint8   pixel
 ) {
-    // Setup the reading and writing of the tiles16x16 using rotation/reflection
     always_after {
-        { tiles16x16.addr0 = { tile, y, x }; }
-        { pixel = tiles16x16.rdata0; }
+        tiles16x16.addr0 = { tile, y, x };                                                                                      // FIND CURRENT TILE PIXEL
+        pixel = tiles16x16.rdata0;                                                                                              // OUTPUT CURRENT TILE PIXEL
     }
 }
 
@@ -31,34 +30,33 @@ unit tilemap(
     input   int5    tm_offset_x,
     input   int5    tm_offset_y
 ) <reginputs> {
-    // Character position on the screen x 0-41, y 0-31 * 42 ( used to fetch the tile number and action for that cell )
-    // Adjust for the offsets, effective 0 point margin is ( 1,1 ) to ( 40,30 ) with a 1 tile border
-    uint10  xtmpos <:: ( {{6{tm_offset_x[4,1]}}, tm_offset_x } + pix_x1 + 11d16 );
-    uint9   ytmpos <:: ( {{6{tm_offset_y[4,1]}}, tm_offset_y } + ( 11d16 + pix_y ) );
-
-    // Adjust for base, keep in range 0-41, 0-31
-    uint7   tmxpb <:: ( xtmpos[4,6] + base_x );     uint7   actualxtmpos <:: tmxpb > 41 ? tmxpb - 42 : tmxpb;
-    uint7   tmypb <:: ( ytmpos[4,5] + base_y );     uint7   actualytmpos <:: tmypb > 31 ? tmypb - 32 : tmypb;
-
-    // Derive the x and y coordinate within the current 16x16 tilemap block x 0-15, y 0-15, adjusted for offsets
-    uint4   xintm <:: { 1b0, pix_x[0,4] } + tm_offset_x;                                                uint4   revx <:: ~xintm;
-    uint4   yintm <:: { 1b0, pix_y[0,4] } + tm_offset_y;                                                uint4   revy <:: ~yintm;
+    uint10  xtmpos <:: ( {{6{tm_offset_x[4,1]}}, tm_offset_x } + pix_x1 + 11d16 );                                              // FIND CURRENT X PIXEL COORDINATE IN TERMS OF TILEMAP TILES
+    uint9   ytmpos <:: ( {{6{tm_offset_y[4,1]}}, tm_offset_y } + ( 11d16 + pix_y ) );                                           // FIND CURRENT Y PIXEL COORDINATE IN TERMS OF TILEMAP TILES
+    uint7   tmxpb <:: ( xtmpos[4,6] + base_x );     uint7   actualxtmpos <:: tmxpb > 41 ? tmxpb - 42 : tmxpb;                   // FIND CURRENT TILE X COORDINATE ADJUSTED FOR OFFSET
+    uint7   tmypb <:: ( ytmpos[4,5] + base_y );     uint7   actualytmpos <:: tmypb > 31 ? tmypb - 32 : tmypb;                   // FIND CURRENT TILE Y COORDINATE ADJUSTED FOR OFFSET
+    uint4   xintm <:: { 1b0, pix_x[0,4] } + tm_offset_x; uint4   revx <:: ~xintm;                                               // X COORDINATE IN CURRENT TILE
+    uint4   yintm <:: { 1b0, pix_y[0,4] } + tm_offset_y; uint4   revy <:: ~yintm;                                               // Y COORDINATE IN CURRENT TILE
 
     // Apply rotation/reflection
-    uint1   action00 <:: ( ~|tmentry( tiles.rdata0 ).action );                                          uint1   action01 <:: ( tmentry( tiles.rdata0 ).action == 2b01 );
+    uint1   action00 <:: ( ~|tmentry( tiles.rdata0 ).action );                                                                  // CHECK ACTION FLAGS FOR ROTATION
+    uint1   action01 <:: ( tmentry( tiles.rdata0 ).action == 2b01 );
     uint1   action10 <:: ( tmentry( tiles.rdata0 ).action == 2b10 );
-    uint4   xpixel <:: tmentry( tiles.rdata0 ).rflag ? action00 ? xintm : action01 ? yintm : action10 ? revx : revy : tiles.rdata0[6,1] ? revx : xintm;
-    uint4   ypixel <:: tmentry( tiles.rdata0 ).rflag ? action00 ? yintm : action01 ? revx : action10 ? revy : xintm : tiles.rdata0[7,1] ? revy : yintm;
+    uint4   xpixel <:: tmentry( tiles.rdata0 ).rflag ? action00 ? xintm : action01 ? yintm : action10 ? revx : revy :           // ROTATE X?
+                       tiles.rdata0[6,1] ? revx : xintm;                                                                        // REFLECT X?
+    uint4   ypixel <:: tmentry( tiles.rdata0 ).rflag ? action00 ? yintm : action01 ? revx : action10 ? revy : xintm :           // ROTATE Y?
+                       tiles.rdata0[7,1] ? revy : yintm;                                                                        // REFLECT Y?
 
-    // DOUBLE CLOCKED TILE GENERATOR
-    tile1616 TG <@clockTG> ( tiles16x16 <:> tiles16x16, tile <: tmentry( tiles.rdata0 ).tilenumber, x <: xpixel, y <: ypixel );
-
-    // Set up reading of the tilemap
-    tiles.wenable0 := 0; tiles.addr0 := actualxtmpos + actualytmpos * 42;
+    tile1616 TG <@clockTG> (                                                                                                    // DOUBLE CLOCKED TILE GENERATOR
+        tiles16x16 <:> tiles16x16,
+        tile <: tmentry( tiles.rdata0 ).tilenumber,
+        x <: xpixel,
+        y <: ypixel
+    );
+    tiles.wenable0 := 0; tiles.addr0 := actualxtmpos + actualytmpos * 42;                                                       // SET ADDRESS FOR READING THE TILEMAP
 
     always_after {
-        { tilemap_display = pix_active & ( TG.pixel != 64 ); }
-        { pixel = TG.pixel; }
+        tilemap_display = pix_active & ( TG.pixel != 64 );                                                                      // IS PIXEL TO DISPLAY?
+        pixel = TG.pixel;                                                                                                       // PIXEL COLOUR
     }
 }
 
@@ -71,12 +69,14 @@ unit   calcoffset(
     output  uint1   MAX,
     output  int5    NEXT
 ) <reginputs> {
-    int6    offsetPLUS <:: { offset[4,1], offset } + adjust;
-    int6    offsetMINUS <:: { offset[4,1], offset } - adjust;
-
     always_after {
-        { MIN = ( offsetMINUS < -15 ); }               { PREV = offsetMINUS + ( MIN ? 16 : 0 ); }
-        { MAX = ( offsetPLUS > 15 ); }                 { NEXT= offsetPLUS - ( MAX ? 16 : 0 ); }
+        int6    offsetPLUS = { offset[4,1], offset } + adjust;                                                                  // PRESENT OFFSET PLUS ADJUSTMENT
+        int6    offsetMINUS = { offset[4,1], offset } - adjust;                                                                 // PRESENT OFFSET MINUS ADJUSTMENT
+
+        MIN = ( offsetMINUS < -15 );                                                                                            // MOVE TO PREVIOUS?
+        MAX = ( offsetPLUS > 15 );                                                                                              // MOVE TO NEXT?
+        PREV = offsetMINUS + ( MIN ? 16 : 0 );                                                                                  // NEW ADJUSTMENT IF MOVED TO NEXT TILE ( MINIMUM )
+        NEXT= offsetPLUS - ( MAX ? 16 : 0 );                                                                                    // NEW ADJUSTMENT IF MOVED TO NEXT TILE ( MAXIMUM )
     }
 }
 unit tile_map_writer(
@@ -101,25 +101,23 @@ unit tile_map_writer(
     output  uint4   tm_lastaction,
     output  uint1   tm_active
 ) <reginputs> {
-    // OFFSET CALCULATIONS
-    calcoffset TMOX( offset <: tm_offset_x, adjust <: tm_adjust );       calcoffset TMOY( offset <: tm_offset_y, adjust <: tm_adjust );
+    calcoffset TMOX( offset <: tm_offset_x, adjust <: tm_adjust );                                                              // X TILEMAP COORDINATE
+    calcoffset TMOY( offset <: tm_offset_y, adjust <: tm_adjust );                                                              // Y TILEMAP COORDINATE
 
-    // READ/WRITE ADDRESS, ADJUSTED FOR OFFSET
-    uint7   tmxpb <:: ( tm_x + base_x );            uint7   write_x <:: tmxpb > 41 ? tmxpb - 42 : tmxpb;
-    uint7   tmypb <:: ( tm_y + base_y );            uint7   write_y <:: tmypb > 31 ? tmypb - 32: tmypb;
+    uint7   tmxpb <:: ( tm_x + base_x );            uint7   write_x <:: tmxpb > 41 ? tmxpb - 42 : tmxpb;                        // FIND TILEMAP X COORDINATE
+    uint7   tmypb <:: ( tm_y + base_y );            uint7   write_y <:: tmypb > 31 ? tmypb - 32 : tmypb;                        // FIND TILEMAP Y COORDINATE
 
-    // CLEARSCROLL address
-    uint11  tmcsaddr = uninitialized;               uint11  tmcsNEXT <:: tmcsaddr + 1;
-
-    // TILEMAP WRITE FLAGS
-    tiles.wenable1 := 0; tiles.addr1 := write_x + write_y * 42; tm_read := tiles.rdata1;
+    tiles.wenable1 := 0; tiles.addr1 := write_x + write_y * 42; tm_read := tiles.rdata1;                                        // TILEMAP WRITE FLAGS
 
     algorithm <autorun> {
+        uint11  tmcsaddr = uninitialized;                                                                                       // CLEAR TILEMAP ADDRESS
+        uint11  tmcsNEXT <:: tmcsaddr + 1;                                                                                      // NEXT ADDRESS FOR CLEAR TILEMAP
+
         while(1) {
-            if( tm_active ) {                                                                                               // CLEAR
+            if( tm_active ) {                                                                                                   // CLEAR
                 tiles.wdata1 = 0;
                 while( tmcsaddr != 1344 ) { tiles.addr1 = tmcsaddr; tiles.wenable1 = 1; tmcsaddr = tmcsNEXT; }
-                ++: tm_active = 0;
+                tm_active = 0;
             } else {
                 tmcsaddr = 0;
             }
@@ -127,29 +125,28 @@ unit tile_map_writer(
     }
 
     always_after {
-        { if( tm_write ) { tiles.wdata1 = { tm_actions, tm_character }; tiles.wenable1 = 1; } }                                 // WRITE
-        {
-            if( |tm_scrollwrap ) { tm_lastaction = 0; }
-            switch( tm_scrollwrap ) {
-                case 1: {                                                                                                       // LEFT
-                    if( TMOX.MAX ) { base_x = ( base_x == 41 ) ? 0 : base_x + 1; tm_lastaction = 1; }
-                    tm_offset_x = TMOX.NEXT;
-                }
-                case 2: {                                                                                                       // UP
-                    if( TMOY.MAX ) { base_y = ( base_y == 31 ) ? 0 : base_y + 1; tm_lastaction = 2; }
-                    tm_offset_y = TMOY.NEXT;
-                }
-                case 3: {                                                                                                       // RIGHT
-                    if( TMOX.MIN ) { base_x = ( ~|base_x ) ? 41 : base_x - 1; tm_lastaction = 3; }
-                    tm_offset_x = TMOX.PREV;
-                }
-                case 4: {                                                                                                       // DOWN
-                    if( TMOY.MIN ) { base_y = ( ~|base_y ) ? 31 : base_y - 1; tm_lastaction = 4; }
-                    tm_offset_y = TMOY.PREV;
-                }
-                case 5: { tm_active = 1; base_x = 0; base_y = 0; tm_offset_x = 0; tm_offset_y = 0; }                            // CLEAR
-                default: {}
+        if( tm_write ) { tiles.wdata1 = { tm_actions, tm_character }; tiles.wenable1 = 1; }                                     // WRITE TO TILE
+        if( |tm_scrollwrap ) { tm_lastaction = 0; }
+
+        switch( tm_scrollwrap ) {
+            case 1: {                                                                                                           // MOVE LEFT
+                if( TMOX.MAX ) { base_x = ( base_x == 41 ) ? 0 : base_x + 1; tm_lastaction = 1; }
+                tm_offset_x = TMOX.NEXT;
             }
+            case 2: {                                                                                                           // MOVE UP
+                if( TMOY.MAX ) { base_y = ( base_y == 31 ) ? 0 : base_y + 1; tm_lastaction = 2; }
+                tm_offset_y = TMOY.NEXT;
+            }
+            case 3: {                                                                                                           // MOVE RIGHT
+                if( TMOX.MIN ) { base_x = ( ~|base_x ) ? 41 : base_x - 1; tm_lastaction = 3; }
+                tm_offset_x = TMOX.PREV;
+            }
+            case 4: {                                                                                                           // MOVE DOWN
+                if( TMOY.MIN ) { base_y = ( ~|base_y ) ? 31 : base_y - 1; tm_lastaction = 4; }
+                tm_offset_y = TMOY.PREV;
+            }
+            case 5: { tm_active = 1; base_x = 0; base_y = 0; tm_offset_x = 0; tm_offset_y = 0; }                                // START CLEAR
+            default: {}
         }
     }
 }

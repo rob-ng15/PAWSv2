@@ -38,13 +38,13 @@ unsigned char volatile *BACKGROUND_MODE = (unsigned char volatile *) 0xd004;
 unsigned char volatile *BACKGROUND_COPPER_STARTSTOP = (unsigned char volatile *) 0xd006;
 unsigned short volatile *BACKGROUND_COPPER_CPUINPUT = (unsigned short volatile *) 0xd008;
 unsigned char volatile *BACKGROUND_COPPER_PROGRAM = (unsigned char volatile *) 0xd00a;
-unsigned char volatile *BACKGROUND_COPPER_ADDRESS = (unsigned char volatile *) 0xd00c;
-unsigned char volatile *BACKGROUND_COPPER_COMMAND = (unsigned char volatile *) 0xd00e;
-unsigned char volatile *BACKGROUND_COPPER_CONDITION = (unsigned char volatile *) 0xd010;
-unsigned short volatile *BACKGROUND_COPPER_COORDINATE = (unsigned short volatile *) 0xd012;
-unsigned char volatile *BACKGROUND_COPPER_MODE = (unsigned char volatile *) 0xd014;
-unsigned char volatile *BACKGROUND_COPPER_ALT = (unsigned char volatile *) 0xd016;
-unsigned char volatile *BACKGROUND_COPPER_COLOUR = (unsigned char volatile *) 0xd018;
+unsigned short volatile *BACKGROUND_COPPER_ADDRESS = (unsigned short volatile *) 0xd00c;
+unsigned char volatile *BACKGROUND_COPPER_OP = (unsigned char volatile *) 0xd00e;
+unsigned char volatile *BACKGROUND_COPPER_OPD = (unsigned char volatile *) 0xd010;
+unsigned char volatile *BACKGROUND_COPPER_OPF = (unsigned char volatile *) 0xd012;
+unsigned short volatile *BACKGROUND_COPPER_OPL = (unsigned short volatile *) 0xd014;
+unsigned char volatile *BACKGROUND_COPPER_MEMRESET = (unsigned char volatile *) 0xd016;
+unsigned short volatile *BACKGROUND_COPPER_MEMVINIT = (unsigned short volatile *) 0xd018;
 
 unsigned char volatile *LOWER_TM_X = (unsigned char volatile *) 0xd100;
 unsigned char volatile *LOWER_TM_Y = (unsigned char volatile *) 0xd102;
@@ -82,20 +82,6 @@ unsigned char volatile *GPU_DITHERMODE = (unsigned char volatile *) 0xd614;
 unsigned char volatile *GPU_WRITE = (unsigned char volatile *) 0xd616;
 unsigned char volatile *GPU_STATUS = (unsigned char volatile *) 0xd616;
 unsigned char volatile *GPU_FINISHED = (unsigned char volatile *) 0xd618;
-
-unsigned char volatile *VECTOR_DRAW_BLOCK = (unsigned char volatile *) 0xd620;
-unsigned char volatile *VECTOR_DRAW_COLOUR = (unsigned char volatile *) 0xd622;
-short volatile *VECTOR_DRAW_XC = (short volatile *) 0xd624;
-short volatile *VECTOR_DRAW_YC = (short volatile *) 0xd626;
-unsigned char volatile *VECTOR_DRAW_SCALE = (unsigned char volatile *) 0xd628;
-unsigned char volatile *VECTOR_DRAW_ACTION = (unsigned char volatile *) 0xd62a;
-unsigned char volatile *VECTOR_DRAW_START = (unsigned char volatile *) 0xd62c;
-unsigned char volatile *VECTOR_DRAW_STATUS = (unsigned char volatile *) 0xd62a;
-unsigned char volatile *VECTOR_WRITER_BLOCK = (unsigned char volatile *) 0xd630;
-unsigned char volatile *VECTOR_WRITER_VERTEX = (unsigned char volatile *) 0xd632;
-char volatile *VECTOR_WRITER_DELTAX = (char volatile *) 0xd634;
-char volatile *VECTOR_WRITER_DELTAY = (char volatile *) 0xd636;
-unsigned char volatile *VECTOR_WRITER_ACTIVE = (unsigned char volatile *) 0xd638;
 
 unsigned char volatile *BLIT_WRITER_TILE = (unsigned char volatile *) 0xd640;
 unsigned short volatile *BLIT_WRITER_BITMAP = (unsigned short volatile *) 0xd642;
@@ -153,13 +139,6 @@ unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd506;
 unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd508;
 unsigned char volatile *TPU_COMMIT = (unsigned char volatile *) 0xd50a;
 unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd50c;
-unsigned char volatile *CURSES_BACKGROUND = (unsigned char volatile *) 0xd50e;
-unsigned char volatile *CURSES_FOREGROUND = (unsigned char volatile *) 0xd50f;
-
-unsigned char volatile *TERMINAL_COMMIT = (unsigned char volatile *) 0xd700;
-unsigned char volatile *TERMINAL_STATUS = (unsigned char volatile *) 0xd700;
-unsigned char volatile *TERMINAL_SHOW = (unsigned char volatile *) 0xd702;
-unsigned char volatile *TERMINAL_RESET = (unsigned char volatile *) 0xd704;
 
 unsigned char volatile *AUDIO_WAVEFORM = (unsigned char volatile *) 0xe000;
 unsigned char volatile *AUDIO_FREQUENCY = (unsigned char volatile *) 0xe002;
@@ -194,11 +173,13 @@ unsigned int volatile *SMTPC = (unsigned int volatile *) 0xff00;
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
 int volatile *DMADESTADD = (int volatile *) 0xfd04;
 unsigned char volatile *DMACYCLES = (unsigned char volatile *) 0xfd08;
+unsigned int volatile *DMASET32 = (unsigned int volatile *) 0xfd0c;
 unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xfe00;
 unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
 unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
 unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
+unsigned int volatile *DMASETRGB = (unsigned int volatile *) 0xfe0c;
 
 int volatile *AUDIO_REGS = (int volatile *) 0xe000;
 char volatile *TPU_REGS_B = (char volatile *) 0xd500;
@@ -271,11 +252,6 @@ typedef struct {
     unsigned short boot_sector_signature;
 } __attribute((packed)) Fat32VolumeID;
 
-union fname {
-    unsigned char string[8];
-    long sortvalue;
-};
-
 typedef struct {
     unsigned char   filename[8];
     unsigned char   ext[3];
@@ -289,7 +265,7 @@ typedef struct {
 } __attribute((packed)) FAT32DirectoryEntry;
 
 typedef struct {
-    union fname     filename;
+    unsigned char   filename[8];
     unsigned char   ext[3];
     unsigned char   type;
     unsigned int    starting_cluster;
@@ -308,6 +284,9 @@ typedef struct {
 #define WHITE 0xff
 #define GREY1 0x5b
 #define GREY2 0xad
+#define ORANGE 0xe9
+#define PURPLE 0x86
+#define LTBLUE 0x1f
 
 #define UK_GOLD 241
 #define UK_BLUE 30
@@ -334,6 +313,62 @@ typedef struct {
 #define WAVE_NOISE 4
 #define WAVE_SAMPLE 8
 #define SAMPLE_REPEAT 16
+
+// BACKGROUND PATTERN GENERATOR
+#define BKG_SOLID 0
+#define BKG_5050_V 1
+#define BKG_5050_H 2
+#define BKG_CHKBRD_5 3
+#define BKG_RAINBOW 4
+#define BKG_SNOW 5
+#define BKG_STATIC 6
+#define BKG_CHKBRD_1 7
+#define BKG_CHKBRD_2 8
+#define BKG_CHKBRD_3 9
+#define BKG_CHKBRD_4 10
+#define BKG_HATCH 11
+#define BKG_LSLOPE 12
+#define BKG_RSLOPE 13
+#define BKG_VSTRIPE 14
+#define BKG_HSTRIPE 15
+
+// NEW CU BACKGROUND CO-PROCESSOR
+// OPCODES
+#define CU_JMP 0
+#define CU_SET 1
+#define CU_ADD 2
+#define CU_SUB 3
+#define CU_AND 4
+#define CU_OR  5
+#define CU_XOR 6
+#define CU_SHL 7
+#define CU_SHR 8
+#define CU_SEQ 9
+#define CU_SNE 10
+#define CU_SLT 11
+#define CU_SLE 12
+#define CU_RND 13
+#define CU_LFM 14
+#define CU_STM 15
+
+// REGISTER NAMES { VBLANK, X, Y, CPU, R0, R1, R2, R3 }
+#define CU_RB 0
+#define CU_RX 1
+#define CU_RY 2
+#define CU_RC 3
+#define CU_R0 4
+#define CU_R1 5
+#define CU_R2 6
+#define CU_R3 7
+
+// BACKGROUND GENERATOR REGISTER NAMES { MODE, COLOUR, ALT COLOUR } REPLACE { VBLANK, X, Y } WHEN WRITING
+#define CU_BM 0
+#define CU_BC 1
+#define CU_BA 2
+
+// REG2 IS REG OR LITERAL
+#define CU_RR 0
+#define CU_RL 1
 
  // MISCELLANEOUS USEFUL INTRINSICS
 static inline int _rv32_mulh(int rs1, int rs2) { int rd; __asm__ ("mulh   %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }

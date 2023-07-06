@@ -135,26 +135,23 @@ unsigned char pacman_bitmap[] = {
     0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40
 };
 
-// RISC-V CSR FUNCTIONS
-unsigned int CSRisa() {
-   unsigned int isa;
-   asm volatile ("csrr %0, 0x301" : "=r"(isa));
-   return isa;
-}
-
 // DMA CONTROLLER
 void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
-    *DMASOURCE = (unsigned int)source;
-    *DMADEST = (unsigned int)destination;
+    *DMASOURCE = (unsigned long)source;
+    *DMADEST = (unsigned long)destination;
     *DMACOUNT = count;
     *DMAMODE = mode;
 }
 
 // STANDARD C FUNCTIONS ( from @sylefeb mylibc )
-void * memset(void *dest, int val, size_t len) {
+void *memset(void *dest, int val, size_t len) {
     *DMASET = val;
     DMASTART( (const void *restrict)DMASET, dest, len, 4 );
     return dest;
+}
+void *memset32( void *restrict destination, int value, size_t count ) {
+    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    return( destination );
 }
 
 short strlen( char *s ) {
@@ -172,40 +169,9 @@ void sleep( unsigned short counter ) {
     *SLEEPTIMER0 = counter;
     while( *SLEEPTIMER0 );
 }
-
-// AUDIO OUTPUT
-// START A note (1 == DEEP C, 25 == MIDDLE C )
-// OF duration MILLISECONDS TO THE LEFT ( channel_number == 1 ) RIGHT ( channel_number == 2 ) or BOTH ( channel_number == 3 ) AUDIO CHANNEL
-// IN waveform 0 == SQUARE, 1 == SAWTOOTH, 2 == TRIANGLE, 3 == SINE, 4 == WHITE NOISE, 7 == SAMPLE MODE
-// 1 = C 2 or Deep C
-// 25 = C 3
-// 49 = C 4 or Middle C
-// 73 = C 5 or Tenor C
-// 97 = C 6 or Soprano C
-// 121 = C 7 or Double High C
-void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
-    AUDIO_REGS[ 0x00 ] = _rv32_pack( waveform, note );
-    AUDIO_REGS[ 0x01 ] = _rv32_pack( duration, channel_number );
-}
-void volume( unsigned char left, unsigned char right ) {
-    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
-}
-void await_beep( unsigned char channel_number ) {
-    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
-    while( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) ) {}
-}
-
-unsigned short get_beep_active( unsigned char channel_number ) {
-    unsigned char volatile *AUDIO_REGS_B = (unsigned char volatile *)AUDIO_REGS;
-    return( ( ( channel_number & 1) & AUDIO_REGS_B[ 0x10 ] ) | ( ( channel_number & 2) & AUDIO_REGS_B[ 0x12 ] ) );
-}
-
-// USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
-void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_SAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
+// SLEEP FOR counter milliseconds
+void sleep1khz( unsigned short counter, unsigned char timer ) {
+    *( timer ? SLEEPTIMER1 : SLEEPTIMER0 ) = counter; while( timer ? *SLEEPTIMER1 : *SLEEPTIMER0 );
 }
 
 // WAIT FOR VBLANK TO START
@@ -256,6 +222,34 @@ void gpu_rectangle( unsigned char colour, short x1, short y1, short x2, short y2
     *GPU_WRITE = 3;
 }
 
+// DRAW A LINE FROM (x1,y1) to (x2,y2) in colour - uses Bresenham's Line Drawing Algorithm - single pixel width
+void gpu_line( unsigned char colour, short x1, short y1, short x2, short y2 ) {
+    *GPU_COLOUR = colour;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = 1;
+    wait_gpu();
+    *GPU_WRITE = 2;
+}
+
+// DRAW A LINE FROM (x1,y1) to (x2,y2) in colour - uses Bresenham's Line Drawing Algorithm - multi-pixel width
+void gpu_wideline( unsigned char colour, short x1, short y1, short x2, short y2, unsigned char width ) {
+    if( width ) {
+        *GPU_COLOUR = colour;
+        *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = width;
+        wait_gpu();
+        *GPU_WRITE = 2;
+    }
+}
+
+// DRAW A FILLED TRIANGLE with vertices (x1,y1) (x2,y2) (x3,y3) in colour
+// VERTICES SHOULD BE PRESENTED CLOCKWISE FROM THE TOP ( minimal adjustments made to the vertices to comply )
+void gpu_triangle( unsigned char colour, short x1, short y1, short x2, short y2, short x3, short y3 ) {
+    *GPU_COLOUR = colour;
+    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
+    *GPU_PARAM2 = x3; *GPU_PARAM3 = y3;
+    wait_gpu();
+    *GPU_WRITE = 6;
+}
+
 // CLEAR THE BITMAP by drawing a transparent rectangle from (0,0) to (639,479) and resetting the bitamp scroll position
 void gpu_cs( void ) {
     wait_gpu();
@@ -299,13 +293,10 @@ void gpu_outputstringcentre( unsigned char colour, short y, char *s, unsigned ch
     gpu_rectangle( TRANSPARENT, 0, y, 319, y + ( 8 << size ) - 1 );
     gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1) , y, s, 0 );
 }
-// SET THE BLITTER TILE to the 16 x 16 pixel bitmap
+// SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as is halfed by dma engine)
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
-
-    for( short i = 0; i < 16; i ++ ) {
-        *BLIT_WRITER_BITMAP = bitmap[i];
-    }
+    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, 1 );
 }
 
 // CHARACTER MAP FUNCTIONS
@@ -314,17 +305,14 @@ void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
 
 // CLEAR THE CHARACTER MAP
 void tpu_cs( void ) {
-    while( *TPU_COMMIT );
-    *TPU_COMMIT = 3;
+    memset32( ( void *)0x1000000, ( 64 << 17 ), 4800 * 4 );
 }
 // POSITION THE CURSOR to (x,y) and set background and foreground colours
 void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
-    while( *TPU_COMMIT );
     *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
 }
 // OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
 void tpu_output_character( short c ) {
-    while( *TPU_COMMIT );
     *TPU_CHARACTER = c; *TPU_COMMIT = 2;
 }
 void tpu_outputstring( char *s ) {
@@ -332,10 +320,6 @@ void tpu_outputstring( char *s ) {
         tpu_output_character( *s );
         s++;
     }
-}
-void tpu_outputbinary( int number, int length ) {
-    for( int i = length - 1; i != -1; i-- )
-        tpu_output_character( '0' +  _rv32_bext( number, i ) );
 }
 
 // SET THE TILEMAP TILE at (x,y) to tile
@@ -523,14 +507,83 @@ void smtmandel( void ) {
 
 void smtthread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp ,0x4000");
+    asm volatile ("li sp ,0x5f80000");
     smtmandel();
     SMTSTOP();
 }
 
 unsigned char ufo_sample[] = { 75, 83, 89, 0 };
 
+// BACKGROUND COPPER
+void copper_startstop( unsigned char status ) {
+    await_vblank();
+    *BACKGROUND_COPPER_STARTSTOP = status;
+}
+
+void copper_program( unsigned char address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 ) {
+    *BACKGROUND_COPPER_ADDRESS = address;
+    *BACKGROUND_COPPER_OP = command;
+    *BACKGROUND_COPPER_OPD = reg1;
+    *BACKGROUND_COPPER_OPF = flag;
+    *BACKGROUND_COPPER_OPL = reg2;
+    *BACKGROUND_COPPER_PROGRAM = 1;
+}
+
+void copper_set_memory( unsigned short *memory ) {
+    *BACKGROUND_COPPER_MEMRESET = 0;
+    for( int i = 0; i <8; i++ )
+        *BACKGROUND_COPPER_MEMVINIT = memory[i];
+}
+
+void set_copper_cpuinput( unsigned short value ) {
+    *BACKGROUND_COPPER_CPUINPUT = value;
+}
+
+unsigned short get_copper_cpuoutput( void ) {
+    return( *BACKGROUND_COPPER_CPUINPUT );
+}
+
+// PROGRAM THE BACKGROUND COPPER FOR THE FALLING STARS
+void program_background( void ) {
+    copper_startstop( 0 );
+
+    unsigned short memoryinit[8] = {
+        WHITE,
+        RED,
+        ORANGE,
+        YELLOW,
+        GREEN,
+        LTBLUE,
+        PURPLE,
+        MAGENTA
+    };
+
+    copper_set_memory( memoryinit );                                                                                            // PROGRAM COPPER MEMORY ARRAY OF COLOURS
+
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );                                                                        // BACKGROUND SNOW GENERATOR
+    copper_program( 1, CU_SET, CU_BC, CU_RL, WHITE );                                                                           // BACKGROUND BLACK
+    copper_program( 2, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT WHITE
+
+    copper_program( 3, CU_SET, CU_R0, CU_RL, 0 );                                                                               // SET R0 = 0
+
+    copper_program( 4, CU_SET, CU_R1, CU_RR, CU_R0 );                                                                           // SET R1 = R0
+    copper_program( 5, CU_SHL, CU_R1, CU_RL, 6 );                                                                               // R1 = R1 * 64
+    copper_program( 6, CU_LFM, CU_R2, CU_RR, CU_R0 );                                                                           // R2 = MEM[ R0 ]
+
+    copper_program( 7, CU_SEQ, CU_RY, CU_RR, CU_R1 );                                                                           // Y == R1 ?
+    copper_program( 8, CU_JMP, FALSE, CU_RL, 7 );                                                                               // SKIP YES, ELSE GO TO 7
+
+    copper_program( 9, CU_SET, CU_BC, CU_RR, CU_R2 );                                                                           // SET BACKGROUND ALT = R2
+    copper_program( 10, CU_ADD, CU_R0, CU_RL, 1 );                                                                              // R0 = R0 + 1
+    copper_program( 11, CU_AND, CU_R0, CU_RL, 7 );                                                                              // R0 = R0 & 7
+    copper_program( 12, CU_JMP, FALSE, CU_RL, 4 );                                                                              // JUMP 4
+
+    copper_startstop( 1 );
+}
+
 extern int _bss_start, _bss_end;
+static inline long _rv64_rol(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
+
 void main( void ) {
     unsigned int isa;
     unsigned short i,j = 0, x, y;
@@ -543,16 +596,13 @@ void main( void ) {
 
     // RESET THE DISPLAY
     reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
+    //program_background();
 
     // SETUP INITIAL WELCOME MESSAGE
     draw_paws_logo();
 
-     // OUTPUT SOC & ISA CAPABILITIES
-    tpu_set( 1, 59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( *PAWSMAGIC, 32 );
-    tpu_set( 47,59, TRANSPARENT, UK_BLUE ); tpu_outputbinary( CSRisa(), 32 );
-
     gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 66, 34, "Risc-V RV32IMAFCB CPU", 0 );
+    gpu_outputstring( WHITE, 70, 34, "Risc-V RV32GC+ CPU", 0 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 42; i++ ) {
@@ -561,12 +611,13 @@ void main( void ) {
         set_tilemap_tile( 0, i, 15, i+1, 0 );
         set_tilemap_tile( 1, i, 29, i+1, 0 );
     }
-
     gpu_outputstringcentre( UK_GOLD, 74, "VERILATOR - SMT + FPU TEST", 0 );
     gpu_outputstringcentre( UK_GOLD, 82, "THREAD 0 - PACMAN SPRITES", 0 );
-    gpu_outputstringcentre( UK_GOLD, 90, "THREAD 1 - FPU MANDELBROT", 0 );
+    gpu_outputstringcentre( UK_GOLD, 90, "THREAD 1 - GPU AND FPU MANDELBROT", 0 );
 
-    SMTSTART( (unsigned int )smtthread );
+    gpu_triangle( WHITE, 300, 0, 310, 10, 305, 30 );
+
+    SMTSTART( (unsigned long)smtthread );
 
     set_sprite_bitmaps( 1, 0, &pacman_bitmap[0] );
     set_sprite_bitmaps( 1, 1, &ghost_bitmap[0] );
@@ -574,24 +625,7 @@ void main( void ) {
     set_sprite( 1, 0, 1, 0, 440, 4, 13 );
     set_sprite( 1, 1, 1, 64, 440, 0, 8);
 
-    beep( CHANNEL_LEFT, WAVE_TRIANGLE, 3, 250 );
-
-#define MEMTEST unsigned char
-    MEMTEST *memword, word, error, action;
-    memword = (MEMTEST *)0x6000000; word = 0; error = 0; action = 0;
-
     while(1) {
-        if( memword < (MEMTEST *)0x8000080 ) {
-            if( action ) {
-                if( *memword != word ) {
-                    error++;
-                    set_background( RED, RED, 0 );
-                }
-                memword++; word--;
-            } else {
-                *memword++ = word--;
-            }
-        } else { memword = (MEMTEST *)0x6000000; word = 0; error = 0; action = 1 - action; }
         await_vblank();
         tilemap_scrollwrapclear( 0, 3, 1 );
         tilemap_scrollwrapclear( 1, 1, 1 );
@@ -599,6 +633,7 @@ void main( void ) {
         set_sprite_attribute( 1, 1, 1, ( j & 128 ) >> 7 );
         set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
         j++;
+        tpu_set( 0, 17, TRANSPARENT, WHITE );
         await_vblank_finish();
     }
 }

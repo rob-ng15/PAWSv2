@@ -171,45 +171,46 @@ unit PAWSCPU(
     store STORE( memorybusy <: memorybusy );
     store64 STORE64( memorybusy <: memorybusy, storeAddress <: RV32ONTROL.storeAddress, storedata <: EXECUTEFAST.memoryoutput );
 
-    // SMALL ON CPU L0 CACHE - 1 per HART - RESET when pc == 0 @ START OF BIOS
-    // L0 INSTRUCTION CACHE { tag, instruction, compressed, valid } split into units
-    $$for i=0,(L00Iblocks-1) do
-        simple_dualport_bram uint$32+L00Ipartaddresswidth$ L00cache_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
-    $$end
-    $$for i=0,(L01Iblocks-1) do
-        simple_dualport_bram uint$32+L01Ipartaddresswidth$ L01cache_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
-    $$end
+    // SMALL ON CPU L0 CACHE - 1 per HART - RESET WHEN FENCE MEM IS ACTIVATED
+    simple_dualport_bram uint32 L00cache <@clock_cache,@clock> [$L00Iblocks$] = uninitialized;
+    simple_dualport_bram uint$L00Ipartaddresswidth$ L00tags <@clock_cache,@clock> [$L00Iblocks$] = uninitialized;
+    simple_dualport_bram uint32 L01cache <@clock_cache,@clock> [$L01Iblocks$] = uninitialized;
+    simple_dualport_bram uint$L01Ipartaddresswidth$ L01tags <@clock_cache,@clock> [$L01Iblocks$] = uninitialized;
 
+    uint1   CACHEL0CLEAR = uninitialised;
+    uint1   invalidate <:: CACHEL0CLEAR | EXECUTEFAST.fenceACTIVE[0,1];
     il00cache_read ICACHE_0 <@clock_cache> (
-        $$for i=0,(L00Iblocks-1) do
-            L0cache_$i$ <:> L00cache_$i$,
-        $$end
+        L0cache <:> L00cache,
+        L0tags <:> L00tags,
         CLS <: ICACHE_0W.CLS,
-        invalidate <: EXECUTEFAST.fenceACTIVE[0,1],
         address <: pc
     );
     il01cache_read ICACHE_1 <@clock_cache> (
-        $$for i=0,(L01Iblocks-1) do
-            L0cache_$i$ <:> L01cache_$i$,
-        $$end
+        L0cache <:> L01cache,
+        L0tags <:> L01tags,
         CLS <: ICACHE_1W.CLS,
-        invalidate <: EXECUTEFAST.fenceACTIVE[0,1],
         address <: pcSMT
     );
     il00cache_write ICACHE_0W(
-        $$for i=0,(L00Iblocks-1) do
-            L0cache_$i$ <:> L00cache_$i$,
-        $$end
+        L0cache <:> L00cache,
         address <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed,
-        invalidate <: EXECUTEFAST.fenceACTIVE[0,1]
+        invalidate <: invalidate
     );
     il01cache_write ICACHE_1W(
-        $$for i=0,(L01Iblocks-1) do
-            L0cache_$i$ <:> L01cache_$i$,
-        $$end
+        L0cache <:> L01cache,
         address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed,
-        invalidate <: EXECUTEFAST.fenceACTIVE[0,1]
+        invalidate <: invalidate
     );
+    il00tags_write ITAGS_0W(
+        L0tags <:> L00tags,
+        address <: pc
+    );
+    il01tags_write ITAGS_1W(
+        L0tags <:> L01tags,
+        address <: pcSMT
+    );
+
+    uint1   ICACHEUPDATE = uninitialised;                                                                                       // CPU L0 CACHE UPDATE FLAG
 
     uint6   memorycontrols <: { LOAD64.busy, STORE64.busy, FETCH.busy, LOAD.busy, STORE.busy, DMAACTIVE };
     uint1   SMT_next <:: ~SMT & SMTRUNNING;
@@ -222,8 +223,10 @@ unit PAWSCPU(
     uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );
     uint32  L0instruction <:: { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
     uint1   L0compressed <:: SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
-    uint1   ICACHEUPDATE = uninitialised;
-    ICACHE_0W.update := ~SMT & ICACHEUPDATE; ICACHE_1W.update := SMT & ICACHEUPDATE;
+
+    ICACHE_0W.update := ~SMT & ICACHEUPDATE; ICACHE_1W.update := SMT & ICACHEUPDATE;                                            // UPDATE CPU l0 CACHE FOR MAIN/SMT THREAD FLAG
+    ITAGS_0W.update := ~SMT & ICACHEUPDATE; ITAGS_1W.update := SMT & ICACHEUPDATE;                                              // UPDATE CPU l0 TAGS FOR MAIN/SMT THREAD FLAG
+    CACHEL0CLEAR := 0;
 
     // CONTROLS FOR MEMORY ACCESSES AND UNIT START FLAGS
     FETCH.start := 0; LOAD.start := 0; STORE.start := 0; LOAD64.start := 0; STORE64.start := 0; START_LOAD :=0; START_STORE := 0;
@@ -231,8 +234,8 @@ unit PAWSCPU(
     EXECUTESLOW.start := 0; EXECUTEFPU.start := 0;
 
     algorithm <autorun> {
-        while( |resetCounter ) { resetCounter = resetNEXT; }                                                                    // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
-        ++: cacheselect = 0; FETCH.start = ~L0match;                                                                                // START FETCH FIRST INSTRUCTION
+        CACHEL0CLEAR = 1; while( |resetCounter ) { resetCounter = resetNEXT; }                                                                    // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
+        ++: cacheselect = 0; FETCH.start = 1;                                                                                // START FETCH FIRST INSTRUCTION
 
         while(1) {
             // CPU LOOP, CONTINUE UNTIL DMA REQUEST, THEN RESTART AT FETCH
@@ -248,6 +251,8 @@ unit PAWSCPU(
                     instruction = FETCH.instruction; compressed = FETCH.compressed;
                 }
                 ICACHEUPDATE = 1; cacheselect = 1; ++:                                                                          // SWITCH TO DATA CACHE, UPDATE ICACHE, ALLOW ADDRESS GENERATION, REGISTER FETCH
+
+                __display("INSN = %x @ %x",instruction,PC);
 
                 START_STORE = ( RV32ONTROL.IS_FAST & RV32ONTROL.IS_STORE );                                                   // START STORE IF FAST
                 START_LOAD = RV32ONTROL.IS_LOAD;                                                                               // START LOAD
