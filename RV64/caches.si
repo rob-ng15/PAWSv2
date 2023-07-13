@@ -141,6 +141,7 @@ unit cachecontroller(
     input   uint1   clock_cache,
     input   uint1   cacheselect,
     input   uint$sdram_addr_width$  address,
+    input   uint$sdram_addr_width$  address2,
     input   uint2   accesssize,
     input   uint1   writeflag,
     input   uint32  writedata,
@@ -152,10 +153,10 @@ unit cachecontroller(
     simple_dualport_bram uint$L1partaddresswidth+2$ Dtags0 <@clock_cache,@clock> [$L1size$] = uninitialized;
     simple_dualport_bram uint16 Dcache1 <@clock_cache,@clock> [$L1size$] = uninitialized;
     simple_dualport_bram uint$L1partaddresswidth+2$ Dtags1 <@clock_cache,@clock> [$L1size$] = uninitialized;
-    cache_read DCACHE <@clock_cache> ( cache0 <:> Dcache0, cache1 <:> Dcache1, address <: address );
-    tags_read DTAGS <@clock_cache> ( tags0 <:> Dtags0, tags1 <:> Dtags1, address <: address );
-    cache_write DCACHEW( cache0 <:> Dcache0, cache1 <:> Dcache1, address <: address, writedata <: cachewritevalue );
-    tags_write DTAGSW( tags0 <:> Dtags0, tags1 <:> Dtags1, needwritetosdram <: dowrite, address <: address );
+    cache_read DCACHE <@clock_cache> ( cache0 <:> Dcache0, cache1 <:> Dcache1, address <: address, address2 <: address2 );
+    tags_read DTAGS <@clock_cache> ( tags0 <:> Dtags0, tags1 <:> Dtags1, address <: address, address2 <: address2 );
+    cache_write DCACHEW( cache0 <:> Dcache0, cache1 <:> Dcache1, address <: address, address2 <: address2, writedata <: cachewritevalue );
+    tags_write DTAGSW( tags0 <:> Dtags0, tags1 <:> Dtags1, needwritetosdram <: dowrite, address <: address, address2 <: address2 );
 
     uint32  cachewritevalue = uninitialized;                                                                                    // VALUE TO WRITE THROUGH TO THE CACHE
     uint32  sdramreaddata = uninitialized;                                                                                      // SDRAM CONTROLLER
@@ -165,7 +166,6 @@ unit cachecontroller(
 
     algorithm <autorun> {
         uint1   doread = uninitialized;                                                                                         // MEMORY READ OPERATION FLAG
-        uint$sdram_addr_width$ address2 <:: address + 2;                                                                        // ADDRESS FOR FOLLOWING MEMORY ADDRESS
         uint2   accessmask <:: { accesssize[1,1], 1b1 };                                                                        // ACCESSMASK WHICH PARTS OF THE 2 x 16 BIT CACHE PARTS ARE USED
         uint1   Dmatch <:: ( accesssize[1,1] ? &DTAGS.tagmatch : DTAGS.tagmatch[0,1] );                                         // CACHE MATCH FLAGS ( 32 bit both, 16/8 bit lower )
         uint2   Devict <:: accessmask & DTAGS.needswrite & ~DTAGS.tagmatch;                                                     // CACHE EVICTION FLAG ( HIGH, LOW )
@@ -239,11 +239,12 @@ unit cache_read(
     simple_dualport_bram_port0 cache0,
     simple_dualport_bram_port0 cache1,
     input   uint$sdram_addr_width$  address,
+    input   uint$sdram_addr_width$  address2,
     output! uint32  rdata,
 ) <reginputs> {
-    always_after {
-        uint$sdram_addr_width$ address0 = address + { address[1,1], 1b0 };
+    uint$sdram_addr_width$ address0 <:: address[1,1] ? address2 : address;
 
+    always_after {
         cache0.addr0 = address0[2,$L1cacheaddrwidth$]; cache1.addr0 = address[2,$L1cacheaddrwidth$];
         rdata = address[1,1] ? { cache0.rdata0, cache1.rdata0 } : { cache1.rdata0, cache0.rdata0 };
     }
@@ -253,19 +254,20 @@ unit tags_read(
     simple_dualport_bram_port0 tags0,
     simple_dualport_bram_port0 tags1,
     input   uint$sdram_addr_width$  address,
+    input   uint$sdram_addr_width$  address2,
     output! uint$sdram_addr_width$  cacheaddressL,
     output! uint$sdram_addr_width$  cacheaddressH,
     output! uint2   tagmatch,
     output! uint2   needswrite
 ) <reginputs> {
+    uint$sdram_addr_width$ address0 <:: address[1,1] ? address2 : address;
+    uint$sdram_addr_width$ cacheaddress_address0 <:: { L1cachetag(tags0.rdata0).partaddress, address0[2,$L1cacheaddrwidth$], 2b00 };
+    uint$sdram_addr_width$ cacheaddress_address1 <:: { L1cachetag(tags1.rdata0).partaddress, address[2,$L1cacheaddrwidth$], 2b10 };
+
+    uint1   cache_match0 <:: { L1cachetag(tags0.rdata0).valid, L1cachetag(tags0.rdata0).partaddress } == { 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
+    uint1   cache_match1 <:: { L1cachetag(tags1.rdata0).valid, L1cachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
+
     always_after {
-        uint$sdram_addr_width$ address0 = address + { address[1,1], 1b0 };
-        uint$sdram_addr_width$ cacheaddress_address0 = { L1cachetag(tags0.rdata0).partaddress, address0[2,$L1cacheaddrwidth$], 2b00 };
-        uint$sdram_addr_width$ cacheaddress_address1 = { L1cachetag(tags1.rdata0).partaddress, address[2,$L1cacheaddrwidth$], 2b10 };
-
-        uint1   cache_match0 = { L1cachetag(tags0.rdata0).valid, L1cachetag(tags0.rdata0).partaddress } == { 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
-        uint1   cache_match1 = { L1cachetag(tags1.rdata0).valid, L1cachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
-
         tags0.addr0 = address0[2,$L1cacheaddrwidth$]; tags1.addr0 = address[2,$L1cacheaddrwidth$];
 
         tagmatch = address[1,1] ? { cache_match0, cache_match1 } : { cache_match1, cache_match0 };
@@ -280,12 +282,13 @@ unit cache_write(
     simple_dualport_bram_port1 cache0,
     simple_dualport_bram_port1 cache1,
     input   uint$sdram_addr_width$  address,
+    input   uint$sdram_addr_width$  address2,
     input   uint32  writedata,
     input   uint2   update
 ) <reginputs> {
-    always_after {
-        uint$sdram_addr_width$ address0 = address + { address[1,1], 1b0 };
+    uint$sdram_addr_width$ address0 <:: address[1,1] ? address2 : address;
 
+    always_after {
         cache0.addr1 = address0[2,$L1cacheaddrwidth$]; cache0.wdata1 = address[1,1] ? writedata[16,16] : writedata[0,16]; cache0.wenable1 = address[1,1] ? update[1,1] : update[0,1];
         cache1.addr1 = address[2,$L1cacheaddrwidth$]; cache1.wdata1 = address[1,1] ? writedata[0,16] : writedata[16,16]; cache1.wenable1 = address[1,1] ? update[0,1] : update[1,1];
     }
@@ -295,12 +298,13 @@ unit tags_write(
     simple_dualport_bram_port1 tags0,
     simple_dualport_bram_port1 tags1,
     input   uint$sdram_addr_width$  address,
+    input   uint$sdram_addr_width$  address2,
     input   uint1   needwritetosdram,
     input   uint2   update
 ) <reginputs> {
-    always_after {
-        uint$sdram_addr_width$ address0 = address + { address[1,1], 1b0 };
+    uint$sdram_addr_width$ address0 <:: address[1,1] ? address2 : address;
 
+    always_after {
         tags0.addr1 = address0[2,$L1cacheaddrwidth$]; tags0.wenable1 = address[1,1] ? update[1,1] : update[0,1];
         tags0.wdata1 = { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
 

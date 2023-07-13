@@ -11,38 +11,37 @@ unit background_display(
     input   uint4   b_mode,
     input   uint1   colourmode
 ) <reginputs> {
-    starfield STARS( pix_x <: pix_x, pix_y <: pix_y, pix_end <: pix_end );
+    brom uint8 rainbow[8] = { 8h80, 8hc1, 8he1, 8hf9, 8h38, 8h0f, 8h45, 8ha7 };                                                 // 8 COLOUR RAINBOW DKRED RED ORANGE YELLOW GREEN BLUE DKPURPLE VIOLET
+    uint2   condition = uninitialised;                                                                                          // CONDITION FLAG, == 0 alt, == 1 colour, == 2 rainbow, == 3 static
+    uint1   tophalf <:: ( pix_y < 240 );                                                                                        // TOP HALF OF SCREEN
+    uint1   lefthalf <:: ( pix_x < 320 );                                                                                       // LEFT HALF OF THE SCREEN
+    uint2   checkmode <:: b_mode - 7;                                                                                           // SIZE OF CHECKERBOARD
 
+    starfield STARS( pix_x <: pix_x, pix_y <: pix_y, pix_end <: pix_end );                                                      // STARFIELD GENERATOR
+
+    rainbow.addr := pix_y[6,3];
     always_after {
-        // 8 COLOUR RAINDOW IN DIFFERENT SCREEN COLOUR MODES
-        // DKRED RED ORANGE YELLOW GREEN BLUE DKPURPLE VIOLET
-        uint8   rainbow[] = { 8h80, 8hc1, 8he1, 8hf9, 8h38, 8h0f, 8h45, 8ha7 };
-        uint2   condition = uninitialised;
-        uint1   tophalf = ( pix_y < 240 );          uint1   lefthalf = ( pix_x < 320 );                 uint2   checkmode =: b_mode - 7;
-
-
-        // DETERMINE BACKGROUND PATTERN
-        switch( b_mode ) {
-            case 0: { condition = 1; }                                              // SOLID
-            case 1: { condition = tophalf; }                                        // 50:50 HORIZONTAL SPLIT
-            case 2: { condition = ( lefthalf ); }                                   // 50:50 VERTICAL SPLIT
-            case 3: { condition = ( lefthalf ^ tophalf ); }                         // QUARTERS
-            case 5: { condition  = STARS.star; }                                    // SNOW (from @sylefeb)
-            case 11: { condition = ( pix_x[0,1] | pix_y[0,1] ); }                   // CROSSHATCH
-            case 12: { condition = ( pix_x[0,2] == pix_y[0,2] ); }                  // LSLOPE
-            case 13: { condition = ( pix_x[0,2] == ~pix_y[0,2] ); }                 // RSLOPE
-            case 14: { condition = pix_x[0,1]; }                                    // VSTRIPES
-            case 15: { condition = pix_y[0,1]; }                                    // HSTRIPES
-            case 4: { condition = 2; } case 6: { condition = 3; }                   // STATIC AND RAINBOW (placeholder, done in main)
-            default: { condition = ( pix_x[checkmode,1] ^ pix_y[checkmode,1] ); }   // CHECKERBOARDS (7,8,9,10)
+        switch( b_mode ) {                                                                                                      // DETERMINE BACKGROUND PATTERN
+            case 0: { condition = 1; }                                                                                          //  SOLID
+            case 1: { condition = tophalf; }                                                                                    //  50:50 HORIZONTAL SPLIT
+            case 2: { condition = ( lefthalf ); }                                                                               //  50:50 VERTICAL SPLIT
+            case 3: { condition = ( lefthalf ^ tophalf ); }                                                                     //  QUARTERS
+            case 5: { condition  = STARS.star; }                                                                                //  SNOW (from @sylefeb)
+            case 11: { condition = ( pix_x[0,1] | pix_y[0,1] ); }                                                               //  CROSSHATCH
+            case 12: { condition = ( pix_x[0,2] == pix_y[0,2] ); }                                                              //  LSLOPE
+            case 13: { condition = ( pix_x[0,2] == ~pix_y[0,2] ); }                                                             //  RSLOPE
+            case 14: { condition = pix_x[0,1]; }                                                                                //  VSTRIPES
+            case 15: { condition = pix_y[0,1]; }                                                                                //  HSTRIPES
+            case 4: { condition = 2; } case 6: { condition = 3; }                                                               //  STATIC AND RAINBOW
+            default: { condition = ( pix_x[checkmode,1] ^ pix_y[checkmode,1] ); }                                               //  CHECKERBOARDS (7,8,9,10)
         }
 
-        // SWITCH TO THE APPROPRIATE COLOUR
-        switch( condition ) {
-            case 0: { pixel = b_alt; }                                                                  // EVERYTHING ELSE
-            case 1: { pixel = b_colour; }
-            case 2: { pixel = colourmode ? { pix_y[7,2], {2{pix_y[6,3]}} } : rainbow[ pix_y[6,3] ]; }   // RAINBOW
-            case 3: { pixel = {4{staticGenerator}}; }                                                   // STATIC
+
+        switch( condition ) {                                                                                                   // SWITCH TO THE APPROPRIATE COLOUR
+            case 0: { pixel = b_alt; }                                                                                          //  ALT
+            case 1: { pixel = b_colour; }                                                                                       //  COLOUR
+            case 2: { pixel = rainbow.rdata; }                                                                                  //  RAINBOW
+            case 3: { pixel = {4{staticGenerator}}; }                                                                           //  STATIC
         }
     }
 }
@@ -113,10 +112,10 @@ unit nucu(
 ) <reginputs> {
     uint$NUCUaddr$   PC = 0;                                                                                                    // PROGRAM COUNTER
     uint2   PCinc = uninitialised;                                                                                              // PC ACTION FLAG == 0 PCnext, == 1 PCskip, == 2 RL value
+    uint$NUCUaddr$   PCnext <:: PC + 1;                                                                                         // NEXT INSTRUCTION
+    uint$NUCUaddr$   PCskip <:: PC + 2;                                                                                         // NEXT INSTRUCTION IF SKIP
     uint1   WR = uninitialised;                                                                                                 // WRITE TO REGISTERS FLAG
     uint1   WM = uninitialised;                                                                                                 // WRITE TO MEMORY FLAG
-
-    uint10  MEM[$NUCUmem$] = uninitialised;                                                                                     // STORAGE FOR 8 MEMORY LOCATIONS
 
     bram uint10 dstack[$NUCUstack$] = uninitialised;                                                                            // DATA STACK
     bram uint$NUCUaddr$ rstack[$NUCUstack$] = uninitialised;                                                                    // RETURN STACK
@@ -124,8 +123,7 @@ unit nucu(
     PCinc := 0; WR := 1; WM := 0; dstack.wenable := 0; rstack.wenable := 0;
 
     always_after {
-        uint$NUCUaddr$   PCnext = PC + 1;                                                                                       // NEXT INSTRUCTION
-        uint$NUCUaddr$   PCskip = PC + 2;                                                                                       // NEXT INSTRUCTION IF SKIP
+        uint10  MEM[$NUCUmem$] = uninitialised;                                                                                 // STORAGE FOR 8 MEMORY LOCATIONS
         uint10  reg1 = uninitialised;                                                                                           // CONTENTS OF REG 1
         uint10  reg2 = uninitialised;                                                                                           // CONTENTS OF REG 2 OR LITERAL VALUE
         uint10  result = uninitialised;                                                                                         // RESULT OF OP
@@ -221,7 +219,6 @@ unit starfield(
     uint10  dotpos <:: ( frame >> rand_x[10,2] ) + rand_x;
 
     always_after {
-
         frame = frame + pix_end;                                                                                                // INCREMENT AT END OF FRAME
         rand_x = |pix_x ?  rand_x * 31421 + 6927 : 1;
         star = ( pix_y == dotpos );

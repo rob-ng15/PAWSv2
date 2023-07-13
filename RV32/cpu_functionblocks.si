@@ -3,6 +3,7 @@ unit control(
     // THREAD, DMA AND MEMORY ACCESS SIZE
     input   uint1   cacheselect,
     output  uint2   accesssize,
+    output  uint1   IS_MEM64,
     input   uint1   DMAACTIVE,
     input   uint2   DMAACCESSSIZE,
     input   uint1   SMT,
@@ -20,7 +21,6 @@ unit control(
     output  uint32  immediateValue,
     output  uint1   IS_AUIPCLUI,
     output  uint1   IS_JAL,
-    output  uint1   IS_ALUM,
     output  uint1   IS_CSR,
     output  uint1   IS_ATOMIC,
     output  uint1   IS_FPU,
@@ -30,11 +30,13 @@ unit control(
     output  uint1   IS_ALU,
     output  uint1   IS_FAST,
     output  uint1   IS_FASTFPU,
+    output  uint1   IS_ALU32,
+    output  uint1   IS_ALU32SIGNX,
 
     // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
     input   uint1   frd,
     input   uint1   write,
-    input   uint32  result,
+    input   uint64  result,
     output  uint32  sourceReg1,
     output  uint32  S1_abs32,
     output  uint32  sourceReg2,
@@ -51,17 +53,17 @@ unit control(
     output  uint32  AUIPCLUI,
     output  uint$addr_width$  loadAddress,
     output  uint$addr_width$  storeAddress,
+    output  uint1   IS_MA,
     output  uint$addr_width$  nextPC,
     output  uint$addr_width$  newPC
 ) <reginputs> {
     // INSTRUCTION CLASSIFICATION AND CPU CONTROL FLAGS
     controlflags FLAGS(
-        opCode <: Rtype(instruction).opCode,
+        opCode <: Rtype(instruction).opCode[2,5],
         function3 <: Rtype(instruction).function3,
         function7 <: Rtype(instruction).function7,
         IS_AUIPCLUI :> IS_AUIPCLUI,
         IS_JAL :> IS_JAL,
-        IS_ALUM :> IS_ALUM,
         IS_CSR :> IS_CSR,
         IS_ATOMIC :> IS_ATOMIC,
         IS_LOAD :> IS_LOAD,
@@ -75,34 +77,47 @@ unit control(
         IS_FASTFPU :> IS_FASTFPU
     );
 
+    // DETERMINE MEMORY ACCESS FLAGS
+    memsize MEMACCESSFLAGS(
+        cacheselect <: cacheselect,
+        DMAACTIVE <: DMAACTIVE,
+        DMAACCESSSIZE <: DMAACCESSSIZE,
+        function3 <: Rtype(instruction).function3[0,2],
+        I1R <: I1R.rdata0[0,1],
+        I20 <: instruction[20,1],
+        I7 <: instruction[7,1],
+        IS_ATOMIC <: FLAGS.IS_ATOMIC,
+        IS_LOAD <: FLAGS.IS_LOAD,
+        IS_STORE <: FLAGS.IS_STORE,
+        IS_MA :> IS_MA,
+        IS_MEM64 :> IS_MEM64,
+        accesssize :> accesssize
+    );
+
+    // ADDRESS GENERATORS
+    loadaddress LA( instruction <: instruction, IS_ATOMIC <: FLAGS.IS_ATOMIC, I1R <: I1R.rdata0, loadAddress :> loadAddress );
+    storeaddress SA( instruction <: instruction, IS_ATOMIC <: FLAGS.IS_ATOMIC, I1R <: I1R.rdata0, storeAddress :> storeAddress );
+    jumpaddress JA( instruction <: instruction, IS_BRANCH <: FLAGS.IS_BRANCH, PC <: PC );
+    auipclui AUI( instruction <: instruction, PC <: PC, AUIPCLUI :> AUIPCLUI );
+
     // REGISTERS I integer x 2 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
-    $$for i=0,1 do
-        simple_dualport_bram int32 I1_$i$[32] = { 0, pad(uninitialized) };
-        simple_dualport_bram int32 I2_$i$[32] = { 0, pad(uninitialized) };
-    $$end
+    simple_dualport_bram int64 I1[32] = { 0, pad(uninitialized) };
+    simple_dualport_bram int64 I2[32] = { 0, pad(uninitialized) };
 
     // REGISTER WRITE SWITCHES
     uint1   Iwrite <:: write & ~frd & |Rtype(instruction).destReg;
 
-    regR32 I1R( SMT <: SMT, regfile0 <:> I1_0, regfile1 <:> I1_1, addr0 <: Rtype(instruction).sourceReg1, rdata0 :> sourceReg1 );
-    regR32 I2R( SMT <: SMT, regfile0 <:> I2_0, regfile1 <:> I2_1, addr0 <: Rtype(instruction).sourceReg2, rdata0 :> sourceReg2 );
-    regW32 I1W( SMT <: COMMIT_SMT, regfile0 <:> I1_0, regfile1 <:> I1_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );
-    regW32 I2W( SMT <: COMMIT_SMT, regfile0 <:> I2_0, regfile1 <:> I2_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );
+    regR I1R( SMT <: SMT, regfile <:> I1, addr0 <: Rtype(instruction).sourceReg1, rdata0 :> sourceReg1 );
+    regR I2R( SMT <: SMT, regfile <:> I2, addr0 <: Rtype(instruction).sourceReg2, rdata0 :> sourceReg2 );
+    regW I1W( SMT <: COMMIT_SMT, regfile <:> I1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );
+    regW I2W( SMT <: COMMIT_SMT, regfile <:> I2, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );
 
     // ABSOLUTE VALUES OF sourceReg1 and sourceReg2
     abs32 S1_abs( sourceReg <: I1R.rdata0, abs32 :> S1_abs32 ); abs32 S2_abs( sourceReg <: I2R.rdata0, abs32 :> S2_abs32 );
 
-    // JUMP AND BRANCH DESTINATIONS
-    uint$addr_width$ jumpAddress <:: ( FLAGS.IS_BRANCH ?
-                                     { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } :
-                                     { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 }
-                                     ) + PC;
-
     // COMPARISONS AND BRANCHES
-    int32   operand2 <: opCode[3,1] ? I2R.rdata0 : { {20{instruction[31,1]}}, Itype(instruction).immediate };
-    uint1   takeBranch <: Rtype(instruction).function3[0,1] ^ flags[ Rtype(instruction).function3[1,2], 1 ];
-    uint4   flags <: { COMPARE.LTU, COMPARE.LT, 1b0, COMPARE.EQ };
+    int32   operand2 <:: opCode[3,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate };
     integercomparisons COMPARE(
         sourceReg1 <: I1R.rdata0,
         operand2 <: operand2,
@@ -110,27 +125,16 @@ unit control(
         LTU :> LTU,
         EQ :> EQ
     );
+    uint4   flags <:: { COMPARE.LTU, COMPARE.LT, 1b0, COMPARE.EQ };
 
     always_after {
-        // EXTRACT BITFIELDS FROM INSTRUCTION
-        { opCode = instruction[2,5]; }
-        { function3 = Rtype(instruction).function3; }
-        { function7 = Rtype(instruction).function7; }
-        { immediateValue = { {20{instruction[31,1]}}, Itype(instruction).immediate }; }
+        opCode = instruction[2,5]; function3 = Rtype(instruction).function3; function7 = Rtype(instruction).function7;          // EXTRACT BITFIELDS FROM INSTRUCTION
+        immediateValue = { {52{instruction[31,1]}}, Itype(instruction).immediate };                                             // EXTRACT AND SIGN EXTEND IMMEDIATE VALUE FROM INSTRUCTION
+        rs1 = Rtype(instruction).sourceReg1; rs2 = Rtype(instruction).sourceReg2;                                               // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
 
-        // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
-        { rs1 = Rtype(instruction).sourceReg1; }
-        { rs2 = Rtype(instruction).sourceReg2; }
-
-        // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32 ELSE BY function3
-        { accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? Rtype(instruction).function3[0,2] : 2b10; }
-
-        // ADDRESS GENRATION
-        { AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC ); }
-        { loadAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Itype(instruction).immediate } ) + I1R.rdata0[0,$addr_width$]; }
-        { storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R.rdata0[0,$addr_width$]; }
-        { nextPC = PC + ( compressed ? 2 : 4 ); }
-        { newPC = FLAGS.incPC ? ( FLAGS.IS_BRANCH & takeBranch ? jumpAddress : nextPC ) : ( instruction[3,1] ? jumpAddress : loadAddress ); }
+        newPC = FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).function3[0,1] ^ flags[ Rtype(instruction).function3[1,2], 1 ] ) ? JA.jumpAddress : nextPC ) :
+                              ( instruction[3,1] ? JA.jumpAddress : LA.loadAddress );
+        nextPC = PC + ( compressed ? 2 : 4 );
     }
 }
 
@@ -162,38 +166,34 @@ unit float_control(
 ) <reginputs> {
     // REGISTERS F float x 3, 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
-    $$for i=0,1 do
-        simple_dualport_bram int64 F1_$i$[32] = uninitialized;
-        simple_dualport_bram int64 F2_$i$[32] = uninitialized;
-        simple_dualport_bram int64 F3_$i$[32] = uninitialized;
-    $$end
+    simple_dualport_bram int64 F1[64] = uninitialized;
+    simple_dualport_bram int64 F2[64] = uninitialized;
+    simple_dualport_bram int64 F3[64] = uninitialized;
 
     // REGISTER WRITE SWITCHES
     uint1   Fwrite <:: write & frd;
 
-    regR F1R( SMT <: SMT, regfile0 <:> F1_0, regfile1 <:> F1_1, addr0 <: R4type(instruction).sourceReg1, rdata0 :> sourceReg1F );
-    regR F2R( SMT <: SMT, regfile0 <:> F2_0, regfile1 <:> F2_1, addr0 <: R4type(instruction).sourceReg2, rdata0 :> sourceReg2F );
-    regR F3R( SMT <: SMT, regfile0 <:> F3_0, regfile1 <:> F3_1, addr0 <: R4type(instruction).sourceReg3, rdata0 :> sourceReg3F );
-    regW F1W( SMT <: COMMIT_SMT, regfile0 <:> F1_0, regfile1 <:> F1_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
-    regW F2W( SMT <: COMMIT_SMT, regfile0 <:> F2_0, regfile1 <:> F2_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
-    regW F3W( SMT <: COMMIT_SMT, regfile0 <:> F3_0, regfile1 <:> F3_1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+    regR F1R( SMT <: SMT, regfile <:> F1, addr0 <: R4type(instruction).sourceReg1, rdata0 :> sourceReg1F );
+    regR F2R( SMT <: SMT, regfile <:> F2, addr0 <: R4type(instruction).sourceReg2, rdata0 :> sourceReg2F );
+    regR F3R( SMT <: SMT, regfile <:> F3, addr0 <: R4type(instruction).sourceReg3, rdata0 :> sourceReg3F );
+    regW F1W( SMT <: COMMIT_SMT, regfile <:> F1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+    regW F2W( SMT <: COMMIT_SMT, regfile <:> F2, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+    regW F3W( SMT <: COMMIT_SMT, regfile <:> F3, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
 
     // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
-    typeF class1F( df <: Rtype(instruction).function7[0,1], a <: F1R.rdata0, type :> typeAF );
-    typeF class2F( df <: Rtype(instruction).function7[0,1], a <: F2R.rdata0, type :> typeBF );
-    typeF class3F( df <: Rtype(instruction).function7[0,1], a <: F3R.rdata0, type :> typeCF );
+    typeF class1F( dsh <: Rtype(instruction).function7[0,2], a <: F1R.rdata0, type :> typeAF );
+    typeF class2F( dsh <: Rtype(instruction).function7[0,2], a <: F2R.rdata0, type :> typeBF );
+    typeF class3F( dsh <: Rtype(instruction).function7[0,2], a <: F3R.rdata0, type :> typeCF );
 
-    // FOR changeprecision, the df flag is the opposite of normal use, == 1 is TO doulbe, not IS DOUBLE
-    uint1 oppDF <:: ~Rtype(instruction).function7[0,1];                                                                         // OPPOSITE OF DOUBLE / FLOAT FLAG ( used for changeprecision )
-    typeF class1Fopp( df <: oppDF, a <: F1R.rdata0, type :> typeAopp );                                                         // FORCE CLASSIFICATION OF DOUBLE / SINGLE FOR changeprecision
-    repackage_wide Aopp( df <: oppDF, a <: F1R.rdata0, repack :> sourceReg1Fxopp );                                             // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION FOR changeprecision
+    // FOR changeprecision, the dsh flag for the source is in rs2, function7 determines the destination
+    typeF class1Fopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, type :> typeAopp );                           // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
+    repackage_wide Aopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, repack :> sourceReg1Fxopp );               // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION FOR changeprecision
 
-    repackage_wide A( df <: Rtype(instruction).function7[0,1], a <: F1R.rdata0, repack :> sourceReg1Fx );                       // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
-    repackage_wide B( df <: Rtype(instruction).function7[0,1], a <: F2R.rdata0, repack :> sourceReg2Fx );                       // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
-    repackage_wide C( df <: Rtype(instruction).function7[0,1], a <: F3R.rdata0, repack :> sourceReg3Fx );                       // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
+    repackage_wide A( dsh <: Rtype(instruction).function7[0,2], a <: F1R.rdata0, repack :> sourceReg1Fx );                      // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
+    repackage_wide B( dsh <: Rtype(instruction).function7[0,2], a <: F2R.rdata0, repack :> sourceReg2Fx );                      // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
+    repackage_wide C( dsh <: Rtype(instruction).function7[0,2], a <: F3R.rdata0, repack :> sourceReg3Fx );                      // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
 
     floatcompare FPUcompare(                                                                                                    // FLOATING POINT COMPARISONS
-        df <: Rtype(instruction).function7[0,1],
         a <: A.repack, typeAF <: class1F.type,
         b <: B.repack, typeBF <: class2F.type,
         less :> FLT,
@@ -201,76 +201,117 @@ unit float_control(
     );
 }
 
-// REGISTER READ AND WRITE BLOCKS
-unit regR32(
-    input   uint1   SMT,
-    simple_dualport_bram_port0 regfile0,
-    simple_dualport_bram_port0 regfile1,
-    input   uint5   addr0,
-    output  uint32  rdata0
+// DETERMINE MEMORY ACCESS FLAGS
+unit memsize(
+    input   uint1   cacheselect,
+    input   uint1   DMAACTIVE,
+    input   uint2   DMAACCESSSIZE,
+    input   uint2   function3,
+    input   uint1   I1R,
+    input   uint1   I20,
+    input   uint1   I7,
+    input   uint1   IS_ATOMIC,
+    input   uint1   IS_LOAD,
+    input   uint1   IS_STORE,
+    output  uint1   IS_MA,
+    output  uint1   IS_MEM64,
+    output  uint2   accesssize
 ) <reginputs> {
     always_after {
-        { regfile0.addr0 = addr0; } { regfile1.addr0 = addr0; } { rdata0 = SMT ? regfile1.rdata0 : regfile0.rdata0; }
+        accesssize = DMAACTIVE ? DMAACCESSSIZE : cacheselect ? IS_MA ? 2b00 : function3 : 2b10;                                 // DETERMINE MEMORY ACCESS SIZE - DMA 32, 16 or 8, INSTRUCTION (cacheselect == 0) 32
+                                                                                                                                // ELSE BY function3 ( IS_MA AS BYTES )
+        IS_MA = ~IS_ATOMIC & |function3 & (                                                                                     // ATOMIC OPERATIONS CANNOT BE MISALIGNED
+                ( IS_LOAD & ( I20 ^ I1R ) ) |                                                                                   // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
+                ( IS_STORE & ( I7 ^ I1R ) ) );                                                                                  // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
+        IS_MEM64 = &function3;                                                                                                  // DETECT 64 BIT MEMORY ACCESSES
     }
 }
-unit regW32(
-    input   uint1   SMT,
-    simple_dualport_bram_port1 regfile0,
-    simple_dualport_bram_port1 regfile1,
-    input   uint5   addr1,
-    input   uint1   wenable1,
-    input   uint32  wdata1
+
+// ADDRESS GENERATORS
+unit loadaddress(
+    input   uint32  instruction,
+    input   uint1   IS_ATOMIC,
+    output  uint$addr_width$  loadAddress,
+    input   uint$addr_width$  I1R
 ) <reginputs> {
     always_after {
-        { regfile0.addr1 = addr1; } { regfile0.wdata1 = wdata1; } { regfile0.wenable1 = ~SMT & wenable1; }
-        { regfile1.addr1 = addr1; } { regfile1.wdata1 = wdata1; } { regfile1.wenable1 = SMT & wenable1; }
+        loadAddress = ( IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Itype(instruction).immediate } ) + I1R;
     }
 }
+unit storeaddress(
+    input   uint32  instruction,
+    input   uint1   IS_ATOMIC,
+    output  uint$addr_width$  storeAddress,
+    input   uint$addr_width$  I1R
+) <reginputs> {
+    always_after {
+        storeAddress = ( IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R;
+    }
+}
+unit jumpaddress(
+    input   uint32  instruction,
+    input   uint1   IS_BRANCH,
+    output  uint$addr_width$  jumpAddress,
+    input   uint$addr_width$  PC
+) <reginputs> {
+    always_after {
+        jumpAddress = ( IS_BRANCH ?
+                        { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } :
+                        { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 }
+                      ) + PC;
+    }
+}
+unit auipclui(
+    input   uint32  instruction,
+    output  uint32  AUIPCLUI,
+    input   uint$addr_width$  PC
+) <reginputs> {
+    always_after {
+        AUIPCLUI = { Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
+    }
+}
+
 // REGISTER READ AND WRITE BLOCKS
 unit regR(
     input   uint1   SMT,
-    simple_dualport_bram_port0 regfile0,
-    simple_dualport_bram_port0 regfile1,
+    simple_dualport_bram_port0 regfile,
     input   uint5   addr0,
     output  uint64  rdata0
 ) <reginputs> {
     always_after {
-        { regfile0.addr0 = addr0; } { regfile1.addr0 = addr0; } { rdata0 = SMT ? regfile1.rdata0 : regfile0.rdata0; }
+        regfile.addr0 = { SMT, addr0 }; rdata0 = regfile.rdata0;
     }
 }
 unit regW(
     input   uint1   SMT,
-    simple_dualport_bram_port1 regfile0,
-    simple_dualport_bram_port1 regfile1,
+    simple_dualport_bram_port1 regfile,
     input   uint5   addr1,
     input   uint1   wenable1,
     input   uint64  wdata1
 ) <reginputs> {
     always_after {
-        { regfile0.addr1 = addr1; } { regfile0.wdata1 = wdata1; } { regfile0.wenable1 = ~SMT & wenable1; }
-        { regfile1.addr1 = addr1; } { regfile1.wdata1 = wdata1; } { regfile1.wenable1 = SMT & wenable1; }
+        regfile.addr1 = { SMT, addr1 }; regfile.wdata1 = wdata1; regfile.wenable1 = wenable1;
     }
 }
 
 // ABSOLUTE VALUES FOR 32 AND 64 BIT REGISTER CONTENTS
 unit abs32(
-    input   uint64  sourceReg,
+    input   uint32  sourceReg,
     output  uint32  abs32
 ) <reginputs> {
     always_after {
-        { abs32 = sourceReg[31,1] ? -sourceReg[0,32] : sourceReg[0,32]; }
+        abs32 = sourceReg[31,1] ? -sourceReg[0,32] : sourceReg[0,32];
     }
 }
 
 // CLASSIFY INSTRUCTION TYPE AND DETIMINE CPU CONTROL FLAGS
 unit controlflags(
-    input   uint7   opCode,
+    input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
     output  uint1   IS_AUIPCLUI,
     output  uint1   IS_JAL,
     output  uint1   IS_BRANCH,
-    output  uint1   IS_ALUM,
     output  uint1   IS_CSR,
     output  uint1   IS_ATOMIC,
     output  uint1   IS_FPU,
@@ -282,39 +323,34 @@ unit controlflags(
     output  uint1   incPC,
     output  uint1   IS_ALU,
     output  uint1   IS_FAST,
-    output  uint1   IS_FASTFPU,
+    output  uint1   IS_FASTFPU
 ) <reginputs> {
-    // IS REGISTER&REGISTER, NOT REGISTER&IMMEDIATE
-    uint1   REGREG <:: ( opCode[2,5] == 5b01100 ) | ( opCode[2,5] == 5b01110 );
-
-    // SET DEFAULT CONTROL FLAGS - STANDARD "SINGLE CYCLE" INTEGER ALU OPERATION
-    writeRegisterF := 0; writeRegister := 1; incPC := 1;
-    IS_FAST := 1; IS_ALU := 0; IS_FPU := 0; IS_FASTFPU := 0;
-    IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;
+    writeRegisterF := 0; writeRegister := 1; incPC := 1; IS_FAST := 1;                                                          // DEFAULT TO SINGLE-CYCLE, WRITE INTEGER REGISTER AND INCREMENT PC
+    IS_ALU := 0;                                                                                                                // ALU DETECTED FLAGS
+    IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;     // NON-ALU/FPU INSTRUCTION DETECTED FLAGS
+    IS_FPU := 0; IS_FASTFPU := 0;                                                                                               // FLOATING-POINT UNIT DETECTION FLAGS
 
     always_after {
-        // IDENTIFY FLOATING POINT, MULTIPLICATION AND CARRYLESS MULTIPLICATION
-        { IS_ALUM = REGREG & ( function7 == 7b0000001 ); }
-        {
-            // DETERMINE CPU CONTROL FLAGS
-            switch( opCode[2,5] ) {
-                case 5b01101: { IS_AUIPCLUI = 1; }                                                  // LUI
-                case 5b00101: { IS_AUIPCLUI = 1; }                                                  // AUIPC
-                case 5b11011: { IS_JAL = 1; incPC = 0; }                                            // JAL
-                case 5b11001: { IS_JAL = 1; incPC = 0; }                                            // JALR
-                case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                 // BRANCH
-                case 5b00000: { IS_LOAD = 1; }                                                      // LOAD
-                case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                  // FLOAT LOAD
-                case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                  // STORE
-                case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                  // FLOAT STORE
-                case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                   // FENCE[I]
-                case 5b11100: { IS_CSR = 1; IS_FAST = 0; }                                          // CSR ECALL EBBREAK
-                case 5b00100: { IS_ALU = 1; }                                                       // REGISTER-IMMEDIATE ALU
-                case 5b01100: { IS_ALU = 1; IS_FAST = ~( IS_ALUM & function3[2,1] ); }              // REGISTER-REGISTER ALU ( FAST NOT DIVIDE )
-                case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                       // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
-                case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }           // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
-                default: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = 0; }                                               // FUSED-FPU
+        switch( opCode ) {                                                                                                      // DETERMINE CPU CONTROL FLAGS BY OPCODE
+            case 5b01101: { IS_AUIPCLUI = 1; }                                                                                  // LUI
+            case 5b00101: { IS_AUIPCLUI = 1; }                                                                                  // AUIPC
+            case 5b11011: { IS_JAL = 1; incPC = 0; }                                                                            // JAL
+            case 5b11001: { IS_JAL = 1; incPC = 0; }                                                                            // JALR
+            case 5b11000: { IS_BRANCH = 1; writeRegister = 0; }                                                                 // BRANCH
+            case 5b00000: { IS_LOAD = 1; }                                                                                      // LOAD
+            case 5b00001: { IS_LOAD = 1; writeRegisterF = 1; }                                                                  // FLOAT LOAD
+            case 5b01000: { IS_STORE = 1; writeRegister = 0; }                                                                  // STORE
+            case 5b01001: { IS_STORE = 1; writeRegister = 0; }                                                                  // FLOAT STORE
+            case 5b00011: { IS_FENCE = 1; writeRegister = 0;}                                                                   // FENCE[I]
+            case 5b11100: { IS_CSR = 1; IS_FAST = 0; }                                                                          // CSR ECALL EBBREAK
+            case 5b00100: { IS_ALU = 1; }                                                                                       // REGISTER-IMMEDIATE ALU
+            case 5b01100: {                                                                                                     // REGISTER-REGISTER ALU
+                IS_ALU = 1;
+                IS_FAST = ~( ( function7 == 7b0000001 ) & function3[2,1] );                                                     // FAST NOT DIVIDE
             }
+            case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                                                       // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
+            case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }                           // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
+            default: { IS_FPU = 1; IS_FAST = 0; }                                                                               // FUSED-FPU
         }
     }
 }

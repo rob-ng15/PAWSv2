@@ -297,7 +297,7 @@ unit PAWSCPU(
     }
 }
 
-unit signnanbox(                                                                                                                     // SIGN EXTEND/NAN BOX MEMORYINPUT
+unit signnanbox(                                                                                                                // SIGN EXTEND/NAN BOX MEMORYINPUT
     input   uint1   floatload,
     input   uint1   dounsigned,
     input   uint2   accesssize,
@@ -305,13 +305,13 @@ unit signnanbox(                                                                
     input   uint64  memoryinput,
     output! uint64  readdata
 ) <reginputs> {
-    always_after {
-        uint1   sign = floatload ? 1 :                                                                                          // NAN BOX BIT FOR FLOAT LOAD
-                       dounsigned | &accesssize ? 0 :                                                                           // SIGN BIT FOR UNSIGNED OR 64 BIT
-                                     accesssize[1,1] ? memoryinput[31,1] :                                                      // EXTRACT SIGN IF REQUIRED FOR 32 BIT
-                                     accesssize[0,1] ? memoryinput[15,1] :                                                      //                              16 BIT
-                                                       memoryinput[{ byteaccess, 3b111 }, 1 ];                                  //                               8 BIT
+    uint1   sign <:: floatload ? 1 :                                                                                            // NAN BOX BIT FOR FLOAT LOAD
+                     dounsigned | &accesssize ? 0 :                                                                             // SIGN BIT FOR UNSIGNED OR 64 BIT
+                                   accesssize[1,1] ? memoryinput[31,1] :                                                        // EXTRACT SIGN IF REQUIRED FOR 32 BIT
+                                   accesssize[0,1] ? memoryinput[15,1] :                                                        //                              16 BIT
+                                                     memoryinput[{ byteaccess, 3b111 }, 1 ];                                    //                               8 BIT
 
+    always_after {
         switch( accesssize ) {
             case 2b00: { readdata = { {56{sign}}, memoryinput[ { byteaccess, 3b000 }, 8 ] }; }                                  // SIGN EXTEND 8 BIT LOAD
             case 2b01: { readdata = { {48{sign}}, memoryinput[0,16] }; }                                                        // SIGN EXTEND / NAN BOX 16 BIT LOAD
@@ -398,7 +398,7 @@ unit cpuexecuteSLOWPATH(
 ) <reginputs> {
     uint3   operation <:: { isALU, isATOMIC, isCSR };
 
-    aluA ALUA( function7 <: function7, memoryinput <: memoryinput, sourceReg2 <: sourceReg2 );                                   // ATOMIC MEMORY OPERATIONS
+    aluA ALUA( function7 <: function7, memoryinput <: memoryinput, sourceReg2 <: sourceReg2 );                                  // ATOMIC MEMORY OPERATIONS
 
     uint12  csrRegister <:: { function7, rs2 };                                                                                 // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
     CSRblock CSR(                                                                                                               // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
@@ -419,7 +419,6 @@ unit cpuexecuteSLOWPATH(
         sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
     );
 
-
     CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                        // START FLAGS
 
     algorithm <autorun> {
@@ -428,7 +427,7 @@ unit cpuexecuteSLOWPATH(
                 busy = 1;
                 onehot( operation ) {                                                                                           // PROVIDE WAIT STATES
                     default: { ++: }                                                                                            //  CSR AND ATOMIC OPERATIONS
-                    case 2: { while( ALUMD.busy ) {} }                                                                            //  INTEGER DIVISION AND CARRYLESS MULTIPLY
+                    case 2: { while( ALUMD.busy ) {} }                                                                          //  INTEGER DIVISION
                 }
                 busy = 0;
             }
@@ -446,7 +445,7 @@ unit cpuexecuteSLOWPATH(
                 }
                 memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                                       //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORUOUTPUT
             }
-            case 2: { result = size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; }      //  INTEGER DIVISION AND CARRYLESS MULTIPLY
+            case 2: { result = size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; }      //  INTEGER DIVISION
         }
     }
 }
@@ -505,17 +504,18 @@ unit cpuexecuteFPU(
 
     uint1   rm <:: ( &FPUflags[5,3] ? function3 : FPUflags[5,3] ) != 3b001;                                                     // SET ROUNDING FLAG ( ONLY RNE AND RTZ SUPPORTED ), FCSR UNLESS 111
     floatcalc FPUCALC(                                                                                                          // FLOATING POINT CALCULATIONS CONTROLLER
-        rm <: rm, dsh <: function7[0,2],                                                                                                  // RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
+        rm <: rm, dsh <: function7[0,2],                                                                                        //  RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
         BIAS <: BIAS,
         FPUflags <: FPUflags,
         opCode <: opCode, function3 <: function3, function7 <: function7[2,5],
         sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx, sourceReg3Fx <: sourceReg3Fx,
         typeAF <: typeAF, typeBF <: typeBF, typeCF <: typeCF
     );
-
     repackage_actual CALCRESULT( dsh <: function7[0,2], a <: FPUCALC.result );                                                  // REPACKAGE CALCULATION RESULT INTO CORRECT BITFIELDS WITH NAN BOXING
 
     // FLOATING POINT CONVERSIONS
+    uint64  convertresult <:: converttype[2,1] ? FPUF2IL.result : converttype[1,1] ? FPUIL2F.result : FPUF_CP.result;
+    uint5   convertflags <:: FPUflags | ( converttype[2,1] ? FPUF2IL.FPUflags : converttype[1,1] ? FPUIL2F.FPUflags : FPUF_CP.FPUflags );
     uint1   convertrm <:: ( function3 != 3b001 );                                                                               // SET ROUNDING FLAG FOR CONVERSIONS ( always uses function3 )
     intlong2float FPUIL2F( rm <: convertrm, dounsigned <: rs2[0,1], il <: rs2[1,1], dsh <: function7[0,2], BIAS <: BIAS, sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64 );
     float2intlong FPUF2IL( rm <: convertrm, dounsigned <: rs2[0,1], il <: rs2[1,1], BIAS <: BIAS, sourceReg1Fx <: sourceReg1Fx, typeAF <: typeAF );
@@ -535,9 +535,6 @@ unit cpuexecuteFPU(
     }
 
     always_after {
-        uint64  convertresult = converttype[2,1] ? FPUF2IL.result : converttype[1,1] ? FPUIL2F.result : FPUF_CP.result;
-        uint5   convertflags = FPUflags | ( converttype[2,1] ? FPUF2IL.FPUflags : converttype[1,1] ? FPUIL2F.FPUflags : FPUF_CP.FPUflags );
-
         result = operation[0,1] ? FPUFAST.result : operation[1,1] ? convertresult : CALCRESULT.repack;                          // COLLECT THE APPROPRIATE RESULT
         frd = fpuconvert ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd;                                                   // WRITE TO F REGISTERS FOR TO FLOAT CONVERSIONS, CALCULATIONS AND SOME SINGLE CYCLE
         FPUnewflags = fpuconvert ? convertflags : fpucalc ? FPUCALC.FPUnewflags : FPUFAST.FPUnewflags;                          // OUTPUT NEW FPU FLAGS
@@ -821,6 +818,18 @@ unit dma_pb_add(
         NEXT = PBcount + 1;
     }
 }
+unit dma_count_sub(
+    input   uint4   dmamode,
+    input   uint$addr_width$ dmacount,
+    input   uint1   DMA16BIT,
+    input   uint1   DMA32BIT,
+    input   uint3   PB4pixel,
+    output  uint$addr_width$ NEXT
+) <reginputs> {
+    always_after {
+        NEXT = dmacount - ( DMA32BIT ? 4 : DMA16BIT | ( &dmamode[0,3] & PB4pixel ) ? 2 : 1 );                                   // NEXT DMA COUNT, -1, -2, -4 FOR 8, 16, 32 BIT TRANSFERS
+    }
+}
 unit dma(
     input   uint$addr_width$  DMASOURCE,
     input   uint$addr_width$  DMASOURCEADD,
@@ -843,14 +852,13 @@ unit dma(
 ) <reginputs> {
     uint1   DMA16BIT = uninitialised;               uint1   DMA32BIT = uninitialised;                                           // IS DMA TRANSFER 16/32 BIT CAPABLE, DEFAULTS TO 8 BIT
 
-    uint1   PB4pixel = uninitialised;               uint3   PBmax <:: PB4pixel ? 4 : 2;                                         // COUNTERS FOR PIXEL BLOCK TRANSFERS, PLUS CAPABILITY FOR 16/32 BIT TRANSFERS
+    uint1   PB4pixel = uninitialised;               uint3   PBmax <:: { PB4pixel, ~PB4pixel, 1b0 };                             // COUNTERS FOR PIXEL BLOCK TRANSFERS, PLUS CAPABILITY FOR 16/32 BIT TRANSFERS
     uint3   PBcount = uninitialised;
 
     uint4   dmamode = uninitialized;                                                                                            // DMA MODE
     uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
     uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
     uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
-    uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | ( &dmamode[0,3] & PB4pixel ) ? 2 : 1 );           // NEXT DMA COUNT, -1, -2, -4 FOR 8, 16, 32 BIT TRANSFERS
     uint8   dmacycles = uninitialised;                                                                                          // DMA NUMBER OF CYCLES LEFT FOR "RECTANGLE" COPY/SET
 
     uint32  memoryinput = uninitialised;                                                                                        // STORAGE FOR MEMORY INPUT
@@ -879,6 +887,13 @@ unit dma(
     dma_pb_add PB(                                                                                                              // GENERATE NEXT PIXELBLOCK COUNTERS
         PBcount <: PBcount,
         PBmax <: PBmax
+    );
+    dma_count_sub COUNT(
+        dmamode <: dmamode,
+        dmacount <: dmacount,
+        DMA16BIT <: DMA16BIT,
+        DMA32BIT <: DMA32BIT,
+        PB4pixel <: PB4pixel
     );
 
     writememory := 0; readmemory := 0; update := 0;
@@ -967,7 +982,7 @@ unit dma(
                 }
             }
             dmacycles = dmacycles - ~|dmacount;                                                                                 // UPDATE CYCLES WHEN COUNT == 0
-            dmacount = |dmacount ? dmacountNEXT : dmamode[3,1] ? DMACOUNT : 0;                                                  // UPDATE COUNT I` != 0, reset if multi-cycle mode
+            dmacount = |dmacount ? COUNT.NEXT : dmamode[3,1] ? DMACOUNT : 0;                                                    // UPDATE COUNT I` != 0, reset if multi-cycle mode
         }
 
         if( ~DMAACTIVE ) {

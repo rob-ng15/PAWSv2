@@ -17,8 +17,6 @@ unit framebuffer_read(
     output! uint1   bitmap_display,
     input   uint1   display256
 ) <reginputs> {
-    uint8   pixel0 = uninitialised;                 uint8   pixel1 = uninitialised;                                             // PRESENT PIXEL FROM EACH FRAMEBUFFER
-
     uint17  baseaddress <: ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? pix_x[1,9] : 0 );                             // SET BASE ADDRESS
     uint17  baseaddress0 <: baseaddress + ( pix_active & pix_x[0,1] );                                                          // SET BASE ADDRESS FOR FIRST PIXEL IN BLOCK ( MAY NEED TO BE 1 AHEAD )
 
@@ -27,6 +25,8 @@ unit framebuffer_read(
     bitmap_100.addr0 := baseaddress0[2,15]; bitmap_101.addr0 := baseaddress[2,15]; bitmap_110.addr0 := baseaddress[2,15]; bitmap_111.addr0 := baseaddress[2,15];
 
     always_after {
+        uint8   pixel0 = uninitialised;                 uint8   pixel1 = uninitialised;                                         // PRESENT PIXEL FROM EACH FRAMEBUFFER
+
         switch( baseaddress[0,2] ) {                                                                                            // SELECT PIXEL FROM EACH FRAMEBUFFER ACCORDING TO (X.Y) SCREEN COORDINATES
             case 2b00: { pixel0 = bitmap_000.rdata0; pixel1 = bitmap_100.rdata0; }
             case 2b01: { pixel0 = bitmap_001.rdata0; pixel1 = bitmap_101.rdata0; }
@@ -42,6 +42,7 @@ unit framebuffer_read(
 
 unit framebuffer_write(
     input!  uint18  memoryAddressDirect,                                                                                        // CPU MEMORY ADDRESS
+    input!  uint18  memoryAddressDirect2,                                                                                       // CPU MEMORY ADDRESS + 2
     input   uint2   accesssize,                                                                                                 // CPU ACCESSSIZE 8 16 32 BITS ( 64 is 2 x 32 bit )
     input   uint1   memoryWriteDirect,                                                                                          // CPU WRITE FLAG
     input   uint32  writeDataDirect,                                                                                            // CPU WRITE DATA
@@ -73,9 +74,8 @@ unit framebuffer_write(
     // DITHER PATTERN GENERATOR
     dither DODITHER( bitmap_x_write <: bitmap_x_write, bitmap_y_write <: bitmap_y_write, dithermode <: gpu_active_dithermode, static1bit <: static8bit[0,1] );
 
-
     uint17  address <:: bitmap_write ? bitmap_y_write[0,8] * 320 + bitmap_x_write[0,9] : memoryAddressDirect;                   // PRIORITISE GPU WRITE OVER CPU (SET MEMORY ADDRESS IN BITMAP )
-    uint17  addressL <:: memoryAddressDirect + memoryAddressDirect[1,1] ? 2 : 0;                                                // HANDLE MISALIGNED 32 BIT READS/WRITES
+    uint17  addressL <:: memoryAddressDirect[1,1] ? memoryAddressDirect2 : memoryAddressDirect;                                 // HANDLE MISALIGNED 32 BIT READS/WRITES
 
     // HIGH OR LOW SWITCH FOR MEMORY ADDRESS DIRECT WR(TING 32 bit
     uint1   bm0L <: memoryWriteDirect & accesssize[1,1] & ~memoryAddressDirect[17,1] & memoryAddressDirect[1,1];
@@ -297,13 +297,14 @@ unit dither(
     input   uint1   static1bit,
     output! uint1   condition
 ) <reginputs> {
+    uint2   checkmode <:: dithermode[0,2] - 1;
+
     always_after {
         // DITHER PATTERNS
         // == 0 SOLID == 1 SMALL CHECKERBOARD == 2 MED CHECKERBOARD == 3 LARGE CHECKERBOARD
         // == 4 VERTICAL STRIPES == 5 HORIZONTAL STRIPES == 6 CROSSHATCH == 7 LEFT SLOPE
         // == 8 RIGHT SLOPE == 9 LEFT TRIANGLE == 10 RIGHT TRIANGLE == 11 X
         // == 12 + == 13 BRICK == 14 COLOUR STATIC == 15 STATIC
-        uint2   checkmode = dithermode[0,2] - 1;
 
         switch( dithermode ) {
             case 0: { condition = 1; }                                                                                          // SOLID
