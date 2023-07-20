@@ -17,6 +17,7 @@ $$ NUCUaddr = clog2(NUCUblocks)
 $$ NUCUmem = 8
 $$ NUCUmemaddr = clog2(NUCUmem)
 $$ NUCUstack = 8
+$$ NUCUstackaddr = clog2(NUCUstack)
 
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 

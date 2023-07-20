@@ -36,17 +36,17 @@ int main( void ) {
     int cursor_x, cursor_y;
     unsigned short thecharacter;
 
-    sample_upload( CHANNEL_LEFT, 64, &tune_treble[0] ); sample_upload( CHANNEL_RIGHT, 32, &tune_bass[0] );
-    beep( CHANNEL_LEFT, WAVE_SAMPLE | WAVE_SINE, 0, 8 << 3 );
-    beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SINE, 0, 16 << 3 );
+    tune_upload( CHANNEL_LEFT, 64, &tune_treble[0] ); tune_upload( CHANNEL_RIGHT, 32, &tune_bass[0] );
+    beep( CHANNEL_LEFT, WAVE_TUNE | WAVE_SINE, 0, 8 << 3 );
+    beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SINE, 0, 16 << 3 );
 
     while(1) {
         if( ps2_character_available() ) {
             thecharacter = ps2_inputcharacter();
             if( thecharacter & 0x100 ) {
-                attron( COLOR_PAIR(6) ); getyx( &cursor_y, &cursor_x );
+                attron( COLOR_PAIR(6) ); getyx( stdscr, cursor_y, cursor_x );
                 // ESCAPE CHARACTER
-                getyx( &cursor_y, &cursor_x );
+                getyx( stdscr, cursor_y, cursor_x );
                 switch( thecharacter ) {
                     case 0x141: // UP
                         move( cursor_y != 0 ? cursor_y - 1 : LINES-1, cursor_x );

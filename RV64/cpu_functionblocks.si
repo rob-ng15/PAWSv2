@@ -103,6 +103,7 @@ unit control(
     storeaddress SA( instruction <: instruction, IS_ATOMIC <: FLAGS.IS_ATOMIC, I1R <: I1R.rdata0, storeAddress :> storeAddress );
     jumpaddress JA( instruction <: instruction, IS_BRANCH <: FLAGS.IS_BRANCH, PC <: PC );
     auipclui AUI( instruction <: instruction, PC <: PC, AUIPCLUI :> AUIPCLUI );
+    incpc INCPC( PC <: PC, compressed <: compressed, nextPC :> nextPC );
 
     // REGISTERS I integer x 2 0 for main thread, 1 for SMT thread
     // Duplication is to allow for parallel read
@@ -121,7 +122,7 @@ unit control(
     abs3264 S1_abs( sourceReg <: I1R.rdata0, abs32 :> S1_abs32, abs64 :> S1_abs64 ); abs3264 S2_abs( sourceReg <: I2R.rdata0, abs32 :> S2_abs32, abs64 :> S2_abs64 );
 
     // COMPARISONS AND BRANCHES
-    int64   operand2 <:: opCode[3,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate };
+    int64   operand2 <:: instruction[5,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate };
     integercomparisons COMPARE(
         sourceReg1 <: I1R.rdata0,
         operand2 <: operand2,
@@ -136,9 +137,8 @@ unit control(
         immediateValue = { {52{instruction[31,1]}}, Itype(instruction).immediate };                                             // EXTRACT AND SIGN EXTEND IMMEDIATE VALUE FROM INSTRUCTION
         rs1 = Rtype(instruction).sourceReg1; rs2 = Rtype(instruction).sourceReg2;                                               // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
 
-        newPC = FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).function3[0,1] ^ flags[ Rtype(instruction).function3[1,2], 1 ] ) ? JA.jumpAddress : nextPC ) :
+        newPC = FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).function3[0,1] ^ flags[ Rtype(instruction).function3[1,2], 1 ] ) ? JA.jumpAddress : INCPC.nextPC ) :
                               ( instruction[3,1] ? JA.jumpAddress : LA.loadAddress );
-        nextPC = PC + ( compressed ? 2 : 4 );
     }
 }
 
@@ -236,20 +236,20 @@ unit loadaddress(
     input   uint32  instruction,
     input   uint1   IS_ATOMIC,
     output  uint$addr_width$  loadAddress,
-    input   uint$addr_width$  I1R
+    input   uint64  I1R
 ) <reginputs> {
     always_after {
-        loadAddress = ( IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Itype(instruction).immediate } ) + I1R;
+        loadAddress = ( IS_ATOMIC ? 0 : { {52{instruction[31,1]}}, Itype(instruction).immediate } ) + I1R;
     }
 }
 unit storeaddress(
     input   uint32  instruction,
     input   uint1   IS_ATOMIC,
     output  uint$addr_width$  storeAddress,
-    input   uint$addr_width$  I1R
+    input   uint64  I1R
 ) <reginputs> {
     always_after {
-        storeAddress = ( IS_ATOMIC ? 0 : { {20{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R;
+        storeAddress = ( IS_ATOMIC ? 0 : { {52{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R;
     }
 }
 unit jumpaddress(
@@ -260,8 +260,8 @@ unit jumpaddress(
 ) <reginputs> {
     always_after {
         jumpAddress = ( IS_BRANCH ?
-                        { {20{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } :
-                        { {12{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 }
+                        { {51{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } :
+                        { {43{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 }
                       ) + PC;
     }
 }
@@ -272,6 +272,15 @@ unit auipclui(
 ) <reginputs> {
     always_after {
         AUIPCLUI = { {32{instruction[31,1]}}, Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC );
+    }
+}
+unit incpc(
+    input   uint$addr_width$  PC,
+    input   uint1   compressed,
+    output  uint$addr_width$  nextPC
+) <reginputs> {
+    always_after {
+        nextPC = PC + ( compressed ? 2 : 4 );
     }
 }
 
@@ -333,6 +342,10 @@ unit controlflags(
     output  uint1   IS_ALU32,
     output  uint1   IS_ALU32SIGNX
 ) <reginputs> {
+    uint1   f7E0000001 <:: ( function7 == 7b0000001 );                                                                          // DETECT MULTIPLICATION / DIVISION EXTENSION
+    uint1   f7N0000100 <:: ( function7 != 7b0000100 );
+    uint1   f7N0010000 <:: ( function7 != 7b0010000 );
+
     writeRegisterF := 0; writeRegister := 1; incPC := 1; IS_FAST := 1;                                                          // DEFAULT TO SINGLE-CYCLE, WRITE INTEGER REGISTER AND INCREMENT PC
     IS_ALU := 0; IS_ALU32 := 0; IS_ALU32SIGNX := 1;                                                                             // ALU DETECTED FLAGS, DEFAULT TO 32-BIT SIGN EXTENSION
     IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;     // NON-ALU/FPU INSTRUCTION DETECTED FLAGS
@@ -354,24 +367,19 @@ unit controlflags(
             case 5b00100: { IS_ALU = 1; }                                                                                       // REGISTER-IMMEDIATE ALU
             case 5b01100: {                                                                                                     // REGISTER-REGISTER ALU
                 IS_ALU = 1;
-                IS_FAST = ~( ( function7 == 7b0000001 ) & function3[2,1] );                                                     // FAST NOT DIVIDE
+                IS_FAST = ~( f7E0000001 & function3[2,1] );                                                                     // FAST NOT DIVIDE
             }
             case 5b00110: {                                                                                                     // REGISTER-IMMEDIATE ALU 32BIT
                 IS_ALU = 1; IS_ALU32 = 1;
-                if( function3 == 3b001 ) { IS_ALU32SIGNX = ( function7[1,6] != 6b000010 ); } else { IS_ALU32SIGNX = 1; }        // DETECT SLLI.UW
+                if( function3 == 3b001 ) { IS_ALU32SIGNX = ( function7[1,6] != 6b000010 ); }                                    // DETECT SLLI.UW
             }
             case 5b01110: {                                                                                                     // REGISTER-REGISTER ALU 32BIT
                 IS_ALU = 1; IS_ALU32 = 1;
-                IS_FAST = ~( ( function7 == 7b0000001 ) & function3[2,1] );                                                     // FAST NOT DIVIDE
-                switch( function3[0,1] ) {
-                    case 0: {
-                        switch( function3[1,2] ) {
-                            case 2b00: { IS_ALU32SIGNX = ( function7 != 7b0000100 ); }                                          // DETECT ADD.UW ( f3 == 000 )
-                            default: { IS_ALU32SIGNX = ( function7 != 7b0010000 ); }                                            // DETECT SHxADD.UW ( f3 == 010 100 110 )
-                        }
-                    }
-                    case 1: {
-                        if( function7 == 7b0000001 ) { IS_ALU32SIGNX = ~function3[2,1]; }                                       // DETECT DIVUW AND REMUW { f3 == 101 DIVUW, == 111 REMUW )
+                IS_FAST = ~( f7E0000001 & function3[2,1] );                                                                     // FAST NOT DIVIDE
+                if( ~function3[0,1] ) {
+                    switch( function3[1,2] ) {
+                        case 2b00: { IS_ALU32SIGNX = f7N0000100; }                                                              // DETECT ADD.UW ( f3 == 000 )
+                        default: { IS_ALU32SIGNX = f7N0010000; }                                                                // DETECT SHxADD.UW ( f3 == 010 100 110 )
                     }
                 }
             }
@@ -428,7 +436,7 @@ unit compressed01(
             }
             case 3b001: {
                 // 3b001 -> ADDIW -> addiw rd,rd,imm[5:0] { 001, imm[5], rd, imm[4:0], 01 } -> { imm[11:0] rd 000 rd 0011011 }
-                i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, CI50(i16).rd, 3b000,  CI50(i16).rd, 5b00110 };
+                i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, CI50(i16).rd, 3b000, CI50(i16).rd, 5b00110 };
             }
             case 3b010: {
                 // LI -> addi rd, x0, imm[5:0] { 010 imm[5] rd!=0 imm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
@@ -463,14 +471,21 @@ unit compressed01(
                         // 2b01 -> XOR -> xor rd', rd', rs2' { 100 0 11 rs1'/rd' 01 rs2' 01 } -> { 0000000 rs2 rs1 100 rd 0110011 }
                         // 2b10 -> OR  -> or  rd', rd', rd2' { 100 0 11 rs1'/rd' 10 rs2' 01 } -> { 0000000 rs2 rs1 110 rd 0110011 }
                         // 2b11 -> AND -> and rd', rd', rs2' { 100 0 11 rs1'/rd' 11 rs2' 01 } -> { 0000000 rs2 rs1 111 rd 0110011 }
-                        if( i16[12,1] ) {
-                            // SUBW ADDW
-                            i32 = { 1b0, ~CBalu(i16).logical2[0,1], 5b00000, { 2b01, CBalu(i16).rs2_alt }, { 2b01, CBalu(i16).rd_alt },
-                                    3b000, { 2b01, CBalu(i16).rd_alt }, 5b01110 };
-                        } else {
-                            i32 = { { 1b0, ~|CBalu(i16).logical2, 5b00000 }, { 2b01, CBalu(i16).rs2_alt }, { 2b01, CBalu(i16).rd_alt },
-                                    ( ^CBalu(i16).logical2 ) ? { 1b1, CBalu(i16).logical2[1,1], 1b0 } : {3{CBalu(i16).logical2[0,1]}}, { 2b01, CBalu(i16).rd_alt }, 5b01100 };
-                        }
+                        // 2b11 -> SUBW -> subw rd', rd', rs2' { 100 1 11 rs1'/rd' 00 rs2' 01 } -> { 0100000 rs2 rs1 000 rd 0111011 }
+                        // 2b11 -> ADDW -> addw rd', rd', rs2' { 100 1 11 rs1'/rd' 01 rs2' 01 } -> { 0000000 rs2 rs1 000 rd 0111011 }
+                        i32 = { 1b0, ~( i16[12,1] ? CBalu(i16).logical2[0,1] : |CBalu(i16).logical2 ), 5b00000,
+                                2b01, CBalu(i16).rs2_alt, 2b01, CBalu(i16).rd_alt,
+                                i16[12,1] ? 3b000 : ( ^CBalu(i16).logical2 ) ? { 1b1, CBalu(i16).logical2[1,1], 1b0 } : {3{CBalu(i16).logical2[0,1]}},
+                                2b01, CBalu(i16).rd_alt,
+                                3b011, i16[12,1], 1b0 };
+//                        if( i16[12,1] ) {
+//                            // SUBW ADDW
+//                            i32 = { 1b0, ~CBalu(i16).logical2[0,1], 5b00000, 2b01, CBalu(i16).rs2_alt, 2b01, CBalu(i16).rd_alt,
+//                                    3b000, 2b01, CBalu(i16).rd_alt, 5b01110 };
+//                        } else {
+//                            i32 = { 1b0, ~|CBalu(i16).logical2, 5b00000, 2b01, CBalu(i16).rs2_alt, 2b01, CBalu(i16).rd_alt,
+//                                    ( ^CBalu(i16).logical2 ) ? { 1b1, CBalu(i16).logical2[1,1], 1b0 } : {3{CBalu(i16).logical2[0,1]}}, 2b01, CBalu(i16).rd_alt, 5b01100 };
+//                        }
                     }
                 }
             }
@@ -542,7 +557,7 @@ unit csrf(
 ) <reginputs> {
     always_after {
         if( update ) {
-            CSRf = { CSRf[0,5], newflags };
+            CSRf = { CSRf[5,3], newflags };
         } else {
             switch( csr ) {
                 case 0: {}
@@ -580,8 +595,9 @@ unit csrf(
 unit csr_timer(
     output  uint$CWIDTH$  counter(0)
 ) <reginputs> {
+    uint$CWIDTH$  counter_p1 <:: counter + 1;
     always_after {
-        counter = counter + 1;
+        counter = counter_p1;
     }
 }
 unit csr_smt_counter(
@@ -591,9 +607,13 @@ unit csr_smt_counter(
     output  uint$CWIDTH$  counter1(0),
 
 ) <reginputs> {
+    uint$CWIDTH$  counter0_p1 <:: counter0 + 1;
+    uint$CWIDTH$  counter1_p1 <:: counter1 + 1;
     always_after {
-        counter0 = counter0 + ( ~SMT & trigger );
-        counter1 = counter1 + ( SMT & trigger );
+        if( trigger ) {
+            counter0 = SMT ? counter0 : counter0_p1;
+            counter1 = SMT ? counter1_p1 : counter1;
+        }
     }
 }
 

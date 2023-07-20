@@ -82,7 +82,7 @@ unit alucount(
                 default: { ( result ) = cpop_silice_64( size32 ? sourceReg1[0,32] : sourceReg1 ); }
             }
         } else {
-            result = { ~size32 & ~counttype[1,1], size32 & ~counttype[1,1], 5b00000 };                                          // REPORT 32/64 FOR CTZ/CLZ AND 0 IF SOURCEREG1 == 0
+            result = { ~size32 & ~counttype[1,1], size32 & ~counttype[1,1], 5b00000 };                                          // REPORT 32/64 FOR CTZ/CLZ AND 0 FOR CPOP IF SOURCEREG1 == 0
         }
     }
 }
@@ -164,7 +164,7 @@ unit alupack(
     output  uint64  packh,
 ) <reginputs> {
     always_after {
-        pack = size32 ? { 32h0, sourceReg2[0,16], sourceReg1[0,16] } : { sourceReg2[0,32], sourceReg1[0,32] };
+        pack = size32 ? { {32{sourceReg2[15,1]}}, sourceReg2[0,16], sourceReg1[0,16] } : { sourceReg2[0,32], sourceReg1[0,32] };
         packh = { 48b0, sourceReg2[0,8], sourceReg1[0,8] };
     }
 }
@@ -224,22 +224,26 @@ unit aludecode(
     output  uint1   dosignx,
     output  uint1   dosra
 ) <reginputs> {
+    uint1   f7E0000100 <:: ( function7 == 7b0000100 );
+    uint1   f7E0010000 <:: ( function7 == 7b0010000 );
+    uint1   f7E0110000 <:: ( function7 == 7b0110000 );
+
     always_after {
-        doadduw = size32 & regreg & ( ( function7 == 7b0000100 ) | ( function7 == 7b0010000 ) );                                // ADD.UW SHxADD.UW
+        doadduw = size32 & regreg & ( f7E0000100 | f7E0010000 );                                                                // ADD.UW SHxADD.UW
         doalt = regreg & ( function7 == 7b0100000 );                                                                            // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
         dobclrext = ( function7[1,6] == 6b010010 );                                                                             // BCLR BCLRI BEXT BEXTI
         dobrev = ~regreg & ( function7 == 7b0110100 );                                                                          // BREV8
-        docount = ~regreg & ( function7 == 7b0110000 ) & ~rs2[2,1];                                                             // CLZ CPOP CTZ ( immediate only )
+        docount = ~regreg & f7E0110000 & ~rs2[2,1];                                                                             // CLZ CPOP CTZ ( immediate only )
         dobinv = ( function7[1,6] == 6b011010 );                                                                                // BINV BINVI
         dominmax = regreg & ( function7 == 7b0000101 );                                                                         // MAX MAXU MIN MINU ( register - register only )
         dobset = ( function7[1,6] == 6b001010 );                                                                                // ( F3 == 001 ) BSET BSETI
         domul = regreg & ( function7 == 7b0000001 );                                                                            // MULTIPLICATION
         doorc = ~regreg & ( function7 == 7b0010100 );                                                                           // ( F3 = 101 ) ORC.B
-        dopack = regreg & ( function7 == 7b0000100 );                                                                           // ZEXT.H PACK PACKH PACKW ( ZEXT.H when rs2 == 0 )
+        dopack = regreg & f7E0000100;                                                                                           // ZEXT.H PACK PACKH PACKW ( ZEXT.H when rs2 == 0 )
         dorev = ~regreg & ( function7 == 7b0110101 );                                                                           // REV8
         dorotate = ( function7[1,6] == 6b011000 );                                                                              // ROL ROR RORI
-        doshxadd = regreg & ( function7 == 7b0010000 );                                                                         // SH1ADD SH2ADD SH3ADD ( register - register only )
-        dosignx = ~regreg & ( function7 == 7b0110000 ) & rs2[2,1];                                                              // SEXT.B SEXT.H
+        doshxadd = regreg & f7E0010000;                                                                                         // SH1ADD SH2ADD SH3ADD ( register - register only )
+        dosignx = ~regreg & f7E0110000 & rs2[2,1];                                                                              // SEXT.B SEXT.H
         dosra = ( function7[1,6] == 6b010000 );                                                                                 // SRA SRAI
     }
 }
@@ -373,7 +377,7 @@ unit integercomparisons(
 // ATOMIC A EXTENSION ALU
 unit aluA(
     input   uint3   function3,
-    input   uint7   function7,
+    input   uint5   function7,
     input   uint64  memoryinput,
     input   uint64  sourceReg2,
     output  uint64  result

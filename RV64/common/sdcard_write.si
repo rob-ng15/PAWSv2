@@ -58,12 +58,16 @@ unit sdcard(
   uint1   do_write_sector = 0;
   uint32  do_addr_sector = 0;
 
+  uint9 read_next <:: buffer_read.addr1 + 1;
+  uint9 write_next <:: buffer_write.addr0 + 1;
+
   buffer_read.wenable1 := 1; // writes to the read buffer
 
   algorithm <autorun> {
     // SEND A COMMAND TO THE SDCARD
     subroutine send( input uint48 cmd, readwrites sd_clk, writes sd_mosi ) {
       uint16  count = 0;
+      uint16  count_p1 <:: count + 1;
       uint48  shift = uninitialized;
       shift = cmd;
       while (count != $2*256*48$) { // 48 clock pulses @~400 kHz (assumes 50 MHz clock)
@@ -74,7 +78,7 @@ unit sdcard(
             shift = {shift[0,47],1b0};
           }
         }
-        count =  count + 1;
+        count =  count_p1;
       }
       sd_mosi = 1;                              // CLK FINISHES LOW, MOSI FINISHES HIGH
     }
@@ -82,8 +86,10 @@ unit sdcard(
     // SEND A BYTE TO THE SDCARD ( FF will pulse the clock signal )
     subroutine sendbyte( input uint8 byte, readwrites sd_clk, writes sd_mosi ) {
       uint8   count = 0;
+      uint8   count_p1 <:: count + 1;
       uint8   shift = uninitialized;
       uint4   n = 0;
+      uint4   n_p1 <:: n + 1;
       shift = byte;
       while( n != 8 ) {
         if ( &count ) {                       // DELAY BETWEEN SWITCHING THE CLK
@@ -91,23 +97,24 @@ unit sdcard(
           if (!sd_clk) {                      // IF CLK LOW, SEND THE BIT
             sd_mosi = shift[7,1];
             shift = { shift[0,7], 1b0 };
-            n = n + 1;
+            n = n_p1;
           }
         }
-      count = count + 1;
+      count = count_p1;
       }
     }
 
     // WAIT FOR THE SDCARD TO RETURN FROM BUSY ( MISO will go low )
     subroutine waitbusy( readwrites sd_clk, writes sd_mosi, reads sd_miso ) {
       uint8   count = 0;
+      uint8   count_p1 <:: count + 1;
       uint1   finished = 0;
       while( ~finished ) {
         if( &count ) {                      // DELAY BETWEEN SWITCHING THE CLK
           sd_clk = ~sd_clk;                 // SWITCH THE CLK, IF LOW CHECK MISO
           if (!sd_clk) { finished = sd_miso; }
         }
-        count = count + 1;
+        count = count_p1;
       }
       sd_clk = 0;                           // CLK FINISHES LOW
     }
@@ -115,17 +122,19 @@ unit sdcard(
     // READ xx BITS FROM THE SDCARD
     subroutine read( input uint6 len, input uint1 wait, output uint40 answer, input uint8 rate, readwrites sd_clk, writes sd_mosi, reads sd_miso ) {
       uint16  count = 0;
-      uint6 n = 0;
+      uint16  count_p1 <:: count + 1;
+      uint6   n = 0;
+      uint6   n_p1 <:: n + 1;
       answer = 40hffffffffff;
       while( (wait && answer[len-1,1]) || ((!wait) && n != len) ) {
         if( (count&rate) == rate ) {      // DELAY BETWEEN SWITCHING THE CLK
           sd_clk = ~sd_clk;               // SWITCH THE CLK
           if (!sd_clk) {                  // IF CLK LOW, READ THE BIT
             answer = {answer[0,39],sd_miso};
-            n = n + 1;
+            n = n_p1;
           }
         }
-        count = count + 1;
+        count = count_p1;
       }
     }
 
@@ -186,7 +195,7 @@ unit sdcard(
             (buffer_read.wdata1) <- read <- ( 8,0,3 );
             while( ~&progress[0,9] ) {
               (buffer_read.wdata1) <- read <- ( 8,0,3 );
-              buffer_read.addr1 = buffer_read.addr1 + 1;
+              buffer_read.addr1 = read_next;
               progress = progress + 1;
             }
             ( status ) <- read <- ( 16,1,3 ); // CRC
@@ -213,7 +222,7 @@ unit sdcard(
           // send 512 bytes, starting at position offset in the buffer
           while( progress != 512 ) {
             () <- sendbyte <- ( buffer_write.rdata0 );
-            buffer_write.addr0 = buffer_write.addr0 + 1;
+            buffer_write.addr0 = write_next;
             progress = progress + 1;
           }
 

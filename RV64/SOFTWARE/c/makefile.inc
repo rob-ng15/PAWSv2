@@ -28,7 +28,7 @@ CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zfh_zifencei_zicsr -mabi=lp64d -msho
 
 CFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
 CXXFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib
-LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleriscv \
+LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleriscv
 	-Wl,--wrap=memcpy -Wl,--wrap=memset \
 	-Wl,--wrap=__clzsi2 -Wl,--wrap=__clzdi2 \
 	-Wl,--wrap=__ctzsi2 -Wl,--wrap=__ctzdi2 \
