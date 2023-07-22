@@ -428,75 +428,73 @@ unit compressed01(
     output  uint30  i32
 ) <reginputs> {
     always_after {
-        switch( i16[13,3] ) {
-            case 3b000: {
-                // ADDI -> addi rd, rd, nzimm[5:0] { 000 nzimm[5] rs1/rd!=0 nzimm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
-                // NOP if rd == 0 and nzimm == 5b000000
-                i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, CI50(i16).rd, 3b000, CI50(i16).rd, 5b00100 };
-            }
-            case 3b001: {
-                // 3b001 -> ADDIW -> addiw rd,rd,imm[5:0] { 001, imm[5], rd, imm[4:0], 01 } -> { imm[11:0] rd 000 rd 0011011 }
-                i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, CI50(i16).rd, 3b000, CI50(i16).rd, 5b00110 };
-            }
-            case 3b010: {
-                // LI -> addi rd, x0, imm[5:0] { 010 imm[5] rd!=0 imm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
-                i32 = { {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0, 5h0, 3b000, CI(i16).rd, 5b00100 };
-            }
-            case 3b011: {
-                if( CI(i16).rd == 2 ) {
-                    // ADDI16SP -> addi x2, x2, nzimm[9:4] { 011 nzimm[9] 00010 nzimm[4|6|8:7|5] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
-                    i32 = { {3{CI94(i16).ib_9}}, CI94(i16).ib_8_7, CI94(i16).ib_6, CI94(i16).ib_5, CI94(i16).ib_4, 4b0000, 5h2, 3b000, 5h2, 5b00100 };
-                } else {
-                    // LUI -> lui rd, nzuimm[17:12] { 011 nzimm[17] rd!={0,2} nzimm[16:12] 01 } -> { imm[31:12] rd 0110111 }
-                    i32 = { {15{CIlui(i16).ib_17}}, CIlui(i16).ib_16_12, CIlui(i16).rd, 5b01101 };
-                }
-            }
-            case 3b100: {
-                // MISC-ALU
-                switch( CBalu(i16).function2 ) {
-                    case 2b00: {
-                        // 1b0 -> SRLI -> srli rd', rd', shamt[5:0] { 100 nzuimm[5] 00 rs1'/rd' nzuimm[4:0] 01 } -> { 000000 shamt rs1 101 rd 0010011 }
-                        i32 = { 6b000000, i16[12,1], CBalu50(i16).ib_4_0, { 2b01, CBalu50(i16).rd_alt }, 3b101, { 2b01, CBalu50(i16).rd_alt }, 5b00100 };
-                    }
-                    case 2b01: {
-                        // 1b1 -> SRAI -> srai rd', rd', shamt[5:0] { 100 nzuimm[5] 01 rs1'/rd' nzuimm[4:0] 01 } -> { 010000 shamt rs1 101 rd 0010011 }
-                        i32 = { 6b010000, i16[12,1], CBalu50(i16).ib_4_0, { 2b01, CBalu50(i16).rd_alt }, 3b101, { 2b01, CBalu50(i16).rd_alt }, 5b00100 };
-                    }
-                    case 2b10: {
-                        // ANDI -> andi rd', rd', imm[5:0] { 100 imm[5], 10 rs1'/rd' imm[4:0] 01 } -> { imm[11:0] rs1 111 rd 0010011 }
-                        i32 = { {7{CBalu50(i16).ib_5}}, CBalu50(i16).ib_4_0, { 2b01, CBalu50(i16).rd_alt }, 3b111, { 2b01, CBalu50(i16).rd_alt }, 5b00100 };
-                    }
-                    case 2b11: {
-                        // 2b00 -> SUB -> sub rd', rd', rs2' { 100 0 11 rs1'/rd' 00 rs2' 01 } -> { 0100000 rs2 rs1 000 rd 0110011 }
-                        // 2b01 -> XOR -> xor rd', rd', rs2' { 100 0 11 rs1'/rd' 01 rs2' 01 } -> { 0000000 rs2 rs1 100 rd 0110011 }
-                        // 2b10 -> OR  -> or  rd', rd', rd2' { 100 0 11 rs1'/rd' 10 rs2' 01 } -> { 0000000 rs2 rs1 110 rd 0110011 }
-                        // 2b11 -> AND -> and rd', rd', rs2' { 100 0 11 rs1'/rd' 11 rs2' 01 } -> { 0000000 rs2 rs1 111 rd 0110011 }
-                        // 2b11 -> SUBW -> subw rd', rd', rs2' { 100 1 11 rs1'/rd' 00 rs2' 01 } -> { 0100000 rs2 rs1 000 rd 0111011 }
-                        // 2b11 -> ADDW -> addw rd', rd', rs2' { 100 1 11 rs1'/rd' 01 rs2' 01 } -> { 0000000 rs2 rs1 000 rd 0111011 }
-                        i32 = { 1b0, ~( i16[12,1] ? CBalu(i16).logical2[0,1] : |CBalu(i16).logical2 ), 5b00000,
-                                2b01, CBalu(i16).rs2_alt, 2b01, CBalu(i16).rd_alt,
-                                i16[12,1] ? 3b000 : ( ^CBalu(i16).logical2 ) ? { 1b1, CBalu(i16).logical2[1,1], 1b0 } : {3{CBalu(i16).logical2[0,1]}},
-                                2b01, CBalu(i16).rd_alt,
-                                3b011, i16[12,1], 1b0 };
-//                        if( i16[12,1] ) {
-//                            // SUBW ADDW
-//                            i32 = { 1b0, ~CBalu(i16).logical2[0,1], 5b00000, 2b01, CBalu(i16).rs2_alt, 2b01, CBalu(i16).rd_alt,
-//                                    3b000, 2b01, CBalu(i16).rd_alt, 5b01110 };
-//                        } else {
-//                            i32 = { 1b0, ~|CBalu(i16).logical2, 5b00000, 2b01, CBalu(i16).rs2_alt, 2b01, CBalu(i16).rd_alt,
-//                                    ( ^CBalu(i16).logical2 ) ? { 1b1, CBalu(i16).logical2[1,1], 1b0 } : {3{CBalu(i16).logical2[0,1]}}, 2b01, CBalu(i16).rd_alt, 5b01100 };
-//                        }
+        if( i16[15,1] ) {
+            switch( i16[13,2] ) {
+                case 2b00: {
+                    // MISC-ALU
+                    switch( CBalu(i16).function2 ) {
+                        default: {
+                            // 2b00 -> SRLI -> srli rd', rd', shamt[5:0] { 100 nzuimm[5] 00 rs1'/rd' nzuimm[4:0] 01 } -> { 000000 shamt rs1 101 rd 0010011 }
+                            // 2b01 -> SRAI -> srai rd', rd', shamt[5:0] { 100 nzuimm[5] 01 rs1'/rd' nzuimm[4:0] 01 } -> { 010000 shamt rs1 101 rd 0010011 }
+                            // 2b10 -> ANDI -> andi rd', rd',   imm[5:0] { 100    imm[5] 10 rs1'/rd'    imm[4:0] 01 } -> { imm[11:0] rs1 111 rd 0010011 }
+                            i32 = {
+                                    CBalu(i16).function2[1,1] ? {7{CBalu50(i16).ib_5}} : {1b0, CBalu(i16).function2[0,1], 4b0000, i16[12,1] },
+                                    CBalu50(i16).ib_4_0,
+                                    2b01, CBalu50(i16).rd_alt,
+                                    1b1, CBalu(i16).function2[1,1], 1b1,
+                                    2b01, CBalu50(i16).rd_alt, 5b00100
+                                  };
+                        }
+                        case 2b11: {
+                            // 2b00 -> SUB -> sub rd', rd', rs2'   { 100 0 11 rs1'/rd' 00 rs2' 01 } -> { 0100000 rs2 rs1 000 rd 0110011 }
+                            // 2b01 -> XOR -> xor rd', rd', rs2'   { 100 0 11 rs1'/rd' 01 rs2' 01 } -> { 0000000 rs2 rs1 100 rd 0110011 }
+                            // 2b10 -> OR  -> or  rd', rd', rd2'   { 100 0 11 rs1'/rd' 10 rs2' 01 } -> { 0000000 rs2 rs1 110 rd 0110011 }
+                            // 2b11 -> AND -> and rd', rd', rs2'   { 100 0 11 rs1'/rd' 11 rs2' 01 } -> { 0000000 rs2 rs1 111 rd 0110011 }
+                            // 2b11 -> SUBW -> subw rd', rd', rs2' { 100 1 11 rs1'/rd' 00 rs2' 01 } -> { 0100000 rs2 rs1 000 rd 0111011 }
+                            // 2b11 -> ADDW -> addw rd', rd', rs2' { 100 1 11 rs1'/rd' 01 rs2' 01 } -> { 0000000 rs2 rs1 000 rd 0111011 }
+                            i32 = {
+                                    1b0, ~( i16[12,1] ? CBalu(i16).logical2[0,1] : |CBalu(i16).logical2 ), 5b00000,
+                                    2b01, CBalu(i16).rs2_alt, 2b01, CBalu(i16).rd_alt,
+                                    i16[12,1] ? 3b000 : ( ^CBalu(i16).logical2 ) ? { 1b1, CBalu(i16).logical2[1,1], 1b0 } : {3{CBalu(i16).logical2[0,1]}},
+                                    2b01, CBalu(i16).rd_alt,
+                                    3b011, i16[12,1], 1b0
+                                  };
+                        }
                     }
                 }
+                case 2b01: {
+                    // 3b101 -> J -> jal, x0, offset[11:1] { 101, imm[11|4|9:8|10|6|7|3:1|5] 01 } -> { imm[20|10:1|11|19:12] rd 1101111 }
+                    i32 = { CJ(i16).ib_11, CJ(i16).ib_10, CJ(i16).ib_9_8, CJ(i16).ib_7, CJ(i16).ib_6, CJ(i16).ib_5, CJ(i16).ib_4, CJ(i16).ib_3_1, {9{CJ(i16).ib_11}}, 5h0, 5b11011 };
+                }
+                default: {
+                    // 3b110 -> BEQZ -> beq rs1', x0, offset[8:1] { 110, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011 }
+                    // 3b111 -> BNEZ -> bne rs1', x0, offset[8:1] { 111, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011 }
+                    i32 = { {4{CB(i16).offset_8}}, CB(i16).offset_7_6, CB(i16).offset_5, 5h0, {2b01,CB(i16).rs1_alt}, { 2b00, i16[13,1] }, CB(i16).offset_4_3, CB(i16).offset_2_1, CB(i16).offset_8, 5b11000 };
+                }
             }
-            case 3b101: {
-                // 3b101 -> J -> jal, x0, offset[11:1] { 101, imm[11|4|9:8|10|6|7|3:1|5] 01 } -> { imm[20|10:1|11|19:12] rd 1101111 }
-                i32 = { CJ(i16).ib_11, CJ(i16).ib_10, CJ(i16).ib_9_8, CJ(i16).ib_7, CJ(i16).ib_6, CJ(i16).ib_5, CJ(i16).ib_4, CJ(i16).ib_3_1, {9{CJ(i16).ib_11}}, 5h0, 5b11011 };
-            }
-            default: {
-                // 3b110 -> BEQZ -> beq rs1', x0, offset[8:1] { 110, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 000 imm[4:1|11] 1100011 }
-                // 3b111 -> BNEZ -> bne rs1', x0, offset[8:1] { 111, imm[8|4:3] rs1' imm[7:6|2:1|5] 01 } -> { imm[12|10:5] rs2 rs1 001 imm[4:1|11] 1100011 }
-                i32 = { {4{CB(i16).offset_8}}, CB(i16).offset_7_6, CB(i16).offset_5, 5h0, {2b01,CB(i16).rs1_alt}, { 2b00, i16[13,1] }, CB(i16).offset_4_3, CB(i16).offset_2_1, CB(i16).offset_8, 5b11000 };
+        } else {
+            switch( i16[13,2] ) {
+                default: {
+                    // 3b000 -> ADDI -> addi rd, rd, nzimm[5:0] { 000 nzimm[5] rs1/rd!=0 nzimm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
+                    //          NOP if rd == 0 and nzimm == 5b000000
+                    // 3b001 -> ADDIW -> addiw rd,rd,imm[5:0]   { 001   imm[5]     rd      imm[4:0] 01 } -> { imm[11:0] rd 000 rd 0011011 }
+                    // 3b010 -> LI -> addi rd, x0, imm[5:0]     { 010   imm[5]     rd!=0    mm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
+                    i32 = {
+                            {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0,
+                            i16[14,1] ? 5h0 : CI50(i16).rd,
+                            3b000, CI50(i16).rd,
+                            3b001, i16[13,1], 1b0
+                          };
+                }
+                case 2b11: {
+                    if( CI(i16).rd == 2 ) {
+                        // 3b111 -> ADDI16SP -> addi x2, x2, nzimm[9:4] { 011 nzimm[9] 00010 nzimm[4|6|8:7|5] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
+                        i32 = { {3{CI94(i16).ib_9}}, CI94(i16).ib_8_7, CI94(i16).ib_6, CI94(i16).ib_5, CI94(i16).ib_4, 4b0000, 5h2, 3b000, 5h2, 5b00100 };
+                    } else {
+                        // 3b111 -> LUI -> lui rd, nzuimm[17:12] { 011 nzimm[17] rd!={0,2} nzimm[16:12] 01 } -> { imm[31:12] rd 0110111 }
+                        i32 = { {15{CIlui(i16).ib_17}}, CIlui(i16).ib_16_12, CIlui(i16).rd, 5b01101 };
+                    }
+                }
             }
         }
     }
@@ -513,14 +511,14 @@ unit compressed10(
             }
             case 3b010: {
                 // LWSP -> lw rd, offset[7:2](x2) { 010 uimm[5] rd uimm[4:2|7:6] 10 } -> { imm[11:0] rs1 010 rd 0000011 }
-                i32 = { 4b0, CI(i16).ib_7_6, CI(i16).ib_5, CI(i16).ib_4_2, 2b0, 5h2 , 3b010, CI(i16).rd, 5b00000 };
+                i32 = { 4b0, CI(i16).ib_7_6, CI(i16).ib_5, CI(i16).ib_4_2, 2b0, 5h2, 3b010, CI(i16).rd, 5b00000 };
             }
             case 3b100: {
                 // J[AL]R / MV / ADD
                 if( ~|CR(i16).rs2 ) {
                     // JR   -> jalr x0, rs1, 0 { 100 0 rs1 00000 10 } -> { imm[11:0] rs1 000 rd 1100111 }
                     // JALR -> jalr x1, rs1, 0 { 100 1 rs1 00000 10 } -> { imm[11:0] rs1 000 rd 1100111 }
-                    i32 = { 12b0, CR(i16).rs1, 3b000, { 4b0000, i16[12,1]}, 5b11001 };
+                    i32 = { 12b0, CR(i16).rs1, 3b000, 4b0000, i16[12,1], 5b11001 };
                 } else {
                     // MV  -> add rd, x0, rs2 { 100 0 rd!=0 rs2!=0 10 }     -> { 0000000 rs2 rs1 000 rd 0110011 }
                     // ADD -> add rd, rd, rs2 { 100 1 rs1/rd!=0 rs2!=0 10 } -> { 0000000 rs2 rs1 000 rd 0110011 }
@@ -596,6 +594,7 @@ unit csr_timer(
     output  uint$CWIDTH$  counter(0)
 ) <reginputs> {
     uint$CWIDTH$  counter_p1 <:: counter + 1;
+
     always_after {
         counter = counter_p1;
     }
@@ -609,6 +608,7 @@ unit csr_smt_counter(
 ) <reginputs> {
     uint$CWIDTH$  counter0_p1 <:: counter0 + 1;
     uint$CWIDTH$  counter1_p1 <:: counter1 + 1;
+
     always_after {
         if( trigger ) {
             counter0 = SMT ? counter0 : counter0_p1;
