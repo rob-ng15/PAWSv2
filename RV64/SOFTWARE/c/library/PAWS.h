@@ -193,6 +193,6 @@ unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
 unsigned int volatile *DMASETRGB = (unsigned int volatile *) 0xfe0c;
 
-unsigned char *FRAMEBUFFER0 = (unsigned char *)0x2000000;
-unsigned char *FRAMEBUFFER1 = (unsigned char *)0x2020000;
-unsigned char *TPUBUFFER = (unsigned char *)0x1000000;
+unsigned char volatile *FRAMEBUFFER0 = (unsigned char volatile *)0x2000000;
+unsigned char volatile *FRAMEBUFFER1 = (unsigned char volatile *)0x2020000;
+unsigned int volatile *TPUBUFFER = (unsigned int volatile *)0x1000000;
