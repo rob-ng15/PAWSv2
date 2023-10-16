@@ -111,8 +111,8 @@ void set_tilemap( void ) {
 
     // SET AND PLACE ROCKET SHIPS
     set_tilemap_bitmap32x32( UPPER_LAYER, 1, &upper_tilemap_sheet[ 0 ] );
-    for( i = 0; i < 4; i++ ) {
-        x = rng( 18 ) + ( x&1 ? 21 : 1 );
+    for( i = 0; i < 8; i++ ) {
+        x = rng( 18 ) + ( x&1 ? 31 : 1 );
         y = rng( 7 ) + i*7 + 1;
         set_tilemap_tile32x32( UPPER_LAYER, x, y, 1 );
     }
@@ -446,13 +446,13 @@ void beepboop( void ) {
         case 0:
             break;
         case 1: // switch to asteroid beeps
-            sample_upload( CHANNEL_LEFT, 4, &asteroids_sample[0] );
-            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 500 );
+            tune_upload( CHANNEL_LEFT, 4, &asteroids_sample[0] );
+            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 500 );
             sample_change = 0;
             break;
         case 2: // switch to ufo beeps
-            sample_upload( CHANNEL_LEFT, 4, &ufo_sample[0] );
-            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 250 );
+            tune_upload( CHANNEL_LEFT, 4, &ufo_sample[0] );
+            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 250 );
             sample_change = 0;
             break;
         case 3: // beeps off

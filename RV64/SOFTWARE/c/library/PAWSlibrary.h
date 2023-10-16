@@ -94,6 +94,7 @@ extern void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile,
 extern void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned char start_tile );
 extern void set_tilemap_bitamps_from_spritesheet( unsigned char tm_layer, unsigned char *tile_bitmaps );
 extern unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount );
+extern void tilemap_setbase( unsigned char tm_layer, short x, short y );
 
 // GPU AND BITMAP
 extern void gpu_dither( unsigned char , unsigned char );

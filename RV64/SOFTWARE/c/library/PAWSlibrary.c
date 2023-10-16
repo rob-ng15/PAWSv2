@@ -252,8 +252,8 @@ void wavesample_upload( unsigned char channel_number, unsigned char *samples ) {
 void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
     *AUDIO_NEW_PCMSAMPLE = channel_number; *DMASET = 0;
-    if( channel_number & 1 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_LEFT_PCMSAMPLE, 20480, 5 ); }
-    if( channel_number & 2 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, 20480, 5 );}
+    if( channel_number & 1 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_LEFT_PCMSAMPLE, *AUDIO_PCM_LENGTH, 5 ); }
+    if( channel_number & 2 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, *AUDIO_PCM_LENGTH, 5 );}
 
     *AUDIO_NEW_PCMSAMPLE = channel_number;
     if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_PCMSAMPLE, count, 1 ); }
@@ -513,12 +513,30 @@ void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned c
 // SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
 //  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN
 //  action == 5 clear the tilemap
+//  action == 7 reset offset
 //  RETURNS 0 if no action taken other than pixel shift, action if SCROLL was actioned
 unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
     while( *( tm_layer ? UPPER_TM_STATUS : LOWER_TM_STATUS ) );
     *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
     *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = action;
     return( tm_layer ? *UPPER_TM_SCROLLWRAPCLEAR : *LOWER_TM_SCROLLWRAPCLEAR );
+}
+
+// SET THE BASE COORDINATE FOR THE TILEMAP - COORDINATE OFF TOP LEFT (offscreen) TILE
+void tilemap_setbase( unsigned char tm_layer, short x, short y ) {
+    switch( tm_layer ) {
+        case 0:
+            while( *LOWER_TM_STATUS );
+            *LOWER_TM_X = x;
+            *LOWER_TM_Y = y;
+            break;
+        case 1:
+            while( *UPPER_TM_STATUS );
+            *UPPER_TM_X = x;
+            *UPPER_TM_Y = y;
+            break;
+    }
+    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = 6;
 }
 
 // GPU AND BITMAP
@@ -1328,7 +1346,7 @@ void tpu_cs( void ) {
     paws_memset32( ( void *)TPUBUFFER, ( 64 << 17 ), 4800 * 4 );
 }
 void tpu_clearline( unsigned char y ) {
-    paws_memset32( (void *)TPUBUFFER + 80 * y, ( 64 << 17 ), 80 * 4 );
+    paws_memset32( (void *)TPUBUFFER + 80 * y * 4, ( 64 << 17 ), 80 * 4 );
 }
 
 // POSITION THE CURSOR to (x,y)

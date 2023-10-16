@@ -552,11 +552,11 @@ int main( void ) {
     draw_paws_logo();
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
-    for( i = 0; i < 42; i++ ) {
+    for( i = 0; i < 63; i++ ) {
         *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
         *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
-        set_tilemap_tile( 0, i, 21, i+1, 0 );
-        set_tilemap_tile( 1, i, 27, i+1, 0 );
+        set_tilemap_tile( 0, i, 18, i+1, 0 );
+        set_tilemap_tile( 1, i, 30, i+1, 0 );
     }
     SMTSTART( smtthread );
 

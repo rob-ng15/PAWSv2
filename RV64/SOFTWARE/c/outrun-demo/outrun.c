@@ -38,38 +38,38 @@ unsigned short mountainslopes[] = {
 #include "graphics/outrun-graphics.h"
 
 unsigned char *cityscape[]={
-    "                                          ",   // OFFSCREEN TOP
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "  Aa                                      ",
-    "  Bb                         JjJj    JjJj ",
-    "  Cc                      D  KkKk    KkKk ",
-    "  Cc                      E  LlLl    LlLl ",
-    "  Cc  OTTTTo              F  MmMm    MmMm ",
-    "  Cc  PUUUUp  V        v  G  NnNn    NnNn ",
-    "  Cc  QqQqQq  W        w  H  NnNnNnNnNnNn ",
-    "  Cc  RrRrRr  X        x  I  NnNnNnNnNnNn ",
-    "  Cc  SsSsSs  yYyY  yYyY  I  NnNn    NnNn ",
-    "  Cc  QqQqQq  YyYyYyYyYy  I  NnNnNnNnNnNn ",
-    "  Cc  RrRrRr  yYyYyYyYyY  I  NnNnNnNnNnNn ",
-    "  Cc  SsQsSs  YyYy  YyYy  I  NnNn    NnNn ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          "    // OFFSCREEN BOTTOM
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "  Aa                                                          ",
+    "  Bb                         JjJj    JjJj                     ",
+    "  Cc                      D  KkKk    KkKk                     ",
+    "  Cc                      E  LlLl    LlLl                     ",
+    "  Cc  OTTTTo              F  MmMm    MmMm              OTTTTo ",
+    "  Cc  PUUUUp  V        v  G  NnNn    NnNn  V        v  PUUUUp ",
+    "  Cc  QqQqQq  W        w  H  NnNnNnNnNnNn  W        w  QqQqQq ",
+    "  Cc  RrRrRr  X        x  I  NnNnNnNnNnNn  X        x  RrRrRr ",
+    "  Cc  SsSsSs  yYyY  yYyY  I  NnNn    NnNn  yYyY  yYyY  SsSsSs ",
+    "  Cc  QqQqQq  YyYyYyYyYy  I  NnNnNnNnNnNn  YyYyYyYyYy  QqQqQq ",
+    "  Cc  RrRrRr  yYyYyYyYyY  I  NnNnNnNnNnNn  yYyYyYyYyY  RrRrRr ",
+    "  Cc  SsQsSs  YyYy  YyYy  I  NnNn    NnNn  YyYy  YyYy  SsQsSs ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
 };
 
 void set_tilemaps( void ) {
@@ -85,7 +85,7 @@ void set_tilemaps( void ) {
     }
 
     for( int y = 0; y < 32; y++ ) {
-        for( int x = 0; x < 42; x++ ) {
+        for( int x = 0; x < 63; x++ ) {
             switch( cityscape[y][x] ) {
                 case ' ':
                 case '@':
@@ -93,10 +93,10 @@ void set_tilemaps( void ) {
                 default:
                     if( cityscape[y][x] > 'Z' ) {
                         // LOWER CASE - REFLECTION
-                        set_tilemap_tile( UPPER_LAYER, x, y, cityscape[y][x] - 96, REFLECT_X );
+                        set_tilemap_tile( UPPER_LAYER, x, y+1, cityscape[y][x] - 96, REFLECT_X );
                     } else {
                         // UPPER CASE - NO REFLECTION
-                        set_tilemap_tile( UPPER_LAYER, x, y, cityscape[y][x] - 64, 0 );
+                        set_tilemap_tile( UPPER_LAYER, x, y+1, cityscape[y][x] - 64, 0 );
                     }
                     break;
             }
@@ -104,10 +104,10 @@ void set_tilemaps( void ) {
     }
 
     // DRAW THE CLOUD
-    set_tilemap_tile32x32( LOWER_LAYER, 17, 4, 1 );
-    set_tilemap_tile32x32( LOWER_LAYER, 17, 6, 5 );
-    set_tilemap_tile32x32( LOWER_LAYER, 19, 4, 9 );
-    set_tilemap_tile32x32( LOWER_LAYER, 19, 6, 13 );
+    set_tilemap_tile32x32( LOWER_LAYER, 17, 5, 1 );
+    set_tilemap_tile32x32( LOWER_LAYER, 17, 7, 5 );
+    set_tilemap_tile32x32( LOWER_LAYER, 19, 5, 9 );
+    set_tilemap_tile32x32( LOWER_LAYER, 19, 7, 13 );
 }
 
 // DRAW THE TRAFFIC IN FONT OF THE CITY

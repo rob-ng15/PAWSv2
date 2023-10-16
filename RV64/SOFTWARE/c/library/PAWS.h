@@ -159,6 +159,7 @@ unsigned char volatile *AUDIO_RIGHT_WAVESAMPLE = (unsigned char volatile *) 0xe0
 unsigned char volatile *AUDIO_NEW_PCMSAMPLE = (unsigned char volatile *) 0xe020;
 unsigned char volatile *AUDIO_LEFT_PCMSAMPLE = (unsigned char volatile *) 0xe022;
 unsigned char volatile *AUDIO_RIGHT_PCMSAMPLE = (unsigned char volatile *) 0xe024;
+unsigned short volatile *AUDIO_PCM_LENGTH = (unsigned short volatile *) 0xe000;
 
 unsigned short volatile *RNG = (unsigned short volatile *) 0xc000;
 unsigned short volatile *ALT_RNG = (unsigned short volatile *) 0xc002;
@@ -175,7 +176,11 @@ unsigned int volatile *SYSTEMSECONDS = (unsigned int volatile *) 0xc020;
 unsigned int volatile *SYSTEMMILLISECONDS = (unsigned int volatile *)0xc028;
 unsigned char volatile *SET_RTC = (unsigned char volatile *)0xc02a;
 unsigned long volatile *RTC = (unsigned long volatile *) 0xf600;
+
+// MAGIC FOR SECTOR 0 WRITE, RAM POSITIONS
 int volatile *PAWSMAGIC = (int volatile *) 0xf700;
+unsigned int volatile *RAMBASE = (unsigned int volatile *) 0xf704;
+unsigned int volatile *RAMTOP = (unsigned int volatile *) 0xf708;
 
 // HANDLE SMT - RUNNING STATUS AND POINTER TO CODE TO RUN
 unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;

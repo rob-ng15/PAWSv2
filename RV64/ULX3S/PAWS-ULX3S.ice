@@ -19,6 +19,9 @@ $$ NUCUmemaddr = clog2(NUCUmem)
 $$ NUCUstack = 8
 $$ NUCUstackaddr = clog2(NUCUstack)
 
+// PCM AUDIO SAMPLES BUFFER SIZE
+$$ PCM = 32768
+
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 
 // L0 CACHE SIZES FOR HART ID 0 AND 1

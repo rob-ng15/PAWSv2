@@ -207,6 +207,7 @@
 #define TM_RIGHT 3
 #define TM_DOWN 4
 #define TM_CLEAR 5,0
+#define TM_0OFFSET 7,0
 
 // CROP RECTANGLE
 #define CROPFULLSCREEN 0,0,319,239

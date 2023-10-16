@@ -605,11 +605,11 @@ void main( void ) {
     gpu_outputstring( WHITE, 70, 34, "Risc-V RV64GC+ CPU", 0 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
-    for( i = 0; i < 42; i++ ) {
+    for( i = 0; i < 63; i++ ) {
         *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
         *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
-        set_tilemap_tile( 0, i, 15, i+1, 0 );
-        set_tilemap_tile( 1, i, 29, i+1, 0 );
+        set_tilemap_tile( 0, i, 16, i+1, 0 );
+        set_tilemap_tile( 1, i, 30, i+1, 0 );
     }
     gpu_outputstringcentre( UK_GOLD, 74, "VERILATOR - SMT + FPU TEST", 0 );
     gpu_outputstringcentre( UK_GOLD, 82, "THREAD 0 - PACMAN SPRITES", 0 );

@@ -863,7 +863,7 @@ static bool valid_tile_pos(int2_t tile_pos) {
 }
 
 static void paws_tile(int2_t tile_pos, uint8_t tile_code) {
-    set_tilemap_tile( LOWER_LAYER, tile_pos.x + 7, tile_pos.y - 2, tile_code, 0 );
+    set_tilemap_tile( LOWER_LAYER, tile_pos.x + 8, tile_pos.y - 1, tile_code, 0 );
     state.gfx.video_ram[tile_pos.y][tile_pos.x] = tile_code;
 }
 
@@ -1215,7 +1215,7 @@ static void game_init_playfield(void) {
     for (int y = 3, i = 0; y <= 33; y++) {
         for (int x = 0; x < 28; x++, i++) {
             state.gfx.video_ram[y][x] = t[tiles[i] & 127];
-            set_tilemap_tile( LOWER_LAYER, x + 7, y - 2, t[tiles[i]]&0xff,(t[tiles[i]]&0xff00)>>8);
+            set_tilemap_tile( LOWER_LAYER, x + 8, y - 1, t[tiles[i]]&0xff,(t[tiles[i]]&0xff00)>>8);
         }
     }
     gpu_line( 15, 48, 0, 271, 0 ); gpu_line( 15, 48, 239, 271, 239 );
@@ -1397,22 +1397,22 @@ static void game_update_tiles(void) {
     // remaining lives at left of screen
     for (int i = 0; i < NUM_LIVES; i++) {
         if(i < state.game.num_lives) {
-            set_tilemap_32x32tile( UPPER_LAYER, 1, 4 + i*2, 17 );
+            set_tilemap_32x32tile( UPPER_LAYER, 2, 5 + i*2, 17 );
         } else {
-            set_tilemap_tile( UPPER_LAYER, 1, 5+i*2, 0, 0 );
-            set_tilemap_tile( UPPER_LAYER, 1, 4+i*2, 0, 0 );
-            set_tilemap_tile( UPPER_LAYER, 2, 4+i*2, 0, 0 );
+            set_tilemap_tile( UPPER_LAYER, 2, 6+i*2, 0, 0 );
             set_tilemap_tile( UPPER_LAYER, 2, 5+i*2, 0, 0 );
+            set_tilemap_tile( UPPER_LAYER, 3, 5+i*2, 0, 0 );
+            set_tilemap_tile( UPPER_LAYER, 3, 6+i*2, 0, 0 );
         }
     }
 
     // bonus fruit list at right of screen
     {
-        int y = 27;
+        int y = 28;
         for (int i = ((int)state.game.round - NUM_STATUS_FRUITS + 1); i <= (int)state.game.round; i++) {
             if (i >= 0) {
                 fruit_t fruit = levelspec(i).bonus_fruit;
-                set_tilemap_32x32tile( UPPER_LAYER, 39, y, 4*fruit_tiles_colors[fruit][0]+21 );
+                set_tilemap_32x32tile( UPPER_LAYER, 40, y, 4*fruit_tiles_colors[fruit][0]+21 );
                 y -= 2 ;
             }
         }
@@ -2143,7 +2143,7 @@ static void intro_tick(void) {
         const uint8_t y = 3*i + 6;
         delay += 30;
         if (after_once(state.intro.started, delay)) {
-            set_tilemap_32x32tile( UPPER_LAYER, 11, y+1, i*4+1 );
+            set_tilemap_32x32tile( UPPER_LAYER, 12, y+2, i*4+1 );
         }
         // after 1 second, the name of the ghost
         delay += 60;
@@ -2289,40 +2289,40 @@ static void gfx_draw(void) {
 static void paws_snd( int action ) {
     switch( action ) {
         case SND_START_INTRO:
-            sample_upload( CHANNEL_LEFT, 64, &tune_treble[0] ); sample_upload( CHANNEL_RIGHT, 32, &tune_bass[0] );
+            tune_upload( CHANNEL_LEFT, 64, &tune_treble[0] ); tune_upload( CHANNEL_RIGHT, 32, &tune_bass[0] );
             set_volume( 7, 7 );
-            beep( CHANNEL_LEFT, WAVE_SAMPLE | WAVE_SINE, 0, 8 << 3 );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SINE, 0, 16 << 3 );
+            beep( CHANNEL_LEFT, WAVE_TUNE | WAVE_SINE, 0, 8 << 3 );
+            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SINE, 0, 16 << 3 );
             break;
         case SND_START_DOT1:
-            sample_upload( CHANNEL_RIGHT, 6, &eat_dot_1[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT, 6, &eat_dot_1[0] );
+            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SQUARE, 0, 16 );
             break;
         case SND_START_DOT2:
-            sample_upload( CHANNEL_RIGHT, 6, &eat_dot_2[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT, 6, &eat_dot_2[0] );
+            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SQUARE, 0, 16 );
             break;
         case SND_START_FRUIT:
-            sample_upload( CHANNEL_RIGHT, 24, &eat_fruit[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT, 24, &eat_fruit[0] );
+            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SQUARE, 0, 16 );
             break;
         case SND_START_GHOST:
-            sample_upload( CHANNEL_RIGHT, 33, &eat_ghost[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT, 33, &eat_ghost[0] );
+            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SQUARE, 0, 16 );
             break;
         case SND_START_PACMAN:
-            sample_upload( CHANNEL_RIGHT, 90, &eat_pacman[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT, 90, &eat_pacman[0] );
+            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SQUARE, 0, 16 );
             break;
         case SND_START_NORMAL:
             set_volume( 6, 7 );
-            sample_upload( CHANNEL_LEFT, 22, &alert_normal[0] );
-            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 16 );
+            tune_upload( CHANNEL_LEFT, 22, &alert_normal[0] );
+            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16 );
             break;
         case SND_START_FRIGHTENDED:
             set_volume( 6, 7 );
-            sample_upload( CHANNEL_LEFT, 8, &alert_frightended[0] );
-            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 16 );
+            tune_upload( CHANNEL_LEFT, 8, &alert_frightended[0] );
+            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16 );
             break;
         case SND_STOP_ALL:
             set_volume( 7, 7 );

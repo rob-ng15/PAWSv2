@@ -159,24 +159,24 @@ void display_state( void ) {
         for( int x = 0; x < 4; x++ ) {
             int number;
             if( keys[ y * 4 + x ] >= 'A' ) { number = keys[ y * 4 + x ] - 'A' + 10; } else { number = keys[ y * 4 + x ] - '0'; }
-            set_tilemap_tile( LOWER_LAYER, 1 + x, y + 3, _rv64_bext( machine.KEYS, number ) ? 1 : 2, 0 );
-            set_tilemap_tile( UPPER_LAYER, 1 + x, y + 3, y * 4 + x + 1, 0 );
-            set_tilemap_tile( LOWER_LAYER, 6 + x, y + 3, _rv64_bext( machine.KEYS, number ) ? 1 : 2, 0 );
-            set_tilemap_tile( UPPER_LAYER, 6 + x, y + 3, y*4 + x + 17, 0 );
+            set_tilemap_tile( LOWER_LAYER, 2 + x, y + 4, _rv64_bext( machine.KEYS, number ) ? 1 : 2, 0 );
+            set_tilemap_tile( UPPER_LAYER, 2 + x, y + 4, y * 4 + x + 1, 0 );
+            set_tilemap_tile( LOWER_LAYER, 7 + x, y + 4, _rv64_bext( machine.KEYS, number ) ? 1 : 2, 0 );
+            set_tilemap_tile( UPPER_LAYER, 7 + x, y + 4, y*4 + x + 17, 0 );
         }
     }
 
     for( int y = 0; y < 3; y++ ) {
         for( int x = 0; x < 4; x++ ) {
-            set_tilemap_tile( LOWER_LAYER, 11 + x * 2, y + 4, 3, 0 );
-            set_tilemap_tile( LOWER_LAYER, 12 + x * 2, y + 4, 4, 0 );
+            set_tilemap_tile( LOWER_LAYER, 12 + x * 2, y + 5, 3, 0 );
+            set_tilemap_tile( LOWER_LAYER, 13 + x * 2, y + 5, 4, 0 );
             int number = y * 4 + x;
             if( number < 6 ) {
-                set_tilemap_tile( UPPER_LAYER, 11 + x * 2, y + 4, number + 33, 0 );
-                set_tilemap_tile( UPPER_LAYER, 12 + x * 2, y + 4, number + 41, 0 );
+                set_tilemap_tile( UPPER_LAYER, 12 + x * 2, y + 5, number + 33, 0 );
+                set_tilemap_tile( UPPER_LAYER, 13 + x * 2, y + 5, number + 41, 0 );
             } else {
-                set_tilemap_tile( UPPER_LAYER, 11 + x * 2, y + 4, number + 43, 0 );
-                set_tilemap_tile( UPPER_LAYER, 12 + x * 2, y + 4, number + 51, 0 );
+                set_tilemap_tile( UPPER_LAYER, 12 + x * 2, y + 5, number + 43, 0 );
+                set_tilemap_tile( UPPER_LAYER, 13 + x * 2, y + 5, number + 51, 0 );
             }
         }
     }
