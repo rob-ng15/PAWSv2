@@ -143,26 +143,25 @@ unit control(
 }
 
 unit float_control(
-    // INSTRUCTION AND THREAD
-    input   uint32  instruction,
+    input   uint32  instruction,                                                                                                // INSTRUCTION AND THREAD
     input   uint1   SMT,
     input   uint1   COMMIT_SMT,
 
-    // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
-    input   uint1   frd,
+    input   uint1   frd,                                                                                                        // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
     input   uint1   write,
     input   uint64  result,
-    output  uint64  sourceReg1F,
+
+    output  uint64  sourceReg1F,                                                                                                // ACTUAL FLOATING POINT REGISTERS
     output  uint64  sourceReg2F,
     output  uint64  sourceReg3F,
-    output  uint64  sourceReg1Fx,
-    output  uint64  sourceReg1Fxopp,
+    output  uint64  sourceReg1Fx,                                                                                               // REPACKED FLOATING POINT REGISTERS INTO DOUBLE BITFIELDS
     output  uint64  sourceReg2Fx,
     output  uint64  sourceReg3Fx,
-    output  uint4   typeAF,
-    output  uint4   typeAopp,
-    output  uint4   typeBF,
-    output  uint4   typeCF,
+    output  uint64  sourceReg1Fxopp,                                                                                            // REPACKED FLOATING POINT REGISTER FOR CHANGE PRECISION
+    output  uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1
+    output  uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 2
+    output  uint4   typeCF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 3
+    output  uint4   typeAopp,                                                                                                   // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1 FOR CHANGE PRECISION
     output  uint1   aObINF,                                                                                                     // EITHER A OR B INF?
     output  uint1   aAbINF,                                                                                                     // BOTH A AND B INF?
     output  uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
@@ -171,23 +170,18 @@ unit float_control(
     output  uint1   aZEROFRACTION,                                                                                              // A FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
     output  uint1   bZEROFRACTION,                                                                                              // B FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
 
-    // FLOAT REGISTER COMPARISONS
-    output  uint1   FLT,
-    output  uint1   FEQ
+    output  uint1   FLT,                                                                                                        // FLOAT REGISTER COMPARISONS   LESS THAN
+    output  uint1   FEQ                                                                                                         //                              EQUAL
 ) <reginputs> {
-    // REGISTERS F float x 3, 0 for main thread, 1 for SMT thread
-    // Duplication is to allow for parallel read
-    simple_dualport_bram int64 F1[64] = uninitialized;
-    simple_dualport_bram int64 F2[64] = uninitialized;
+    simple_dualport_bram int64 F1[64] = uninitialized;                                                                          // REGISTERS F float x 3, 0 for main thread, 1 for SMT thread
+    simple_dualport_bram int64 F2[64] = uninitialized;                                                                          // Duplication is to allow for parallel read
     simple_dualport_bram int64 F3[64] = uninitialized;
 
-    // REGISTER WRITE SWITCHES
-    uint1   Fwrite <:: write & frd;
-
-    regR F1R( SMT <: SMT, regfile <:> F1, addr0 <: R4type(instruction).sourceReg1, rdata0 :> sourceReg1F );
+    uint1   Fwrite <:: write & frd;                                                                                             // REGISTER WRITE SWITCHES
+    regR F1R( SMT <: SMT, regfile <:> F1, addr0 <: R4type(instruction).sourceReg1, rdata0 :> sourceReg1F );                     //  READ REGISTERS
     regR F2R( SMT <: SMT, regfile <:> F2, addr0 <: R4type(instruction).sourceReg2, rdata0 :> sourceReg2F );
     regR F3R( SMT <: SMT, regfile <:> F3, addr0 <: R4type(instruction).sourceReg3, rdata0 :> sourceReg3F );
-    regW F1W( SMT <: COMMIT_SMT, regfile <:> F1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
+    regW F1W( SMT <: COMMIT_SMT, regfile <:> F1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );   //  WRITE REGISTERS
     regW F2W( SMT <: COMMIT_SMT, regfile <:> F2, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
     regW F3W( SMT <: COMMIT_SMT, regfile <:> F3, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );
 
@@ -196,7 +190,6 @@ unit float_control(
     typeF class2F( dsh <: Rtype(instruction).function7[0,2], a <: F2R.rdata0, zeroFRACTION :> bZEROFRACTION, type :> typeBF );  // CLASSIFY B FOR { INF, sNAN, qNAN, ZERO }, EXPORT ZEROFRACTION FLAG
     typeF class3F( dsh <: Rtype(instruction).function7[0,2], a <: F3R.rdata0, type :> typeCF );                                 // CLASSIFY C FOR { INF, sNAN, qNAN, ZERO }
 
-    // FOR changeprecision, the dsh flag for the source is in rs2, function7 determines the destination
     typeF class1Fopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, type :> typeAopp );                           // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
     repackage_wide Aopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, repack :> sourceReg1Fxopp );               // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION FOR changeprecision
 
@@ -207,8 +200,9 @@ unit float_control(
     floatcompare FPUcompare(                                                                                                    // FLOATING POINT COMPARISONS
         a <: A.repack, b <: B.repack,                                                                                           // PASS REPACKED VALUES TO COMPARE
         aObNAN <: aObNAN,                                                                                                       // A OR B NAN?
-        aZERO <: class1F.type[0,1], aZEROFRACTION <: class1F.zeroFRACTION,                                                      // A == 0 IF BOTH, DISCARDS SUBNORMALS
-        bZERO <: class2F.type[0,1], bZEROFRACTION <: class2F.zeroFRACTION,                                                      // B == 9 IF BOTH, DISCARDS SUBNORMALS
+        aAbZERO <: aAbZERO,                                                                                                     // A == 0 AND B == 0
+        aZEROFRACTION <: class1F.zeroFRACTION,                                                                                  // A FRACTION 0?
+        bZEROFRACTION <: class2F.zeroFRACTION,                                                                                  // B FRACTION 0?
         less :> FLT, equal :> FEQ                                                                                               // A < B? A == B?
     );
 
