@@ -270,9 +270,20 @@ unit PAWSCPU(
     }
 
     always_after {
-        { if( START_LOAD ) { LOADMA.start = RV64CONTROL.IS_MA; LOAD.start = ~RV64CONTROL.IS_MA & ~RV64CONTROL.IS_MEM64; LOAD64.start = ~RV64CONTROL.IS_MA & RV64CONTROL.IS_MEM64; } }
-        { if( START_STORE ) { STOREMA.start = RV64CONTROL.IS_MA; STORE.start = ~RV64CONTROL.IS_MA & ~RV64CONTROL.IS_MEM64; STORE64.start = ~RV64CONTROL.IS_MA & RV64CONTROL.IS_MEM64; } }
-
+        {
+            if( START_LOAD ) {
+            LOADMA.start = RV64CONTROL.IS_MA;
+            LOAD.start = ~RV64CONTROL.IS_MA & ~RV64CONTROL.IS_MEM64;
+            LOAD64.start = ~RV64CONTROL.IS_MA & RV64CONTROL.IS_MEM64;
+            }
+        }
+        {
+            if( START_STORE ) {
+                STOREMA.start = RV64CONTROL.IS_MA;
+                STORE.start = ~RV64CONTROL.IS_MA & ~RV64CONTROL.IS_MEM64;
+                STORE64.start = ~RV64CONTROL.IS_MA & RV64CONTROL.IS_MEM64;
+            }
+        }
         {
             if( |memorycontrols ) {                                                                                             // COPY MEMORY ADDRESS FROM MEMORY CONTROL UNITS
                 onehot( memorycontrols ) {
@@ -425,33 +436,23 @@ unit cpuexecuteSLOWPATH(
         sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
     );
 
-    CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                        // START FLAGS
-
-    algorithm <autorun> {
-        while(1) {
-            if( start ) {
-                busy = 1;
-                onehot( operation ) {                                                                                           // PROVIDE WAIT STATES
-                    default: { ++: }                                                                                            //  CSR AND ATOMIC OPERATIONS
-                    case 2: { while( ALUMD.busy ) {} }                                                                          //  INTEGER DIVISION
-                }
-                busy = 0;
-            }
-        }
-    }
+    CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                          // START FLAGS
 
     always_after {
-        onehot( operation ) {                                                                                                   // COLLECT RESULT
-            case 0: { result = |function3 ? CSR.result : 0; }                                                                   //  CSR
-            case 1: {
-                if( function7[3,1] ) {
-                    result = memoryinput;                                                                                       //  ATOMIC LOAD - MODIFY - STORE
-                } else {
-                    result = function7[2,1] ? 0 : memoryinput;                                                                  //  LR.W SC.W
+        { busy = start | ALUMD.busy; }                                                                                              // BUSY FLAG
+        {
+            onehot( operation ) {                                                                                                   // COLLECT RESULT
+                case 0: { result = |function3 ? CSR.result : 0; }                                                                   //  CSR
+                case 1: {
+                    if( function7[3,1] ) {
+                        result = memoryinput;                                                                                       //  ATOMIC LOAD - MODIFY - STORE
+                    } else {
+                        result = function7[2,1] ? 0 : memoryinput;                                                                  //  LR.W SC.W
+                    }
+                    memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                                       //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORUOUTPUT
                 }
-                memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                                       //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORUOUTPUT
+                case 2: { result = size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; }      //  INTEGER DIVISION
             }
-            case 2: { result = size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; }      //  INTEGER DIVISION
         }
     }
 }
