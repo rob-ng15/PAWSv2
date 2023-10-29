@@ -254,8 +254,8 @@ unit PAWSCPU(
                 switch( { RV64CONTROL.IS_LOAD, RV64CONTROL.IS_FAST, RV64CONTROL.IS_STORE } ) {
                     case 3b000: { while( EXECUTESLOW.busy | EXECUTEFPU.busy ) {} }                                              // DIVISION, CSR, FLOATIUNG POINT
                     case 3b010: {}                                                                                              // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
-                    case 3b011: { while( STORE64.busy | STORE.busy ) {} }                                                       // INTEGER + FLOAT/DOUBLE STORE
-                    case 3b110: { while( LOAD64.busy | LOAD.busy ) {} }                                                         // INTEGER + FLOAT/DOUBLE LOAD
+                    case 3b011: { while( STORE64.busy | STORE.busy | STOREMA.busy ) {} }                                        // INTEGER + FLOAT/DOUBLE STORE
+                    case 3b110: { while( LOAD64.busy | LOAD.busy | LOADMA.busy ) {} }                                           // INTEGER + FLOAT/DOUBLE LOAD
                     default: {                                                                                                  // ATOMIC LOAD - MODIFY - STORE + EMULATION OF LR.W AND SC.W
                         while( LOAD64.busy | LOAD.busy ) {} ++:
                         EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} ++:
@@ -271,21 +271,22 @@ unit PAWSCPU(
 
     always_after {
         {
-            if( START_LOAD ) {
-            LOADMA.start = RV64CONTROL.IS_MA;
-            LOAD.start = ~RV64CONTROL.IS_MA & ~RV64CONTROL.IS_MEM64;
-            LOAD64.start = ~RV64CONTROL.IS_MA & RV64CONTROL.IS_MEM64;
+            switch( { RV64CONTROL.IS_MA, RV64CONTROL.IS_MEM64 } ) {
+                case 2b00: { LOAD.start = START_LOAD; }
+                case 2b01: { LOAD64.start = START_LOAD; }
+                default: { LOADMA.start = START_LOAD; }
             }
         }
         {
-            if( START_STORE ) {
-                STOREMA.start = RV64CONTROL.IS_MA;
-                STORE.start = ~RV64CONTROL.IS_MA & ~RV64CONTROL.IS_MEM64;
-                STORE64.start = ~RV64CONTROL.IS_MA & RV64CONTROL.IS_MEM64;
+            switch( { RV64CONTROL.IS_MA, RV64CONTROL.IS_MEM64 } ) {
+                case 2b00: { STORE.start = START_STORE; }
+                case 2b01: { STORE64.start = START_STORE; }
+                default: { STOREMA.start = START_STORE; }
             }
         }
+
         {
-            if( |memorycontrols ) {                                                                                             // COPY MEMORY ADDRESS FROM MEMORY CONTROL UNITS
+            if( |memorycontrols ) {
                 onehot( memorycontrols ) {
                     case 0: { address = DMA.address; }
                     case 1: { address = RV64CONTROL.storeAddress; }
@@ -436,23 +437,33 @@ unit cpuexecuteSLOWPATH(
         sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
     );
 
-    CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                          // START FLAGS
+    CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                        // START FLAGS
+
+    algorithm <autorun> {
+        while(1) {
+            if( start ) {
+                busy = 1;
+                onehot( operation ) {                                                                                           // PROVIDE WAIT STATES
+                    default: { ++: }                                                                                            //  CSR AND ATOMIC OPERATIONS
+                    case 2: { while( ALUMD.busy ) {} }                                                                          //  INTEGER DIVISION
+                }
+                busy = 0;
+            }
+        }
+    }
 
     always_after {
-        { busy = start | ALUMD.busy; }                                                                                              // BUSY FLAG
-        {
-            onehot( operation ) {                                                                                                   // COLLECT RESULT
-                case 0: { result = |function3 ? CSR.result : 0; }                                                                   //  CSR
-                case 1: {
-                    if( function7[3,1] ) {
-                        result = memoryinput;                                                                                       //  ATOMIC LOAD - MODIFY - STORE
-                    } else {
-                        result = function7[2,1] ? 0 : memoryinput;                                                                  //  LR.W SC.W
-                    }
-                    memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                                       //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORUOUTPUT
+        onehot( operation ) {                                                                                                   // COLLECT RESULT
+            case 0: { result = |function3 ? CSR.result : 0; }                                                                   //  CSR
+            case 1: {
+                if( function7[3,1] ) {
+                    result = memoryinput;                                                                                       //  ATOMIC LOAD - MODIFY - STORE
+                } else {
+                    result = function7[2,1] ? 0 : memoryinput;                                                                  //  LR.W SC.W
                 }
-                case 2: { result = size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; }      //  INTEGER DIVISION
+                memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                                       //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORUOUTPUT
             }
+            case 2: { result = size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; }      //  INTEGER DIVISION
         }
     }
 }
@@ -774,12 +785,12 @@ unit dma_flags(
     output  uint1   multi16,
     output  uint1   multi32
 ) <reginputs> {
+        uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | DMADEST[24,1] |                                               // DESTINATION IS 16 BIT CAPABLE DRAM, BITMAP, CMAP
+                            ( ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[24,1] & ~DMADEST[15,1] ) ) &                       //  OR BRAM
+                            ~DMADEST[0,1];                                                                                  //  AND NOT ODD ADDRESS
+
     always_after {
         {
-            uint1   dest16bit = ( DMADEST[26,1] | DMADEST[25,1] | DMADEST[24,1] |                                               // DESTINATION IS 16 BIT CAPABLE DRAM, BITMAP, CMAP
-                                ( ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[24,1] & ~DMADEST[15,1] ) ) &                       //  OR BRAM
-                                ~DMADEST[0,1];                                                                                  //  AND NOT ODD ADDRESS
-
             srcSET = ( DMASOURCE == $addr_width$hfe0e );                                                                        // SOURCE IS THE SET VALUE REGISTER, NO LOADING REQUIRED
             src16bit = ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | DMASOURCE[24,1] |                                         // SOURCE IS 16 BIT CAPABLE DRAM, BITMAP, CMAP
                         ( ~DMASOURCE[26,1] & ~DMASOURCE[25,1] & ~DMASOURCE[24,1] & ~DMASOURCE[15,1] ) ) &                       //  OR BRAM
@@ -929,19 +940,16 @@ unit dma(
                 switch( dmamode[3,1] ) {
                     case 0: {
                         while( |dmacount ) {                                                                                    // SINGLE CYCLE MODE
-                            address = dmasrc; readmemory = ~FLAGS.srcSET;
+                            address = dmasrc; readmemory = ~FLAGS.srcSET; PBcount = 0;
                             switch( { FLAGS.srcSET, &dmamode[0,3] } ) {
                                 case 2b00: { while( memorybusy ) {} ++: address = dmadest; writedata = writecopy; writememory = 1; while( memorybusy ) {} }
                                 case 2b01: {
                                     while( memorybusy ) {} memoryinput = readdata;
-                                    address = dmadest; PBcount = 0;
+                                    address = dmadest;
                                     while( PBcount != PBmax ) { writedata = writecopy; writememory = 1; while( memorybusy ) {} PBcount = PB.NEXT; }
                                 }
                                 case 2b10: { address = dmadest; writememory = 1; while( memorybusy ) {} }
-                                case 2b11: {
-                                    address = dmadest; PBcount = 0;
-                                    while( PBcount != PBmax ) { writememory = 1; while( memorybusy ) {} PBcount = PB.NEXT; }
-                                }
+                                case 2b11: { address = dmadest; while( PBcount != PBmax ) { writememory = 1; while( memorybusy ) {} PBcount = PB.NEXT; } }
                             }
                             update = 1;
                         }
