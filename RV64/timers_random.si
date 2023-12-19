@@ -1,3 +1,107 @@
+unit timers_memmap(
+    // Memory access
+    input   uint6   memoryAddress,
+    input   uint1   memoryWrite,
+    input   uint1   memoryRead,
+    input   uint32  writeData,
+    output  uint32  readData,
+
+    // RNG + CURSOR BLINK
+    output  uint16  static16bit,
+    output  uint1   cursor
+) <reginputs> {
+    timers_rng timers( seconds :> cursor, g_noise_out :> static16bit ); timers.resetcounter := 0;                               // TIMERS and RNG UNITS
+
+    algorithm <autorun> { while(1) {
+        // READ IO Memory
+        uint64  LATCHseconds = uninitialised; uint25  LATCHmilliseconds = uninitialised;                                        // LATCH TIME OF DAY SO READ RETURNS THE SAME TIME
+
+        if( memoryRead ) {
+            if( memoryAddress[5,1] ) {
+                switch( memoryAddress[2,2] ) {
+                    default: { LATCHseconds = timers.seconds; LATCHmilliseconds = timers.milliseconds; readData = timers.seconds[0,32]; }
+                    case 2h1: { readData = LATCHseconds[32,32]; }
+                    case 2h2: { readData = LATCHmilliseconds; }
+                }
+            } else {
+                switch( memoryAddress[1,4] ) {
+                    // RNG ( 2 interger, 1 float 0 <= fng < 1 ) and TIMERS
+                    default: { readData = timers.g_noise_out; }                                                                 // RANDOM NUMBER GENERATOR 0
+                    case 4h1: { readData = timers.u_noise_out; }                                                                // RANDOM NUMBER GENERATOR 1
+                    case 4h2: { readData = { timers.u_noise_out[0,7], timers.g_noise_out, timers.u_noise_out[7,7] }; }          // COMBINE TO FLOATING POINT RNG
+                    case 4h8: { readData = timers.timer1hz0; }
+                    case 4h9: { readData = timers.timer1hz1; }
+                    case 4ha: { readData = timers.timer1khz0; }
+                    case 4hb: { readData = timers.timer1khz1; }
+                    case 4hc: { readData = timers.sleepTimer0; }
+                    case 4hd: { readData = timers.sleepTimer1; }
+                }
+            }
+        }
+        // WRITE IO Memory
+        if( memoryWrite ) {
+            if( memoryAddress[5,1] ) {
+                switch( memoryAddress[2,2] ) {
+                    case 2h0: { timers.newtime[0,32] = writeData; }                                                             // SET CLOCK TIME
+                    case 2h1: { timers.newtime[32,32] = writeData; }
+                    default: { timers.resetcounter = 7; }
+                }
+            } else {
+                timers.counter = writeData; timers.resetcounter = memoryAddress[1,3] + 1;                                       // SET A COUNTER
+            }
+        }
+    } }
+}
+
+// TIMERS and RNG Controllers
+unit timers_rng(
+    output  uint64  seconds,
+    input   uint64  newtime,
+    output  uint20  milliseconds,
+    output  uint16  timer1hz0,
+    output  uint16  timer1hz1,
+    output  uint16  timer1khz0,
+    output  uint16  timer1khz1,
+    output  uint16  sleepTimer0,
+    output  uint16  sleepTimer1,
+    output  uint16  u_noise_out,
+    output  uint16  g_noise_out,
+    input   uint16  counter,
+    input   uint3   resetcounter
+) <reginputs> {
+    // RNG random number generator
+    random rng( u_noise_out :> u_noise_out,  g_noise_out :> g_noise_out );
+
+    // 1hz timers (P1 used for systemClock, T1hz0 and T1hz1 for user purposes)
+    timesinceboot P1( newtime <: newtime, counter1hz :> seconds, counter1mhz :> milliseconds );
+    pulse1hz T1hz0( counter1hz :> timer1hz0 );
+    pulse1hz T1hz1( counter1hz :> timer1hz1 );
+
+    // 1khz timers (sleepTimers used for sleep command, timer1khzs for user purposes)
+    pulse1khz T0khz0( counter1khz :> timer1khz0 );
+    pulse1khz T1khz1( counter1khz :> timer1khz1 );
+    pulse1khz STimer0( counter1khz :> sleepTimer0 );
+    pulse1khz STimer1( counter1khz :> sleepTimer1 );
+
+    P1.resettime := 0;
+    T1hz0.resetCounter := 0; T1hz1.resetCounter := 0;
+    T0khz0.resetCounter := 0; T1khz1.resetCounter := 0;
+    STimer0.resetCounter := 0; STimer1.resetCounter := 0;
+
+    algorithm <autorun> { while(1) {
+        switch( resetcounter ) {
+            case 0: {}
+            case 1: { T1hz0.resetCounter = 1; }
+            case 2: { T1hz1.resetCounter = 1; }
+            case 3: { T0khz0.resetCounter = counter; }
+            case 4: { T1khz1.resetCounter = counter; }
+            case 5: { STimer0.resetCounter = counter; }
+            case 6: { STimer1.resetCounter = counter; }
+            case 7: { P1.resettime = 1; }
+        }
+    } }
+}
+
 // Create seconds and milliseconds since boot
 // Create 1hz (1 second counter)
 unit timesinceboot(
@@ -6,20 +110,24 @@ unit timesinceboot(
     input   uint64  newtime,
     input   uint1   resettime
 ) <reginputs> {
-    uint6   counter50mhz = uninitialised;
-    uint64  counter1hzp1 <:: counter1hz + 1;
+    algorithm <autorun> {
+        uint6   counter50mhz = uninitialised;
+        uint6   counter50mhz_m1 <:: counter50mhz - 1;
+        uint64  counter1hz_p1 <:: counter1hz + 1;
+        uint20  counter1mhz_p1 <:: counter1mhz + 1;
 
-    always_after {
-        if( resettime ) {
-            counter1hz = newtime;
-            counter1mhz = 0;
-            counter50mhz = 0;
-        } else {
-            switch( { counter1mhz == 1000000, ~|counter50mhz } ) {
-                case 2b00: { counter50mhz = counter50mhz - 1; }
-                case 2b01: { counter1mhz = counter1mhz + 1; counter50mhz = 50; }
-                case 2b10: { counter1hz = counter1hzp1; counter1mhz =  0; }
-                case 2b11: { counter1hz = counter1hzp1; counter1mhz = 0; counter50mhz = counter50mhz - 1; }
+        while(1) {
+            if( resettime ) {
+                counter1hz = newtime;
+                counter1mhz = 0;
+                counter50mhz = 0;
+            } else {
+                switch( { counter1mhz == 1000000, ~|counter50mhz } ) {
+                    case 2b00: { counter50mhz = counter50mhz_m1; }
+                    case 2b01: { counter1mhz = counter1mhz_p1; counter50mhz = 50; }
+                    case 2b10: { counter1hz = counter1hz_p1; counter1mhz =  0; }
+                    case 2b11: { counter1hz = counter1hz_p1; counter1mhz = 0; counter50mhz = counter50mhz_m1; }
+                }
             }
         }
     }
@@ -30,13 +138,17 @@ unit pulse1hz(
     output  uint16  counter1hz(0),
     input   uint1   resetCounter
 ) <reginputs> {
-    uint26  counter50mhz = uninitialised;
+    algorithm <autorun> {
+        uint26  counter50mhz = uninitialised;
+        uint26  counter50mhz_m1 <:: counter50mhz -1 ;
+        uint16  counter1hz_p1 <:: counter1hz + 1 ;
 
-    always_after {
-        if( resetCounter ) {
-            counter1hz = 0; counter50mhz = 50000000;
-        } else {
-            if( ~|counter50mhz ) { counter1hz = counter1hz + 1; counter50mhz = 50000000; } else { counter50mhz = counter50mhz - 1; }
+        while(1) {
+            if( resetCounter ) {
+                counter1hz = 0; counter50mhz = 50000000;
+            } else {
+                if( ~|counter50mhz ) { counter1hz = counter1hz_p1; counter50mhz = 50000000; } else { counter50mhz = counter50mhz_m1; }
+            }
         }
     }
 }
@@ -46,13 +158,17 @@ unit pulse1khz(
     output  uint16  counter1khz(0),
     input   uint16  resetCounter
 ) <reginputs> {
-    uint16  counter50mhz = uninitialised;
+    algorithm <autorun> {
+        uint16  counter50mhz = uninitialised;
+        uint16  counter50mhz_m1 <:: counter50mhz -1 ;
+        uint16  counter1khz_m1 <:: counter1khz - 1 ;
 
-    always_after {
-        if( |resetCounter ) {
-            counter1khz = resetCounter; counter50mhz = 50000;
-        } else {
-            if( ~|counter50mhz ) { if( |counter1khz) { counter1khz = counter1khz - 1; } counter50mhz = 50000; } else { counter50mhz = counter50mhz - 1; }
+        while(1) {
+            if( |resetCounter ) {
+                counter1khz = resetCounter; counter50mhz = 50000;
+            } else {
+                if( ~|counter50mhz ) { if( |counter1khz) { counter1khz = counter1khz_m1; } counter50mhz = 50000; } else { counter50mhz = counter50mhz_m1; }
+            }
         }
     }
 }
@@ -63,20 +179,22 @@ unit random(
     output  uint16  g_noise_out,
     output  uint16  u_noise_out,
 ) <reginputs> {
-    uint16  rand_ff(24b011000110111011010011101);
-    uint18  rand_en_ff(24b001100010011011101100101);
+    algorithm <autorun> {
+        uint16  rand_ff(24b011000110111011010011101);
+        uint18  rand_en_ff(24b001100010011011101100101);
 
-    always_after {
-        uint16  temp_u_noise3 = uninitialised;
-        uint16  temp_u_noise2 = uninitialised;
-        uint16  temp_u_noise1 = uninitialised;
-        uint16  temp_u_noise0 = uninitialised;
+        while(1) {
+            uint16  temp_u_noise3 = uninitialised;
+            uint16  temp_u_noise2 = uninitialised;
+            uint16  temp_u_noise1 = uninitialised;
+            uint16  temp_u_noise0 = uninitialised;
 
-         temp_u_noise0 = temp_u_noise1; temp_u_noise1 = temp_u_noise2; temp_u_noise2 = temp_u_noise3; temp_u_noise3 = { rand_ff[15,1], rand_ff[15,1], rand_ff[2,13] };
-         g_noise_out = ( rand_en_ff[17,1] ) ? ( temp_u_noise3 + temp_u_noise2 + temp_u_noise1 + temp_u_noise0 + ( rand_en_ff[9,1] ? g_noise_out : 0 ) ) :
-                       ( rand_en_ff[10,1] ) ? rand_ff : g_noise_out;
-         u_noise_out = ( rand_en_ff[17,1] ) ? rand_ff : u_noise_out;
-         rand_en_ff = { ( rand_en_ff[7,1] ^ rand_en_ff[0,1] ), rand_en_ff[1,17] };
-         rand_ff = { ( rand_ff[5,1] ^ rand_ff[3,1] ^ rand_ff[2,1] ^ rand_ff[0,1] ), rand_ff[1,15] };
+            temp_u_noise0 = temp_u_noise1; temp_u_noise1 = temp_u_noise2; temp_u_noise2 = temp_u_noise3; temp_u_noise3 = { rand_ff[15,1], rand_ff[15,1], rand_ff[2,13] };
+            g_noise_out = ( rand_en_ff[17,1] ) ? ( temp_u_noise3 + temp_u_noise2 + temp_u_noise1 + temp_u_noise0 + ( rand_en_ff[9,1] ? g_noise_out : 0 ) ) :
+                          ( rand_en_ff[10,1] ) ? rand_ff : g_noise_out;
+            u_noise_out = ( rand_en_ff[17,1] ) ? rand_ff : u_noise_out;
+            rand_en_ff = { ( rand_en_ff[7,1] ^ rand_en_ff[0,1] ), rand_en_ff[1,17] };
+            rand_ff = { ( rand_ff[5,1] ^ rand_ff[3,1] ^ rand_ff[2,1] ^ rand_ff[0,1] ), rand_ff[1,15] };
+        }
     }
 }
