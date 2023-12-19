@@ -13,6 +13,7 @@ unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf102;
 
 // SDCARD
 unsigned char volatile *SDCARD_READY = (unsigned char volatile *) 0xf400;
+unsigned char volatile *SDCARD_ERROR = (unsigned char volatile *) 0xf401;
 unsigned char volatile *SDCARD_READSTART = (unsigned char volatile *) 0xf400;
 unsigned char volatile *SDCARD_WRITESTART = (unsigned char volatile *) 0xf402;
 unsigned int volatile *SDCARD_SECTOR = (unsigned int *) 0xf404;
