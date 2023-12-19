@@ -1,3 +1,175 @@
+// AUDIO MEMORY MAP CONTROLLER
+unit audio_memmap(
+    // Memory access
+    input   uint5   memoryAddress,                                                                                              // BITS 1-5
+    input   uint1   memoryWrite,
+    input   uint16  writeData,
+    output  uint16  readData,
+
+    // AUDIO
+    output  uint4   audio_l,
+    output  uint4   audio_r,
+
+    // RNG
+    input  uint8   static8bit
+) <reginputs> {
+    // BLOCK STORAGE FOR "DOOM SAMPLES" - A SERIES OF NOTES TO BE PLAYED FOR A GIVEN NUMBER OF MILLISECONDS
+    simple_dualport_bram uint7 samples_left[256] = uninitialized;
+    simple_dualport_bram uint7 samples_right[256] = uninitialized;
+    doom_samples_writer DSL( doom_samples <:> samples_left, samples <: writeData[0,7] );
+    doom_samples_writer DSR( doom_samples <:> samples_right, samples <: writeData[0,7] );
+
+    // BLOCK STORAGE FOR "BIT SAMPLES" - 128 x 1 bit SAMPLES ( very crude digital sounds ), STORED AS 16 x 8 bits PER CHANNEL
+    simple_dualport_bram uint8 bit_samples_left[16] = uninitialized;
+    simple_dualport_bram uint8 bit_samples_right[16] = uninitialized;
+    bitsample_writer BSL( bit_samples <:> bit_samples_left, samples <: writeData[0,8] );
+    bitsample_writer BSR( bit_samples <:> bit_samples_right, samples <: writeData[0,8] );
+
+    // BLOCK STORAGE FOR USER DEFINED WAVEFORMS - 256 x 8 BIT SAMPLES
+    simple_dualport_bram uint8 wave_samples_left[256] = uninitialized;
+    simple_dualport_bram uint8 wave_samples_right[256] = uninitialized;
+    wave_samples_writer WSL( wave_samples <:> wave_samples_left, samples <: writeData[0,8] );
+    wave_samples_writer WSR( wave_samples <:> wave_samples_right, samples <: writeData[0,8] );
+
+    // BLOCK STORAGE FOR PCM SAMPLES - 32768 x 2 bit SAMPLES
+    simple_dualport_bram uint2 pcm_samples_left[$PCM$] = uninitialized;
+    simple_dualport_bram uint2 pcm_samples_right[$PCM$] = uninitialized;
+    pcm_samples_writer PSL( pcm_samples <:> pcm_samples_left, samples <: writeData[6,2] );
+    pcm_samples_writer PSR( pcm_samples <:> pcm_samples_right, samples <: writeData[6,2] );
+
+    // Left and Right audio channels
+    audio apu_processor_L(
+        samples <:> samples_left,
+        bit_samples <:> bit_samples_left,
+        wave_samples <:> wave_samples_left,
+        pcm_samples <:> pcm_samples_left,
+        staticGenerator <: static8bit,
+        audio :> audio_l,
+        samples_MAX <: DSL.max,
+    );
+    audio apu_processor_R(
+        samples <:> samples_right,
+        bit_samples <:> bit_samples_right,
+        wave_samples <:> wave_samples_right,
+        pcm_samples <:> pcm_samples_right,
+        staticGenerator <: static8bit,
+        audio :> audio_r,
+        samples_MAX <: DSR.max
+    );
+
+    // SAMPLE MEMORY CONTROLS
+    DSL.newsample := 0; DSR.newsample := 0; DSL.load := 0; DSR.load := 0;                                                       // DOOM STYLE PC SPEAKER SAMPLES
+    BSL.newsample := 0; BSR.newsample := 0; BSL.load := 0; BSR.load := 0;                                                       // CHIP8 1 BIT SAMPLES
+    WSL.newsample := 0; WSR.newsample := 0; WSL.load := 0; WSR.load := 0;                                                       // USER DEFINED WAVEFORM SAMPLES
+    PSL.newsample := 0; PSR.newsample := 0; PSL.load := 0; PSR.load := 0;                                                       // PCM SAMPLES
+
+    apu_processor_L.apu_write := 0; apu_processor_R.apu_write := 0;                                                             // HOLD WRITE TRIGGERS AT 0
+    readData := memoryAddress[3,1] ? memoryAddress[0,1] ? apu_processor_R.audio_active : apu_processor_L.audio_active : $PCM$;  // RETURN AUDIO ACTIVE STATE TO CPU OR NUMBER OF PCM SAMPLES SUPPORTED
+
+    algorithm <autorun> {
+        apu_processor_L.volume = 7; apu_processor_R.volume = 7;
+
+        while(1) {
+        {
+            // WRITE IO Memory
+            if( memoryWrite ) {
+                switch( memoryAddress ) {
+                    case 5h0: { apu_processor_L.waveform = writeData; apu_processor_R.waveform = writeData; }                   // SET APU FROM CPU
+                    case 5h1: { apu_processor_L.frequency = writeData; apu_processor_R.frequency = writeData; }
+                    case 5h2: { apu_processor_L.duration = writeData; apu_processor_R.duration = writeData; }
+                    case 5h3: { apu_processor_L.apu_write = writeData[0,1]; apu_processor_R.apu_write = writeData[1,1]; }
+                    case 5h4: { DSL.newsample = writeData[0,1]; DSR.newsample = writeData[1,1]; }                               // RESET SAMPLES
+                    case 5h5: { DSL.load = 1; }                                                                                 // WRITE TO LEFT DOOM SAMPLE MEMORY
+                    case 5h6: { DSR.load = 1; }                                                                                 // WRITE TO RIGHT DOOM SAMPLE MEMORY
+                    case 5h8: { apu_processor_L.volume = writeData; }                                                           // SET VOLUME LEFT
+                    case 5h9: { apu_processor_R.volume = writeData; }                                                           // SET VOLUME RIGHT
+                    case 5ha: { BSL.newsample = writeData[0,1]; BSR.newsample = writeData[1,1]; }                               // RESET BIT SAMPLES
+                    case 5hb: { BSL.load = 1; }                                                                                 // WRITE TO LEFT BIT SAMPLE MEMORY
+                    case 5hc: { BSR.load = 1;  }                                                                                // WRITE TO RIGHT BIT SAMPLE MEMORY
+                    case 5hd: { WSL.newsample = writeData[0,1]; WSR.newsample = writeData[1,1]; }                               // RESET WAVE SAMPLES
+                    case 5he: { WSL.load = 1; }                                                                                 // WRITE TO LEFT WAVEFORM MEMORY
+                    case 5hf: { WSR.load = 1;  }                                                                                // WRITE TO RIGHT WAVEFORM MEMORY
+                    case 5h10: { PSL.newsample = writeData[0,1]; PSR.newsample = writeData[1,1]; }                              // RESET PCM SAMPLES TO 0
+                    case 5h11: { PSL.load = 1; }                                                                                // WRITE TO LEFT PCM SAMPLE MEMORY
+                    case 5h12: { PSR.load = 1;  }                                                                               // WRITE TO RIGHT PCM SAMPLE MEMORY
+                    default: {}
+                }
+            }
+        }
+    } }
+}
+
+// AUDIO Channel Controller
+unit audio(
+    simple_dualport_bram_port0  samples,
+    simple_dualport_bram_port0  bit_samples,
+    simple_dualport_bram_port0  wave_samples,
+    simple_dualport_bram_port0  pcm_samples,
+
+    input   uint8   staticGenerator,
+    input   uint5   waveform,
+    input   uint7   frequency,
+    input   uint16  duration,
+    input   uint1   apu_write,
+    input   uint3   volume,
+    output  uint4   audio,
+    output  uint1   audio_active,
+
+    input   uint8   samples_MAX,
+) <reginputs> {
+    // FREQUENCY TABLE - FIRST 24 NOTES, USE OCTAVE ALGORITHM TO GET ADDITIONAL NOTES, 3 = c 2 , 5 = c#2, 7 = d 2... ( rest generated by shifts ) + 24 per octave
+    uint13 frequency_table[] = {
+        0,
+        6328, 6144, 5972, 5800, 5638, 5474, 5320, 5168, 5022, 4878, 4740, 4604, 4474, 4344, 4224, 4102, 3986, 3870, 3762, 3654, 3552, 3448, 3352, 3056
+    };
+    octave CPUINPUT( frequency <: frequency );                  uint13  CPUfrequency <:: frequency_table[ CPUINPUT.basefrequency ] >> CPUINPUT.shift;
+    octave SINPUT( frequency <: samples.rdata0 );               uint13  Sfrequency <:: frequency_table[ SINPUT.basefrequency ] >> SINPUT.shift;
+
+    // Audio channel, 8 bit output from audio channel goes through PWM modulator
+    apu apu_processor( bit_samples <:> bit_samples, wave_samples <:> wave_samples, pcm_samples <:> pcm_samples, volume <: volume, staticGenerator <: staticGenerator, audio_active :> audio_active );
+    audio_pwm PWM( active <: apu_processor.audio_active, wave <: apu_processor.audio_output, audio :> audio );
+
+    apu_processor.apu_write := 0;
+
+    algorithm <autorun> {
+        uint8   SAMP0P1 <:: samples.addr0 + 1;                                                                                      // NEXT ADDRESS IN DOOM PC SPEAKER MODE
+
+        while(1) {
+            uint1   SAMPLEMODE = uninitialised;                                                                                     // IS CHANNEL IN DOOM PC SPEAKER SAMPLE MODE?
+            uint1   REPEAT = uninitialised;                                                                                         // IS REPEAT FOR DOOM PC SPEAKER MODE RQQUIRED?
+            uint1   newS = uninitialised;                                                                                           // IS A NEW NOTE REQUIRED WHEN AUDIO STOPS?
+
+            if( SAMPLEMODE ) {                                                                                                  // DOOM PC SPEAKER MODE?
+                if( ~apu_processor.audio_active ) {                                                                             //  PREVIOUS SAMPLE FINISHED?
+                    if( newS ) {                                                                                                //  NEW SAMPLE NEEDED?
+                        apu_processor.frequency = Sfrequency; apu_processor.apu_write = 1; newS = 0;                            //  SEND NEW NOTE
+                        if( SAMP0P1 == samples_MAX ) {                                                                          // AT END OF NOTES?
+                            samples.addr0 = 0; SAMPLEMODE = REPEAT;                                                             //  RESTART IF REPEAT
+                        } else {
+                            samples.addr0 = SAMP0P1;                                                                            // MOVE TO NEXT NOTE
+                        }
+                    }
+                } else {
+                    newS = 1;                                                                                                   // DEFAULT TO NEW NOTE REQUIRED
+                }
+            } else {
+                samples.addr0 = 0; newS = 1;                                                                                    // DEFAULT TO START AND NEW NOTE REQUIRED
+            }
+
+            if( apu_write ) {                                                                                                   // CPU AUDIO REQUEST
+                apu_processor.duration = duration; apu_processor.waveform = waveform[0,3];                                      // SET BASE DURATION AND WAVEFORM
+                SAMPLEMODE = waveform[3,1]; REPEAT = waveform[4,1];                                                             // SET DOOM PC SPEAKER SAMPLE MODE AND REPEAT FLAGS
+                if( waveform[3,1] ) {
+                    samples.addr0 = 0; newS = 1;                                                                                // IF DOOM PC SPEAKER SAMPLE MODE, MOVE TO START
+                } else {
+                    apu_processor.frequency = CPUfrequency; apu_processor.apu_write = 1;                                        // NORMAL WAVEFORM MODE, SET FREQUENCY
+
+                }
+            }
+        }
+    }
+}
+
 unit apu(                                                                                                                       //Single channel audio output, outputs 8 bits for PWM. 25MHz
     simple_dualport_bram_port0  bit_samples,
     simple_dualport_bram_port0  wave_samples,
@@ -20,9 +192,9 @@ unit apu(                                                                       
     );
     audiocounter COUNTER( selected_frequency <: frequency, selected_duration <: duration, start <: apu_write, active :> audio_active );
 
-    always_after {
+    algorithm <autorun> { while(1) {
         if( COUNTER.updatepoint ) { audio_output = WAVEFORM.audio_output >> ~volume; }
-    }
+    } }
 }
 
 unit waveform(
@@ -62,7 +234,7 @@ unit waveform(
 
     point := ~active ? 0 : pointP1;                                                                                             // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE, ALLOWS BIT SAMPLES TO REPEAT
 
-    always_after {
+    algorithm <autorun> { while(1) {
         switch( selected_waveform ) {
             case 0: { audio_output = { point[7,1], 7b1111111 }; }                                                               // SQUARE
             case 1: { audio_output = point[0,8]; }                                                                              // SAWTOOTH
@@ -73,7 +245,7 @@ unit waveform(
             case 6: { audio_output = {4{pcm_samples.rdata0}}; }                                                                 // PCM SAMPLES 2 bit -> 8 bit
             case 7: { audio_output = {8{bit_samples.rdata0[ point[0,3], 1]}}; }                                                 // 1 BIT SAMPLES, TRANSLATE TO SQUARE WAVE
         }
-    }
+    } }
 }
 
 unit audiocounter(
@@ -83,18 +255,23 @@ unit audiocounter(
     output  uint1   updatepoint,
     output  uint1   active(0)
 ) <reginputs> {
-    uint13  counter50mhz = uninitialised;           uint13  counter50mhz_NEXT <:: counter50mhz - 1;
-    uint16  counter1khz = uninitialised;            uint16  counter1khz_NEXT <:: counter1khz - 1;
-    uint16  duration = uninitialised;               uint16  duration_NEXT <:: duration - 1;
+    uint13  counter50mhz = uninitialised;
+    uint16  duration = uninitialised;
 
     active := ( |duration ); updatepoint := active & ( ~|counter50mhz );
 
-    always_after {
-        if( start ) {
-            counter50mhz = 0; counter1khz = 50000; duration = selected_duration;
-        } else {
-            if( updatepoint ) { counter50mhz = selected_frequency; } else { counter50mhz = counter50mhz_NEXT; }
-            if( active & ( ~|counter1khz ) ) { counter1khz = 50000; duration = duration_NEXT; } else { counter1khz = counter1khz_NEXT; }
+    algorithm <autorun> {
+        uint13  counter50mhz_NEXT <:: counter50mhz - 1;
+        uint16  duration_NEXT <:: duration - 1;
+        uint16  counter1khz = uninitialised;            uint16  counter1khz_NEXT <:: counter1khz - 1;
+
+        while(1) {
+            if( start ) {
+                counter50mhz = 0; counter1khz = 50000; duration = selected_duration;
+            } else {
+                if( updatepoint ) { counter50mhz = selected_frequency; } else { counter50mhz = counter50mhz_NEXT; }
+                if( active & ( ~|counter1khz ) ) { counter1khz = 50000; duration = duration_NEXT; } else { counter1khz = counter1khz_NEXT; }
+            }
         }
     }
 }
@@ -106,10 +283,8 @@ unit octave(
     output  uint5   basefrequency,
     output  uint3   shift
 ) <reginputs> {
-    always_after {
-        shift = ( frequency > 120 ) ? 5 : ( frequency > 96 ) ? 4 : ( frequency > 72 ) ? 3 : ( frequency > 48 ) ? 2 : ( frequency > 24 ) ? 1 : 0;
-        basefrequency = frequency - ( shift * 24 );
-    }
+    shift := ( frequency > 120 ) ? 5 : ( frequency > 96 ) ? 4 : ( frequency > 72 ) ? 3 : ( frequency > 48 ) ? 2 : ( frequency > 24 ) ? 1 : 0;
+    basefrequency := frequency - ( shift * 24 );
 }
 
 // HANDLE WRITING TO THE DOOM PC SPEAKER SAMPLES MEMORY
@@ -120,16 +295,18 @@ unit doom_samples_writer(
     input   uint1   newsample,
     output  uint8   max
 ) <reginputs> {
-    uint8   max_NEXT <:: max + 1;
-
     doom_samples.wenable1 := 1;
 
-    always_after {
-        if( newsample ) {
-            max = 0;
-        } else {
-            if( load ) {
-                doom_samples.addr1 = max; doom_samples.wdata1 = samples; max = max_NEXT;
+    algorithm <autorun> {
+        uint8   max_NEXT <:: max + 1;
+
+        while(1) {
+            if( newsample ) {
+                max = 0;
+            } else {
+                if( load ) {
+                    doom_samples.addr1 = max; doom_samples.wdata1 = samples; max = max_NEXT;
+                }
             }
         }
     }
@@ -142,16 +319,18 @@ unit bitsample_writer(
     input   uint1   load,
     input   uint1   newsample
 ) <reginputs> {
-    uint4   max = uninitialised;                    uint4   max_NEXT <:: max + 1;
-
     bit_samples.wenable1 := 1;
 
-    always_after {
-        if( newsample ) {
-            max = 0;
-        } else {
-            if( load ) {
-                bit_samples.addr1 = max; bit_samples.wdata1 = samples; max = max_NEXT;
+    algorithm <autorun> {
+        uint4   max = uninitialised;                    uint4   max_NEXT <:: max + 1;
+
+        while(1) {
+            if( newsample ) {
+                max = 0;
+            } else {
+                if( load ) {
+                    bit_samples.addr1 = max; bit_samples.wdata1 = samples; max = max_NEXT;
+                }
             }
         }
     }
@@ -164,16 +343,18 @@ unit wave_samples_writer(
     input   uint1   load,
     input   uint1   newsample
 ) <reginputs> {
-    uint8   max = uninitialised;                    uint8   max_NEXT <:: max + 1;
-
     wave_samples.wenable1 := 1;
 
-    always_after {
-        if( newsample ) {
-            max = 0;
-        } else {
-            if( load ) {
-                wave_samples.addr1 = max; wave_samples.wdata1 = samples; max = max_NEXT;
+    algorithm <autorun> {
+        uint8   max = uninitialised;                    uint8   max_NEXT <:: max + 1;
+
+        while(1) {
+            if( newsample ) {
+                max = 0;
+            } else {
+                if( load ) {
+                    wave_samples.addr1 = max; wave_samples.wdata1 = samples; max = max_NEXT;
+                }
             }
         }
     }
@@ -186,16 +367,18 @@ unit pcm_samples_writer(
     input   uint1   load,
     input   uint1   newsample
 ) <reginputs> {
-    uint15   max = uninitialised;               uint15  max_NEXT <:: max + 1;
-
     pcm_samples.wenable1 := 1;
 
-    always_after {
-        if( newsample ) {
-            max = 0;
-        } else {
-            if( load ) {
-                pcm_samples.addr1 = max; pcm_samples.wdata1 = samples; max = max_NEXT;
+    algorithm <autorun> {
+        uint15   max = uninitialised;               uint15  max_NEXT <:: max + 1;
+
+        while(1) {
+            if( newsample ) {
+                max = 0;
+            } else {
+                if( load ) {
+                    pcm_samples.addr1 = max; pcm_samples.wdata1 = samples; max = max_NEXT;
+                }
             }
         }
     }
