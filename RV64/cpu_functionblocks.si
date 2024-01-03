@@ -739,27 +739,31 @@ unit CSRblock(
     input   uint1   updateFPUflags,
     input   uint5   FPUnewflags,
     output  uint8   FPUflags,
-    output  uint64  result
+    output  uint64  result,
+//    output  uint64  mcause,                                                                                                     // 342 MACHINE EXCEPTION CAUSE
+//    output  uint64  mstatus,                                                                                                    // 300 MACHINE STATUS BIT 3 IS MIE, 7 IS MPIE
+//    output  uint64  mepc,                                                                                                       // 341 MACHINE EXECPTION PROGRAM COUNTER
+//    output  uint64  mtvec                                                                                                       // 305 MACHINE TRAP VECTOR BASE ADDRESS
 ) <reginputs> {
     csr_timer TIMER();                                                                                                          // TIMER
     csr_smt_counter CYCLE( SMT <: SMT );                                                                                        // CYCLES PER THREAD
     csr_smt_counter INSTRET( SMT <: SMT, trigger <: incCSRinstret );                                                            // INSTRUCTIONS RETIRED
 
     uint32  writevalue <:: function3[2,1] ? rs1 : sourceReg1;                                                                   // SWITCH BETWEEN IMMEDIATE OR REGISTER VALUE TO WRITE TO CSR
-    csrf CSRF0( csr <: csrRegister[0,2], writevalue <: writevalue );                                                            // MAIN CSRf ( csrRegister[0,2] )
-    csrf CSRF1( csr <: csrRegister[0,2], writevalue <: writevalue );                                                            // SMT CSRf  ( csrRegister[0,2] )
+    csrf CSRF0( csr <: csrRegister[0,2], writevalue <: writevalue, newflags <: FPUnewflags );                                   // MAIN CSRf ( csrRegister[0,2] )
+    csrf CSRF1( csr <: csrRegister[0,2], writevalue <: writevalue, newflags <: FPUnewflags );                                   // SMT CSRf  ( csrRegister[0,2] )
 
     CSRF0.writetype := 0; CSRF1.writetype := 0; CSRF0.update := updateFPUflags & ~SMT;  CSRF1.update := updateFPUflags & SMT;   // UPDATE FLAGS FPU-FLAGS
     CYCLE.trigger := 1;                                                                                                         //UPDATE FLAGS FOR COUNTERS AND TIMERS
 
-    FPUflags := SMT ? CSRF1.CSRf : CSRF0.CSRf;                                                                            // PASS FPU FLAGS PER THREAD BACK TO FPU
+    FPUflags := SMT ? CSRF1.CSRf : CSRF0.CSRf;                                                                                  // PASS FPU FLAGS PER THREAD BACK TO FPU
 
     algorithm <autorun> { while(1) {
         if( start & ~|csrRegister[4,8] ) {
             switch( function3[0,2] ) {
-                case 2b00: {}                                                                                               // ECALL / EBBREAK
+                case 2b00: {}                                                                                                   // ECALL / EBBREAK
                 case 2b01: {
-                    switch( { ~|rs1, function3[2,1] } ) {                                                                   // CSRRW / CSRRWI
+                    switch( { ~|rs1, function3[2,1] } ) {                                                                       // CSRRW / CSRRWI
                         case 2b10: {}
                         default: { if( SMT ) { CSRF1.writetype = 1; } else { CSRF0.writetype = 1; } }
                     }
@@ -774,9 +778,9 @@ unit CSRblock(
         switch( csrRegister[8,4] ) {
             case 4h0: {
                 switch( csrRegister[0,2] ) {
-                    case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                                        // frflags
-                    case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                                         // frrm
-                    case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                                   // frcsr
+                    case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                                            // frflags
+                    case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                                             // frrm
+                    case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                                       // frcsr
                     default: {}
                 }
             }
@@ -789,7 +793,7 @@ unit CSRblock(
                     default: {}
                 }
                 }
-            case 4hf: { result = SMT; }                                                                                     // HART ID
+            case 4hf: { result = SMT; }                                                                                         // HART ID
             default: {}
         }
     } }
