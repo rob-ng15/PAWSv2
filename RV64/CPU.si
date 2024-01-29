@@ -7,8 +7,6 @@
 //          ALU FUNCTIONALITY LISTED IN ALU-
 
 unit PAWSCPU(
-    output  uint8   leds,
-
     input   uint1   clock_CPUdecoder,
     input   uint1   clock_cache,
     output  uint2   accesssize,
@@ -234,11 +232,9 @@ unit PAWSCPU(
 
         uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );                                         // CPU L0 CACHE MATCH FOR PC
 
-        leds = 8b10000000; CACHEL0CLEAR = 1; ++: while( |resetCounter ) {                                                       // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
-                leds = { memorybusy, DMAACTIVE, ICACHE_0W.CLS | ICACHE_1W.CLS, EXECUTEFPU.busy, EXECUTESLOW.busy,
-                         FETCH.busy, LOADMA.busy | LOAD64.busy | LOAD.busy, STOREMA.busy | STORE64.busy |STORE.busy };
+        CACHEL0CLEAR = 1; while( |resetCounter ) {                                                                              // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
                 resetCounter = resetNEXT;
-        } leds = 0; cacheselect = 0; FETCH.start = 1; ++:                                                                       // START FETCH FIRST INSTRUCTION
+        } cacheselect = 0; FETCH.start = 1; ++:                                                                                 // START FETCH FIRST INSTRUCTION
 
         while(1) {                                                                                                              // CPU LOOP
             if( DMAMODE ) {
@@ -499,7 +495,6 @@ unit cpuexecuteFPU(
 
     fpuSINGLECYCLE FPUFAST(                                                                                                     // FLOATING POINT SINGLE CYCLE OPERATIONS
         dsh <: function7[0,2],
-        FPUflags <: FPUflags,
         function3 <: function3[0,2], function7 <: function7[2,5],
         sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
         sign1F <: fp64( sourceReg1Fx ).sign, sign2F <: fp64( sourceReg2Fx ).sign,
@@ -513,7 +508,6 @@ unit cpuexecuteFPU(
     floatcalc FPUCALC(                                                                                                          // FLOATING POINT CALCULATIONS CONTROLLER
         rm <: rm, dsh <: function7[0,2],                                                                                        //  RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
         BIAS <: BIAS,
-        FPUflags <: FPUflags,
         opCode <: opCode, function3 <: function3, function7 <: function7[2,5],
         sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx, sourceReg3Fx <: sourceReg3Fx,
         typeAF <: typeAF, typeBF <: typeBF, typeCF <: typeCF,
@@ -524,16 +518,17 @@ unit cpuexecuteFPU(
 
     // FLOATING POINT CONVERSIONS
     uint64  convertresult <:: converttype[2,1] ? FPUF2IL.result : converttype[1,1] ? FPUIL2F.result : FPUF_CP.result;
-    uint5   convertflags <:: FPUflags | ( converttype[2,1] ? FPUF2IL.FPUflags : converttype[1,1] ? FPUIL2F.FPUflags : FPUF_CP.FPUflags );
     uint1   convertrm <:: ( function3 != 3b001 );                                                                               // SET ROUNDING FLAG FOR CONVERSIONS ( always uses function3 )
     intlong2float FPUIL2F( rm <: convertrm, dounsigned <: rs2[0,1], il <: rs2[1,1], dsh <: function7[0,2], BIAS <: BIAS, sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64 );
     float2intlong FPUF2IL( rm <: convertrm, dounsigned <: rs2[0,1], il <: rs2[1,1], BIAS <: BIAS, sourceReg1Fx <: sourceReg1Fx, typeAF <: typeAF );
     changeprecision FPUF_CP( dest <: function7[0,2], DBIAS <: BIAS, source <: rs2[0,2], SBIAS <: SBIAS, sourceReg1Fx <: sourceReg1Fxopp, typeAF <: typeAopp );
 
+    uint5   convertflags <:: converttype[2,1] ? FPUF2IL.FPUflags : converttype[1,1] ? FPUIL2F.FPUflags : FPUF_CP.FPUflags;
+    FPUnewflags := FPUflags | ( fpuconvert ? convertflags : fpucalc ? FPUCALC.FPUnewflags : FPUFAST.FPUnewflags );
+
     FPUCALC.start := fpucalc & start; CSRupdateFPUflags := 0;                                                                   // START FLAGS AND UPDATE CSR
     result := operation[0,1] ? FPUFAST.result : operation[1,1] ? convertresult : CALCRESULT.repack;                             // COLLECT THE APPROPRIATE RESULT
     frd := fpuconvert ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd;                                                      // WRITE TO F REGISTERS FOR TO FLOAT CONVERSIONS, CALCULATIONS AND SOME SINGLE CYCLE
-    FPUnewflags := fpuconvert ? convertflags : fpucalc ? FPUCALC.FPUnewflags : FPUFAST.FPUnewflags;                             // OUTPUT NEW FPU FLAGS
 
     algorithm <autorun> { busy = 0; while(1) {
         if( start ) {
