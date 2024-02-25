@@ -5,8 +5,8 @@ unit passthrough(input uint1 i,output! uint1 o)
 
 // CHARACTER GENERATOR ROMS FOR TERMINAL AND CHARACTERMAP
 unit characterrom256(
-    input  uint8   tile,
-    input  uint3   y,
+    input   uint8   tile,
+    input   uint3   y,
     output! uint8   line
 ) {
     brom uint8 characterGenerator8x8[2048] =  {
@@ -19,8 +19,8 @@ unit characterrom256(
 }
 
 unit characterrom512(
-    input  uint9   tile,
-    input  uint3   y,
+    input   uint9   tile,
+    input   uint3   y,
     output! uint8   line
 ) {
     brom uint8 characterGenerator8x8[4096] =  {
@@ -86,9 +86,9 @@ unit statusdisplay(
 
 unit video_memmap(
     // CLOCKS
-    input   uint1   palette_clock,
-    input   uint1   video_clock,
-    input   uint1   gpu_clock,
+    input   uint1   palette_clock,                                                                                              // 50MHz (double) clock
+    input   uint1   video_clock,                                                                                                // 25MHz VGA (640x480@60Hz) clock
+    input   uint1   gpu_clock,                                                                                                  // 25MHz (video) clock
 
     // Memory access via normal I/O registers
     input   uint12  memoryAddress,
@@ -212,6 +212,7 @@ $$end
     charactermap_memmap CHARACTER_MAP(
         video_clock <: video_clock,
         video_reset <: video_reset,
+        clockCG <: palette_clock,
         lorez <: hilorez[2,1],
         pix_x      <: xscreen,
         pix_x1     <: xscreenp1,
@@ -265,6 +266,7 @@ $$end
     tilemap_memmap LOWER_TILE(
         video_clock <: video_clock,
         video_reset <: video_reset,
+        clockTG <: palette_clock,
         lorez <: hilorez[0,1],
         pix_x      <: xscreen,
         pix_x1     <: xscreenp1,
@@ -277,6 +279,7 @@ $$end
     tilemap_memmap UPPER_TILE(
         video_clock <: video_clock,
         video_reset <: video_reset,
+        clockTG <: palette_clock,
         lorez <: hilorez[1,1],
         pix_x      <: xscreen,
         pix_x1     <: xscreenp1,
@@ -608,7 +611,6 @@ unit bitmap_memmap(
         static8bit <: static8bit
     );
 
-
     simple_dualport_bram uint16 blit1tilemap <@video_clock,@clock> [ 1024 ] = uninitialized;                                    // 64 x 16 x 16 1 bit tilemap for blit1tilemap
     simple_dualport_bram uint8 characterGenerator8x8 <@video_clock,@clock> [] = {                                               // Character ROM 8x8 x 512 for character blitter
         $include('ROM/FONTS/CODE437-THINBOLD.inc')
@@ -626,29 +628,25 @@ unit bitmap_memmap(
         gpu_active :> gpu_active
     );
 
-    int10   minmax <:: ( __signed( writeData ) < __signed( -512 ) ) ? -512 :                                                    // ADJUST FOR 10bit underflow/overflow for pixel coordinates
-                       ( __signed( writeData ) > __signed( 511 ) ) ? 511 : writeData;
-    uint8   RGBM <:: { writeData[22,2], writeData[13,3], writeData[6,2], writeData[21,1] & writeData[5,1] };                    // CONVERT RGB COLOUR TO RGBM COLOUR
-
-    // BLITTER TILEBITMAP WRITERS - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT
-    uint4   BTWline = uninitialised;                                uint4   BTWline_NEXT <:: BTWline + 1;
-    uint3   CTWline = uninitialised;                                uint3   CTWline_NEXT <:: CTWline + 1;
-    uint8   CBTWpixel = uninitialised;                              uint8   CBTWpixel_NEXT <:: CBTWpixel + 1;
-
     blit1tilemap.wdata1 := writeData; blit1tilemap.wenable1 := 0;
     characterGenerator8x8.wdata1 := writeData; characterGenerator8x8.wenable1 := 0;
     colourblittilemap.wdata1 := writeData; colourblittilemap.wenable1 := 0;
     pb_colourmap.wenable1 := 1;
 
-
     algorithm <autorun> {
+        int10   minmax <:: ( __signed( writeData ) < __signed( -512 ) ) ? -512 :                                                // ADJUST FOR 10bit underflow/overflow for pixel coordinates
+                        ( __signed( writeData ) > __signed( 511 ) ) ? 511 : writeData;
+        uint8   RGBM <:: { writeData[22,2], writeData[13,3], writeData[6,2], writeData[21,1] & writeData[5,1] };                // CONVERT RGB COLOUR TO RGBM COLOUR
+
+        // BLITTER TILEBITMAP WRITERS - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT
+        uint4   BTWline_NEXT <:: blit1tilemap.addr1[0,4] + 1;
+        uint3   CTWline_NEXT <:: characterGenerator8x8.addr1[0,3] + 1;
+        uint8   CBTWpixel_NEXT <:: colourblittilemap.addr1[0,8] + 1;
+
         // RESET THE CROPPING RECTANGLE AND DISPLAY256 FLAG
         pixel_writer.pb_mode = 0; pixel_writer.crop_left = 0; pixel_writer.crop_right = 319; pixel_writer.crop_top = 0; pixel_writer.crop_bottom = 239; framebuffer_display.display256 = 0;
 
         while(1) {
-            uint6   BTWtile = uninitialized;
-            uint9   CTWtile = uninitialized;
-            uint6   CBTWtile = uninitialized;
             uint1   LATCHmemoryWrite = uninitialized;                                                                           // LATCH MEMORYWRITE
 
             switch( { memoryWrite, LATCHmemoryWrite } ) {
@@ -682,20 +680,20 @@ unit bitmap_memmap(
                         }
                         case 4h4: {
                             switch( memoryAddress[1,1] ) {
-                                case 0: { BTWtile = writeData; BTWline = 0; }
-                                case 1: { blit1tilemap.addr1 = { BTWtile, BTWline }; blit1tilemap.wenable1 = 1; BTWline = BTWline_NEXT; }
+                                case 0: { blit1tilemap.addr1 = { writeData[0,6], 4hf }; }
+                                case 1: { blit1tilemap.addr1[0,4] = BTWline_NEXT; blit1tilemap.wenable1 = 1; }
                             }
                         }
                         case 4h5: {
                             switch( memoryAddress[1,1] ) {
-                                case 0: { CTWtile = writeData; CTWline = 0; }
-                                case 1: { characterGenerator8x8.addr1 = { CTWtile, CTWline }; characterGenerator8x8.wenable1 = 1; CTWline = CTWline_NEXT; }
+                                case 0: { characterGenerator8x8.addr1 = { writeData[0,6], 3h7 }; }
+                                case 1: { characterGenerator8x8.addr1[0,3] = CTWline_NEXT; characterGenerator8x8.wenable1 = 1; }
                             }
                         }
                         case 4h6: {
                             switch( memoryAddress[1,1] ) {
-                                case 0: { CBTWtile = writeData; CBTWpixel = 0; }
-                                case 1: { colourblittilemap.addr1 = { CBTWtile, CBTWpixel }; colourblittilemap.wenable1 = 1; CBTWpixel = CBTWpixel_NEXT; }
+                                case 0: { colourblittilemap.addr1 = { writeData[0,6], 8hff }; }
+                                case 1: { colourblittilemap.addr1[0,8] = CBTWpixel_NEXT; colourblittilemap.wenable1 = 1; }
                             }
                         }
                         case 4h7: {
@@ -714,21 +712,18 @@ unit bitmap_memmap(
                             switch( memoryAddress[2,2] ) {                                                                                                                  // PIXELBLOCK ARGB RGBA ABGR BGRA modes
                                 case 2b00: {
                                     pixel_writer.pb_colour8r = writeData[16,8]; pixel_writer.pb_colour8g = writeData[8,8]; pixel_writer.pb_colour8b = writeData[0,8];       // ARGB
-                                    pixel_writer.pb_newpixel = 2;
                                 }
                                 case 2b01: {
                                     pixel_writer.pb_colour8r = writeData[24,8]; pixel_writer.pb_colour8g = writeData[16,8]; pixel_writer.pb_colour8b = writeData[8,8];      // RGBA
-                                    pixel_writer.pb_newpixel = 2;
                                 }
                                 case 2b10: {
                                     pixel_writer.pb_colour8r = writeData[0,8]; pixel_writer.pb_colour8g = writeData[8,8]; pixel_writer.pb_colour8b = writeData[16,8];       // ABGR
-                                    pixel_writer.pb_newpixel = 2;
                                 }
                                 case 2b11: {
                                     pixel_writer.pb_colour8r = writeData[8,8]; pixel_writer.pb_colour8g = writeData[16,8]; pixel_writer.pb_colour8b = writeData[24,8];      // BGRA
-                                    pixel_writer.pb_newpixel = 2;
                                 }
                             }
+                            pixel_writer.pb_newpixel = 2;
                         }
                         case 4he: {
                             switch( memoryAddress[1,2] ) {                                                                      // SET GPU CROP - ADJUST INTO RANGE
@@ -762,6 +757,7 @@ unit charactermap_memmap(
     // Clocks
     input   uint1   video_clock,
     input   uint1   video_reset,
+    input   uint1   clockCG,
 
     // Pixels
     input   uint10  pix_x,
@@ -792,9 +788,9 @@ unit charactermap_memmap(
     dualport_bram uint25 charactermap <@video_clock,@clock> [4800] = uninitialized;
 
     // CHARACTER MAP DISPLAY
-    uint10  dopix_x <: lorez ? pix_x[1,9] : pix_x;  uint10  dopix_x1 <: lorez ? pix_x1[1,9] : pix_x1; uint9  dopix_y <: lorez ? pix_y[1,8] : pix_y;
+    uint10  dopix_x <:: lorez ? pix_x[1,9] : pix_x;  uint10  dopix_x1 <:: lorez ? pix_x1[1,9] : pix_x1; uint9  dopix_y <:: lorez ? pix_y[1,8] : pix_y;
     character_map character_map_window <@video_clock,!video_reset> (
-        clockCG <: clock,
+        clockCG <: clockCG,
         charactermap <:> charactermap,
         pix_x      <: dopix_x,
         pix_x1     <: dopix_x1,
@@ -948,6 +944,7 @@ unit tilemap_memmap(
     // Clocks
     input   uint1   video_clock,
     input   uint1   video_reset,
+    input   uint1   clockTG,
     input   uint1   lorez,
 
     // Pixels
@@ -970,7 +967,7 @@ unit tilemap_memmap(
     output  uint3   tm_active
 ) <reginputs> {
     // Tiles 64 x 16 x 16 ARRGGBB ( first tile defaults to transparent )
-    simple_dualport_bram uint8 tiles16x16[ 16384 ] = {
+    simple_dualport_bram uint8 tiles16x16 <@clockTG,@clock> [ 16384 ] = {
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
         64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,64,
@@ -993,9 +990,9 @@ unit tilemap_memmap(
     // 64 x 64 tile map, 40 x 32 visiable, allows for pixel scrolling with border { 3 bits rotation/reflection, 6 bits tile number }
     dualport_bram uint9 tiles <@video_clock,@clock> [4096] = uninitialized;
 
-    uint10  dopix_x <: lorez ? pix_x[1,9] : pix_x; uint10  dopix_x1 <: lorez ? pix_x1[1,9] : pix_x1; uint9  dopix_y <: lorez ? pix_y[1,8] : pix_y;
+    uint10  dopix_x <:: lorez ? pix_x[1,9] : pix_x; uint10  dopix_x1 <:: lorez ? pix_x1[1,9] : pix_x1; uint9  dopix_y <:: lorez ? pix_y[1,8] : pix_y;
     tilemap tile_map <@video_clock,!video_reset> (
-        clockTG <: clock,
+        clockTG <: clockTG,
         tiles16x16 <:> tiles16x16,
         tiles <:> tiles,
         pix_x      <: dopix_x,
@@ -1015,22 +1012,18 @@ unit tilemap_memmap(
     tiles16x16.wdata1 := writeData; tiles16x16.wenable1 := 0; TMW.tm_write := 0; TMW.tm_scrollwrap := 0;
 
     algorithm <autorun> {
-        uint8   TBMWpixel = uninitialised;
-        uint8   TBMWpixel_NEXT <:: TBMWpixel + 1;
+        uint8   TBMWpixel_NEXT <:: tiles16x16.addr1[0,8] + 1;                                                                   // NEXT PIXEL IN TILE
 
         while(1) {
-            // TILEBITMAP WRITER - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
-            uint6   TBMWtile = uninitialised;
-
             if( memoryWrite ) {
                 switch( memoryAddress[1,3] ) {
-                    case 3h0: { TMW.tm_x = writeData; }
-                    case 3h1: { TMW.tm_y = writeData; }
-                    case 3h2: { TMW.tm_character = writeData; }
-                    case 3h3: { TMW.tm_actions = writeData; }
-                    case 3h4: { TMW.tm_write = 1; }
-                    case 3h5: { TBMWtile = writeData; TBMWpixel = 0; }
-                    case 3h6: { tiles16x16.addr1 = { TBMWtile, TBMWpixel }; tiles16x16.wenable1 = 1; TBMWpixel = TBMWpixel_NEXT; }
+                    case 3h0: { TMW.tm_x = writeData; }                                                                         // SET X
+                    case 3h1: { TMW.tm_y = writeData; }                                                                         // SET Y
+                    case 3h2: { TMW.tm_character = writeData; }                                                                 // SET TILE NUMBER
+                    case 3h3: { TMW.tm_actions = writeData; }                                                                   // SET ACTION ( ROTATION AND REFLECTION )
+                    case 3h4: { TMW.tm_write = 1; }                                                                             // COMMIT TO TILEMAP
+                    case 3h5: { tiles16x16.addr1 = { writeData[0,6], 8hff }; }                                                  // TILE BITMAP WRITER, MOVE TO NEW TILE
+                    case 3h6: { tiles16x16.addr1[0,8] = TBMWpixel_NEXT; tiles16x16.wenable1 = |tiles16x16.addr1[8,6]; }         // TILE BITMAP WRITER, MOVE TO NEXT PIXEL, ONLY WRITE IF NOT TILE 0
                     case 3h7: { if( memoryAddress[0,1] ) { TMW.tm_adjust = writeData; } else { TMW.tm_scrollwrap = writeData; } }
                 }
             }

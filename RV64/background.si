@@ -102,7 +102,7 @@ unit nucu(
     simple_dualport_bram_port0  OPD,                                                                                            // DEST REG NUMBER
     simple_dualport_bram_port0  OPF,                                                                                            // LITERAL/REGISTER FLAG
     simple_dualport_bram_port0  OPL,                                                                                            // 2ND REG NUMBER OR LITERAL
-    input   uint80  memoryinit                                                                                                  // INITIAL SETTINGS OF THE MEMORY
+    input   uint$NUCUmem*10$  memoryinit                                                                                        // INITIAL SETTINGS OF THE MEMORY
 ) <reginputs> {
     bram uint10 dstack[$NUCUstack$] = uninitialised;                                                                            // DATA STACK
     bram uint$NUCUaddr$ rstack[$NUCUstack$] = uninitialised;                                                                    // RETURN STACK
@@ -119,36 +119,27 @@ unit nucu(
         uint$NUCUstackaddr$ dstack_p1 <:: dstack.addr + 1;
         uint$NUCUstackaddr$ dstack_n1 <:: dstack.addr - 1;
 
+        uint10  REGS[4] = uninitialised;                                                                                        // STORAGE FOR 4 REGISTERS
+        uint10  reg1 <:: ( OPD.rdata0 == 0 ) ? pix_vblank :                                                                     // REG1 <-  VBLANK              OPERATION INPUT 1
+                         ( OPD.rdata0 == 1 ) ? pix_x :                                                                          //          X
+                         ( OPD.rdata0 == 2 ) ? pix_y :                                                                          //          Y
+                         ( OPD.rdata0 == 3 ) ? copper_cpu_input :                                                               //          CPU_INPUT
+                                               REGS[ OPD.rdata0[0,2] ];                                                         //          REG[]
+        uint10  reg2 <:: ( OP.rdata0 == 0 ) & ( OPD.rdata0 == 2 ) ? rstack.rdata :                                              // REG2 <-  RETURN STACK        OPERATION INPUT 2
+                                                       OPF.rdata0 ? OPL.rdata0 :                                                //          LITERAL
+                                              ( OPL.rdata0 == 0 ) ? pix_vblank :                                                //          VBLANK
+                                              ( OPL.rdata0 == 1 ) ? pix_x :                                                     //          X
+                                              ( OPL.rdata0 == 2 ) ? pix_y :                                                     //          Y
+                                              ( OPL.rdata0 == 3 ) ? copper_cpu_input :                                          //          CPU_INPUT
+                                                                    REGS[ OPL.rdata0[0,2] ];                                    //          REG[]
+
         while(1) {
-            uint2   PCinc = 0;                                                                                                  // PC ACTION FLAG == 0 PCnext, == 1 PCskip, == 2 RL value
+            uint2   PCinc = 0;                                                                                                  // PC ACTION FLAG == 0 PCnext, == 1 PCskip, == 2 REG2 value
             uint1   WR = 1;                                                                                                     // WRITE TO REGISTERS FLAG
             uint1   WM = 0;                                                                                                     // WRITE TO MEMORY FLAG
 
-            uint10  MEM[$NUCUmem$] = uninitialised;                                                                             // STORAGE FOR 8 MEMORY LOCATIONS
-            uint10  reg1 = uninitialised;                                                                                       // CONTENTS OF REG 1
-            uint10  reg2 = uninitialised;                                                                                       // CONTENTS OF REG 2 OR LITERAL VALUE
+            uint$NUCUmem*10$  MEM = uninitialised;                                                                              // STORAGE FOR NUCUmem MEMORY LOCATIONS
             uint10  result = uninitialised;                                                                                     // RESULT OF OP
-            uint10  REGS[4] = uninitialised;                                                                                    // STORAGE FOR 4 REGISTERS
-
-            switch( OPD.rdata0 ) {                                                                                              // EXTRACT REG1
-                case 0: { reg1 = pix_vblank; }                                                                                  // VBLANK
-                case 1: { reg1 = pix_x; }                                                                                       // X COORD
-                case 2: { reg1 = pix_y; }                                                                                       // Y COORD
-                case 3: { reg1 = copper_cpu_input; }                                                                            // CPU TO COPPER
-                default: { reg1 = REGS[ OPD.rdata0[0,2] ]; }                                                                    // COPPER REGISTER
-            }
-
-            if( OPF.rdata0 ) {                                                                                                  // EXTRACT REG2
-                reg2 = OPL.rdata0;                                                                                              // LITERAL VALUE
-            } else {
-                switch( OPL.rdata0[0,3] ) {
-                    case 0: { reg2 = pix_vblank; }                                                                              // VBLANK
-                    case 1: { reg2 = pix_x; }                                                                                   // X COORD
-                    case 2: { reg2 = pix_y; }                                                                                   // Y COORD
-                    case 3: { reg2 = copper_cpu_input; }                                                                        // CPU TO COPPER
-                    default: { reg2 = REGS[ OPL.rdata0[0,2] ]; }                                                                // COPPER REGISTER
-                }
-            }
 
             if( copper_status ) {
                 switch( OP.rdata0 ) {
@@ -157,7 +148,7 @@ unit nucu(
                         switch( OPD.rdata0 ) {                                                                                  // reg1 acts as switch
                             case 0: { PCinc = 2; }                                                                              // Jump to: JPL literal, JPR register value
                             case 1: { rstack.addr = rstack_p1; rstack.wdata = PCnext; rstack.wenable = 1; PCinc = 2; }          // Jump to subroutine SAVE NEXT ADDRESS TO RSTACK: JSL to literal, JSR to register value
-                            case 2: { rstack.addr = rstack_n1 ; reg2 = rstack.rdata; PCinc = 2; }                               // RET ( pop address from rstack )
+                            case 2: { rstack.addr = rstack_n1 ; PCinc = 2; }                                                    // RET ( pop address from rstack )
                             case 3: { dstack.addr = dstack_p1; dstack.wdata = reg2; dstack.wenable = 1; }                       // SLI and SRx ( push literal or register value on dstack )
                             default: { dstack.addr = dstack_n1; }                                                               // LRx ( pop value from dstack, write to reg1 )
                         }
@@ -175,7 +166,7 @@ unit nucu(
                     case 4hb: { WR = 0; PCinc = ( reg1 < reg2 ); }                                                              // SKIP <
                     case 4hc: { WR = 0; PCinc = ( reg1 <= reg2 ); }                                                             // SKIP <=
                     case 4hd: { result = staticGenerator & reg2; }                                                              // RANDOM
-                    case 4he: { result = MEM[ reg2[0,$NUCUmemaddr$] ]; }                                                        // LOAD FROM MEMORY
+                    case 4he: { result = MEM[ reg2[0,$NUCUmemaddr$] * 10, 10 ]; }                                               // LOAD FROM MEMORY
                     case 4hf: { WR = 0; WM = 1; }                                                                               // STORE TO MEMORY
                 }
 
@@ -189,19 +180,17 @@ unit nucu(
                     }
                 }
 
-                if( WM ) { MEM[ reg2[0,$NUCUmemaddr$] ] = reg1; }                                                               // WRITE TO MEMORY
+                if( WM ) { MEM[ reg2[0,$NUCUmemaddr$] * 10, 10 ] = reg1[0,10]; }                                                // WRITE TO MEMORY
 
                 PC = PCinc[1,1] ? reg2 : PCinc[0,1] ? PCskip : PCnext;                                                          // UPDATE PC, PCinc == 2 JUMP,  ==1 SKIP, == 0 NEXT
             } else {
                 PC = 0;                                                                                                         // set PC to 0
-                $$for i=0,7 do
-                    MEM[$i$] = memoryinit[ $i*10$, 10 ];                                                                        // COPY CPU MEMORY INITIALISATION VALUES
-                $$end
+                MEM = memoryinit;                                                                                               // COPY CPU MEMORY INITIALISATION VALUES
+                dstack.addr = -1; rstack.addr = -1;                                                                             // SET DEFAULT STACK ADDRESSES
+
                 BACKGROUNDmode = backgroundcolour_mode;                                                                         // UPDATE THE BACKGROUND GENERATOR FROM THE CPU
                 BACKGROUNDcolour = backgroundcolour;
                 BACKGROUNDalt = backgroundcolour_alt;
-
-                dstack.addr = -1; rstack.addr = -1;
             }
 
             OP.addr0 = PC; OPD.addr0 = PC; OPF.addr0 = PC; OPL.addr0 = PC;                                                      // MOVE TO THE NEXT INSTRUCTION
