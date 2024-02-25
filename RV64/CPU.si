@@ -33,7 +33,6 @@ unit PAWSCPU(
 ) <reginputs> {
     uint1   COMMIT = uninitialized;                 uint1   COMMIT_SMT = uninitialised;                                         // COMMIT RESULT TO REGISTERS FLAG AND TO WHICH THREAD
     uint1   SMT = 0;                                                                                                            // SMT FLAG
-    uint32  instruction = uninitialized;            uint1   compressed = uninitialized;                                         // CURRENT INSTRUCTION AND COMPRESSED FLAG
     uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;                                    // PROGRAMS COUNTERS FOR MAIN AND SMT THREADS
     uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                  // SELECT PROGRAM COUNTER FOR THIS CYCLE
 
@@ -59,8 +58,8 @@ unit PAWSCPU(
         write <: write,
         result <: result,
         PC <: PC,
-        instruction <: instruction,
-        compressed <: compressed,
+        instruction <: FETCH.instruction,
+        compressed <: FETCH.compressed,
         accesssize :> accesssize
     );
 
@@ -71,7 +70,7 @@ unit PAWSCPU(
         frd <: frd,
         write <: write,
         result <: result,
-        instruction <: instruction
+        instruction <: FETCH.instruction
     );
 
     // EXECUTE SINGLE CYLE INSTRUCTIONS, MOST OF BASE PLUS INTEGER MULTIPLICATION
@@ -152,7 +151,10 @@ unit PAWSCPU(
     );
 
     // FETCH INSTRUCTION UNIT
-    fetch FETCH( clock_CPUdecoder <: clock_CPUdecoder, readdata <: readdata, memorybusy <: memorybusy );
+    uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );                                             // CPU L0 CACHE MATCH FOR PC
+    uint30  L0instruction <:: SMT ? ICACHE_1.instruction : ICACHE_0.instruction;
+    uint1   L0compressed <:: SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
+    fetch FETCH( clock_CPUdecoder <: clock_CPUdecoder, readdata <: readdata, memorybusy <: memorybusy, L0match <: L0match, L0instruction <: L0instruction, L0compressed <: L0compressed );
 
     // 8, 16, 32, 64 BIT LOAD UNITS INCLUDING 16, 32, 64 BIT MISALIGNED LOAD
     load LOAD(  memorybusy <: memorybusy );
@@ -186,12 +188,12 @@ unit PAWSCPU(
     );
     il00cache_write ICACHE_0W(
         L0cache <:> L00cache,
-        address <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed,
+        address <: pc, newinstruction <: FETCH.instruction[2,30], newcompressed <: FETCH.compressed,
         invalidate <: invalidate
     );
     il01cache_write ICACHE_1W(
         L0cache <:> L01cache,
-        address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed,
+        address <: pcSMT, newinstruction <: FETCH.instruction[2,30], newcompressed <: FETCH.compressed,
         invalidate <: invalidate
     );
     il00tags_write ITAGS_0W(
@@ -230,26 +232,19 @@ unit PAWSCPU(
                                                 LOADMA.busy | STOREMA.busy | LOAD64.busy | STORE64.busy |
                                                 FETCH.busy | LOAD.busy | STORE.busy );
 
-        uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );                                         // CPU L0 CACHE MATCH FOR PC
-
-        CACHEL0CLEAR = 1; while( |resetCounter ) {                                                                              // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
-                resetCounter = resetNEXT;
-        } cacheselect = 0; FETCH.start = 1; ++:                                                                                 // START FETCH FIRST INSTRUCTION
+        CACHEL0CLEAR = 1; while( |resetCounter ) { resetCounter = resetNEXT; }                                                  // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
+        cacheselect = 0; FETCH.start = 1; ++:                                                                                       // START FETCH FIRST INSTRUCTION
 
         while(1) {                                                                                                              // CPU LOOP
-            if( DMAMODE ) {
-                DMA.start = 1; while( DMAACTIVE | |DMAMODE ) {} ++:                                                             // PROCESS MINI-DMA ENGINE REQUESTS
-                cacheselect = 0; FETCH.start = ~L0match;                                                                        // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
+            COMMIT_SMT = SMT;                                                                                                   // LATCH THREAD MAIN/SMT
+
+            if( |DMAMODE ) {
+                DMA.start = 1; while( DMAACTIVE | |DMAMODE ) {}                                                                 // PROCESS MINI-DMA ENGINE REQUESTS
             } else {
-                COMMIT_SMT = SMT;                                                                                               // LATCH THREAD MAIN/SMT
-                if( L0match ) {                                                                                                 // COMPLETE FETCH INSTRUCTION
-                    instruction = { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };                                  // CPU L0 CACHED INSTRUCTION
-                    compressed = SMT ? ICACHE_1.compressed : ICACHE_0.compressed;                                               // CPU l0 CACHED INSTRUCTION IS COMPRESSED FLAG
-                } else {
-                    if( FETCH.busy ) { while( FETCH.busy ) {} ++: }                                                             // WAIT FOR FETCH TO FINISH
-                    instruction = { FETCH.instruction, 2b11 }; compressed = FETCH.compressed;                                             // CPU INSTRUCTION AND COMPRESSED FLAG FROM FETCH UNIT
-                }
+                if( FETCH.busy ) { while( FETCH.busy ) {} ++: }                                                             // WAIT FOR FETCH TO FINISH
                 cacheselect = 1; ICACHEUPDATE = 1; ++:                                                                          // SWITCH TO DATA CACHE, UPDATE ICACHE, DO ADDRESS GENERATION, REGISTER FETCH
+
+//                __display("SMT %b L0 %b PC %h instruction %h compressed %b",SMT,L0match,PC,FETCH.instruction,FETCH.compressed);
 
                 START_STORE = RV64CONTROL.IS_FAST & RV64CONTROL.IS_STORE;                                                       // START STORE ( ONLY IN FAST MODE TO AVOID ATOMIC )
                 START_LOAD = RV64CONTROL.IS_LOAD;                                                                               // START LOAD
@@ -263,19 +258,18 @@ unit PAWSCPU(
                     case 3b011: { while( STORE64.busy | STORE.busy | STOREMA.busy ) {} }                                        // INTEGER + FLOAT/DOUBLE STORE
                     case 3b110: { while( LOAD64.busy | LOAD.busy | LOADMA.busy ) {} }                                           // INTEGER + FLOAT/DOUBLE LOAD
                     default: {                                                                                                  // ATOMIC LOAD - MODIFY - STORE + EMULATION OF LR.W AND SC.W
-                        while( LOAD64.busy | LOAD.busy ) {} ++:
-                        EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} ++:
+                        while( LOAD64.busy | LOAD.busy ) {}
+                        EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {}
                         START_STORE = RV64CONTROL.IS_STORE; while( STORE64.busy | STORE.busy ) {}
                     }
                 }
 
                 COMMIT = 1;                                                                                                     // COMMIT REGISTERS AND UPDATE PC AND SWITCH THREADS IF SMT ENABLED
-                pc = SMT ? pc :  RV64CONTROL.newPC; pcSMT = SMT ? RV64CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;          // MOVE TO NEXT INSTRUCTION
+                pc = SMT ? pc : RV64CONTROL.newPC; pcSMT = SMT ? RV64CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;           // MOVE TO NEXT INSTRUCTION
                 if( ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; }                                                // SWITCH THREADS IF ACTIVE AND NOT FENCED
-                ++:
-
-                if( ~|DMAMODE ) { cacheselect = 0; FETCH.start = ~L0match; }                                                    // START FETCH OF NEXT INSTRUCTION IF NO DMA REQUEST
             }
+
+            if( ~|DMAMODE ) { cacheselect = 0; FETCH.start = 1; }                                                               // START FETCH OF NEXT INSTRUCTION IF NO DMA REQUEST
         }
     }
 
@@ -543,8 +537,12 @@ unit fetch(
     input   uint1   clock_CPUdecoder,
     input   uint1   start,
     output! uint1   busy,
-    output  uint30  instruction,
+    output  uint32  instruction,
     output  uint1   compressed,
+
+    input   uint1   L0match,
+    input   uint30  L0instruction,
+    input   uint1   L0compressed,
 
     input   uint32  readdata,
     output! uint1   readmemory,
@@ -554,16 +552,23 @@ unit fetch(
     compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );
     compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );
 
-    readmemory := start;
+    readmemory := 0;
 
-    compressed := ~&readdata[0,2];                                                                                              // SET COMPRESSED FLAGS
-    instruction :=  &readdata[0,2] ? readdata[2,30] :                                                                           // INSTRUCTION EXPANSION, DROP 2b11 at end
-                   ~|readdata[0,2] ? COMPRESSED00.i32 :
-                     readdata[0,1] ? COMPRESSED01.i32 :
-                                     COMPRESSED10.i32;
 
     algorithm <autorun> { busy = 0; while(1) {
-        if( start ) { busy = 1; while( memorybusy ) {} busy = 0; }
+        if( start ) {
+            if( L0match ) {
+                instruction = { L0instruction, 2b11 }; compressed = L0compressed;
+            } else {
+                busy = 1; readmemory = 1; while( memorybusy ) {} ++:
+                compressed = ~&readdata[0,2];                                                                                              // SET COMPRESSED FLAGS
+                instruction =  { &readdata[0,2] ? readdata[2,30] :                                                                           // INSTRUCTION EXPANSION
+                            ~|readdata[0,2] ? COMPRESSED00.i32 :
+                                readdata[0,1] ? COMPRESSED01.i32 :
+                                                COMPRESSED10.i32, 2b11 };
+                busy = 0;
+            }
+        }
     } }
 }
 
@@ -760,6 +765,46 @@ unit dma_flags(
     multi16 := ( DMADEST == 27hd642 );                                                                                          // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
     multi32 := ( DMADEST[24,3] == 3b000 ) & ( DMADEST[4,12] == 12hd68 );                                                        // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB VARIANTS
 }
+unit dma_accesssize(
+    input   uint1   start,
+    output! uint2   DMAACCESSSIZE,
+
+    input   uint4   dmamode,
+    input   uint2   DMACOUNT,
+
+    input   uint1   FLAGS_src16bit,
+    input   uint1   FLAGS_multi16,
+    input   uint1   FLAGS_multi32,
+    input   uint1   FLAGS_SD16,
+    input   uint1   FLAGS_SD32,
+    input   uint1   FLAGS_SSD16,
+    input   uint1   FLAGS_SSD32,
+    input   uint1   FLAGS_ADD16,
+    input   uint1   FLAGS_ADD32,
+
+    output! uint1   DMA16BIT,
+    output! uint1   DMA32BIT,
+    output! uint1   PB4pixel
+) <reginputs> {
+    algorithm <autorun> { while(1) {
+        if( start ) {
+            DMA16BIT = 0; DMA32BIT = 0; PB4pixel = 0;                                                                           // DETERMINE MAXIMUM DMA TRANSFER SIZE PER CYCLE
+            switch( dmamode ) {
+                default: {}                                                                                                     // DEFAULT TO 8 BIT MODE
+                case 1: {
+                    DMA16BIT = FLAGS_multi16;                                                                                   // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
+                    DMA32BIT = FLAGS_multi32;                                                                                   // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
+                }
+                case 3: { DMA32BIT = FLAGS_SD32; DMA16BIT = FLAGS_SD16; }                                                       // MEMCPY IS 32/16 BIT CAPABLE
+                case 4: { DMA32BIT = FLAGS_SSD32; DMA16BIT = FLAGS_SSD16; }                                                     // MEMSET IS 32/16 BIT CAPABLE
+                case 7: { PB4pixel = ~|DMACOUNT & FLAGS_src16bit; }                                                             // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
+                case 8: { DMA32BIT = FLAGS_SD32 & FLAGS_ADD32; DMA16BIT = FLAGS_SD16 & FLAGS_ADD16; }                           // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
+                case 9: { DMA32BIT = FLAGS_SSD32 & FLAGS_ADD32; DMA16BIT = FLAGS_SSD16 & FLAGS_ADD16; }                         // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
+            }
+            DMAACCESSSIZE = DMA32BIT | ( &dmamode[0,3] & PB4pixel ) ? 2b10 : DMA16BIT | &dmamode[0,3] ? 2b01: 2b00;             // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
+        }
+    } }
+}
 unit dma_src_add(
     input   uint$addr_width$ dmasrc,
     input   uint$addr_width$ DMASOURCEADD,
@@ -839,7 +884,7 @@ unit dma(
     input   uint8   DMACYCLES,
     input   uint4   DMAMODE,
     input   uint32  DMASET,
-    output  uint2   DMAACCESSSIZE,
+    output! uint2   DMAACCESSSIZE,
     output! uint1   DMAACTIVE,
 
     input   uint1   start,
@@ -850,10 +895,7 @@ unit dma(
     input   uint32  readdata,
     input   uint1   memorybusy
 ) <reginputs> {
-    uint1   DMA16BIT = uninitialised;               uint1   DMA32BIT = uninitialised;                                           // IS DMA TRANSFER 16/32 BIT CAPABLE, DEFAULTS TO 8 BIT
-
-    uint1   PB4pixel = uninitialised;               uint3   PBmax <:: { PB4pixel, ~PB4pixel, 1b0 };                              // COUNTERS FOR PIXEL BLOCK TRANSFERS, PLUS CAPABILITY FOR 16/32 BIT TRANSFERS
-    uint3   PBcount = uninitialised;
+    uint3   PBcount = uninitialised;                uint3   PBmax <:: { AS.PB4pixel, ~AS.PB4pixel, 1b0 };                             // COUNTERS FOR PIXEL BLOCK TRANSFERS, PLUS CAPABILITY FOR 16/32 BIT TRANSFERS
 
     uint4   dmamode = uninitialized;                uint1   dmaPB <:: &dmamode[0,3];                                            // DMA MODE AND DMA MODE IS PIXEL BLOCK TRANSFER
     uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
@@ -870,19 +912,34 @@ unit dma(
         DMADESTADD <: DMADESTADD,
         DMACOUNT <: DMACOUNT
     );
+    dma_accesssize AS(                                                                                                          // GENERATE THE DMA ACCESSSIZE FLAG, 00 8 bit, 01 16 bit, 10 32 bit
+        start <: start,
+        DMAACCESSSIZE :> DMAACCESSSIZE,
+        dmamode <: dmamode,
+        DMACOUNT <: DMACOUNT[0,2],
+        FLAGS_src16bit <: FLAGS.src16bit,
+        FLAGS_multi16 <: FLAGS.multi16,
+        FLAGS_multi32 <: FLAGS.multi32,
+        FLAGS_SD16 <: FLAGS.SD16,
+        FLAGS_SD32 <: FLAGS.SD32,
+        FLAGS_SSD16 <: FLAGS.SSD16,
+        FLAGS_SSD32 <: FLAGS.SSD32,
+        FLAGS_ADD16 <: FLAGS.ADD16,
+        FLAGS_ADD32 <: FLAGS.ADD32
+    );
     dma_src_add SRC(                                                                                                            // GENERATE NEXT SOURCE ADDRESSES
         dmasrc <: dmasrc,
         DMASOURCEADD <: DMASOURCEADD,
-        DMA16BIT <: DMA16BIT,
-        DMA32BIT <: DMA32BIT,
+        DMA16BIT <: AS.DMA16BIT,
+        DMA32BIT <: AS.DMA32BIT,
         DMACOUNT <: DMACOUNT,
         PBmax <: PBmax
     );
     dma_dest_add DEST(                                                                                                          // GENERATE NEXT DESTINATION ADDRESSES
         dmadest <: dmadest,
         DMADESTADD <: DMADESTADD,
-        DMA16BIT <: DMA16BIT,
-        DMA32BIT <: DMA32BIT,
+        DMA16BIT <: AS.DMA16BIT,
+        DMA32BIT <: AS.DMA32BIT,
         DMACOUNT <: DMACOUNT
     );
     dma_pb_add PB(                                                                                                              // GENERATE NEXT PIXELBLOCK COUNTERS
@@ -891,17 +948,17 @@ unit dma(
     dma_count_sub COUNT(                                                                                                        // GENERATE NEXT COUNT (DECREASE BY NUMBER OF BYTES TRANSFERRED)
         dmaPB <: dmaPB,
         dmacount <: dmacount,
-        DMA16BIT <: DMA16BIT,
-        DMA32BIT <: DMA32BIT,
-        PB4pixel <: PB4pixel
+        DMA16BIT <: AS.DMA16BIT,
+        DMA32BIT <: AS.DMA32BIT,
+        PB4pixel <: AS.PB4pixel
     );
     dma_write_data WRITE(                                                                                                       // GENERATE THE MEMORY OUTPUT FROM SET/READDATA/PIXELS
         dmasrc <: dmasrc[0,1],
         srcSET <: FLAGS.srcSET,
         readdata <: readdata,
         DMASET <: DMASET,
-        DMA16BIT <: DMA16BIT,
-        DMA32BIT <: DMA32BIT,
+        DMA16BIT <: AS.DMA16BIT,
+        DMA32BIT <: AS.DMA32BIT,
         dmaPB <: dmaPB,
         PBcount <: PBcount[0,2],
         writedata :> writedata
@@ -909,56 +966,36 @@ unit dma(
 
     writememory := 0; readmemory := 0; update := 0; WRITE.latch := 0;                                                           // HOLD CONTROL FLAGS AT 0 FOR MEMORY, ADDRESS UPDATE AND MEMORY READ LATCH
 
-    algorithm <autorun> {
-        DMAACTIVE = 0; while(1) {
-            if( start ) {
-                while( ( dmamode[3,1] ? dmacycles : dmacount ) != 0 ) {                                                         // LOOP UNTIL ALL CYCLES AND COUNTS ARE COMPLETED
-                    switch( dmamode[3,1] ) {
-                        case 0: {                                                                                               // SINGLE CYCLE MODE
-                            PBcount = 0; address = dmasrc;
-                            if( ~FLAGS.srcSET ) { readmemory = 1; while( memorybusy ) {} ++: WRITE.latch = 1; }                 // FETCH FROM MEMORY IF REQUIRED removed ++:
-                            address = dmadest;
-                            if( dmaPB ) {
-                                while( PBcount != PBmax ) { writememory = 1; while( memorybusy ) {} PBcount = PB.NEXT; }        // PIXEL BLOCK MODE, OUTPUT EACH PIXEL TO MEMORY
-                            } else {
-                                writememory = 1; while( memorybusy ) {}                                                         // OUTPUT TO MEMORY
-                            }
-                        }
-                        case 1: {                                                                                               // MULTI-CYCLE MODE
-                            while( |dmacount ) {
-                                address = dmasrc;
-                                if ( ~FLAGS.srcSET ) { readmemory = 1; while( memorybusy ) {} ++: WRITE.latch = 1; }            // FETCH FROM MEMORY IF REQUIRED
-                                address = dmadest; writememory = 1; while( memorybusy ) {}                                      // OUTPUT TO MEMORY
-                                update = 1;
-                            }
+    algorithm <autorun> { DMAACTIVE = 0; while(1) {
+        if( start ) {
+            DMAACTIVE = 1; while( ( dmamode[3,1] ? dmacycles : dmacount ) != 0 ) {                                              // LOOP UNTIL ALL CYCLES AND COUNTS ARE COMPLETED
+                switch( dmamode[3,1] ) {
+                    case 0: {                                                                                                   // SINGLE CYCLE MODE
+                        PBcount = 0; address = dmasrc;
+                        if( ~FLAGS.srcSET ) { readmemory = 1; while( memorybusy ) {} ++: WRITE.latch = 1; }                     // FETCH FROM MEMORY IF REQUIRED removed ++:
+                        address = dmadest;
+                        if( dmaPB ) {
+                            while( PBcount != PBmax ) { writememory = 1; while( memorybusy ) {} PBcount = PB.NEXT; }            // PIXEL BLOCK MODE, OUTPUT EACH PIXEL TO MEMORY
+                        } else {
+                            writememory = 1; while( memorybusy ) {}                                                             // OUTPUT TO MEMORY
                         }
                     }
-                    update = 1;
+                    case 1: {                                                                                                   // MULTI-CYCLE MODE
+                        while( |dmacount ) {
+                            address = dmasrc;
+                            if ( ~FLAGS.srcSET ) { readmemory = 1; while( memorybusy ) {} ++: WRITE.latch = 1; }                // FETCH FROM MEMORY IF REQUIRED
+                            address = dmadest; writememory = 1; while( memorybusy ) {}                                          // OUTPUT TO MEMORY
+                            update = 1;                                                                                         // UPDATE EVERY INNER COUNT
+                        }
+                    }
                 }
-                DMAACTIVE = 0;
+                update = 1;                                                                                                     // UPDATE EVERY CYCLE
             }
+            DMAACTIVE = 0;                                                                                                      // CLEAR THE DMAACTIVE FLAG
         }
-    }
+    } }
 
     always_after {
-        if( start ) {
-            DMA16BIT = 0; DMA32BIT = 0; PB4pixel = 0;                                                                           // DETERMINE MAXIMUM DMA TRANSFER SIZE PER CYCLE
-            switch( dmamode ) {
-                default: {}                                                                                                     // DEFAULT TO 8 BIT MODE
-                case 1: {
-                    DMA16BIT = FLAGS.multi16;                                                                                   // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
-                    DMA32BIT = FLAGS.multi32;                                                                                   // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
-                }
-                case 3: { DMA32BIT = FLAGS.SD32; DMA16BIT = FLAGS.SD16; }                                                       // MEMCPY IS 32/16 BIT CAPABLE
-                case 4: { DMA32BIT = FLAGS.SSD32; DMA16BIT = FLAGS.SSD16; }                                                     // MEMSET IS 32/16 BIT CAPABLE
-                case 7: { PB4pixel = ~|DMACOUNT[0,2] & FLAGS.src16bit; }                                                        // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
-                case 8: { DMA32BIT = FLAGS.SD32 & FLAGS.ADD32; DMA16BIT = FLAGS.SD16 & FLAGS.ADD16; }                           // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
-                case 9: { DMA32BIT = FLAGS.SSD32 & FLAGS.ADD32; DMA16BIT = FLAGS.SSD16 & FLAGS.ADD16; }                         // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
-            }
-            DMAACCESSSIZE = DMA32BIT | ( &DMAMODE[0,3] & PB4pixel ) ? 2b10 : DMA16BIT | &DMAMODE[0,3] ? 2b01: 2b00;             // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
-            DMAACTIVE = 1;
-        }
-
         if( update ) {
             if( dmamode[3,1] ) {                                                                                                // UPDATE ADDRESSES IF RECTANGLE MODE
                 if( |dmacount ) {
