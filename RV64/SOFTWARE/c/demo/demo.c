@@ -838,7 +838,7 @@ void displayreset( void ) {
 
 // DISPLAY COLOUR CHART
 void colourtable( void ) {
-    displayreset();
+    displayreset(); bitmap_256( true );
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Colour Test" );
 
     unsigned char colour = 0;
@@ -901,7 +901,7 @@ void backgrounddemo( void ) {
     copper_program( 11, CU_AND, CU_R0, CU_RL, 7 );          tpu_set( 0, 17, TRANSPARENT, WHITE ); tpu_print( 1, "11 AND R0 <- (R0) & 7     // AND R0 BY 7" );
     copper_program( 12, CU_JPL, 4 );                        tpu_set( 0, 18, TRANSPARENT, WHITE ); tpu_print( 1, "12 JPL 4                  // JUMP TO 4" );
 
-    copper_startstop( 1 ); sleep1khz( 4000, 0 );
+    copper_startstop( 1 ); sleep1khz( 2000, 0 );
 
     displayreset(); copper_startstop( 0 );
 
@@ -914,7 +914,7 @@ void backgrounddemo( void ) {
     copper_program( 3, CU_RND, CU_BC, CU_RL, 255 );         tpu_set( 0, 5 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET BC <- RANDOM & 255 // SET COLOUR TO RANDOM & 255" );
     copper_program( 4, CU_JPL, 3 );                         tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "04 JPL 3                  // JUMP TO 3" );
 
-    copper_startstop( 1 ); sleep1khz( 4000, 0 );
+    copper_startstop( 1 ); sleep1khz( 2000, 0 );
 
     displayreset(); copper_startstop( 0 );
 
@@ -943,6 +943,33 @@ void backgrounddemo( void ) {
     copper_program( 5, CU_JPL, 3 );                         tpu_set( 0, 7 , TRANSPARENT, WHITE ); tpu_print( 1, "05 JPL 3                  // JUMP TO 3" );
 
     copper_startstop( 1 ); sleep1khz( 2000, 0 );
+}
+
+// CHARACTER MAP DISPLAY
+void charactermapdemo( void ) {
+    displayreset();
+
+    unsigned char foreground = 0, x = 0, y = 0;
+
+    tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Character Map Test" );
+
+    for( int c = 3; c < 7; c++ ) {
+        for( int i = 0; i < 256; i++ ) {
+            tpu_set( x++, y, TRANSPARENT, foreground++ );
+            tpu_output_character( c );
+            if( x == 80 ) { x = 0; y++; }
+        }
+        y++;
+    }
+
+    x = 0; y += 2;
+    for( int i = 0; i < 512; i++ ) {
+        tpu_set( x++, y, BLACK, WHITE );
+        tpu_output_character( i );
+        if( x == 80 ) { x = 0; y++; }
+    }
+
+    sleep1khz( 2000, 0 );
 }
 
 // PUT SOME OBJECTS ON THE TILEMAP AND WRAP LOWER LAYER UP AND LEFT , UPPER LAYER DOWN AND RIGHT
@@ -1186,31 +1213,31 @@ void spritedemo( void ) {
         for( short x = 0; x < 42; x++ ) {
             switch( pacman_maze[y][x] ) {
                 case '.':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 0, 0 );
+                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 0, 0 );
                     break;
                 case '1':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, 0 );
+                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 1, 0 );
                     break;
                 case '2':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, ROTATE90 );
+                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 1, ROTATE90 );
                     break;
                 case '3':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, ROTATE180 );
+                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 1, ROTATE180 );
                     break;
                 case '4':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, ROTATE270 );
+                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 1, ROTATE270 );
                     break;
                 case '5':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 2, ROTATE180 );
+                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 2, ROTATE180 );
                     break;
                 case '6':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 2, 0 );
+                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 2, 0 );
                     break;
                 case '7':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 2, ROTATE90 );
+                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 2, ROTATE90 );
                     break;
                 case '8':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 2, ROTATE270 );
+                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 2, ROTATE270 );
                     break;
             }
         }
@@ -1294,13 +1321,13 @@ void spritedemo( void ) {
         // PACMAN "TUNE" - SLIGHTLY OUT
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
-                beep( 1, WAVE_UD1, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
+                beep( 1, WAVE_USER, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
                 trebleposition++;
             }
         }
         if( tune_bass[ bassposition ] != 0xff ) {
             if( !get_beep_active( 2 ) ) {
-                beep( 2, WAVE_UD1, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
+                beep( 2, WAVE_USER, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
                 bassposition++;
             }
         }
@@ -1390,6 +1417,8 @@ int main( int argc, char **argv ) {
         colourtable();
 
         backgrounddemo();
+
+        charactermapdemo();
 
         tilemapdemo();
 

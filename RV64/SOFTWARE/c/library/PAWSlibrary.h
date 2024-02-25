@@ -70,7 +70,6 @@ extern void screen_mode( unsigned char, unsigned char, unsigned char );
 extern void screen_dimmer( unsigned char dimmerlevel );
 extern void bitmap_display( unsigned char );
 extern void bitmap_draw( unsigned char );
-extern void bitmap_256( unsigned char );
 extern void bitmap_256( unsigned char mode );
 extern void set_palette( unsigned char entry, unsigned int rgb );
 extern void use_palette( unsigned char mode );
