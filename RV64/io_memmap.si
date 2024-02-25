@@ -71,6 +71,8 @@ $$if not SIMULATION then
     // SDCARD AND BUFFER
     simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                                                  // READ FROM SDCARD
     simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                                                 // WRITE TO SDCARD
+    uint9   buffer_in_NEXT <:: buffer_in.addr0 + 1;
+    uint9   buffer_out_NEXT <:: buffer_out.addr1 + 1;
     sdcardcontroller SDCARD(
         sd_clk :> sd_clk,
         sd_mosi :> sd_mosi,
@@ -86,9 +88,14 @@ $$end
     rtc RTC( clk <: clock, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );                                                // EMARD verilog version
 
 $$if not SIMULATION then
+    uint10  mouse_x_m1 <:: mouse_x - |mouse_x;                                                                                  // MOUSE X LEFT IF NOT AT LEFT
+    uint10  mouse_x_p1 <:: mouse_x + ( mouse_x != 639 );                                                                        // MOUSE X RIGHT IF NOT AT RIGHT
+    uint9   mouse_y_m1 <:: mouse_y - |mouse_y;                                                                                  // MOUSE Y UP IF NOT AT TOP
+    uint9   mouse_y_p1 <:: mouse_y + ( mouse_y != 479 );                                                                        // MOUSE Y DOWN IF NOT AT BOTTOM
+
     // I/O FLAGS
     UART_IN.inread := 0; UART_OUT.outwrite := 0; PS2.inread := 0;
-    SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0;
+    SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0; buffer_out.wdata1 := writeData;
 $$end
     RTC.wr := 0; RESETSTATUS := 0;
 
@@ -143,7 +150,7 @@ $$end
                             }
                         }
                     }
-                    case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = buffer_in.addr0 + 1; }
+                    case 4h5: { readData = buffer_in.rdata0; buffer_in.addr0 = buffer_in_NEXT; }
                     $$end
                     case 4h3: { readData = leds; }
                     case 4h6: {
@@ -187,8 +194,8 @@ $$end
                     }
                     case 4h5: {
                         switch( memoryAddress[1,1] ) {
-                            case 0: { buffer_in.addr0 = 0; buffer_out.addr1 = 511; }
-                            case 1: { buffer_out.addr1 = buffer_out.addr1 + 1; buffer_out.wdata1 = writeData; buffer_out.wenable1 = 1; }
+                            case 0: { buffer_in.addr0 = 0; buffer_out.addr1 = -1; }
+                            case 1: { buffer_out.addr1 = buffer_out_NEXT; buffer_out.wenable1 = 1; }
                         }
                     }
                     $$end
@@ -227,13 +234,13 @@ $$end
                 mouse_latch = mouse_latch - 1;
             } else {
                 switch( btns[3,2] ) {
-                    case 2b01: { mouse_y = mouse_y - ( |mouse_y ); }
-                    case 2b10: {  mouse_y = mouse_y + ( mouse_y != 479 ); }
+                    case 2b01: { mouse_y = mouse_y_m1; }
+                    case 2b10: {  mouse_y = mouse_y_p1; }
                     default: {}
                 }
                 switch( btns[5,2] ) {
-                    case 2b01: { mouse_x = mouse_x - ( |mouse_x ); }
-                    case 2b10: { mouse_x = mouse_x + ( mouse_x != 639 ); }
+                    case 2b01: { mouse_x = mouse_x_m1; }
+                    case 2b10: { mouse_x = mouse_x_p1; }
                     default: {}
                 }
                 mouse_latch = |btns[3,4] ? 20h80000 : 0;
@@ -254,26 +261,20 @@ unit fifo8(
     output  uint8   first,
     input   uint8   last
 ) <reginputs> {
-    simple_dualport_bram uint8 queue[128] = uninitialized;
-    uint7   next = 0;
-    uint7   top = 0;
-
-    queue.wenable1 := 1; queue.addr0 := next; first := queue.rdata0;                                                            // BUFFER CONTROLS
-    available := ( top != next ); full := ( ( top + 2 ) == next );                                                              // UART CHARACTER AVAILABLE? QUEUE FULL?
+    simple_dualport_bram uint8 queue[128] = uninitialized; queue.wenable1 := 1;
 
     algorithm <autorun> {
-        uint7   next_p1 <:: next + 1;
-        uint7   top_p1 <:: top + 1;
+        uint7   next_p1 <:: queue.addr0 + 1;
+        uint7   top_p1 <:: queue.addr1 + 1;
+        uint7   top_p2 <:: queue.addr1 + 2;
+
+        queue.addr0 = 0; queue.addr1 = -1;
 
         while(1) {
-            uint1   update = uninitialized;
+            if( write ) { queue.addr1 = top_p1; queue.wdata1 = last; }
+            if( read ) { first = queue.rdata0; queue.addr0 = next_p1; }
 
-            if( write ) {
-                queue.addr1 = top; queue.wdata1 = last; update = 1;
-            } else {
-                if( update ) { top = top_p1; update = 0; }
-            }
-            if( read ) { next = next_p1; }
+            available = ( top_p1 != queue.addr0 ); full = ( top_p2 == queue.addr0 );                                          // UART CHARACTER AVAILABLE? QUEUE FULL?
         }
     }
 }
@@ -307,20 +308,19 @@ unit fifo10(
     output  uint10  first,
     input   uint10  last
 ) <reginputs> {
-    simple_dualport_bram uint10 queue[128] = uninitialized;
-    uint7   next = 0;
-    uint7   top = 0;
-
-    queue.wenable1 := 1; queue.addr0 := next; first := queue.rdata0;                                                            // BUFFER CONTROLS
-    available := ( top != next );                                                                                               // IS PS/2 INPUT AVAILABLE?
+    simple_dualport_bram uint10 queue[128] = uninitialized; queue.wenable1 := 1;
 
     algorithm <autorun> {
-        uint7   next_p1 <:: next + 1;
-        uint7   top_p1 <:: top + 1;
+        uint7   next_p1 <:: queue.addr0 + 1;
+        uint7   top_p1 <:: queue.addr1 + 1;
+
+        queue.addr0 = 0; queue.addr1 = -1;
 
         while(1) {
-            if( write ) { queue.addr1 = top; queue.wdata1 = last; top = top_p1; }                                               // ADD ENTRY TO BUFFER
-            if( read ) { next = next_p1; }                                                                                      // READ FROM BUFFER
+            if( write ) { queue.addr1 = top_p1; queue.wdata1 = last; }                                               // ADD ENTRY TO BUFFER
+            if( read ) { first = queue.rdata0;  queue.addr0 = next_p1; }                                                                                      // READ FROM BUFFER
+
+            available = ( top_p1 != queue.addr0 );                                                                                               // IS PS/2 INPUT AVAILABLE?
         }
     }
 }
