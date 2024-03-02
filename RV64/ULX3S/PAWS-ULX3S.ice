@@ -112,7 +112,8 @@ $include('../FPU64.si')
 $include('../CPU.si')
 
 // MAIN PAWS.si
-$include('../caches.si')
+$include('../DMA.si')
+$include('../MEMORY.si')
 $include('../PAWS.si')
 
 // I2C (EMARD FOR RTC)

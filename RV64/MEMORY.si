@@ -1,3 +1,28 @@
+// RAM - BRAM controller
+unit bramcontroller(
+    input   uint12  address,
+    input   uint12  address2,
+    input   uint2   accesssize,
+    input   uint1   writeflag,
+    input   uint32  writedata,
+    output  uint32  readdata
+) <reginputs> {
+    $$config['dualport_bram_wmask_byte_wenable0_width'] = 'data'
+    $$config['dualport_bram_wmask_byte_wenable1_width'] = 'data'
+    $$if not SIMULATION then
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [2048] = {file("ROM/BIOS.bin"), pad(uninitialized)};              // BIOS WITH I/O
+    $$else
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [2048] = {file("ROM/VBIOS.bin"), pad(uninitialized)};             // BIOS FOR VERILATOR
+    $$end
+                                                                                                                                // BRAM FLAGS, ram0 LOW 16 BITS, ram1 HIGH 16 BITS
+    ram.wenable0 := |accesssize ? {2{writeflag}}  : { writeflag & address[0,1], writeflag & ~address[0,1] };                    // LOW WRITE FOR 8 OR 16/32 BIT
+    ram.wenable1 := {2{writeflag & accesssize[1,1]}};                                                                           // HIGH WRITE FOR 32 BIT
+    ram.addr0 := address[1,11]; ram.addr1 := address2[1,11];                                                                    // SET LOW AND HIGH ADDRESSES
+    ram.wdata0 := ~|accesssize ? { {2{writedata[0,8]}} } : writedata[0,16];                                                     // ram0 LOW, 8 bit duplicate, else lower 16 bits
+    ram.wdata1 := writedata[16,16];                                                                                             // ram1 HIGH 16 bits
+    readdata := { ram.rdata1, ram.rdata0 };                                                                                     // READ 32 BITS, COMBINE ram1 HIGH AND ram0 LOW
+}
+
 // HART ID 0 L0 CACHE
 unit il00cache_read(
     simple_dualport_bram_port0 L0cache,
@@ -131,14 +156,6 @@ unit cachecontroller(
 
     sio.in_valid := 0; DCACHEW.update := 0; DTAGSW.update := 0;                                                                 // SDRAM ACCESS AND CACHE/TAGS UPDATE FLAGS
 
-    readdata := accesssize[1,1] ? { DTAGS.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16], DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] } :
-               ~accesssize[0,1] ? DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] :
-            DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16];
-    cachewritevalue := accesssize[1,1] ? dowrite ? writedata : readdata :
-                      ~accesssize[0,1] ? dowrite ? address[0,1] ? { writedata[0,8], DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,8] : sdramreaddata[0,8] } :
-                                                                  { DTAGS.tagmatch[0,1] ? DCACHE.rdata[8,8] : sdramreaddata[8,8], writedata[0,8] } : readdata :
-                                         dowrite ? writedata[0,16] : readdata;
-
     algorithm <autorun> {
         uint1   doread = uninitialized;                                                                                         // MEMORY READ OPERATION FLAG
         uint2   accessmask <:: { accesssize[1,1], 1b1 };                                                                        // ACCESSMASK WHICH PARTS OF THE 2 x 16 BIT CACHE PARTS ARE USED
@@ -184,6 +201,17 @@ unit cachecontroller(
                 }
             }
         }
+    }
+
+    always_after {
+        readdata = accesssize[1,1] ? { DTAGS.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16], DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] } :
+                  ~accesssize[0,1] ? DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] :
+                  DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16];
+
+        cachewritevalue = accesssize[1,1] ? dowrite ? writedata : readdata :
+                         ~accesssize[0,1] ? dowrite ? address[0,1] ? { writedata[0,8], DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,8] : sdramreaddata[0,8] } :
+                                                                     { DTAGS.tagmatch[0,1] ? DCACHE.rdata[8,8] : sdramreaddata[8,8], writedata[0,8] } : readdata :
+                                            dowrite ? writedata[0,16] : readdata;
     }
 }
 
