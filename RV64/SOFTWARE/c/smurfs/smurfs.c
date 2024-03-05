@@ -103,13 +103,13 @@ __attribute__((used)) void playtune( void ) {
     while( ( tune_treble[ trebleposition ] != 0xff ) || ( tune_bass[ bassposition ] != 0xff ) ) {
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
-                beep( 1, WAVE_UD1, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 2 );
+                beep( 1, WAVE_USER, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 2 );
                 trebleposition++;
             }
         }
         if( tune_bass[ bassposition ] != 0xff ) {
             if( !get_beep_active( 2 ) ) {
-                beep( 2, WAVE_UD1, tune_bass[ bassposition ], size_bass[ bassposition ] << 2 );
+                beep( 2, WAVE_USER, tune_bass[ bassposition ], size_bass[ bassposition ] << 2 );
                 bassposition++;
             }
         }

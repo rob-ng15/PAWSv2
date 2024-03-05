@@ -10,7 +10,7 @@ int main( void ) {
         gpu_triangle( BLUE, x0, y0, x1, y1, x2, y2 );
         gpu_line( WHITE, x0, y0, x1, y1 ); gpu_line( WHITE, x1, y1, x2, y2 ); gpu_line( WHITE, x2, y2, x0, y0 );
 
-        tpu_set( 0, 0, TRANSPARENT, GREEN );
+        tpu_set( 0, 0, TRANSPARENT, GREEN, TPU_BOLD );
         tpu_printf( 0, " ( %d, %d ) -> ( %d, %d ) -> ( %d, %d )", x0, y0, x1, y1, x2, y2 );
         sleep1khz( 1000, 0 );
     }

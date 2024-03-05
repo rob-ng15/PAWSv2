@@ -1343,10 +1343,10 @@ void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, uns
 
 // CLEAR THE CHARACTER MAP
 void tpu_cs( void ) {
-    paws_memset32( ( void *)TPUBUFFER, ( 64 << 17 ), 4800 * 4 );
+    paws_memset32( ( void *)TPUBUFFER, ( 64 << 16 ), 4800 * 4 );
 }
 void tpu_clearline( unsigned char y ) {
-    paws_memset32( (void *)TPUBUFFER + 80 * y * 4, ( 64 << 17 ), 80 * 4 );
+    paws_memset32( (void *)TPUBUFFER + 80 * y * 4, ( 64 << 16 ), 80 * 4 );
 }
 
 // POSITION THE CURSOR to (x,y)
@@ -1355,23 +1355,24 @@ void tpu_move( unsigned char x, unsigned char y ) {
 }
 
 // POSITION THE CURSOR to (x,y) and set background and foreground colours
-void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
-    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground, unsigned char attribute ) {
+    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_ATTRIBUTES = attribute; *TPU_COMMIT = 1;
 }
 // OUTPUT CHARACTER, STRING, and PRINTF EQUIVALENT FOR THE TPU
-void tpu_output_character( short c ) {
+void tpu_output_character( unsigned char c ) {
     *TPU_CHARACTER = c; *TPU_COMMIT = 2;
 }
-void tpu_outputstring( char attribute, char *s ) {
+void tpu_outputstring( unsigned char attribute, char *s ) {
+    *TPU_ATTRIBUTES = attribute;
     while( *s ) {
-        tpu_output_character( ( attribute ? 256 : 0 ) + *s );
+        tpu_output_character( *s );
         s++;
     }
 }
-void tpu_print( char attribute, char *buffer ) {
+void tpu_print( unsigned char attribute, char *buffer ) {
     tpu_outputstring( attribute, buffer );
 }
-void tpu_printf( char attribute, const char *fmt,... ) {
+void tpu_printf( unsigned char attribute, const char *fmt,... ) {
     static char buffer[1024];
     va_list args;
     va_start (args, fmt);
@@ -1380,12 +1381,12 @@ void tpu_printf( char attribute, const char *fmt,... ) {
 
     tpu_outputstring( attribute, buffer );
 }
-void tpu_print_centre( unsigned char y, unsigned char background, unsigned char foreground, char attribute, char *buffer  ) {
+void tpu_print_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, char *buffer ) {
     tpu_clearline( y );
-    tpu_set( 40 - ( strlen(buffer) >> 1 ), y, background, foreground );
+    tpu_set( 40 - ( strlen(buffer) >> 1 ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
 }
-void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground, char attribute, const char *fmt,...  ) {
+void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, const char *fmt,...  ) {
     static char buffer[1024];
     va_list args;
     va_start (args, fmt);
@@ -1393,7 +1394,7 @@ void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char
     va_end(args);
 
     tpu_clearline( y );
-    tpu_set( 40 - ( strlen(buffer) >> 1 ), y, background, foreground );
+    tpu_set( 40 - ( strlen(buffer) >> 1 ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
 }
 

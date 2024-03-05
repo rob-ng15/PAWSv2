@@ -9,24 +9,26 @@
 #define FALSE 0
 #endif
 
-#define COLORS 256
-#define A_NOACTION 2048
-#define A_NORMAL 256
-#define A_BOLD 512
-#define A_STANDOUT 512
-#define A_UNDERLINE A_NOACTION
-#define A_REVERSE 1024
-#define A_BLINK A_NOACTION
+#define A_NORMAL 512
+#define A_BOLD 1024
+#define A_STANDOUT 1024
+#define A_WIDE 2048
+#define A_TALL 4096
+#define A_BLINK 8192
+#define A_UNDERLINE 16384
+#define A_REVERSE 32768
+#define A_NOACTION 65536
 #define A_DIM A_NORMAL
 #define A_PROTECT A_NOACTION
 #define A_INVIS A_NOACTION
 #define A_ALTCHARSET A_NOACTION
 #define A_CHARTEXT A_NOACTION
+
+// COLOURS
+#define COLORS 256
 #define COLOR_PAIRS 256
 #define COLOR_PAIRS_MASK (COLOR_PAIRS-1)
 #define COLOR_PAIR(a) a|COLORS
-
-// COLOURS
 #define COLOR_BLACK BLACK
 #define COLOR_BLUE BLUE
 #define COLOR_GREEN GREEN
@@ -42,9 +44,9 @@
 #define LINES 60
 #define TPUSIZE COLS*LINES
 #define TPUCELLSIZE 4
-#define TPUBACKBIT 17
-#define TPUFOREBIT 9
-#define TPUBOLD 256
+#define TPUATTRBIT 24
+#define TPUBACKBIT 16
+#define TPUFOREBIT 8
 
 // SPECIAL CHARACTERS
 #define ACS_VLINE 0xb3
@@ -59,14 +61,13 @@
 #define ACS_TTEE 0xc2
 #define ACS_PLUS 0xc5
 
-
 typedef unsigned char chtype;
 typedef struct{
     int *buffer;
     int y,x,w,h;
     unsigned char backgroundcolours[COLOR_PAIRS], foregroundcolours[COLOR_PAIRS];
     unsigned char background, foreground;
-    unsigned char scroll, echo, bold, reverse, autorefresh;
+    unsigned char scroll, echo, attributes, reverse, autorefresh;
     unsigned short cy,cx;
     void *parent;
 } WINDOW;
@@ -74,10 +75,11 @@ typedef struct{
 typedef union curses_cell {
     unsigned int bitfield;
     struct {
-        unsigned int character : 9;
+        unsigned int character : 8;
         unsigned int foreground : 8;
         unsigned int background : 8;
-        unsigned int pad : 7;
+        unsigned int attributes : 5;
+        unsigned int pad : 3;
     } cell;
 } __curses_cell;
 
@@ -179,6 +181,7 @@ extern WINDOW *stdscr, *curscr;
 #define wclrtobot(w) __pnc_clrtobot( w )
 
 #define scrollok(w,a) __pnc_scrollok( w, a )
+#define noscroll() __pnc_scrollok( stdscr, false )
 #define doupdate()
 
 #define getch() __pnc_getch( stdscr )

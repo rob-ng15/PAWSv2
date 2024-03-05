@@ -135,11 +135,12 @@ unsigned char volatile *UPPER_SPRITE_WRITER_COLOUR = (unsigned char volatile *) 
 
 unsigned char volatile *TPU_X = (unsigned char volatile *) 0xd500;
 unsigned char volatile *TPU_Y = (unsigned char volatile *) 0xd502;
-unsigned short volatile *TPU_CHARACTER = (unsigned short volatile *) 0xd504;
+unsigned char volatile *TPU_CHARACTER = (unsigned char volatile *) 0xd504;
 unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd506;
 unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd508;
 unsigned char volatile *TPU_COMMIT = (unsigned char volatile *) 0xd50a;
 unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd50c;
+unsigned char volatile *TPU_ATTRIBUTES = (unsigned char volatile *) 0xd50e;
 
 unsigned char volatile *AUDIO_WAVEFORM = (unsigned char volatile *) 0xe000;
 unsigned char volatile *AUDIO_FREQUENCY = (unsigned char volatile *) 0xe002;

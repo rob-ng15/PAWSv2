@@ -13,7 +13,7 @@ void __position_curses( unsigned short x, unsigned short y ) {
 }
 
 void __update_tpu( WINDOW *window ) {
-    tpu_set( window -> cx + window -> x, window -> cy + window -> y, window -> background, window -> foreground );
+    tpu_set( window -> cx + window -> x, window -> cy + window -> y, window -> background, window -> foreground, window -> attributes );
 }
 
 void initscr( void ) {
@@ -22,7 +22,7 @@ void initscr( void ) {
     stdscr -> y = 0; stdscr -> x = 0; stdscr -> w = COLS; stdscr -> h = LINES;
     stdscr -> cx = 0; stdscr-> cy = 0;
     stdscr -> background = BLACK; stdscr -> foreground = WHITE;
-    stdscr -> scroll = 1; stdscr -> echo = 0; stdscr -> bold = 0; stdscr -> reverse = 0; stdscr -> autorefresh = 0;
+    stdscr -> scroll = 1; stdscr -> echo = 0; stdscr -> attributes = 0; stdscr -> reverse = 0; stdscr -> autorefresh = 0;
 
     stdscr -> buffer = malloc( TPUSIZE * TPUCELLSIZE );
     if( stdscr -> buffer == NULL )
@@ -55,7 +55,7 @@ WINDOW *newwin( int nlines, int ncols, int begin_y, int begin_x ) {
     tempwin -> y = begin_y; tempwin -> x = begin_x; tempwin -> w = ncols; tempwin -> h = nlines;
     tempwin -> cx = 0; tempwin-> cy = 0;
     tempwin -> background = BLACK; tempwin -> foreground = WHITE;
-    tempwin -> scroll = 0; tempwin -> echo = 0; tempwin -> bold = 0; tempwin -> reverse = 0; tempwin -> autorefresh = 0;
+    tempwin -> scroll = 0; tempwin -> echo = 0; tempwin -> attributes = 0; tempwin -> reverse = 0; tempwin -> autorefresh = 0;
 
     __curses_cell temp;
     temp.cell.background = tempwin -> reverse ? tempwin -> foreground : tempwin -> background;
@@ -233,9 +233,10 @@ int __pnc_addch( WINDOW *window, char ch ) {
         }
 
         default: {
+            temp.cell.attributes = window -> attributes;
             temp.cell.background = window -> reverse ? window -> foreground : window -> background;
             temp.cell.foreground = window -> reverse ? window -> background : window -> foreground;
-            temp.cell.character = ( window -> bold ? TPUBOLD : 0 ) + ch;
+            temp.cell.character = ch;
 
             if( window -> autorefresh )
                 TPUBUFFER[ ( window -> y + window -> cy ) * COLS + window -> x + window -> cx ] = temp.bitfield;
@@ -327,20 +328,23 @@ int __pnc_attron( WINDOW *window, int attrs ) {
         __update_tpu( window );
     }
 
-    if( attrs & A_NORMAL ) {
-        window -> bold = 0;
-        window -> reverse = 0;
-    }
-
-    if( attrs & A_BOLD ) window -> bold = 1;
-
+    if( attrs & A_NORMAL ) { window -> attributes = 0; window -> reverse = 0; }
+    if( attrs & A_BOLD ) window -> attributes |= TPU_BOLD;
+    if( attrs & A_WIDE ) window -> attributes |= TPU_X2;
+    if( attrs & A_TALL ) window -> attributes |= TPU_Y2;
+    if( attrs & A_BLINK ) window -> attributes |= TPU_BLINK;
+    if( attrs & A_UNDERLINE ) window -> attributes |= TPU_UNDER;
     if( attrs & A_REVERSE ) window -> reverse = 1;
 
     return( true );
 }
 
 int __pnc_attroff( WINDOW *window, int attrs ) {
-    if( attrs & A_BOLD ) window -> bold = 0;
+    if( attrs & A_BOLD ) window -> attributes &= !TPU_BOLD;
+    if( attrs & A_WIDE ) window -> attributes &= !TPU_X2;
+    if( attrs & A_TALL ) window -> attributes &= !TPU_Y2;
+    if( attrs & A_BLINK ) window -> attributes &= !TPU_BLINK;
+    if( attrs & A_UNDERLINE ) window -> attributes &= !TPU_UNDER;
     if( attrs & A_REVERSE )  window -> reverse = 0;
 
     return( true );

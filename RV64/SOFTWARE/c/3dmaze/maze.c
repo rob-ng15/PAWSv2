@@ -844,8 +844,8 @@ int main( int argc, char **argv ) {
         do {
             tpu_print_centre( 57, TRANSPARENT, YELLOW, 1, "Select Level" );
             tpu_print_centre( 58, TRANSPARENT, YELLOW, 0, "Increase/Decrease by LEFT/RIGHT - Select by FIRE" );
-            tpu_set( 0, 59, TRANSPARENT, BLACK ); tpu_printf( 1, "Level: %3d", level );
-            tpu_set( 60, 59, TRANSPARENT, BLACK ); tpu_printf( 1, "Size: %5d x %5d", levelwidths[level], levelheights[level] );
+            tpu_set( 0, 59, TRANSPARENT, BLACK, TPU_BOLD ); tpu_printf( 1, "Level: %3d", level );
+            tpu_set( 60, 59, TRANSPARENT, BLACK, TPU_BOLD ); tpu_printf( 1, "Size: %5d x %5d", levelwidths[level], levelheights[level] );
 
             while( get_buttons() == 1 );
             // LEFT / RIGHT to change level, FIRE to select

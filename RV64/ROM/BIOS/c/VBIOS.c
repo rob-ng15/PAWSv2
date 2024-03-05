@@ -305,14 +305,14 @@ void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
 
 // CLEAR THE CHARACTER MAP
 void tpu_cs( void ) {
-    memset32( ( void *)0x1000000, ( 64 << 17 ), 4800 * 4 );
+    memset32( ( void *)0x1000000, ( 64 << 16 ), 4800 * 4 );
 }
 // POSITION THE CURSOR to (x,y) and set background and foreground colours
-void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
-    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground, unsigned char attributes ) {
+    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_ATTRIBUTES = attributes; *TPU_COMMIT = 1;
 }
 // OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
-void tpu_output_character( short c ) {
+void tpu_output_character( unsigned char c ) {
     *TPU_CHARACTER = c; *TPU_COMMIT = 2;
 }
 void tpu_outputstring( char *s ) {
@@ -563,7 +563,7 @@ void main( void ) {
         set_sprite_attribute( 1, 1, 1, ( j & 128 ) >> 7 );
         set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
         j++;
-        tpu_set( 0, 17, TRANSPARENT, WHITE );
+        tpu_set( 0, 17, TRANSPARENT, WHITE, 1 );
         long rtc = *RTC + 0x2000000000000000;
         for( int i = 0; i < 16; i++ ) {
             rtc = _rv64_rol( rtc, 4 );

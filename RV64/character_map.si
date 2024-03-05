@@ -1,7 +1,30 @@
 bitfield  cmentry{
+    uint5   attributes,
     uint8   background,
     uint8   foreground,
-    uint9   character
+    uint8   character
+}
+
+unit characterrom512(
+    input   uint1   cursor_blink,
+    input   uint8   character,
+    input   uint3   x,
+    input   uint3   y,
+    input   uint5   attribute,
+    input   uint1   double_right,
+    input   uint1   double_bottom,
+    output! uint1   pixel
+) <reginputs> {
+    brom uint8 characterGenerator8x8[4096] =  {
+        $include('ROM/FONTS/CODE437-THINBOLD.inc')
+        ,pad(uninitialized)
+    };
+
+    // Setup the reading of the characterGenerator8x8 ROM
+    characterGenerator8x8.addr := { attribute[0,1], character, attribute[2,1] ? { double_bottom, y[1,2] } : y };
+    pixel := attribute[3,1] & ~cursor_blink ? 0 :
+             attribute[4,1] & |character & ( ( attribute[2,1] ? { double_bottom, y[1,2] } : y ) == 7 ) ? 1 :
+             characterGenerator8x8.rdata[ attribute[1,1] ? ~{ double_right, x[1,2] } : ~x, 1 ];
 }
 
 unit character_map(
@@ -23,16 +46,23 @@ unit character_map(
     input   uint8   tpu_background,
     input   uint1   tpu_showcursor
 ) <reginputs> {
-    characterrom512 CGROM <@clockCG> ( tile <: cmentry(charactermap.rdata0).character, y <: pix_y[0,3] );                       // Character ROM 8x8 512 characters, 256 normal, 256 bold
+    characterrom512 CGROM <@clockCG> (                                                                                          // Character ROM 8x8 512 characters, 256 normal, 256 bold
+        cursor_blink <: blink,
+        character <: cmentry(charactermap.rdata0).character,
+        attribute <: cmentry(charactermap.rdata0).attributes,
+        x <: pix_x[0,3],
+        y <: pix_y[0,3],
+        double_right <: pix_x1[3,1],
+        double_bottom <: pix_y[3,1]
+    );
 
-    uint1   characterpixel <:: CGROM.line[ ~pix_x[0,3], 1 ];                                                                    // Present pixel
     uint1   is_cursor <:: tpu_showcursor & blink & ( cursor_x == ( pix_x[3,7] ) ) & ( cursor_y == pix_y[3,6] );                 // Is current coordinate the cursor coordinate, cursor visible?
 
     charactermap.addr0 := pix_x1[3,7] + 80 * pix_y[3,6];
-    character_map_display := pix_active & ( characterpixel | ( cmentry(charactermap.rdata0).background != 64 ) | is_cursor );
-    pixel := is_cursor ? characterpixel ? tpu_background : tpu_foreground :                                                     // IF CURSOR, INVERT PIXEL
-                         characterpixel ? cmentry(charactermap.rdata0).foreground :                                             // IF PIXEL, FOREGROUND
-                                          cmentry(charactermap.rdata0).background;                                              // ELSE BACKGROUND
+    character_map_display := pix_active & ( CGROM.pixel | ( cmentry(charactermap.rdata0).background != 64 ) | is_cursor );
+    pixel := is_cursor ? CGROM.pixel ? tpu_background : tpu_foreground :                                                     // IF CURSOR, INVERT PIXEL
+                         CGROM.pixel ? cmentry(charactermap.rdata0).foreground :                                             // IF PIXEL, FOREGROUND
+                                       cmentry(charactermap.rdata0).background;                                              // ELSE BACKGROUND
 }
 
 unit cmcursorx(
@@ -67,15 +97,16 @@ unit character_map_writer(
 
     input   uint13  memoryAddressDirect,                                                                                        // CPU MEMORY ADDRESS
     input   uint1   memoryWriteDirect,                                                                                          // CPU WRITE FLAG
-    input   uint25  writeDataDirect,                                                                                            // CPU WRITE DATA
-    output! uint25  readDataDirect,                                                                                             // CPU READ DATA
+    input   uint29  writeDataDirect,                                                                                            // CPU WRITE DATA
+    output! uint29  readDataDirect,                                                                                             // CPU READ DATA
 
     // TPU to SET characters, background, foreground
     input   uint7   tpu_x,
     input   uint6   tpu_y,
-    input   uint9   tpu_character,
+    input   uint8   tpu_character,
     input   uint8   tpu_foreground,
     input   uint8   tpu_background,
+    input   uint5   tpu_attributes,
     input   uint2   tpu_write,
 
     output  uint7   cursor_x,
@@ -86,7 +117,7 @@ unit character_map_writer(
 
     charactermap.addr1 := memoryWriteDirect ? memoryAddressDirect : TPUA.WRITEADDR;                                             // SET ADDRESS AS TPU ADDRESS FOR WRITE OR CPU ADDRESS
     charactermap.wdata1 := memoryWriteDirect ? writeDataDirect :                                                                // WRITE CPU INPUT DIRECT
-                            { tpu_background, tpu_foreground, tpu_character };                                                  // VIA TPU OUTPUT
+                            { tpu_attributes, tpu_background, tpu_foreground, tpu_character };                                  // VIA TPU OUTPUT
     charactermap.wenable1 := memoryWriteDirect | tpu_write[1,1];
 
     algorithm <autorun> { while(1) {

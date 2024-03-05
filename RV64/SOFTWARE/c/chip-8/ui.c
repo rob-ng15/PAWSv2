@@ -137,21 +137,21 @@ void display_state( void ) {
     set_sprite32( UPPER_LAYER, 12, ( machine.crashed == 0 ) ? SPRITE_SHOW : ( systemclock() & 1 ), 608, 256, machine.crashed, SPRITE_DOUBLE );
     set_sprite32( LOWER_LAYER, 0, SPRITE_SHOW, 608, 320, machine.debug, SPRITE_DOUBLE );
 
-    tpu_set( 1, 1, TRANSPARENT, BLACK ); tpu_printf( 0, "PC[%03x] I[%03x]", machine.PC, machine.I );
-    tpu_set( 17, 1, TRANSPARENT, machine.timer ? GREEN : GREY3 ); tpu_printf( 0, "T[%02x]", machine.timer );
-    tpu_set( 25, 1, TRANSPARENT, machine.audio_timer ? GREEN : GREY3 ); tpu_printf( 0, "A[%02x%02x]", machine.audio_timer, machine.PITCH );
-    tpu_set( 33, 1, TRANSPARENT, machine.HIRES ? GREEN : GREY3 ); tpu_printf( 0, "H[%01x]", machine.HIRES );
-    tpu_set( 41, 1, TRANSPARENT, BLACK ); tpu_printf( 0, "P[%01x%01x]", ( machine.PLANES >> 1 ) & 1, machine.PLANES & 1 );
-    tpu_set( 49, 1, TRANSPARENT, GREY4 ); tpu_printf( 0, "X[%04x] @[%03x]", machine.lastinstruction, machine.lastPC );
+    tpu_set( 1, 1, TRANSPARENT, BLACK, TPU_BOLD ); tpu_printf( 0, "PC[%03x] I[%03x]", machine.PC, machine.I );
+    tpu_set( 17, 1, TRANSPARENT, machine.timer ? GREEN : GREY3, TPU_NORMAL ); tpu_printf( 0, "T[%02x]", machine.timer );
+    tpu_set( 25, 1, TRANSPARENT, machine.audio_timer ? GREEN : GREY3, TPU_NORMAL ); tpu_printf( 0, "A[%02x%02x]", machine.audio_timer, machine.PITCH );
+    tpu_set( 33, 1, TRANSPARENT, machine.HIRES ? GREEN : GREY3, TPU_NORMAL ); tpu_printf( 0, "H[%01x]", machine.HIRES );
+    tpu_set( 41, 1, TRANSPARENT, BLACK, TPU_NORMAL ); tpu_printf( 0, "P[%01x%01x]", ( machine.PLANES >> 1 ) & 1, machine.PLANES & 1 );
+    tpu_set( 49, 1, TRANSPARENT, GREY4, TPU_NORMAL ); tpu_printf( 0, "X[%04x] @[%03x]", machine.lastinstruction, machine.lastPC );
 
     for( int n = 0; n < 16; n++ ) {
-        if( n == 0 ) tpu_set( 1, 3, TRANSPARENT, BLACK );
-        if( n == 8 ) tpu_set( 1, 4, TRANSPARENT, BLACK );
+        if( n == 0 ) tpu_set( 1, 3, TRANSPARENT, BLACK, TPU_NORMAL );
+        if( n == 8 ) tpu_set( 1, 4, TRANSPARENT, BLACK, TPU_NORMAL );
         tpu_printf( 0, "V%1x[%02x]  ", n, machine.V[n] );
     }
 
     for( int n = 0; n < 16; n++ ) {
-        tpu_set( ( ( n < 8 ) ? n : n - 8 ) * 8 + 1, ( n < 8 ) ? 6 : 7, TRANSPARENT, ( n == machine.STACKTOP ) ? GREEN : GREY3 );
+        tpu_set( ( ( n < 8 ) ? n : n - 8 ) * 8 + 1, ( n < 8 ) ? 6 : 7, TRANSPARENT, ( n == machine.STACKTOP ) ? GREEN : GREY3, TPU_NORMAL );
         tpu_printf( 0, "[%03x]",machine.STACK[ n ] );
     }
 

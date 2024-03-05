@@ -174,7 +174,7 @@ void printstring(x, y, string, nchars)
      char* string;
      int nchars;
 {
-     tpu_set( x * txscale, y * txscale, TRANSPARENT, paws_text_colour );
+     tpu_set( x * txscale, y * txscale, TRANSPARENT, paws_text_colour, TPU_NORMAL );
      tpu_print( 0, string );
 }
 

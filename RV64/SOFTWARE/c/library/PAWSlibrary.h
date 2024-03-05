@@ -168,14 +168,14 @@ extern void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_layer
 
 // CHARACTER MAP
 extern void tpu_cs( void );
-extern void tpu_set(  unsigned char, unsigned char, unsigned char, unsigned char );
-extern void tpu_move(  unsigned char, unsigned char );
-extern void tpu_outputstring( char attribute, char *s );
-extern void tpu_output_character( short );
-extern void tpu_printf( char, const char *,... );
-extern void tpu_printf_centre( unsigned char, unsigned char, unsigned char, char, const char *,... );
-extern void tpu_print( char, char *);
-extern void tpu_print_centre( unsigned char, unsigned char, unsigned char, char, char *);
+extern void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground, unsigned char attribute );
+extern void tpu_move( unsigned char x, unsigned char y );
+extern void tpu_outputstring( unsigned char attribute, char *s );
+extern void tpu_output_character( unsigned char c );
+extern void tpu_printf( unsigned char attribute, const char *fmt,... );
+extern void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, const char *fmt,...  );
+extern void tpu_print( unsigned char attribute, char *buffer );
+extern void tpu_print_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, char *buffer );
 
 // IMAGE DECODERS
 extern void netppm_display( unsigned char *, unsigned char );

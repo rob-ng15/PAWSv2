@@ -881,25 +881,25 @@ void backgrounddemo( void ) {
         PURPLE,
         MAGENTA
     };
-    copper_set_memory( memoryinit );                        tpu_set( 0, 0, TRANSPARENT, WHITE ); tpu_print( 1, "MEM = { WHITE, RED, ORANGE, YELLOW, GREEN, LTBLUE, PURPLE, MAGENTA }" );
+    copper_set_memory( memoryinit );                        tpu_set( 0, 0, TRANSPARENT, WHITE, TPU_BOLD ); tpu_print( 1, "MEM = { WHITE, RED, ORANGE, YELLOW, GREEN, LTBLUE, PURPLE, MAGENTA }" );
 
-    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );    tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
-    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
-    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );       tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );    tpu_set( 0, 2 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );       tpu_set( 0, 4 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
 
-    copper_program( 3, CU_SET, CU_R0, CU_RL, 0 );           tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET R0 <- 0            // SET R0 TO 0" );
+    copper_program( 3, CU_SET, CU_R0, CU_RL, 0 );           tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "03 SET R0 <- 0            // SET R0 TO 0" );
 
-    copper_program( 4, CU_SET, CU_R1, CU_RR, CU_R0 );       tpu_set( 0, 8 , TRANSPARENT, WHITE ); tpu_print( 1, "04 SET R1 <- (R0)         // SET R1 TO R0" );
-    copper_program( 5, CU_SHL, CU_R1, CU_RL, 6 );           tpu_set( 0, 9 , TRANSPARENT, WHITE ); tpu_print( 1, "05 SHL R1 << 6            // SHIFT LEFT R1 BY 6" );
-    copper_program( 6, CU_LFM, CU_R2, CU_RR, CU_R0 );       tpu_set( 0, 10, TRANSPARENT, WHITE ); tpu_print( 1, "06 LFM R2 <- [ (R0) ]     // LOAD R2 FROM MEM[R0]" );
+    copper_program( 4, CU_SET, CU_R1, CU_RR, CU_R0 );       tpu_set( 0, 8 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 SET R1 <- (R0)         // SET R1 TO R0" );
+    copper_program( 5, CU_SHL, CU_R1, CU_RL, 6 );           tpu_set( 0, 9 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "05 SHL R1 << 6            // SHIFT LEFT R1 BY 6" );
+    copper_program( 6, CU_LFM, CU_R2, CU_RR, CU_R0 );       tpu_set( 0, 10, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "06 LFM R2 <- [ (R0) ]     // LOAD R2 FROM MEM[R0]" );
 
-    copper_program( 7, CU_SEQ, CU_RY, CU_RR, CU_R1 );       tpu_set( 0, 12, TRANSPARENT, WHITE ); tpu_print( 1, "07 SEQ Y == (R1)          // SKIP IF Y == R1?" );
-    copper_program( 8, CU_JPL, 7 );                         tpu_set( 0, 13, TRANSPARENT, WHITE ); tpu_print( 1, "08 JPL 7                  // ELSE JUMP TO 7" );
+    copper_program( 7, CU_SEQ, CU_RY, CU_RR, CU_R1 );       tpu_set( 0, 12, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "07 SEQ Y == (R1)          // SKIP IF Y == R1?" );
+    copper_program( 8, CU_JPL, 7 );                         tpu_set( 0, 13, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "08 JPL 7                  // ELSE JUMP TO 7" );
 
-    copper_program( 9, CU_SET, CU_BC, CU_RR, CU_R2 );       tpu_set( 0, 15, TRANSPARENT, WHITE ); tpu_print( 1, "09 SET BC <- (R2)         // SET COLOUR TO R2" );
-    copper_program( 10, CU_ADD, CU_R0, CU_RL, 1 );          tpu_set( 0, 16, TRANSPARENT, WHITE ); tpu_print( 1, "10 ADD R0 <- (R0) + 1     // ADD 1 TO R0" );
-    copper_program( 11, CU_AND, CU_R0, CU_RL, 7 );          tpu_set( 0, 17, TRANSPARENT, WHITE ); tpu_print( 1, "11 AND R0 <- (R0) & 7     // AND R0 BY 7" );
-    copper_program( 12, CU_JPL, 4 );                        tpu_set( 0, 18, TRANSPARENT, WHITE ); tpu_print( 1, "12 JPL 4                  // JUMP TO 4" );
+    copper_program( 9, CU_SET, CU_BC, CU_RR, CU_R2 );       tpu_set( 0, 15, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "09 SET BC <- (R2)         // SET COLOUR TO R2" );
+    copper_program( 10, CU_ADD, CU_R0, CU_RL, 1 );          tpu_set( 0, 16, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "10 ADD R0 <- (R0) + 1     // ADD 1 TO R0" );
+    copper_program( 11, CU_AND, CU_R0, CU_RL, 7 );          tpu_set( 0, 17, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "11 AND R0 <- (R0) & 7     // AND R0 BY 7" );
+    copper_program( 12, CU_JPL, 4 );                        tpu_set( 0, 18, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "12 JPL 4                  // JUMP TO 4" );
 
     copper_startstop( 1 ); sleep1khz( 2000, 0 );
 
@@ -907,12 +907,12 @@ void backgrounddemo( void ) {
 
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Random Colour Stars Test" );
 
-    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );    tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
-    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
-    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );       tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );    tpu_set( 0, 2 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );       tpu_set( 0, 4 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
 
-    copper_program( 3, CU_RND, CU_BC, CU_RL, 255 );         tpu_set( 0, 5 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET BC <- RANDOM & 255 // SET COLOUR TO RANDOM & 255" );
-    copper_program( 4, CU_JPL, 3 );                         tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "04 JPL 3                  // JUMP TO 3" );
+    copper_program( 3, CU_RND, CU_BC, CU_RL, 255 );         tpu_set( 0, 5 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "03 SET BC <- RANDOM & 255 // SET COLOUR TO RANDOM & 255" );
+    copper_program( 4, CU_JPL, 3 );                         tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 JPL 3                  // JUMP TO 3" );
 
     copper_startstop( 1 ); sleep1khz( 2000, 0 );
 
@@ -920,13 +920,13 @@ void backgrounddemo( void ) {
 
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Vertical Coloured Bars" );
 
-    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SOLID );   tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SOLID    // SET MODE TO SOLID" );
-    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
-    copper_program( 2, CU_SET, CU_BC, CU_RL, BLACK );       tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- BLACK        // SET COLOUR TO BLACK" );
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SOLID );   tpu_set( 0, 2 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "00 SET BM <- BKG_SOLID    // SET MODE TO SOLID" );
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    copper_program( 2, CU_SET, CU_BC, CU_RL, BLACK );       tpu_set( 0, 4 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "02 SET BC <- BLACK        // SET COLOUR TO BLACK" );
 
-    copper_program( 3, CU_SET, CU_R0, CU_RR, CU_RX );       tpu_set( 0, 5 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET R0 <- (RX)         // SET R0 TO RX" );
-    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );       tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
-    copper_program( 5, CU_JPL, 3 );                         tpu_set( 0, 7 , TRANSPARENT, WHITE ); tpu_print( 1, "05 JPL 3                  // JUMP TO 3" );
+    copper_program( 3, CU_SET, CU_R0, CU_RR, CU_RX );       tpu_set( 0, 5 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "03 SET R0 <- (RX)         // SET R0 TO RX" );
+    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );       tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
+    copper_program( 5, CU_JPL, 3 );                         tpu_set( 0, 7 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "05 JPL 3                  // JUMP TO 3" );
 
     copper_startstop( 1 ); sleep1khz( 2000, 0 );
 
@@ -934,13 +934,13 @@ void backgrounddemo( void ) {
 
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Horizontal Coloured Bars" );
 
-    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SOLID );   tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SOLID    // SET MODE TO SOLID" );
-    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
-    copper_program( 2, CU_SET, CU_BC, CU_RL, BLACK );       tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- BLACK        // SET COLOUR TO BLACK" );
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SOLID );   tpu_set( 0, 2 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "00 SET BM <- BKG_SOLID    // SET MODE TO SOLID" );
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    copper_program( 2, CU_SET, CU_BC, CU_RL, BLACK );       tpu_set( 0, 4 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "02 SET BC <- BLACK        // SET COLOUR TO BLACK" );
 
-    copper_program( 3, CU_SET, CU_R0, CU_RR, CU_RY );       tpu_set( 0, 5 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET R0 <- (RY)         // SET R0 TO RY" );
-    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );       tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
-    copper_program( 5, CU_JPL, 3 );                         tpu_set( 0, 7 , TRANSPARENT, WHITE ); tpu_print( 1, "05 JPL 3                  // JUMP TO 3" );
+    copper_program( 3, CU_SET, CU_R0, CU_RR, CU_RY );       tpu_set( 0, 5 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "03 SET R0 <- (RY)         // SET R0 TO RY" );
+    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );       tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
+    copper_program( 5, CU_JPL, 3 );                         tpu_set( 0, 7 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "05 JPL 3                  // JUMP TO 3" );
 
     copper_startstop( 1 ); sleep1khz( 2000, 0 );
 }
@@ -955,7 +955,7 @@ void charactermapdemo( void ) {
 
     for( int c = 3; c < 7; c++ ) {
         for( int i = 0; i < 256; i++ ) {
-            tpu_set( x++, y, TRANSPARENT, foreground++ );
+            tpu_set( x++, y, TRANSPARENT, foreground++, TPU_NORMAL );
             tpu_output_character( c );
             if( x == 80 ) { x = 0; y++; }
         }
@@ -963,8 +963,29 @@ void charactermapdemo( void ) {
     }
 
     x = 0; y += 2;
-    for( int i = 0; i < 512; i++ ) {
-        tpu_set( x++, y, BLACK, WHITE );
+    for( int i = 0; i < 256; i++ ) {
+        tpu_set( x++, y, BLACK, WHITE, TPU_BOLD );
+        tpu_output_character( i );
+        if( x == 80 ) { x = 0; y++; }
+    }
+
+    x = 0; y += 2;
+    for( int i = 0; i < 256; i++ ) {
+        tpu_set( x, y, BLACK, WHITE, TPU_X2 );
+        tpu_output_character( i ); tpu_output_character( i );
+        x += 2; if( x == 80 ) { x = 0; y++; }
+    }
+
+    x = 0; y += 2;
+    for( int i = 0; i < 256; i++ ) {
+        tpu_set( x++, y, BLACK, WHITE, TPU_BLINK );
+        tpu_output_character( i );
+        if( x == 80 ) { x = 0; y++; }
+    }
+
+    x = 0; y += 2;
+    for( int i = 0; i < 256; i++ ) {
+        tpu_set( x++, y, BLACK, WHITE, TPU_UNDER );
         tpu_output_character( i );
         if( x == 80 ) { x = 0; y++; }
     }

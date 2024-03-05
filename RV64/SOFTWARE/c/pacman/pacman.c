@@ -847,14 +847,14 @@ static void vid_clear(uint8_t tile_code, uint8_t color_code) {
 
     // CLEAR CENTRE TEXT
     for( int y = 0; y < 30; y++ ) {
-        tpu_set( 6, y, TRANSPARENT, WHITE );
+        tpu_set( 6, y, TRANSPARENT, WHITE, TPU_NORMAL );
         tpu_outputstring( 0, "                            " );
     }
     // CLEAR SCORE / HISCORE
     if(state.game.num_lives) {
-        tpu_set( 0, 1, TRANSPARENT, WHITE ); tpu_outputstring( 0, "      " );
+        tpu_set( 0, 1, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( 0, "      " );
     }
-    tpu_set( 0, 28, TRANSPARENT, WHITE ); tpu_outputstring( 0, "      " );
+    tpu_set( 0, 28, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( 0, "      " );
 }
 
 // check if a tile position is valid
@@ -882,14 +882,14 @@ static char conv_char(char c) {
 
 // put colored text into tpu buffer
 static void vid_color_text(int2_t tile_pos, uint8_t color_code, const char* text) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-    tpu_outputstring( BOLD, (char *)text );
+    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code, TPU_NORMAL );
+    tpu_outputstring( TPU_BOLD, (char *)text );
 }
 
 // put text into tpu buffer
 static void vid_text(int2_t tile_pos, const char* text) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, COLOR_DEFAULT );
-    tpu_outputstring( BOLD, (char *)text );
+    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, COLOR_DEFAULT, TPU_NORMAL );
+    tpu_outputstring( TPU_BOLD, (char *)text );
 }
 
 /* print colored score number into tile+color buffers from right to left(!),
@@ -898,12 +898,12 @@ static void vid_text(int2_t tile_pos, const char* text) {
     the Pacman arcade machine)
 */
 static void vid_color_score(int2_t tile_pos, uint8_t color_code, uint32_t score) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
+    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code, TPU_NORMAL );
     tpu_output_character( '0' );
     tile_pos.x--;
     for (int digit = 0; digit < 8; digit++) {
         char chr = (score % 10) + '0';
-        tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
+        tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code, TPU_NORMAL );
         tpu_output_character( chr );
         tile_pos.x--;
         score /= 10;
@@ -2342,9 +2342,9 @@ int main( int argc, char **argv ) {
 
     // DISPLAY WELCOME SCREEN
     gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, pacman3dbitmap );
-    tpu_set( 0, 27, TRANSPARENT, WHITE ); tpu_outputstring( TRUE, "Ported from" );
-    tpu_set( 0, 28, TRANSPARENT, WHITE ); tpu_outputstring( FALSE, "https://github.com/floooh/pacman.c" );
-    tpu_set( 0, 29, TRANSPARENT, WHITE ); tpu_outputstring( TRUE, "by Andre Weissflog" );
+    tpu_set( 0, 27, TRANSPARENT, WHITE, TPU_BOLD ); tpu_outputstring( TRUE, "Ported from" );
+    tpu_set( 0, 28, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( FALSE, "https://github.com/floooh/pacman.c" );
+    tpu_set( 0, 29, TRANSPARENT, WHITE, TPU_BOLD ); tpu_outputstring( TRUE, "by Andre Weissflog" );
     sleep1khz( 4000, 0 );
     tpu_cs(); gpu_cs();
 

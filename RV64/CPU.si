@@ -228,7 +228,7 @@ unit PAWSCPU(
             default: { STOREMA.start = START_STORE; }
         }
 
-        if( |{ LOAD.busy, LOAD64.busy, LOADMA.busy, STORE.busy, STORE64.busy, STOREMA.busy} | ~cacheselect ) {                  // OUTPUT CORRECT ADDRESS ONTO BUS
+//        if( |{ LOAD.busy, LOAD64.busy, LOADMA.busy, STORE.busy, STORE64.busy, STOREMA.busy} | ~cacheselect ) {                  // OUTPUT CORRECT ADDRESS ONTO BUS
                 address = cacheselect ? LOAD.busy ? RV64CONTROL.loadAddress :
                                         LOAD64.busy ? LOAD64.address :
                                         LOADMA.busy ? LOADMA.address :
@@ -236,7 +236,7 @@ unit PAWSCPU(
                                         STORE64.busy ? STORE64.address :
                                                        STOREMA.address :
                           SMT ? pcSMT : pc;
-        }
+//        }
 
         writedata = RV64CONTROL.IS_MA ? STOREMA.writedata :                                                                     // SELECT DATA TO PUT ONTO WRITE BUS    MISALIGNED STORE
                     RV64CONTROL.IS_MEM64 ? STORE64.writedata : memoryoutput;                                                    //                                      64 OR 8/16/32 BIT STORE UNITS
@@ -627,16 +627,18 @@ output! uint1   busy,
 output! uint1   writememory,
 input   uint1   memorybusy
 ) <reginputs> {
-    writememory := 0;
+    uint1   latch = uninitialised;
+    writememory := 0; writedata := storedata[ { latch, 5b00000 }, 32 ];
 
     algorithm <autorun> {
         uint$addr_width$ storeAddress_p4 <:: storeAddress + 4;
 
         busy = 0; while(1) {
+            latch = 0; address = storeAddress;
             if( start ) {
                 busy = 1;
-                address = storeAddress; writedata = storedata[0,32]; writememory = 1; while( memorybusy ) {}                    // WRITE FIRST 32 BITS
-                address = storeAddress_p4; writedata = storedata[32,32]; writememory = 1; while( memorybusy ) {}                // WRITE SECOND 32 BITS
+                writememory = 1; while( memorybusy ) {}                                                                         // WRITE FIRST 32 BITS
+                latch = 1; address = storeAddress_p4; writememory = 1; while( memorybusy ) {}                                   // WRITE SECOND 32 BITS
                 busy = 0;
             }
         }
@@ -653,20 +655,20 @@ output! uint1   busy,
 output! uint1   writememory,
 input   uint1   memorybusy
 ) <reginputs> {
-    writememory := 0;
+    uint4   count = uninitialised;
+    writememory := 0; writedata := storedata[ { count, 3b000 }, 8 ];
 
     algorithm <autorun> {
         uint$addr_width$ address_p1 <:: address + 1;
-        uint4   count = uninitialised;
         uint4   count_p1 <:: count + 1;
         uint4   maxCOUNT <:: ( 1 << accesssize );
 
         busy = 0; while(1) {
+            count = 0; address = storeAddress;
             if( start ) {
-                busy = 1; count = 0; address = storeAddress;                                                                    // START AT FIRST BYTE
+                busy = 1;                                                                     // START AT FIRST BYTE
                 while( count != maxCOUNT ) {                                                                                    // CONTINUE FOR 2, 4, 8 BYTES
-                    writedata = storedata[ { count, 3b000 }, 8 ]; writememory = 1; while( memorybusy ) {}                       // EXTRACT BYTE AND WRITE TO MEMORY
-                    address =  address_p1; count = count_p1;                                                                    // MOVE TO NEXT BYTE
+                    writememory = 1; while( memorybusy ) {} address =  address_p1; count = count_p1;                        // WRITE TO MEMORY, MOVE TO NEXT BYTE
                 }
                 busy = 0;
             }

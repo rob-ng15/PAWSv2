@@ -228,8 +228,15 @@
 #define PS2_JOYSTICK 0
 
 // FONT ATTRIBUTES
-#define BOLD 1
+#define TPU_NORMAL 0
+#define TPU_BOLD 1
+#define TPU_X2 2
+#define TPU_Y2 4
+#define TPU_BLINK 8
+#define TPU_UNDER 16
+
 #define NORMAL 0
+#define BOLD 1
 
 // SCREEN MODES
 #define MODE_RGBM 0
