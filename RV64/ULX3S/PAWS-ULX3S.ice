@@ -35,7 +35,7 @@ $$ L00Ipartaddressstart = 1 + L00Icount
 bitfield L00cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
 
 // HART 1 - SMT
-$$ L01Iblocks = 64
+$$ L01Iblocks = 32
 $$ L01Icount = clog2(L01Iblocks)
 $$ L01Ipartaddresswidth = addr_width - 1 - L01Icount
 $$ L01Ipartaddressstart = 1 + L01Icount

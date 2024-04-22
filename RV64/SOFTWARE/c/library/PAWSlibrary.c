@@ -858,11 +858,7 @@ void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsi
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_PARAM1 = transparent; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    if( ( (unsigned long)buffer & 1 ) || ( ( w*h ) & 1 ) ) {
-        DMASTART( buffer, (void *)PB_COLOUR, w*h, 1 );      // UNALIGNED, ODD NUMBER OF PIXELS USE 8 BIT MODE
-    } else {
-        DMASTART( buffer, (void *)PB_COLOUR, w*h/2, 7 );    // ALIGNED, EVEN PIXELS USE 16 BIT MODE
-    }
+    DMASTART( buffer, (void *)PB_COLOUR, w*h, 7 );
 
     *PB_STOP = 0;
 }

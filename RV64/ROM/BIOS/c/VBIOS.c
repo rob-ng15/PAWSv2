@@ -136,7 +136,7 @@ unsigned char pacman_bitmap[] = {
 };
 
 // DMA CONTROLLER
-void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
+void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned short mode ) {
     *DMASOURCE = (unsigned long)source;
     *DMADEST = (unsigned long)destination;
     *DMACOUNT = count;
@@ -146,11 +146,11 @@ void DMASTART( const void *restrict source, void *restrict destination, unsigned
 // STANDARD C FUNCTIONS ( from @sylefeb mylibc )
 void *memset(void *dest, int val, size_t len) {
     *DMASET = val;
-    DMASTART( (const void *restrict)DMASET, dest, len, 4 );
+    DMASTART( (const void *restrict)DMASET, dest, len, DMA_SET_TO_M );
     return dest;
 }
 void *memset32( void *restrict destination, int value, size_t count ) {
-    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_TO_M );
     return( destination );
 }
 
@@ -296,7 +296,7 @@ void gpu_outputstringcentre( unsigned char colour, short y, char *s, unsigned ch
 // SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as is halfed by dma engine)
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
-    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, 1 );
+    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, DMA_CPY_M_TO_S );
 }
 
 // CHARACTER MAP FUNCTIONS
@@ -328,19 +328,19 @@ void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y,
         case 0:
             while( *LOWER_TM_STATUS );
             *LOWER_TM_X = x;
-            *LOWER_TM_Y = y;
-            *LOWER_TM_TILE = tile;
-            *LOWER_TM_ACTION = action;
-            *LOWER_TM_COMMIT = 1;
-            break;
+        *LOWER_TM_Y = y;
+        *LOWER_TM_TILE = tile;
+        *LOWER_TM_ACTION = action;
+        *LOWER_TM_COMMIT = 1;
+        break;
         case 1:
             while( *UPPER_TM_STATUS );
             *UPPER_TM_X = x;
-            *UPPER_TM_Y = y;
-            *UPPER_TM_TILE = tile;
-            *UPPER_TM_ACTION = action;
-            *UPPER_TM_COMMIT = 1;
-            break;
+        *UPPER_TM_Y = y;
+        *UPPER_TM_TILE = tile;
+        *UPPER_TM_ACTION = action;
+        *UPPER_TM_COMMIT = 1;
+        break;
     }
 }
 // SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
@@ -357,7 +357,7 @@ unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char act
 // SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 pixel bitmaps ( 2048 ARRGGBB pixels )
 void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
     *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = sprite_number;
-    DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, 1 );
+    DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, DMA_TO_IO );
 }
 
 // SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
@@ -536,8 +536,8 @@ void main( void ) {
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 63; i++ ) {
-        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
-        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
+        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, DMA_SET_TO_S );
+        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, DMA_SET_TO_S );
         set_tilemap_tile( 0, i, 16, i+1, 0 );
         set_tilemap_tile( 1, i, 30, i+1, 0 );
     }

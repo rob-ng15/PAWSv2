@@ -43,7 +43,7 @@ void *bios_malloc( int size ) {
 }
 
 // DMA CONTROLLER
-void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
+void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned short mode ) {
     *DMASOURCE = (unsigned long)source;
     *DMADEST = (unsigned long)destination;
     *DMACOUNT = count;
@@ -311,7 +311,7 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
 }
 
 void sdcard_readcluster( unsigned int cluster, unsigned char *buffer ) {
-     for( unsigned char i = 0; i < FAT32clustersize; i++ ) {
+    for( unsigned char i = 0; i < FAT32clustersize; i++ ) {
         sdcard_readsector( FAT32clusters + ( cluster - 2 ) * FAT32clustersize + i, buffer + i * 512 );
     }
 }
@@ -407,11 +407,11 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
                                 if( ( ( fileentry[i].ext[0] == 'P' ) ) &&
                                     ( ( fileentry[i].ext[1] == '6' ) ) &&
                                     ( ( fileentry[i].ext[2] == '4' ) ) ) {
-                                        entries++;
-                                        memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
-                                        directorynames[entries].type = 1;
-                                        directorynames[entries].starting_cluster = ( fileentry[i].starting_cluster_high << 16 )+ fileentry[i].starting_cluster_low;
-                                }
+                                    entries++;
+                                memcpy( &directorynames[entries], &fileentry[i].filename[0], 11 );
+                                directorynames[entries].type = 1;
+                                directorynames[entries].starting_cluster = ( fileentry[i].starting_cluster_high << 16 )+ fileentry[i].starting_cluster_low;
+                                    }
                             }
                         }
                     }
@@ -451,11 +451,11 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
             if( ( buttons & 32 ) >> 5 ) {
                 // MOVE LEFT
                 if( present_entry == 0 ) { present_entry = entries; } else { present_entry--; }
-           }
+            }
             if( ( buttons & 8 ) >> 3 ) {
                 // MOVE UP
                 if( startdirectorycluster != rootdirectorycluster ) { return(0); }
-           }
+            }
             if( ( buttons & 2 ) >> 1 ) {
                 // SELECTED
                 switch( directorynames[present_entry].type ) {

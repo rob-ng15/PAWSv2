@@ -3,7 +3,7 @@ IS_APPLE := $(shell echo $(OS)|grep -i darwin)
 
 everything: all
 
-ARCH=riscv64-unknown
+ARCH=riscv64
 AR=$(ARCH)-elf-ar
 CC=$(ARCH)-elf-gcc
 CXX=$(ARCH)-elf-g++
@@ -11,7 +11,7 @@ LD=$(ARCH)-elf-ld.bfd
 NM=$(ARCH)--elf-nm
 RANLIB=$(ARCH)--elf-ranlib
 
-GCCVER=13.2.0
+GCCVER=12.2.0
 COMPILER=$(CC)
 
 BUILD_DIR=build
@@ -24,11 +24,11 @@ ifndef INCLUDEEXTRA
 INCLUDEEXTRA=
 endif
 
-CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcd_zfh_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -mno-strict-align
+CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zfh_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -mno-strict-align
 
 CFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
 CXXFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib
-LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,--relax-gp -Wl,-melf64lriscv -Wl,-belf64-littleriscv
+LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleriscv
 	-Wl,--wrap=memcpy -Wl,--wrap=memset \
 	-Wl,--wrap=__clzsi2 -Wl,--wrap=__clzdi2 \
 	-Wl,--wrap=__ctzsi2 -Wl,--wrap=__ctzdi2 \
@@ -41,7 +41,7 @@ LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,--relax-gp -Wl,-melf64lriscv -Wl,-b
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 
 PAWSBASE=../
-INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I$(INCLUDEEXTRA) -I/usr/$(ARCH)-elf/include/
+INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I$(PAWSBASE)/library/imgui/ -I$(INCLUDEEXTRA) -I/usr/$(ARCH)-elf/include/
 
 LIBRARY=	/usr/$(ARCH)-elf/lib/rv64imafdc/lp64d/libc.a \
 		/usr/$(ARCH)-elf/lib/rv64imafdc/lp64d/libm.a \
@@ -61,6 +61,14 @@ PAWSPS2OBJ=	$(PAWSBASE)library/$(BUILD_DIR)/PAWSPS2driver.o
 NANOJPEGSOURCE= $(PAWSBASE)library/nanojpeg/nanojpeg.c
 NANOJPEGOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/nanojpeg.o
 
+IMGUISOURCE=	$(wildcard $(PAWSBASE)library/imgui/*.cpp) $(wildcard $(PAWSBASE)library/imgui/*.h)
+IMGUIOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/imgui_draw.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_sw.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_tables.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_widgets.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui.o \
+		$(PAWSBASE)library/$(BUILD_DIR)/imgui_demo.o
+
 FATIOLIBSOURCE= $(wildcard $(PAWSBASE)library/fat_io_lib/*.c) $(wildcard $(PAWSBASE)library/fat_io_lib/*.h)
 FATIOLIBOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o \
 		$(PAWSBASE)library/$(BUILD_DIR)/fat_access.o \
@@ -71,7 +79,7 @@ FATIOLIBOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o \
 		$(PAWSBASE)library/$(BUILD_DIR)/fat_cache.o \
 		$(PAWSBASE)library/$(BUILD_DIR)/fat_format.o
 
-LIBPAWS= $(LIBPAWSOBJ) $(PAWSPS2OBJ) $(NANOJPEGOBJ) $(FATIOLIBOBJ)
+LIBPAWS= $(LIBPAWSOBJ) $(PAWSPS2OBJ) $(NANOJPEGOBJ) $(FATIOLIBOBJ) $(IMGUIOBJ)
 
 PRJSRC=
 
@@ -83,6 +91,14 @@ $(PAWSPS2OBJ) : $(PAWSPS2SOURCE)
 
 $(NANOJPEGOBJ) : $(NANOJPEGSOURCE)
 	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
+
+$(IMGUIOBJ) : $(IMGUISOURCE)
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_draw.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_draw.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_sw.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_sw.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_tables.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_tables.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_widgets.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_widgets.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui.o
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $(PAWSBASE)library/imgui/imgui_demo.cpp -o $(PAWSBASE)library/$(BUILD_DIR)/imgui_demo.o
 
 $(FATIOLIBOBJ) : $(FATIOLIBSOURCE)
 	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_filelib.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o
