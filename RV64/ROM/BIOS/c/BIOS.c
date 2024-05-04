@@ -53,16 +53,16 @@ void DMASTART( const void *restrict source, void *restrict destination, unsigned
 // STANDARD C FUNCTIONS ( from @sylefeb mylibc )
 void *memset(void *dest, int val, size_t len) {
     *DMASET = val;
-    DMASTART( (const void *restrict)DMASET, dest, len, 4 );
+    DMASTART( (const void *restrict)DMASET, dest, len, DMA_SET_TO_M );
     return dest;
 }
 void *memset32( void *restrict destination, int value, size_t count ) {
-    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_TO_M );
     return( destination );
 }
 
 void *memcpy( void *dest, void *src, size_t len ) {
-    DMASTART( src, dest, len, 3 );
+    DMASTART( src, dest, len, DMA_CPY_M_TO_M );
     return dest;
 }
 
@@ -102,8 +102,8 @@ void volume( unsigned char left, unsigned char right ) {
 void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
     *AUDIO_NEW_SAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, DMA_TO_IO ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, DMA_TO_IO ); }
 }
 
 // BACKGROUND GENERATOR
@@ -182,7 +182,7 @@ void gpu_outputstringcentre( unsigned char colour, short y, char bold, char *s, 
 // SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as DMA engine uses bytes for count )
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
-    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, 1 );
+    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, DMA_CPY_M_TO_S );
 }
 
 // STOP PIXEL BLOCK - SENT DURING RESET TO ENSURE GPU RESETS
@@ -307,7 +307,7 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
-    DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, 4 );
+    DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, DMA_FROM_IO );
 }
 
 void sdcard_readcluster( unsigned int cluster, unsigned char *buffer ) {
@@ -553,8 +553,8 @@ int main( void ) {
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 63; i++ ) {
-        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, 5 );
-        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, 5 );
+        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, DMA_SET_TO_S );
+        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, DMA_SET_TO_S );
         set_tilemap_tile( 0, i, 18, i+1, 0 );
         set_tilemap_tile( 1, i, 30, i+1, 0 );
     }

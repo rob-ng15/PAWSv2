@@ -68,46 +68,46 @@ unsigned char SMTSTATE( void ) {
 }
 
 // DMA CONTROLLER
-void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
+void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned short mode ) {
     *DMASOURCE = (unsigned long)source; *DMADEST = (unsigned long)destination; *DMACOUNT = count; *DMAMODE = mode;
 }
 
 // PAWS MEMCPY USING THE DMA ENGINE - MODE 3 IS READ INCREMENT TO WRITE INCREMENT
 void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count ) {
-    DMASTART( source, destination, count, 3 );
+    DMASTART( source, destination, count, DMA_CPY_M_TO_M );
     return( destination );
 }
 
 void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd ) {
     *DMASOURCEADD = sourceadd; *DMADESTADD = destadd;
-    DMASTART( source, (void *restrict)destination, count, 6 );
+    DMASTART( source, (void *restrict)destination, count, DMA_CPY_STEP_SD );
 }
 
 void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles ) {
     *DMASOURCEADD = sourceadd; *DMADESTADD = destadd; *DMACYCLES = cycles;
-    DMASTART( source, (void *restrict)destination, count, 8 );
+    DMASTART( source, (void *restrict)destination, count, DMA_CPY_RECT );
 }
 
 // PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
 void *paws_memset( void *restrict destination, int value, size_t count ) {
-    *DMASET = (unsigned char)value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    *DMASET = (unsigned char)value; DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_TO_M );
     return( destination );
 }
 
 void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
     *DMASET = (unsigned char)value; *DMADESTADD = destadd; *DMACYCLES = cycles;
-    DMASTART( (const void *restrict)DMASET, destination, count, 9 );
+    DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_RECT );
 }
 
 // PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
 void *paws_memset32( void *restrict destination, int value, size_t count ) {
-    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_TO_M );
     return( destination );
 }
 
 void paws_memset_rectangle32( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
     *DMASET32 = value; *DMADESTADD = destadd; *DMACYCLES = cycles;
-    DMASTART( (const void *restrict)DMASET, destination, count, 9 );
+    DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_RECT );
 }
 
 // OUTPUT TO UART
@@ -228,36 +228,36 @@ unsigned short get_beep_active( unsigned char channel_number ) {
 void tune_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
     *AUDIO_NEW_SAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, DMA_TO_IO ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, DMA_TO_IO ); }
 }
 
 // 128 x 1 BIT SAMPLES ( for XO-CHIP emulator )
 void bitsample_upload_128( unsigned char channel_number, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
     *AUDIO_NEW_BITSAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 16, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 16, 1 ); }
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 16, DMA_TO_IO ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 16, DMA_TO_IO ); }
 }
 
 // 256 ENTRY USER DEFINED WAVEFORM
 void wavesample_upload( unsigned char channel_number, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
     *AUDIO_NEW_WAVEFORM = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_WAVESAMPLE, 256, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_WAVESAMPLE, 256, 1 ); }
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_WAVESAMPLE, 256, DMA_TO_IO ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_WAVESAMPLE, 256, DMA_TO_IO ); }
 }
 
 // PCM SAMPLES UPLOAD
 void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
     *AUDIO_NEW_PCMSAMPLE = channel_number; *DMASET = 0;
-    if( channel_number & 1 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_LEFT_PCMSAMPLE, *AUDIO_PCM_LENGTH, 5 ); }
-    if( channel_number & 2 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, *AUDIO_PCM_LENGTH, 5 );}
+    if( channel_number & 1 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_LEFT_PCMSAMPLE, *AUDIO_PCM_LENGTH, DMA_SET_TO_S ); }
+    if( channel_number & 2 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, *AUDIO_PCM_LENGTH, DMA_SET_TO_S );}
 
     *AUDIO_NEW_PCMSAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_PCMSAMPLE, count, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, count, 1 ); }
+    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_PCMSAMPLE, count, DMA_TO_IO ); }
+    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, count, DMA_TO_IO ); }
 }
 
 // SDCARD FUNCTIONS
@@ -276,7 +276,7 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
-    DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, 4 );
+    DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, DMA_FROM_IO );
 }
 // WRITE A SECTOR TO THE SDCARD COPIED FROM MEMORY
 void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress ) {
@@ -285,7 +285,7 @@ void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 1 COPIES FROM MULTIPLE-ADDRESSES TO SINGLE ADDRESS
     // EACH WRITE OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
     *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
-    DMASTART( copyAddress, (void *restrict)SDCARD_DATA, 512, 1 );
+    DMASTART( copyAddress, (void *restrict)SDCARD_DATA, 512, DMA_TO_IO );
 
     *SDCARD_SECTOR = sectorAddress;
     *SDCARD_WRITESTART = 1;
@@ -470,7 +470,7 @@ unsigned short read_tilemap_tile( unsigned char tm_layer, unsigned char x, unsig
 // SET THE TILE BITMAP for tile to the 16 x 16 pixel bitmap
 void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap ) {
     *( tm_layer ? UPPER_TM_WRITER_TILE_NUMBER : LOWER_TM_WRITER_TILE_NUMBER ) = tile;
-    DMASTART( bitmap, (void *restrict)( tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR ), 256, 1 );
+    DMASTART( bitmap, (void *restrict)( tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR ), 256, DMA_TO_IO );
 }
 
 // SET THE TILE BITMAP for 4 tiles to the 32 x 32 pixel bitmap
@@ -730,7 +730,7 @@ void gpu_colourblit( short x1, short y1, short tile, unsigned char blit_size, un
 // SET THE BLITTER TILE to the 16 x 16 pixel bitmap
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
-    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, 1 );
+    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, DMA_CPY_M_TO_S );
 }
 
 // SET THE BLITTER CHARACTER TILE to the 8 x 8 pixel bitmap
@@ -745,7 +745,7 @@ void set_blitter_chbitmap( unsigned char tile, unsigned char *bitmap ) {
 // SET THE COLOURBLITTER TILE to the 16 x 16 pixel bitmap
 void set_colourblitter_bitmap( unsigned char tile, unsigned char *bitmap ) {
     *COLOURBLIT_WRITER_TILE = tile;
-    DMASTART( bitmap, (void *restrict)COLOURBLIT_WRITER_COLOUR, 256, 1 );
+    DMASTART( bitmap, (void *restrict)COLOURBLIT_WRITER_COLOUR, 256, DMA_TO_IO );
 }
 
 // DRAW A FILLED TRIANGLE with vertices (x1,y1) (x2,y2) (x3,y3) in colour
@@ -858,7 +858,7 @@ void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsi
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_PARAM1 = transparent; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_COLOUR, w*h, 7 );
+    DMASTART( buffer, (void *)PB_COLOUR, w*h, DMA_TO_IO );
 
     *PB_STOP = 0;
 }
@@ -870,7 +870,7 @@ void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, uns
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_COLOUR8R, 3*w*h, 2 );
+    DMASTART( buffer, (void *)PB_COLOUR8R, 3*w*h, DMA_PB_RGB );
 
     *PB_STOP = 0;
 }
@@ -882,7 +882,7 @@ void gpu_pixelblockARGB( short x, short y, unsigned short w, unsigned short h, u
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_ARGB, 4*w*h, 1 );
+    DMASTART( buffer, (void *)PB_ARGB, 4*w*h, DMA_CPY_M_TO_S );
 
     *PB_STOP = 0;
 }
@@ -894,7 +894,7 @@ void gpu_pixelblockRGBA( short x, short y, unsigned short w, unsigned short h, u
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_RGBA, 4*w*h, 1 );
+    DMASTART( buffer, (void *)PB_RGBA, 4*w*h, DMA_CPY_M_TO_S );
 
     *PB_STOP = 0;
 }
@@ -906,7 +906,7 @@ void gpu_pixelblockABGR( short x, short y, unsigned short w, unsigned short h, u
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_ABGR, 4*w*h, 1 );
+    DMASTART( buffer, (void *)PB_ABGR, 4*w*h, DMA_CPY_M_TO_S );
 
     *PB_STOP = 0;
 }
@@ -918,7 +918,7 @@ void gpu_pixelblockBGRA( short x, short y, unsigned short w, unsigned short h, u
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_BGRA, 4*w*h, 1 );
+    DMASTART( buffer, (void *)PB_BGRA, 4*w*h, DMA_CPY_M_TO_S );
 
     *PB_STOP = 0;
 }
@@ -1148,7 +1148,7 @@ void DoDrawList2Dscale( struct DrawList2D *list, int numentries, int xc, int yc,
 // SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 pixel bitmaps ( 2048 RRGGGBBM pixels )
 void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
     *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = sprite_number;
-    DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, 1 );
+    DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, DMA_TO_IO );
 }
 
 // SET THE 16x16 SPRITES FROM A SPRITESHEET

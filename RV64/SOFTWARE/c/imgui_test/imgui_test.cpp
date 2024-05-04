@@ -27,15 +27,15 @@ extern unsigned int volatile *DMACOUNT;
 extern unsigned char volatile *DMAMODE;
 extern unsigned char volatile *DMASET;
 
-void cpp_DMASTART( void *source, void *destination, unsigned int count, unsigned char mode ) {
+void cpp_DMASTART( void *source, void *destination, unsigned int count, unsigned short mode ) {
     *DMASOURCE = (unsigned long)source; *DMADEST = (unsigned long)destination; *DMACOUNT = count; *DMAMODE = mode;
 }
 void *cpp_paws_memcpy( void * destination, const void *source, size_t count ) {
-    cpp_DMASTART( (void *)source, (void *)destination, count, 3 );
+    cpp_DMASTART( (void *)source, (void *)destination, count, DMA_CPY_M_TO_M );
     return( destination );
 }
 void *cpp_paws_memset( void *destination, int value, size_t count ) {
-    *DMASET = (unsigned char)value; cpp_DMASTART( (void *)DMASET, destination, count, 4 );
+    *DMASET = (unsigned char)value; cpp_DMASTART( (void *)DMASET, destination, count, DMA_SET_TO_M );
     return( destination );
 }
 

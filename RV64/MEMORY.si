@@ -1,7 +1,12 @@
 // RAM - BRAM controller
 unit bramcontroller(
+$$if not SIMULATION then
     input   uint13  address,
     input   uint13  address2,
+$$else
+    input   uint14  address,
+    input   uint14  address2,
+$$end
     input   uint2   accesssize,
     input   uint1   writeflag,
     input   uint32  writedata,
@@ -12,7 +17,9 @@ unit bramcontroller(
     $$if not SIMULATION then
         dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/BIOS.bin"), pad(uninitialized)};              // BIOS WITH I/O
     $$else
-        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [3072] = {file("ROM/VBIOS.bin"), pad(uninitialized)};             // BIOS FOR VERILATOR
+//        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [3072] = {file("ROM/VBIOS.bin"), pad(uninitialized)};             // BIOS FOR VERILATOR
+//        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [3072] = {file("ROM/ABIOS.bin"), pad(uninitialized)};             // BIOS FOR VERILATOR
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [8192] = {file("ROM/RBIOS.bin"), pad(uninitialized)};             // BIOS FOR VERILATOR
     $$end
                                                                                                                                 // BRAM FLAGS, ram0 LOW 16 BITS, ram1 HIGH 16 BITS
     ram.wenable0 := |accesssize ? {2{writeflag}}  : { writeflag & address[0,1], writeflag & ~address[0,1] };                    // LOW WRITE FOR 8 OR 16/32 BIT
@@ -147,16 +154,23 @@ unit cachecontroller(
     simple_dualport_bram uint$L1partaddresswidth+2$ Dtags1 <@clock_cache,@clock> [$L1size$] = uninitialized;
     cache_read DCACHE <@clock_cache> ( cache0 <:> Dcache0, cache1 <:> Dcache1, address <: address, address0 <: address0 );
     tags_read DTAGS <@clock_cache> ( tags0 <:> Dtags0, tags1 <:> Dtags1, address <: address, address0 <: address0 );
-    cache_write DCACHEW( cache0 <:> Dcache0, cache1 <:> Dcache1, address <: address, address0 <: address0, writedata <: cachewritevalue );
+    cache_write DCACHEW( cache0 <:> Dcache0, cache1 <:> Dcache1, address <: address, address0 <: address0 );
     tags_write DTAGSW( tags0 <:> Dtags0, tags1 <:> Dtags1, needwritetosdram <: dowrite, address <: address, address0 <: address0 );
 
-    uint32  cachewritevalue = uninitialized;                                                                                    // VALUE TO WRITE THROUGH TO THE CACHE
     uint32  sdramreaddata = uninitialized;                                                                                      // SDRAM CONTROLLER
     uint1   dowrite = uninitialized;                                                                                            // MEMORY WRITE OPERATION FLAG
 
     sio.in_valid := 0; DCACHEW.update := 0; DTAGSW.update := 0;                                                                 // SDRAM ACCESS AND CACHE/TAGS UPDATE FLAGS
 
     algorithm <autorun> {
+        uint6    STATE = 1;
+            $$ STATE_CACHE_WAIT = 1
+            $$ STATE_CACHE_CHECK = 2
+            $$ STATE_CACHE_EVICT2 = 4
+            $$ STATE_CACHE_READSDRAM = 8
+            $$ STATE_CACHE_READSDRAM2 = 16
+            $$ STATE_CACHE_UPDATE_WAIT = 32
+
         uint1   doread = uninitialized;                                                                                         // MEMORY READ OPERATION FLAG
         uint2   accessmask <:: { accesssize[1,1], 1b1 };                                                                        // ACCESSMASK WHICH PARTS OF THE 2 x 16 BIT CACHE PARTS ARE USED
         uint1   Dmatch <:: ( accesssize[1,1] ? &DTAGS.tagmatch : DTAGS.tagmatch[0,1] );                                         // CACHE MATCH FLAGS ( 32 bit both, 16/8 bit lower )
@@ -165,39 +179,64 @@ unit cachecontroller(
         uint1   doreadsdram <:: ( doread | ( dowrite & ~|accesssize ) );                                                        // SDRAM READ FLAG FOR CACHE MISS, READ OR 8 BIT WRITE
 
         while(1) {
-            doread = readflag; dowrite = writeflag;                                                                             // LATCH READ/WRITE FLAGS
-            if( doread | dowrite ) {
-                if( Dmatch ) {                                                                                                  // CACHE HIT
-                    if( dowrite ) {
-                        ++:
-                        DCACHEW.update = accessmask; DTAGSW.update = accessmask;                                                // UPDATE CACHE/TAGS IF WRITE
-                    }
-                } else {                                                                                                        // CACHE MISS
-                    busy = 1;
-                    if( |Devict ) {                                                                                             // EVICT AS PARTS OF CACHE LINE NEEDED AND OCCUPIED
-                        sio.rw = 1;
-                        sio.addr = Devict[0,1] ? DTAGS.cacheaddressL : DTAGS.cacheaddressH;                                     //      EVICT FIRST ( possibly only ) 16 BITS
-                        sio.data_in = DCACHE.rdata[ Devict[0,1] ? 0 : 16, 16 ]; sio.in_valid = 1;
-                        if( &Devict ) {
-                            while( ~sio.done ) {} sio.addr = DTAGS.cacheaddressH;                                               //      EVICT SECOND 16 BITS
-                            sio.data_in = DCACHE.rdata[16,16];sio.in_valid = 1;
-                        }
-                        while( ~sio.done ) {}
-                    }
-                    if( doreadsdram & |Dread) {                                                                                 // READ FROM SDRAM FOR READ / 8 BIT WRITE
-                        sio.rw = 0;
-                        sio.addr = Dread[0,1] ? address : address2; sio.in_valid = 1; while( ~sio.done ) {}                     //      READ FIRST ( possibly only ) 16 BITS
-                        if( &Dread ) {
-                            sdramreaddata[0,16] = sio.data_out;                                                                 //      LATCH LOWER 16 BITS FOR ALL 32 BIT READ
-                            sio.addr = address2; sio.in_valid = 1;                                                              //      READ UPPER 16 BITS
-                            while( ~sio.done ) {} sdramreaddata[16,16] = sio.data_out;                                          //      LATCH UPPER 16 BITS
+            onehot( STATE ) {
+                case 0:{
+                    doread = readflag; dowrite = writeflag; busy = readflag | writeflag;                                        // LATCH READ/WRITE FLAGS
+                    if( readflag | writeflag ) { STATE = $STATE_CACHE_CHECK$; }
+                }
+                case 1: {
+                    if( Dmatch ) {
+                        if( dowrite ) { DCACHEW.update = accessmask; DTAGSW.update = accessmask; }                              // UPDATE CACHE/TAGS IF WRITE
+                        busy = 0; STATE = $STATE_CACHE_WAIT$;
+                    } else {
+                        if( |Devict ) {
+                            sio.addr = Devict[0,1] ? DTAGS.cacheaddressL : DTAGS.cacheaddressH;                                 //      EVICT FIRST ( possibly only ) 16 BITS
+                            sio.data_in = DCACHE.rdata[ Devict[0,1] ? 0 : 16, 16 ]; sio.rw = 1; sio.in_valid = 1;
+                            STATE = &Devict ? $STATE_CACHE_EVICT2$ : ( doreadsdram & |Dread ) ?
+                                              $STATE_CACHE_READSDRAM$ : $STATE_CACHE_UPDATE_WAIT$;
                         } else {
-                            sdramreaddata = Dread[0,1] ? { 16b0, sio.data_out } : { sio.data_out, 16b0 };                       //      LATCH LOWER OR UPPER 16 BITS FOR ONLY 16 BIT READ
+                            if( doreadsdram & |Dread ) {
+                                sio.addr = Dread[0,1] ? address : address2; sio.rw = 0; sio.in_valid = 1;                       //      READ FIRST ( possibly only ) 16 BITS
+                                STATE = &Dread ? $STATE_CACHE_READSDRAM2$ : $STATE_CACHE_UPDATE_WAIT$;
+                            } else {
+                                DCACHEW.update = doreadsdram ? Dread : accessmask;                                              // UPDATE CACHE READ AND 8 BIT WRITE : 32/16 WRITE
+                                DTAGSW.update = doreadsdram ? Dread : accessmask;                                               // UPDATE TAGS READ AND 8 BIT WRITE : 32/16 WRITE
+                                busy = 0; STATE = $STATE_CACHE_WAIT$;
+                            }
                         }
                     }
-                    DCACHEW.update = doreadsdram ? Dread : accessmask;                                                          // UPDATE CACHE READ AND 8 BIT WRITE : 32/16 WRITE
-                    DTAGSW.update = doreadsdram ? Dread : accessmask;                                                           // UPDATE TAGS READ AND 8 BIT WRITE : 32/16 WRITE
-                    busy = 0;
+                }
+                case 2: {
+                    if( sio.done ) {
+                        sio.addr = DTAGS.cacheaddressH; sio.data_in = DCACHE.rdata[16,16]; sio.in_valid = 1;                    //      EVICT SECOND 16 BITS
+                        STATE = ( doreadsdram & |Dread ) ? $STATE_CACHE_READSDRAM$ : $STATE_CACHE_UPDATE_WAIT$;
+                    }
+                }
+                case 3: {
+                    if( sio.done | ~|Devict ) {
+                        sio.addr = Dread[0,1] ? address : address2; sio.rw = 0; sio.in_valid = 1;                               //      READ FIRST ( possibly only ) 16 BITS
+                        STATE = &Dread ? $STATE_CACHE_READSDRAM2$ : $STATE_CACHE_UPDATE_WAIT$;
+                    }
+                }
+                case 4: {
+                    if( sio.done ) {
+                        sdramreaddata[0,16] = sio.data_out; sio.addr = address2; sio.in_valid = 1;                              // LATCH LOWER 16 BITS, READ UPPER 16 BITS
+                        STATE = $STATE_CACHE_UPDATE_WAIT$;
+                    }
+                }
+                case 5: {
+                    if( sio.done ) {
+                        if( doreadsdram & |Dread ) {
+                            if( &Dread ) {
+                                sdramreaddata[16,16] = sio.data_out;
+                            } else {
+                                sdramreaddata = Dread[0,1] ? { 16b0, sio.data_out } : { sio.data_out, 16b0 };                       //      LATCH LOWER OR UPPER 16 BITS FOR ONLY 16 BIT READ
+                            }
+                        }
+                        DCACHEW.update = doreadsdram ? Dread : accessmask;                                                          // UPDATE CACHE READ AND 8 BIT WRITE : 32/16 WRITE
+                        DTAGSW.update = doreadsdram ? Dread : accessmask;                                                           // UPDATE TAGS READ AND 8 BIT WRITE : 32/16 WRITE
+                        busy = 0; STATE = $STATE_CACHE_WAIT$;
+                    }
                 }
             }
         }
@@ -208,10 +247,10 @@ unit cachecontroller(
                   ~accesssize[0,1] ? DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] :
                   DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16];
 
-        cachewritevalue = accesssize[1,1] ? dowrite ? writedata : readdata :
-                         ~accesssize[0,1] ? dowrite ? address[0,1] ? { writedata[0,8], DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,8] : sdramreaddata[0,8] } :
-                                                                     { DTAGS.tagmatch[0,1] ? DCACHE.rdata[8,8] : sdramreaddata[8,8], writedata[0,8] } : readdata :
-                                            dowrite ? writedata[0,16] : readdata;
+        DCACHEW.writedata = accesssize[1,1] ? dowrite ? writedata : readdata :
+                           ~accesssize[0,1] ? dowrite ? address[0,1] ? { writedata[0,8], DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,8] : sdramreaddata[0,8] } :
+                                                                       { DTAGS.tagmatch[0,1] ? DCACHE.rdata[8,8] : sdramreaddata[8,8], writedata[0,8] } : readdata :
+                                              dowrite ? writedata[0,16] : readdata;
     }
 }
 

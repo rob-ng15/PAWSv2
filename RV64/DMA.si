@@ -166,8 +166,8 @@ unit dma_setcopy_flags(
     input   uint$addr_width$  DMADEST,
     output  uint2   ACCESSSIZE,
 ) <reginputs> {
-    ACCESSSIZE := mode_set ? ( DMAFLAGS[5,1] & DMAFLAGS[9,1] ) ? 2b10 : ( DMAFLAGS[4,1] & DMAFLAGS[8,1] ) ? 2b01 : 2b00 :
-                  mode_add ? 2b00 :
+    ACCESSSIZE := mode_add ? 2b00 :
+                  mode_set ? ( DMAFLAGS[5,1] & DMAFLAGS[9,1] ) ? 2b10 : ( DMAFLAGS[4,1] & DMAFLAGS[8,1] ) ? 2b01 : 2b00 :
                   ( ( DMAFLAGS[1,1] & DMAFLAGS[5,1] & DMAFLAGS[9,1] ) | ( ( DMADEST[24,3] == 3b000 ) & ( DMADEST[4,12] == 12hd68 ) ) ) ? 2b10 :
                   ( ( DMAFLAGS[0,1] & DMAFLAGS[4,1] & DMAFLAGS[8,1] ) | ( DMADEST == 27hd642 ) ) ? 2b01 :
                   2b00;
@@ -287,13 +287,13 @@ unit dma_setcopy_rectangle(
     output  uint2   ACCESSSIZE,
     output  uint1   ACTIVE(0),
 
-                           input   uint1   start(0),
-                           output  uint$addr_width$  address,
-                           output  uint32  writedata,
-                           output  uint1   writememory,
-                           output  uint1   readmemory,
-                           input   uint32  readdata,
-                           input   uint1   memorybusy
+    input   uint1   start(0),
+    output  uint$addr_width$  address,
+    output  uint32  writedata,
+    output  uint1   writememory,
+    output  uint1   readmemory,
+    input   uint32  readdata,
+    input   uint1   memorybusy
 ) <reginputs> {
     uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
 
@@ -315,12 +315,12 @@ unit dma_setcopy_rectangle(
         uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                                // NUMBER OF BYTES PER CYCLE
 
         uint6   STATE = 1;
-        $$ STATE_DMA_SETCPYRECT_WAIT        = 1
-        $$ STATE_DMA_SETCPYRECT_SET_OR_READ = 2
-        $$ STATE_DMA_SETCPYRECT_WAIT_READ   = 4
-        $$ STATE_DMA_SETCPYRECT_CPY_WRITE   = 8
-        $$ STATE_DMA_SETCPYRECT_NEXT        = 16
-        $$ STATE_DMA_SETCPYRECT_NEXT_CYCLE  = 32
+            $$ STATE_DMA_SETCPYRECT_WAIT        = 1
+            $$ STATE_DMA_SETCPYRECT_SET_OR_READ = 2
+            $$ STATE_DMA_SETCPYRECT_WAIT_READ   = 4
+            $$ STATE_DMA_SETCPYRECT_CPY_WRITE   = 8
+            $$ STATE_DMA_SETCPYRECT_NEXT        = 16
+            $$ STATE_DMA_SETCPYRECT_NEXT_CYCLE  = 32
 
         ACTIVE = 0; while(1) {
             onehot( STATE ) {
@@ -401,17 +401,28 @@ unit dma_pb_rgb(
 
     writememory := 0; readmemory := 0; WRITE.latch := 0;
 
-    algorithm <autorun> { ACTIVE = 0; while(1) {
-        dmasrc = DMASOURCE; dmadest = $addr_width$hd672; dmacount = DMACOUNT; ACTIVE = start;                          // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
-        if( start ) {
-            while( |dmacount ) {
-                address = dmasrc; readmemory = 1; while( memorybusy ) {} ++: WRITE.latch = 1;
-                address = dmadest; writememory = 1; while( memorybusy ) {}
-                dmasrc = dmasrc_NEXT; dmadest = dmadest_NEXT; dmacount = dmacount_NEXT;
+    algorithm <autorun> {
+        uint5   STATE = 1;
+
+        ACTIVE = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    dmasrc = DMASOURCE; dmadest = $addr_width$hd672; dmacount = DMACOUNT; ACTIVE = start;                          // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
+                    if( start ) { STATE = 2; }
+                }
+                case 1: {
+                    if( |dmacount ) {
+                        address = dmasrc; readmemory = 1; STATE = 4;
+                    } else {
+                        STATE = 1;
+                    }
+                }
+                case 2: { if( ~memorybusy ) { STATE = 8; } }
+                case 3: { WRITE.latch = 1; address = dmadest; writememory = 1; STATE = 16; }
+                case 4: { if( ~memorybusy ) { dmasrc = dmasrc_NEXT; dmadest = dmadest_NEXT; dmacount = dmacount_NEXT; STATE = 2; } }
             }
-            ACTIVE = 0;
         }
-    } }
+    }
 }
 
 unit dma_bytes_to_io_flags(
@@ -462,17 +473,35 @@ unit dma_bytes_to_io(
 
     writememory := 0; readmemory := 0; WRITE.latch := 0;
 
-    algorithm <autorun> { ACTIVE = 0; while(1) {
-        dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; ACTIVE = start;                                             // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
-        if( start ) {
-            while( |dmacount ) {
-                BYTE = 0; address = dmasrc; readmemory = 1; while( memorybusy ) {} ++: WRITE.latch = 1;
-                address = dmadest; while( BYTE != BYTES ) { writememory = 1; while( memorybusy ) {} BYTE = BYTE_NEXT; }
-                dmasrc = dmasrc_NEXT; dmacount = dmacount_NEXT;
+    algorithm <autorun> {
+        uint6   STATE = 1;
+
+        ACTIVE = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; ACTIVE = start;                                             // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
+                    if( start ) { STATE = 2; }
+                }
+                case 1: {
+                    if( |dmacount ) {
+                        BYTE = 0; address = dmasrc; readmemory = 1; STATE = 4;
+                    } else {
+                        STATE = 1;
+                    }
+                }
+                case 2: { if( ~memorybusy ) { STATE = 8; } }
+                case 3: { WRITE.latch = 1; address = dmadest; STATE = 16; }
+                case 4: {
+                    if( BYTE != BYTES ) {
+                        writememory = 1; STATE = 32;
+                    } else {
+                        dmasrc = dmasrc_NEXT; dmacount = dmacount_NEXT; STATE = 2;
+                    }
+                }
+                case 5: { if( ~memorybusy ) { BYTE = BYTE_NEXT; STATE = 16; } }
             }
-            ACTIVE = 0;
         }
-    } }
+    }
 }
 
 unit dma_bytes_from_io_flags(
@@ -510,18 +539,33 @@ unit dma_bytes_from_io(
 
     writememory := 0; readmemory := 0;
 
-    algorithm <autorun> { ACTIVE = 0; while(1) {
-        dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; ACTIVE = start;                                             // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
-        if( start ) {
-            while( |dmacount ) {
-                BYTE = 0; writedata = 0; address = dmasrc;
-                while( BYTE != BYTES ) {
-                    readmemory = 1; while( memorybusy ) {} ++: writedata[ { BYTE, 3b000 }, 8 ] = readdata; BYTE = BYTE_NEXT;
+    algorithm <autorun> {
+        uint6   STATE = 1;
+
+        ACTIVE = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; ACTIVE = start;                                             // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
+                    if( start ) { STATE = 2; }
                 }
-                address = dmadest; writememory = 1; while( memorybusy ) {}
-                dmadest = dmadest_NEXT; dmacount = dmacount_NEXT;
+                case 1: {
+                    if( |dmacount ) {
+                        BYTE = 0; writedata = 0; address = dmasrc; STATE = 4;
+                    } else {
+                        STATE = 1;
+                    }
+                }
+                case 2: {
+                    if( BYTE != BYTES ) {
+                        readmemory = 1; STATE = 8;
+                    } else {
+                        address = dmadest; writememory = 1; STATE = 32;
+                    }
+                }
+                case 3: { if( ~memorybusy ) { STATE = 16; } }
+                case 4: { writedata[ { BYTE, 3b000 }, 8 ] = readdata; BYTE = BYTE_NEXT; STATE = 4; }
+                case 5: { if( ~memorybusy ) { dmadest = dmadest_NEXT; dmacount = dmacount_NEXT; STATE = 2; } }
             }
-            ACTIVE = 0;
         }
-    } }
+    }
 }
