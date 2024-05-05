@@ -326,7 +326,7 @@ unit cpuexecuteSLOWPATH(
     input   uint5   FPUnewflags,
     input   uint1   CSRupdateFPUflags
 ) <reginputs> {
-    uint3   operation <:: { isALU, isATOMIC, isCSR };
+    uint3   operation <:: { isALU, isATOMIC, isCSR };                                                                           // DETERMINE OPERATION, DIVIDE, AMO, CSR
 
     aluA ALUA(                                                                                                                  // ATOMIC MEMORY OPERATIONS
         function7 <: function7[2,5], memoryinput <: memoryinput, sourceReg2 <: sourceReg2
@@ -353,6 +353,12 @@ unit cpuexecuteSLOWPATH(
 
     CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                      // START FLAGS
 
+    result := operation[0,1] ? |function3 ? CSR.result : 0 :                                                                    //  CSR
+              operation[1,1] ? function7[3,1] ? memoryinput : function7[2,1] ? 0 : memoryinput :                                //  ATOMIC LOAD - MODIFY - STORE
+                               size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result;        //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
+
+    memoryoutput := function7[3,1] ? ALUA.result : sourceReg2;                                                                  //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORYOUTPUT
+
     algorithm <autorun> {
         uint3   STATE = 1;
             $$ STATE_CPUSLOW_IDLE       = 1
@@ -361,24 +367,18 @@ unit cpuexecuteSLOWPATH(
 
         busy = 0; while(1) {
             onehot( STATE ) {
-                case 0: {
+                case 0: {                                                                                                       // WAIT FOR START
                     if( start ) {
-                        busy = 1;
-                        onehot( operation ) {
-                            default: { STATE = $STATE_CPUSLOW_CSR_ATOMIC$; }
-                            case 2: { STATE = $STATE_CPUSLOW_DIVISION$; }
+                        busy = 1; onehot( operation ) {
+                            default: { STATE = $STATE_CPUSLOW_CSR_ATOMIC$; }                                                    //  CSR OR ATOMIC-MEMORY-OPERATION
+                            case 2: { STATE = $STATE_CPUSLOW_DIVISION$; }                                                       //  DIVISION
                         }
                     }
                 }
-                case 1: { busy = 0; STATE = $STATE_CPUSLOW_IDLE$; }
-                case 2: { if( ~ALUMD.busy ) { busy = 0; STATE = $STATE_CPUSLOW_IDLE$; } }
+                case 1: { busy = 0; STATE = $STATE_CPUSLOW_IDLE$; }                                                             // CSR OR AMO
+                case 2: { if( ~ALUMD.busy ) { busy = 0; STATE = $STATE_CPUSLOW_IDLE$; } }                                       // DIVISION
             }
 
-            result = operation[0,1] ? |function3 ? CSR.result : 0 :                                                             //  CSR
-                     operation[1,1] ? function7[3,1] ? memoryinput : function7[2,1] ? 0 : memoryinput :                         //  ATOMIC LOAD - MODIFY - STORE
-                                      size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
-
-            memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                                           //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORUOUTPUT
         }
     }
 }
