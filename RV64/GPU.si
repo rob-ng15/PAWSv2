@@ -323,6 +323,7 @@ unit preprectangle(
     algorithm <autorun> {
         uint2   STATE = 1;
         uint2   DELAY = uninitialised;
+        uint2   DELAY_NEXT <:: DELAY >> 1;
 
         while(1) {
             onehot( STATE ) {
@@ -330,7 +331,7 @@ unit preprectangle(
                     if( start ) { busy = 1; DELAY = -1; STATE = 2; }
                 }
                 case 1: {
-                    if( |DELAY ) { DELAY = DELAY >> 1; } else { todraw = TODRAW.draw; busy = 0; STATE = 1; }
+                    if( |DELAY ) { DELAY = DELAY_NEXT; } else { todraw = TODRAW.draw; busy = 0; STATE = 1; }
                 }
             }
     } }
@@ -344,7 +345,6 @@ unit drawrectangle(
     input   uint8   max_y,
     output  uint9   bitmap_x_write,
     output  uint8   bitmap_y_write,
-    output  uint1   bitmap_write
 ) <reginputs> {
     algorithm <autorun> {
         uint2   STATE = 1;
@@ -357,14 +357,14 @@ unit drawrectangle(
             onehot( STATE ) {
                 case 0: {
                     if( start ) {
-                        busy = 1; bitmap_write = 1; STATE = 2;
+                        busy = 1; STATE = 2;
                         ( bitmap_x_write, bitmap_y_write ) = copycoordinates( min_x, min_y );                                   // Move to 1st pixel
                     }
                 }
                 case 1: {
                     if( lineend ) {                                                                                             // Move to next pixel
                         if( yNEXT == max_y ) {
-                            busy = 0; bitmap_write = 0; STATE = 1;
+                            busy = 0; STATE = 1;
                         } else {
                             ( bitmap_x_write, bitmap_y_write ) = copycoordinates( min_x, yNEXT );
                         }
@@ -399,7 +399,7 @@ unit rectangle (
     );
     drawrectangle RECTANGLE(
         min_x <: PREP.min_x, min_y <: PREP.min_y, max_x <: PREP.max_x, max_y <: PREP.max_y,
-        bitmap_x_write :> bitmap_x_write, bitmap_y_write :> bitmap_y_write, bitmap_write :> bitmap_write,
+        bitmap_x_write :> bitmap_x_write, bitmap_y_write :> bitmap_y_write, busy :> bitmap_write,
         start <: PREP.todraw
     );
 
@@ -461,8 +461,9 @@ unit drawline(
 ) <reginputs> {
     int10   x = uninitialized;                      int10   offset_x = uninitialised;
     int10   y = uninitialized;                      int10   offset_y = uninitialised;
+    uint1   singlepixel <:: ( width == 1 );
 
-    bitmap_write := 0;
+    bitmap_write := 0; bitmap_x_write := x + ( singlepixel ? 0 : offset_x ); bitmap_y_write := y + ( singlepixel ? 0 : offset_y );
 
     algorithm <autorun> {
         int10   numerator = uninitialized;
@@ -473,31 +474,44 @@ unit drawline(
         int10   offset_x_NEXT <:: offset_x + ~dxdy;         int10   offset_y_NEXT <:: offset_y + dxdy;
         uint8   pixel_count = uninitialised;                uint8   pixel_count_NEXT <:: pixel_count + 1;
         int10   x_NEXT <:: x + n2dx;                        int10   y_NEXT <:: n2dy ? ( y + ( dv ? 1 : -1 ) ) : y;
-        uint1   singlepixel <:: ( width == 1 );
         int10   numerator_NEXT <:: numerator - ( n2dx ? dy : 0 ) + ( n2dy ? dx : 0 );
 
-        while(1) {
-            if( start ) {
-                busy = 1; x = start_x; y = start_y; numerator = start_numerator; count = 0;
-                while( count != max_count ) {
-                    offset_x = singlepixel ? 0 : dxdy ? 0 : offset_start; offset_y = singlepixel ? 0 : dxdy ? offset_start : 0; pixel_count = 0;
-                    if( singlepixel ) {
-                        bitmap_write = 1;
-                    } else {
-                        while( pixel_count != width ) {
-                            bitmap_write = 1;
-                            offset_x = offset_x_NEXT; offset_y = offset_y_NEXT;
-                            pixel_count = pixel_count_NEXT;
-                        }
+        uint4   STATE = 1;
+
+        busy = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    if( start ) {
+                        busy = 1; x = start_x; y = start_y; numerator = start_numerator; count = 0;
+                        STATE = singlepixel ? 2 : 4;
                     }
-                    numerator = numerator_NEXT; count = count_NEXT; x = x_NEXT; y = y_NEXT;
                 }
-                busy = 0;
+                case 1: {
+                    if( count != max_count ) {
+                        bitmap_write = 1; numerator = numerator_NEXT; count = count_NEXT; x = x_NEXT; y = y_NEXT;
+                    } else {
+                        busy = 0; STATE = 1;
+                    }
+                }
+                case 2: {
+                    if( count != max_count ) {
+                        offset_x = singlepixel ? 0 : dxdy ? 0 : offset_start; offset_y = singlepixel ? 0 : dxdy ? offset_start : 0; pixel_count = 0;
+                        STATE = 8;
+                    } else {
+                        busy = 0; STATE = 1;
+                    }
+                }
+                case 3: {
+                    if( pixel_count != width ) {
+                        bitmap_write = 1; offset_x = offset_x_NEXT; offset_y = offset_y_NEXT; pixel_count = pixel_count_NEXT;
+                    } else {
+                        numerator = numerator_NEXT; count = count_NEXT; x = x_NEXT; y = y_NEXT;
+                        STATE = 4;
+                    }
+                }
             }
         }
     }
-
-    always_after { bitmap_x_write = x + offset_x; bitmap_y_write = y + offset_y; }
 }
 unit line(
     input   uint1   start,
@@ -593,28 +607,46 @@ unit drawcircle(
         int10   numerator_NEXT <:: numerator[9,1] ? numerator + { active_x, 2b00 } + 6 : numerator + { (active_x - active_y), 2b00 } + 10;
         uint4   arc_NEXT <:: arc + 1;
 
+        uint4   STATE = 1;
+
         while(1) {
-            if( start ) {
-                busy = 1;
-                active_x = 0; active_y = radius; count = radius; min_count = (-1); numerator = start_numerator;
-                while( active_y >= active_x ) {
-                    arc = 0;
-                    if( ARC.centrepixel ) {
-                        bitmap_x_write = xc; bitmap_y_write = yc; bitmap_write = |draw_sectors;                                 // DETECT IF CENTRE PIXEL, OUTPUT ONCE
-                    } else {
-                        while( ~arc[3,1] ) {                                                                                    // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
-                            bitmap_x_write = ARC.bitmap_x_write; bitmap_y_write = ARC.bitmap_y_write;
-                            bitmap_write = draw_sectors[arc,1]; arc = arc_NEXT;
-                        }
+            onehot( STATE ) {
+                case 0: {
+                    if( start ) {
+                        busy = 1; active_x = 0; active_y = radius; count = radius; min_count = (-1); numerator = start_numerator;
+                        STATE = 2;
                     }
+                }
+                case 1: {
+                    if( active_y >= active_x ) {
+                        arc = 0;
+                        if( ARC.centrepixel ) {
+                            bitmap_x_write = xc; bitmap_y_write = yc; bitmap_write = |draw_sectors;                                 // DETECT IF CENTRE PIXEL, OUTPUT ONCE
+                            STATE = 8;
+                        } else {
+                            STATE = 4;
+                        }
+                    } else {
+                        busy = 0; STATE = 1;
+                    }
+                }
+                case 2: {
+                    if( ~arc[3,1] ) {                                                                                    // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
+                        bitmap_x_write = ARC.bitmap_x_write; bitmap_y_write = ARC.bitmap_y_write;
+                        bitmap_write = draw_sectors[arc,1]; arc = arc_NEXT;
+                    } else {
+                        STATE = 8;
+                    }
+                }
+                case 3: {
                     if( countNEXT == min_count ) {
                         ( active_x, active_y ) = copycoordinates( active_xNEXT, active_yNEXT );
                         count = active_y; min_count = min_count_NEXT; numerator = numerator_NEXT;
                     } else {
                         count = countNEXT;
                     }
+                    STATE = 2;
                 }
-                busy = 0;
             }
         }
     }
@@ -743,18 +775,21 @@ unit preptriangle(                                                              
     todraw := 0;
 
     algorithm <autorun> {
-        busy = 0;
+        uint2   STATE = 1;
+        uint3   DELAY = uninitialised;
+        uint3   DELAY_NEXT <:: DELAY + 1;
 
         while(1) {
-            if( start ) {
-                busy = 1;
-                ++: ++: ++: ++: ++: ++: ++:                                                                                     // ( x1, y1 ) ARE TOP LEFT, THEN CLOCKWISE
-                todraw = TODRAW.draw;                                                                                           // START TRIANGLE DRAWING IF PIXELS TO DRAW
-                busy = 0;
+            onehot( STATE ) {
+                case 0: {
+                    if( start ) { busy = 1; DELAY = 0; STATE = 2; }                                                            // ALLOW SORTING OF VERTICES
+                }
+                case 1: {
+                    if( DELAY != 6 ) { DELAY = DELAY_NEXT; } else { todraw = TODRAW.draw; busy = 0; STATE = 1; }                    // START TRIANGLE DRAWING IF PIXELS TO DRAW
+                }
             }
         }
     }
-
 }
 unit intriangle(                                                                                                                // DETERMINE IF A POINT IS INSIDE THE TRIANGLE
     input   int10   x0,                                                                                                         // REQUIRES POINTS TO BE CLOCKWISE FROM THE TOP LEFT POINT
@@ -798,51 +833,61 @@ unit drawtriangle(                                                              
     uint8   py = uninitialized;                         uint8   pyNEXT <:: py + 1;                                              // PRESNET WORKING COORDINATE Y AND NEXT
     uint9   sx = uninitialised;                         uint9   sxSAVE <:: px + ( dx ? (-1) : 1 );                              // SAVED COORDINATE WHEN DROPPING DOWN
     uint1   eol <:: px == ( dx ? max_x : min_x );                                                                               // AT END OF LINE ( MIN_X OR MAX_X )
-    uint3   state = 1;                                                                                                          // STATE, { CHECK, DOWN AND IN TRIANGLE, SCAN UNTIL EXIT }
     uint1   dx = uninitialized;                                                                                                 // X DIRECTION, 1 == RIGHT, 0 == LEFT
 
     bitmap_x_write := px; bitmap_y_write := py; bitmap_write := busy & IS.IN;                                                   // OUTPUT IF ( PX, PY ) IS.IN THE TRIANGLE
 
-    algorithm <autorun> { busy = 0; while(1) {
-        if( start ) {
-            busy = 1; dx = 1; py = min_y; state = 1; beenInTriangle = 0;
-            px = ( ( y0 == min_y ) & ( x0 > min_x ) & ( x0 <= max_x ) ) ? ( x0 - 1 ) : min_x;
-         } else {
-            if( py != max_y ) {
-                beenInTriangle = IS.IN | beenInTriangle;                                                                        // SET TO 1 IF EVER BEEN IN TRIANGLE ON THIS LINE
-                onehot( state ) {
-                    case 0: {                                                                                                   // NORMAL STATE, MOVE UNTIL IN THEN OUT OF TRIANGLE
-                        if( beenInTriangle ^ IS.IN ) {
-                            beenInTriangle = 0; py = pyNEXT; state = 4;                                                         // LEFT THE TRIANGLE, MOVE TO NEXT LINE AND CHANGE STATE TO CHECK
-                        } else {
-                            if( eol )  {
-                                dx = ~dx; beenInTriangle = 0; py = pyNEXT;                                                      // AT END OF LINE, SWITCH DIRECTION AND MOVE TO THE NEXT LINE
-                            } else {
-                                px = pxNEXT;                                                                                    // MOVE TO THE NEXT PIXEL
-                            }
-                        }
-                    }
-                    case 1: {                                                                                                   // SECONDARY STATE, MOVED DOWN AND WAS IN TRIANGLE
-                        if( ( beenInTriangle ^ IS.IN ) | eol ) {
-                            px = sx; dx = ~dx; state = 1;                                                                       // LEFT THE TRIANGLE OR EOL, GOT TO SAVED POSITION, SWITCH DIRECTION, GO TO NORMAL STATE
-                        } else {
-                            px = pxNEXT;                                                                                        // MOVE TO THE NEXT PIXEL
-                        }
-                    }
-                    case 2: {                                                                                                   // CHECK STATE AFTER MOVING DOWN
-                        if( IS.IN ) {
-                            sx = sxSAVE; px = pxNEXT;                                                                           // MOVED DOWN AND IN TRIANGLE, SAVE AND MOVE TO NEXT PIXEL
-                        } else {
-                            dx = ~dx;                                                                                           // MOVED DOWN AND OUTSIDE THE TRIANGLE, SWITCH DIRECTION
-                        }
-                        state = IS.IN ? 2 : 1;
+    algorithm <autorun> {
+        uint3   state = 1;                                                                                                          // STATE, { CHECK, DOWN AND IN TRIANGLE, SCAN UNTIL EXIT }
+        uint2   STATE = 1;
+
+        busy = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    if( start ) {
+                        busy = 1; dx = 1; py = min_y; state = 1; beenInTriangle = 0;
+                        px = ( ( y0 == min_y ) & ( x0 > min_x ) & ( x0 <= max_x ) ) ? ( x0 - 1 ) : min_x;
+                        STATE = 2;
                     }
                 }
-            } else {
-                busy = 0;
+                case 1: {
+                    if( py != max_y ) {
+                        beenInTriangle = IS.IN | beenInTriangle;                                                                        // SET TO 1 IF EVER BEEN IN TRIANGLE ON THIS LINE
+                        onehot( state ) {
+                            case 0: {                                                                                                   // NORMAL STATE, MOVE UNTIL IN THEN OUT OF TRIANGLE
+                                if( beenInTriangle ^ IS.IN ) {
+                                    beenInTriangle = 0; py = pyNEXT; state = 4;                                                         // LEFT THE TRIANGLE, MOVE TO NEXT LINE AND CHANGE STATE TO CHECK
+                                } else {
+                                    if( eol )  {
+                                        dx = ~dx; beenInTriangle = 0; py = pyNEXT;                                                      // AT END OF LINE, SWITCH DIRECTION AND MOVE TO THE NEXT LINE
+                                    } else {
+                                        px = pxNEXT;                                                                                    // MOVE TO THE NEXT PIXEL
+                                    }
+                                }
+                            }
+                            case 1: {                                                                                                   // SECONDARY STATE, MOVED DOWN AND WAS IN TRIANGLE
+                                if( ( beenInTriangle ^ IS.IN ) | eol ) {
+                                    px = sx; dx = ~dx; state = 1;                                                                       // LEFT THE TRIANGLE OR EOL, GOT TO SAVED POSITION, SWITCH DIRECTION, GO TO NORMAL STATE
+                                } else {
+                                    px = pxNEXT;                                                                                        // MOVE TO THE NEXT PIXEL
+                                }
+                            }
+                            case 2: {                                                                                                   // CHECK STATE AFTER MOVING DOWN
+                                if( IS.IN ) {
+                                    sx = sxSAVE; px = pxNEXT;                                                                           // MOVED DOWN AND IN TRIANGLE, SAVE AND MOVE TO NEXT PIXEL
+                                } else {
+                                    dx = ~dx;                                                                                           // MOVED DOWN AND OUTSIDE THE TRIANGLE, SWITCH DIRECTION
+                                }
+                                state = IS.IN ? 2 : 1;
+                            }
+                        }
+                    } else {
+                        busy = 0; STATE = 1;
+                    }
+                }
             }
         }
-    } }
+    }
 }
 unit triangle(
     input   uint1   start,
@@ -957,6 +1002,7 @@ unit blit(
     blit1tilemap.addr0 := { tile, BTXY.yinblittile };                                                                           // ADDRESEES INTO THE BLITTER TILES
     characterGenerator8x8.addr0 := { tile, BTXY.yinchartile };
     colourblittilemap.addr0 := { tile, CBTXY.yintile, CBTXY.xintile };
+
     bitmap_colour_write := colourblittilemap.rdata0;                                                                            // COPY THE COLOUR BLITTER TILE COLOUR
     bitmap_write := 0;
 
@@ -966,29 +1012,48 @@ unit blit(
         uint5   max_pixels <:: { tilecharacter, ~tilecharacter, 3b000 };                                                        // NUMBER OF PIXELS WIDE 8 FOR CHARACTER, 16 FOR BLITTER TILES
         uint4   max_count <:: ( 1 << scale );                                                                                   // NUMBER OF TIMES TO USE EACH PIXEL
 
-        busy = 0;
+        uint5   STATE = 1;
 
-        while(1) {
-            if( |start ) {
-                busy = start; PYS.offset = 0;
-                while( PYS.offset != max_pixels ) {
-                    PXS.offset = 0;
-                    while( PXS.offset != max_pixels ) {
-                        y2 = 0;
-                        while( y2 != max_count ) { x2 = 0; while( x2 != max_count ) {
-                            bitmap_x_write = x + PXS.scaled + x2;                                                               // COPY THE OUTPUT COORDINATES
-                            bitmap_y_write = y + PYS.scaled + y2;
-                            bitmap_write = busy[0,1] ? tilecharacter ? blit1tilemap.rdata0[BTXY.xinblittile, 1] :               // OUTPUT 1 BIT PIXEL
-                                                                       characterGenerator8x8.rdata0[BTXY.xinchartile, 1] :      // OUTPUT CHARACTER PIXEL
-                                                                       colourblittilemap.rdata0 != 64;                          // OUTPUT COLOUR PIXEL
-                            x2 = x2NEXT;                                                                                        // MOVE ALONG THE LINE
-
-                        } y2 =  y2NEXT; }
-                        PXS.offset = PXS.next;
+        busy = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    if( |start ) {
+                        busy = start; PYS.offset = 0; STATE = 2;
                     }
-                    PYS.offset = PYS.next;
                 }
-                busy = 0;
+                case 1: {
+                    if( PYS.offset != max_pixels ) {
+                        PXS.offset = 0; STATE = 4;
+                    } else {
+                        busy = 0; STATE = 1;
+                    }
+                }
+                case 2: {
+                    if( PXS.offset != max_pixels ) {
+                        y2 = 0; STATE = 8;
+                    } else {
+                        PYS.offset = PYS.next; STATE = 2;
+                    }
+                }
+                case 3: {
+                    if( y2 != max_count ) {
+                        x2 = 0; STATE = 16;
+                    } else {
+                        PXS.offset = PXS.next; STATE = 4;
+                    }
+                }
+                case 4: {
+                    if( x2 != max_count ) {
+                        bitmap_x_write = x + PXS.scaled + x2;                                                               // COPY THE OUTPUT COORDINATES
+                        bitmap_y_write = y + PYS.scaled + y2;
+                        bitmap_write = busy[0,1] ? tilecharacter ? blit1tilemap.rdata0[BTXY.xinblittile, 1] :               // OUTPUT 1 BIT PIXEL
+                                                                    characterGenerator8x8.rdata0[BTXY.xinchartile, 1] :      // OUTPUT CHARACTER PIXEL
+                                                                    colourblittilemap.rdata0 != 64;                          // OUTPUT COLOUR PIXEL
+                        x2 = x2NEXT;                                                                                        // MOVE ALONG THE LINE
+                    } else {
+                        y2 =  y2NEXT; STATE = 8;
+                    }
+                }
             }
         }
     }
@@ -1033,21 +1098,31 @@ unit pixelblock(
 
     algorithm <autorun> {
         int10   xSTART <:: x - 1;                                                                                               // STARTING X COORDINATE, ONE LEFT OF X
+        uint2   STATE = 1;
 
         busy = 0; while(1) {
-            if( start ) {
-                busy = 1; bitmap_x_write = xSTART; bitmap_y_write = y;                                                          // COPY STARTING COORDINATES ( one to the left as moved before drawing )
-                while( ~&toprocess ) {                                                                                          //  KEEP GOING UNTIL STOP RECEIVED
-                    if( |toprocess ) {                                                                                          //  OUTPUT A PIXEL
-                        bitmap_x_write = eol ? x : xNEXT;
-                        if( eol ) { bitmap_y_write = yNEXT; }
-                        bitmap_write = ( ( toprocess[0,1] ) & ( mode[1,1] | ( colour != ignorecolour ) ) ) | ( toprocess[1,1] );//  WRITE IF 8 BIT AND !ignore OR WRITEALL OR RGB
+            onehot( STATE ) {
+                case 0: {
+                    if( start ) {
+                        busy = 1; bitmap_x_write = xSTART; bitmap_y_write = y;                                                  // COPY STARTING COORDINATES ( -1 as moved before drawing )
+                        STATE = 2;
                     }
                 }
-                busy = 0;
+                case 1: {
+                    switch( toprocess ) {
+                        case 0:{}
+                        default: {
+                            bitmap_x_write = eol ? x : xNEXT;
+                            if( eol ) { bitmap_y_write = yNEXT; }
+                            bitmap_write = ( ( toprocess[0,1] ) & ( mode[1,1] | ( colour != ignorecolour ) ) ) |                // WRITE IF 8 BIT AND !ignore OR WRITEALL OR RGB
+                                           ( toprocess[1,1] );
+                        }
+                        case 3: { busy = 0; STATE = 1;}
+                    }
+                }
             }
+
+            colourmap.addr0 = colour; toprocess = newpixel;                                                                     // LOOKUP THE COLOUR FROM THE REMAPPER, DETECT NEW PIXEL
         }
     }
-
-    always_after { colourmap.addr0 = colour; toprocess = newpixel; }                                                            // LOOKUP THE COLOUR FROM THE REMAPPER, DETECT NEW PIXEL
 }

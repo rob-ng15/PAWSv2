@@ -7,7 +7,7 @@ export PATH=$PATH:$DIR/../../tools/fpga-binutils/mingw32/bin/
 
 ARCH="riscv64-unknown"
 GCCVER=13.2.0
-CPUOPTS="-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcd_zfh_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax"
+CPUOPTS="-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcd_zfh_zicond_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax"
 
 echo "using $ARCH"
 

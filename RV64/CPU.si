@@ -30,7 +30,11 @@ unit PAWSCPU(
     uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;                                    // PROGRAMS COUNTERS FOR MAIN AND SMT THREADS
     uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                  // SELECT PROGRAM COUNTER FOR THIS CYCLE
 
-    uint64  result <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.result : RV64CONTROL.IS_FAST ? EXECUTEFAST.result : EXECUTESLOW.result;  // DETERMINE PRESENT INSTRUCTION RESULT
+    uint64  result <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.result :                                                                 // SELECT RESULT FROM UNIT
+                      RV64CONTROL.IS_FAST ? RV64CONTROL.IS_ALU ? ( RV64CONTROL.IS_ALU32 & RV64CONTROL.IS_ALU32SIGNX ) ?
+                                                                 { {32{ALU.result[31,1]}}, ALU.result[0,32] } : ALU.result :    // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
+                                            EXECUTEFAST.result :
+                                            EXECUTESLOW.result;
     uint1   frd <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.frd : RV64CONTROL.writeRegisterF;                                           // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
     uint1   write <:: COMMIT & RV64CONTROL.writeRegister;                                                                       // WRITE TO REGISTERS FLAG
 
@@ -57,26 +61,24 @@ unit PAWSCPU(
     );
 
     cpuexecuteFASTPATH EXECUTEFAST(                                                                                             // RISC-V SINGLE CYCLE OPERATIONS
-        size32 <: RV64CONTROL.IS_ALU32,
-        size32extend <: RV64CONTROL.IS_ALU32SIGNX,
-        byteaccess <: RV64CONTROL.loadAddress[0,1],
-        opCode <: RV64CONTROL.opCode,
         function3 <: RV64CONTROL.function3,
         function7 <: RV64CONTROL.function7,
-        rs1 <: RV64CONTROL.rs1,
-        rs2 <: RV64CONTROL.rs2,
-        sourceReg1 <: RV64CONTROL.sourceReg1,
-        sourceReg2 <: RV64CONTROL.sourceReg2,
-        immediateValue <: RV64CONTROL.immediateValue,
         memoryinput <: MEMORY.memoryinput,
         AUIPCLUI <: RV64CONTROL.AUIPCLUI,
         nextPC <: RV64CONTROL.nextPC,
-        isLOAD <: RV64CONTROL.IS_LOAD,
         isAUIPCLUI <: RV64CONTROL.IS_AUIPCLUI,
         isJAL <: RV64CONTROL.IS_JAL,
-        isFENCE <: RV64CONTROL.IS_FENCE,
-        LT <: RV64CONTROL.LT,
-        LTU <: RV64CONTROL.LTU
+        isFENCE <: RV64CONTROL.IS_FENCE
+    );
+
+    alu ALU(                                                                                                                    // SINGLE CYCLE INTEGER OPERATIONS
+        size32 <: RV64CONTROL.IS_ALU32,
+        opCode <: RV64CONTROL.opCode,
+        function3 <: RV64CONTROL.function3, function7 <: RV64CONTROL.function7,
+        rs1 <: RV64CONTROL.rs1, rs2 <: RV64CONTROL.rs2,
+        sourceReg1 <: RV64CONTROL.sourceReg1, sourceReg2 <: RV64CONTROL.sourceReg2,
+        immediateValue <: RV64CONTROL.immediateValue,
+        LT <: RV64CONTROL.LT, LTU <: RV64CONTROL.LTU
     );
 
     cpuexecuteSLOWPATH EXECUTESLOW(                                                                                             // RISC-V MULTI-CYCLE OPERATIONS
@@ -193,31 +195,33 @@ unit PAWSCPU(
                 }
                 case 2: {                                                                                                       //  STATE_FETCH
                     if( ~MEMORY.busy ) {
-                        if( DELAY ) {
-                            DELAY = 0;
-                        } else {
-                            COMMIT_SMT = SMT; cacheselect = 1; ICACHEUPDATE = 1;                                                //      LATCH THREAD MAIN/SMT, DATA CACHE, UPDATE ICACHE
-                            if( RV64CONTROL.IS_LOAD ) {                                                                         //      EARLY START LOAD AND FAST STORE
-                                MEMORY.start = 3b010; STATE = RV64CONTROL.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$;              //      LOAD ONLY -> COMMIT ELSE -> MULTI FOR ATOMIC
-                            } else {
-                                if( RV64CONTROL.IS_FAST & RV64CONTROL.IS_STORE ) {
-                                    MEMORY.start = 3b100; STATE = $STATE_COMMIT$;                                               //      STORE ONLY -> COMMIT
-                                } else {
-                                    STATE = $STATE_EXEC$;
-                                }
-                            }
-                        }
+                        COMMIT_SMT = SMT; cacheselect = 1; ICACHEUPDATE = 1;                                                    //      LATCH THREAD MAIN/SMT, DATA CACHE, UPDATE ICACHE
+                        DELAY = RV64CONTROL.IS_FPU & ~RV64CONTROL.IS_FASTFPU;                                                   //      EXTRA CYCLE FOR FLOATING-POINT CALCULATIONS
+                        STATE = $STATE_EXEC$;                                                                                   //      START EXEC
                     }
                 }
                 case 3: {                                                                                                       // STATE_EXEC
-                    if( RV64CONTROL.IS_FPU ) {
-                        EXECUTEFPU.start = 1; STATE = $STATE_MULTI$;                                                            //      FPU
+                    if( DELAY ) {                                                                                               //  CHECK FOR DELAY FLAG
+                        DELAY = 0;
                     } else {
-                        if( RV64CONTROL.IS_FAST ) {
-                            STATE = $STATE_COMMIT$;                                                                             //      FAST ALU OPERATIONS
+                        if( RV64CONTROL.IS_LOAD ) {                                                                             //      START LOAD?
+                            MEMORY.start = 3b010; STATE = RV64CONTROL.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$;                  //      LOAD ONLY -> COMMIT ELSE -> MULTI FOR ATOMIC
                         } else {
-                            EXECUTESLOW.start = 1;
-                            STATE = ( RV64CONTROL.IS_CSR | RV64CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ : $STATE_COMMIT$;            //      MULTICYCLE CSR ATOMIC -> MULTI, DIVISION -> COMMIT
+                            if( RV64CONTROL.IS_FAST & RV64CONTROL.IS_STORE ) {                                                  //      START STORE?
+                                MEMORY.start = 3b100; STATE = $STATE_COMMIT$;                                                   //      STORE ONLY -> COMMIT
+                            } else {
+                                if( RV64CONTROL.IS_FPU ) {                                                                      //      START FPU?
+                                    EXECUTEFPU.start = 1; STATE = $STATE_MULTI$;                                                //      FPU
+                                } else {
+                                    if( RV64CONTROL.IS_FAST ) {                                                                 //      START ALU OR SINGLE CYCLE INSTRUCTIONS
+                                        STATE = $STATE_COMMIT$;                                                                 //      FAST AND ALU OPERATIONS
+                                    } else {
+                                        EXECUTESLOW.start = 1;                                                                  //      START CSR, ATOMIC OR DIVISION
+                                        STATE = ( RV64CONTROL.IS_CSR | RV64CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ :                //      MULTICYCLE CSR ATOMIC -> MULTI
+                                                                                                 $STATE_COMMIT$;                //      DIVISION -> COMMIT
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -240,7 +244,7 @@ unit PAWSCPU(
                     if( DMAREQ ) {                                                                                              //      CHECK FOR DMA REQUEST
                         STATE = $STATE_DMA$;
                     } else {
-                        cacheselect = 0; MEMORY.start = 3b001; DELAY = 1; STATE = $STATE_FETCH$;                                //      START FETCH OF NEXT INSTRUCTION
+                        cacheselect = 0; MEMORY.start = 3b001; STATE = $STATE_FETCH$;                                           //      START FETCH OF NEXT INSTRUCTION
                     }
                 }
             }
@@ -260,41 +264,20 @@ unit PAWSCPU(
 }
 
 unit cpuexecuteFASTPATH(
-    input   uint1   size32,
-    input   uint1   size32extend,
-    input   uint1   byteaccess,
-    input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
-    input   uint5   rs1,
-    input   uint5   rs2,
-    input   int64   sourceReg1,
-    input   int64   sourceReg2,
-    input   int64   immediateValue,
     input   int64   memoryinput,
     input   uint64  AUIPCLUI,
     input   uint$addr_width$  nextPC,
-    input   uint1   isLOAD,
     input   uint1   isAUIPCLUI,
     input   uint1   isJAL,
     input   uint1   isFENCE,
     output  int64   result,
-    input   uint1   LT,
-    input   uint1   LTU,
     output  uint2   fenceACTIVE(0)
 ) <reginputs> {
-    alu ALU(                                                                                                                    // SINGLE CYCLE INTEGER OPERATIONS
-        size32 <: size32, opCode <: opCode, function3 <: function3, function7 <: function7,
-        rs1 <: rs1, rs2 <: rs2,
-        sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2,
-        immediateValue <: immediateValue,
-        LT <: LT, LTU <: LTU
-    );
-
     result := isAUIPCLUI ? AUIPCLUI :                                                                                           // LUI AUIPC
                    isJAL ? nextPC :                                                                                             // JAL[R]
-                  isLOAD ? memoryinput :                                                                                        // INTEGER/FLOAT LOAD SIGN EXTENDED/NAN BOIXED BY LOAD UNIT
-              ( size32 & size32extend ) ? { {32{ALU.result[31,1]}}, ALU.result[0,32] } : ALU.result;                            // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
+                           memoryinput;                                                                                         // INTEGER/FLOAT LOAD SIGN EXTENDED/NAN BOIXED BY LOAD UNIT
 
     fenceACTIVE := isFENCE ? { |function7[1,2], ~function3[0,1] } : fenceACTIVE;                                                // SET FENCE ACTIVE { IO, MEM }
 }

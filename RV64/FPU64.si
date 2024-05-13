@@ -104,7 +104,7 @@ unit floatsign(                                                                 
     input   uint1   sign2F,                                                                                                     // SIGN OF REGISTER INPUT 2
     output  uint64  SIGN                                                                                                        // RESULT OF SIGN INJECTION
 ) <reginputs> {
-    uint1   SIGNBIT <:: function3[1,1] ? sign1F ^ sign2F : function3[0,1] ^ sign2F;                                             // DETERMINE SIGN FOR INJECTION XOR FOR JX OPPOSITE FOR JN COPY FOR J
+    uint1   SIGNBIT <:: function3[1,1] ? sign1F ^ sign2F : function3[0,1] ^ sign2F;                                             // DETERMINE SIGN FOR INJECTION ^ FOR JX, ~ FOR JN = FOR J
 
     SIGN := dsh[0,1] ? { SIGNBIT, sourceReg1F } :                                                                               // INJECT SIGN DOUBLE
             dsh[1,1] ? { 48hffffffffffff, SIGNBIT, sourceReg1F[0,15] } :                                                        //             HALF ( NAN boxed )
@@ -194,7 +194,7 @@ unit do_float_multiply(
     uint106 product <:: { 1b1, fp64( sourceReg1Fx ).fraction } * { 1b1, fp64( sourceReg2Fx ).fraction };                        // CALCULATE THE PRODUCT BY MUTLIPLYING LEFT ALIGNED FRACTIONS
 
     fraction := product;
-    exp := fp64( sourceReg1Fx ).exponent + fp64( sourceReg2Fx ).exponent - ( { BIAS, 1b0 } ) + product[105,1];                  // GENERATE EXP BY ADDING INPUT EXP, REMOVING BIAS(2*) AND ( +1 if overflow )
+    exp := fp64( sourceReg1Fx ).exponent + fp64( sourceReg2Fx ).exponent - ( { BIAS, 1b0 } ) + product[105,1];                  // NEW EXP BY + INPUT EXP, - BIAS(2*) AND ( +1 if overflow )
     sign := fp64( sourceReg1Fx ).sign ^ fp64( sourceReg2Fx ).sign;                                                              // SIGN FOR PRODUCT (USED FOR QUOTIENT TOO)
 }
 unit calcflag(
@@ -314,7 +314,7 @@ unit floatcalc(
         flags :> FPUnewflags                                                                                                    //  SELECTED FLAGS
     );
 
-    uint1   infSIGN <:: action[4,1] ? fusedsign : MULT.sign;                                                                    // GENERATE SIGNED INFINITY AND ZERO FOR MULT ( fused multiply ) AND DIV
+    uint1   infSIGN <:: action[4,1] ? fusedsign : MULT.sign;                                                                    // SIGNED INFINITY & ZERO FOR MULT ( fused multiply ) AND DIV
     wide_xINF xINF( sign <: infSIGN ); wide_xZERO xZERO( sign <: MULT.sign );
 
     FPUaddsub.start := 0; FPUmultiply.start := 0; FPUdivide.start := 0; FPUsqrt.start := 0; FPUfused.start := 0;                // HOLD START FLAGS AT ZERO
@@ -377,7 +377,7 @@ unit typeF(
     uint1   expFF <:: ( dsh[0,1] ? &fp64(a).exponent : dsh[1,1] ? &fp16(a).exponent : &fp32(a).exponent );                      // CHECK FOR EXP == ALL 1s ( signals INF/NAN )
     uint1   exp00 <:: ~|( dsh[0,1] ? fp64(a).exponent : dsh[1,1] ? fp16(a).exponent : fp32(a).exponent );                       // CHECK FOR EXP == ALL 0s ( signals ZERO/SUBNORMAL )
     uint1   NANboxed <:: ~dsh[0,1] & ( dsh[1,1] ? &a[16,48] : &a[32,32] );                                                      // CHECK SINGLE/HALF IS NAN BOXED
-    uint6   MSB <:: dsh[0,1] ? 51 : dsh[1,1] ? 9 : 22;                                                                          // IDENTIFY MOST SIGNIFICANT BIT TO ALLOW CHECKING BETWEEN sNAN AND qNAN
+    uint6   MSB <:: dsh[0,1] ? 51 : dsh[1,1] ? 9 : 22;                                                                          // IDENTIFY MOST SIGNIFICANT BIT TO DETERMINE sNAN OR qNAN
 
     zeroFRACTION := ( dsh[0,1] ? ~|fp64(a).fraction : dsh[1,1] ? ~|fp16(a).fraction : ~|fp32(a).fraction );                     // FRACTION == 0
 
@@ -555,7 +555,7 @@ unit doroundcombine(
     uint1 roundbit <:: ( dsh[0,1] ? bitstream[0,1] : dsh[1,1] ? bitstream[42,1] : bitstream[29,1] ) & rm;                       // EXTRACT ROUNDING BIT AND SET IF ROUNDING MODE
     make_roundmask MASK( dsh <: dsh, roundbit <: roundbit );                                                                    // MAKE ROUNDING MASK
 
-    uint53  roundedfraction <:: bitstream[1,52] + MASK.mask;                                                                    // EXTRACT 52 BITS AND ADD ON ROUNDING MASK ( 53 bits to detect overflow )
+    uint53  roundedfraction <:: bitstream[1,52] + MASK.mask;                                                                    // EXTRACT 52 BITS AND +  MASK ( 53 bits to detect overflow )
     int13   newexponent <:: BIAS + exponent + roundedfraction[52,1];                                                            // CREATE EXPONENT BY ADDING BIAS AND OVERFLOW
     uint1   expOF <:: __signed( newexponent ) > __signed( { 1b0, BIAS, 1b0 } );                                                 // OVERFLOW IF EXPONENT IS GREATER THAN ( 2 * BIAS )
     make_wide COMBINED( sign <: sign, exp <: newexponent[0,11], fraction <: roundedfraction );                                  // MAKE COMBINED RESULT IN DOUBLE BITFIELDS
@@ -564,7 +564,9 @@ unit doroundcombine(
 
     OF := expOF;
     UF := newexponent[12,1];                                                                                                    // UNDERFLOW IF EXPONENT IS STILL NEGATIVE AFTER BIAS ADDED
-    combined := newexponent[12,1] ? xZERO.value : expOF ? xINF.value : COMBINED.wide;                                           // UNDERFLOW RETURN SIGNED ZERO, OVERFLOW RETTURN SIGNED INFINITY, ELSE COMBINED
+    combined := newexponent[12,1] ? xZERO.value :                                                                               // UNDERFLOW RETURN SIGNED ZERO
+                            expOF ? xINF.value :                                                                                //  OVERFLOW RETTURN SIGNED INFINITY
+                                    COMBINED.wide;                                                                              //  ELSE COMBINED
 }
 
 // CONVERSIONS TO HANDLE FCVT.dest.source
@@ -677,9 +679,9 @@ unit changeprecision(                                                           
 
     actual_special SPECIAL( dsh <: dest[0,2], sign <: fp64( sourceReg1Fx ).sign );                                              // GENERATE xINF, sNAN, qNAN, xZERO FOR DESTINATION FORMAT
 
-    uint1   truncateOF <:: __signed(exp) > __signed( { 1b0, DBIAS, 1b0 });                                                      // CHECK IF NEW EXPONENT IS TOO LARGE ( > 2*BIAS for single/half)
-    uint1   truncateUF <:: exp[12,1];                                                                                           // CHECK IF NEW EXPONENT IS TOO SMALL ( negative for single/half )
-    uint1   NX <:: source[0,1] | ( ~|source & dest[1,1] );                                                                      // NOT EXACT IF DOUBLE -> SINGLE/HALF OR SINGLE -> HALF (need to check dropped bits)
+    uint1   truncateOF <:: __signed(exp) > __signed( { 1b0, DBIAS, 1b0 });                                                      // CHECK IF EXPONENT IS TOO LARGE ( > 2*BIAS for single/half)
+    uint1   truncateUF <:: exp[12,1];                                                                                           // CHECK IF EXPONENT IS TOO SMALL ( - for single/half )
+    uint1   NX <:: source[0,1] | ( ~|source & dest[1,1] );                                                                      // NOT EXACT IF D -> S/H OR S -> H (need to check dropped bits)
 
     FPUflags := |typeAF ? 0 : { truncateOF, truncateUF, NX };
 
@@ -960,20 +962,28 @@ unit do_float_divide(
         uint1   bitresult <:: __unsigned(temporary) >= __unsigned(sigB);
         uint108 remainderNEXT <:: __unsigned(temporary) - ( bitresult ? __unsigned(sigB) : 0 );
 
+        uint2   STATE = 1;
+            $$ STATE_FPU_DIV_WAIT = 1
+            $$ STATE_FPU_DIV_CALC = 2
+
         busy = 0; while(1) {
-            if( start ) {
-                busy = 1;
-                if( powTWO ) {                                                                                                  // DETECT DIVISION BY POWER OF 2
-                    quotient = sigA;                                                                                            //      RETURN DIVIDEND
-                } else {
-                    bit = startbit; quotient = 0; remainder = 0;                                                                // ZERO quotient and remainder SELECT STARTING BIT
-                    while( ~&bit ) {
-                        remainder = remainderNEXT;                                                                              // PERFORM BIT BY BIT LONG DIVISION
-                        quotient[ bit, 1 ] = bitresult;                                                                         // UPDATE THE QUOTIENT
-                        bit = bitNEXT;                                                                                          // MOVE TO THE NEXT BIT
+            onehot( STATE ) {
+                case 0: {
+                    if( start ) {
+                        if( powTWO ) {                                                                                                  // DETECT DIVISION BY POWER OF 2
+                            quotient = sigA;                                                                                            //      RETURN DIVIDEND
+                        } else {
+                            busy = 1; bit = startbit; quotient = 0; remainder = 0; STATE = $STATE_FPU_DIV_CALC$;
+                        }
                     }
                 }
-                busy = 0;
+                case 1: {
+                    if( ~&bit ) {
+                        remainder = remainderNEXT; quotient[ bit, 1 ] = bitresult; bit = bitNEXT;
+                    } else {
+                        busy = 0; STATE = $STATE_FPU_DIV_WAIT$;
+                    }
+                }
             }
         }
     }
@@ -1027,7 +1037,7 @@ unit floatdivide(
         switch( ACTION ) {
             case 2b00: {}                                                                                                       // DIVISION IS VALID
             case 2b01: { special = aAbZERO ? 7b0000010 : bZERO ? 7b0001000 : 7b0000001; }                                       // ZERO INPUT, NAN IF BOTH ZERO, INF IF B ZERO, ZERO IF A ZERO
-            default: { special = NV ? 7b0000010 : ( aZERO | bINF ) ? 7b0000001 : 7b0001000; }                                   // qNAN IF INVALID, ZERO IF A IS ZERO OR B IS INF, INF IF INF / OTHER
+            default: { special = NV ? 7b0000010 : ( aZERO | bINF ) ? 7b0000001 : 7b0001000; }                                   // qNAN IF INVALID, 0 IF A IS 0 OR B IS INF, INF IF INF / OTHER
         }
     } }
 }
@@ -1088,23 +1098,32 @@ unit do_float_sqrt(
         uint6   i = uninitialised;
         uint6   iNEXT <:: i - 1;
 
+        uint2   STATE = 1;
+
         busy = 0; while(1) {
-            if( start ) {
-                busy = 1;
-                if( powTWO ) {
-                    squareroot = expODD ? 54h2D413CCCFE7799 : 1;                                                                // DETECT POWER OF 2 SQUARE ROOT, RETURN ROOT 2 / 1 IF EXP ODD / EVEN
-                } else {
-                    i = startbit; squareroot = 0; ac = start_ac; x = start_x;                                                   // SELECT STARTING BIT ( counter for number of bits to process )
-                    while( ~&i ) {                                                                                              // GO THROUGH ALL BITS FOR PRECISION SELECTED
+            onehot( STATE ) {
+                case 0: {
+                    if( start ) {
+                        if( powTWO ) {
+                            squareroot = expODD ? 54h2D413CCCFE7799 : 1;                                                                // DETECT POWER OF 2 SQUARE ROOT, RETURN ROOT 2 / 1 IF EXP ODD / EVEN
+                        } else {
+                            busy = 1; i = startbit; squareroot = 0; ac = start_ac; x = start_x;                                                   // SELECT STARTING BIT ( counter for number of bits to process )
+                            STATE = 2;
+                        }
+                    }
+                }
+                case 1: {
+                    if( ~&i ) {
                         ac = { test_res[107,1] ? ac[0,105] : test_res[0,105], x[104,2] };                                       // FIND NEW ACCUMULATOR
                         squareroot = { squareroot[0,53], ~test_res[107,1] };                                                    // ADD NEXT BIT TO SQUAREROOT ( shift in from right )
                         x = { x[0,104], 2b00 };                                                                                 // MOVE 2 PLACES ALONG REMAINING FRACTION
                         i = iNEXT;                                                                                              // MOVE TO NEXT BIT
+                    } else {
+                        busy = 0; STATE = 1;
                     }
                 }
-                busy = 0;
             }
-    }
+        }
     }
 }
 unit floatsqrt(

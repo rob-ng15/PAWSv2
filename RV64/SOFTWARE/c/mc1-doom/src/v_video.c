@@ -266,8 +266,8 @@ static void V_DrawPatchInternal (int x,
             const byte* src = (byte*)column + 3;
             byte* dst = desttop + column->topdelta * SCREENWIDTH;
             int count = column->length;
-            paws_memcpy_step( dst, src, count, SCREENWIDTH, 1 );
-//            for (int v = 0; v < count; ++v) { *dst = *src++; dst += SCREENWIDTH; }
+//            paws_memcpy_step( dst, src, count, SCREENWIDTH, 1 );
+            for (int v = 0; v < count; ++v) { *dst = *src++; dst += SCREENWIDTH; }
             column = (column_t*)((byte*)column + column->length + 4);
         }
     }

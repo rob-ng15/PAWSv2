@@ -186,6 +186,7 @@ unit aludecode(
     output  uint1   doadduw,
     output  uint1   doalt,
     output  uint1   dobclrext,
+    output  uint1   docond,
     output  uint1   dobrev,
     output  uint1   docount,
     output  uint1   dobinv,
@@ -208,6 +209,7 @@ unit aludecode(
     doalt := regreg & ( function7 == 7b0100000 );                                                                               // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
     dobclrext := ( function7[1,6] == 6b010010 );                                                                                // BCLR BCLRI BEXT BEXTI
     dobrev := ~regreg & ( function7 == 7b0110100 );                                                                             // BREV8
+    docond := regreg & ( function7 == 7b0000111 );                                                                              // ZICOND czero.eq or czero.nez
     docount := ~regreg & f7E0110000 & ~rs2[2,1];                                                                                // CLZ CPOP CTZ ( immediate only )
     dobinv := ( function7[1,6] == 6b011010 );                                                                                   // BINV BINVI
     dominmax := regreg & ( function7 == 7b0000101 );                                                                            // MAX MAXU MIN MINU ( register - register only )
@@ -238,6 +240,8 @@ unit alu(
 ) <reginputs> {
     uint6   shiftcount <:: opCode[3,1] ? ( size32 ? sourceReg2[0,5] : sourceReg2[0,6] ) : { function7[0,1], rs2 };              // EXTRACT SHIFT COUNT FOR SHIFTS AND ROTATES
     uint64  operand2 <:: opCode[3,1] ? sourceReg2 : immediateValue;                                                             // REG AND REG, OR REG AND IMMEDIATE
+    uint1   zero_reg1 <:: ~|sourceReg1;
+    uint1   zero_reg2 <:: ~|sourceReg2;
 
     // DECODE THE ALU OPERATION
     aludecode AD( size32 <: size32, regreg <: opCode[3,1], function7 <: function7, function3 <: function3, rs2 <: rs2 );
@@ -260,11 +264,26 @@ unit alu(
             case 3b000: { result = AD.domul ? MULT.mult : ADDSUB.addsub; }
             case 3b001: { result = AD.domul ? MULT.mult : AD.dosignx ? EXTENDS.result : AD.docount ? COUNT.result : AD.dobclrext ? BITS.CLR : AD.dobinv ? BITS.INV : AD.dobset ? BITS.SET : AD.dorotate ? SHIFTS.ROTATE : SHIFTS.SLL; }
             case 3b010: { result = AD.domul ? MULT.mult : AD.doshxadd ? ADDSUB.addsub : LT; }
-            case 3b011: { result = AD.domul ? MULT.mult : opCode[3,1] ? ( ~|rs1 ) ? ( |operand2 ) : LTU : ( operand2 == 1 ) ? ( ~|sourceReg1 ) : LTU; }
+            case 3b011: { result = AD.domul ? MULT.mult : opCode[3,1] ? ( ~|rs1 ) ? ( |operand2 ) : LTU : ( operand2 == 1 ) ? ( zero_reg1 ) : LTU; }
             case 3b100: { result = AD.dominmax ? MINMAX.result : AD.doshxadd ? ADDSUB.addsub : AD.dopack ? PACK.pack : LOGIC.XOR; }
-            case 3b101: { result = AD.doorc ? ORC.ORC : AD.dorev ? REV.REV8 : AD.dobrev ? BREV.BREV8 : AD.dominmax ? MINMAX.result : AD.dobclrext ? BITS.EXT : AD.dorotate ? SHIFTS.ROTATE : AD.dosra ? SHIFTS.SRA : SHIFTS.SRL; }
+            case 3b101: {
+                result = AD.doorc ? ORC.ORC :
+                         AD.dorev ? REV.REV8 :
+                        AD.dobrev ? BREV.BREV8 :
+                      AD.dominmax ? MINMAX.result :
+                     AD.dobclrext ? BITS.EXT :
+                        AD.docond ? zero_reg2 ? 0 : sourceReg1 :
+                      AD.dorotate ? SHIFTS.ROTATE :
+                         AD.dosra ? SHIFTS.SRA :
+                                    SHIFTS.SRL;
+            }
             case 3b110: { result = AD.dominmax ? MINMAX.result : AD.doshxadd ? ADDSUB.addsub : LOGIC.OR; }
-            case 3b111: { result = AD.dominmax ? MINMAX.result : AD.dopack ? PACK.packh : LOGIC.AND; }
+            case 3b111: {
+                result = AD.dominmax ? MINMAX.result :
+                           AD.dopack ? PACK.packh :
+                           AD.docond ? zero_reg2 ? sourceReg1 : 0 :
+                                       LOGIC.AND;
+            }
         }
     } }
 }
@@ -286,15 +305,20 @@ unit dointegerdivide(
         uint1   bitresult <:: __unsigned(temporary) >= __unsigned(divisor);
         uint64  remainderNEXT <:: __unsigned(temporary) - ( bitresult ? __unsigned(divisor) : 0 );
 
+        uint2   STATE = 1;
+            $$ STATE_INT_DIV_WAIT = 1
+            $$ STATE_INT_DIV_CALC = 2
+
         busy = 0; while(1) {
-            if( start ) {
-                busy = 1; bit = startingbit; quotient = 0; remainder = 0;
-                while( ~&bit ) {
-                    remainder = remainderNEXT;
-                    quotient[ bit, 1 ] = bitresult;
-                    bit = bitNEXT;
+            onehot( STATE ) {
+                case 0: { if( start ) { busy = 1; bit = startingbit; quotient = 0; remainder = 0; STATE = $STATE_INT_DIV_CALC$; } }
+                case 1: {
+                    if( ~&bit ) {
+                        remainder = remainderNEXT; quotient[ bit, 1 ] = bitresult; bit = bitNEXT;
+                    } else {
+                        busy = 0; STATE = $STATE_INT_DIV_WAIT$;
+                    }
                 }
-                busy = 0;
             }
         }
     }

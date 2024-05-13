@@ -291,7 +291,7 @@ void gpu_outputstring( unsigned char colour, short x, short y, char *s, unsigned
 }
 void gpu_outputstringcentre( unsigned char colour, short y, char *s, unsigned char size ) {
     gpu_rectangle( TRANSPARENT, 0, y, 319, y + ( 8 << size ) - 1 );
-    gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1) , y, s, 0 );
+    gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1), y, s, 0 );
 }
 // SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as is halfed by dma engine)
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
