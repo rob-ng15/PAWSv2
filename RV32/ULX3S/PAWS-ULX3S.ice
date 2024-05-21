@@ -1,9 +1,13 @@
 // DEFINE I/O CLOCKS
 $$ uart_in_clock_freq_mhz = 50
 
+// ADDRESS WIDTH OF THE SDRAM ( 26 bits is 32Mb )
+// CHIP SELECT is done by readflag/writeflag
+$$ sdram_addr_width = 26
+
 // REGISTER AND MEMORY BUS DEFINITIONS
 $$ reg_width = 32
-$$ addr_width = 27
+$$ addr_width = sdram_addr_width + 1
 
 // NuCU COPPER BACKGROUND PROCESSOR DEFINITIONS
 // blocks number of program entries, mem number of memory registers, stack number of rstack and dstack entries
@@ -13,36 +17,33 @@ $$ NUCUaddr = clog2(NUCUblocks)
 $$ NUCUmem = 8
 $$ NUCUmemaddr = clog2(NUCUmem)
 $$ NUCUstack = 8
+$$ NUCUstackaddr = clog2(NUCUstack)
+
+// PCM AUDIO SAMPLES BUFFER SIZE
+$$ PCM = 32768
 
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 
 // L0 CACHE SIZES FOR HART ID 0 AND 1
-// MAX size is 64 due to bram limits ( 32 is 1k )
-// size and blocks must be a power of 2
-$$ L0Isize = 32
-$$ L0Icacheaddrwidth = clog2(L0Isize)
-
+// 256 is 1k
+// blocks must be a power of 2
 // HART 0 - MAIN
-$$ L00Iblocks = 8
+$$ L00Iblocks = 1024
 $$ L00Icount = clog2(L00Iblocks)
-$$ L00Ipartaddresswidth = addr_width - 1 - L00Icount - L0Icacheaddrwidth
-$$ L00Ipartaddressstart = 1 + L00Icount + L0Icacheaddrwidth
-bitfield L00cacheI{ uint$L00Ipartaddresswidth$ tag, uint30 instruction, uint1 compressed, uint1 valid }
+$$ L00Ipartaddresswidth = addr_width - 1 - L00Icount
+$$ L00Ipartaddressstart = 1 + L00Icount
+bitfield L00cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
 
 // HART 1 - SMT
-$$ L01Iblocks = 2
+$$ L01Iblocks = 32
 $$ L01Icount = clog2(L01Iblocks)
-$$ L01Ipartaddresswidth = addr_width - 1 - L01Icount - L0Icacheaddrwidth
-$$ L01Ipartaddressstart = 1 + L01Icount + L0Icacheaddrwidth
-bitfield L01cacheI{ uint$L01Ipartaddresswidth$ tag, uint30 instruction, uint1 compressed, uint1 valid }
+$$ L01Ipartaddresswidth = addr_width - 1 - L01Icount
+$$ L01Ipartaddressstart = 1 + L01Icount
+bitfield L01cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
 
 // SDRAM CACHE DEFINITIONS
 
-// ADDRESS WIDTH OF THE SDRAM ( 26 bits is 32Mb )
-// CHIP SELECT is done by readflag/writeflag
-$$ sdram_addr_width = 26
-
-// CACHES SIZES - L1 2 x L1size for DATA
+// CACHES SIZES - L1 2 x L1size for SDRAM CACHE
 $$if VERILATOR then
 $$ L1size = 128
 $$else
@@ -96,7 +97,6 @@ $include('../bitmap.si')
 $include('../GPU.si')
 $include('../character_map.si')
 $include('../sprite_layer.si')
-$include('../terminal.si')
 $include('../tile_map.si')
 $include('../multiplex_display.si')
 $include('../common/audio_pwm.si')
@@ -113,7 +113,8 @@ $include('../FPU64.si')
 $include('../CPU.si')
 
 // MAIN PAWS.si
-$include('../caches.si')
+$include('../DMA.si')
+$include('../MEMORY.si')
 $include('../PAWS.si')
 
 // I2C (EMARD FOR RTC)

@@ -529,8 +529,9 @@ void smtthread( void ) {
 int main( void ) {
     unsigned int i, j, x, y, selectedfile = 0;
 
-    // STOP SMT AND PIXELBLOCK
+    // STOP SMT, PIXELBLOCK AND AUDIO DMA
     SMTSTOP(); *PB_STOP = *PB_MODE = 0;
+    *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_R_STATUS = 1;
 
     // CLEAR BSS MEMORY AND DEFINE HEAPEND AND ALLOCATE FAT32 MEMORY
     memset( &_bss_start, 0, &_bss_end - &_bss_start );

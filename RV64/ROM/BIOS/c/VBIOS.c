@@ -453,7 +453,9 @@ void draw_paws_logo( void ) {
     gpu_blit( UK_GOLD, 2, 2, 3, 2 );
 }
 
-void reset_display( void ) {
+void reset_system( void ) {
+    *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_R_STATUS = 1;
+
     *GPU_DITHERMODE = 0;
     *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
     *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1;
@@ -465,6 +467,21 @@ void reset_display( void ) {
         LOWER_SPRITE_ACTIVE[i] = 0;
         UPPER_SPRITE_ACTIVE[i] = 0;
     }
+}
+
+void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
+    *AUDIO_WAVEFORM = waveform;
+    *AUDIO_FREQUENCY = note;
+    *AUDIO_DURATION = duration;
+    *AUDIO_START = channel_number;
+}
+
+// PCM SAMPLES UPLOAD
+void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples ) {
+    beep( channel_number, 0, 0, 0 );
+
+    if( channel_number & 1 ) { *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_L_BASE = (unsigned int)samples; *AUDIO_DMA_L_LENGTH = count; *AUDIO_DMA_L_REPEAT = 0; *AUDIO_DMA_L_STATUS = 2; }
+    if( channel_number & 2 ) { *AUDIO_DMA_R_STATUS = 1; *AUDIO_DMA_R_BASE = (unsigned int)samples; *AUDIO_DMA_R_LENGTH = count; *AUDIO_DMA_R_REPEAT = 0; *AUDIO_DMA_R_STATUS = 2; }
 }
 
 // SMT START STOP
@@ -519,18 +536,17 @@ void main( void ) {
     unsigned int isa;
     unsigned short i,j = 0, x, y;
 
-    // STOP SMT
+    // STOP SMT, RESET THE SYSTEM, ZERO THE VARIABLE SPACE
     *SMTSTATUS = 0;
-
-    // CLEAR MEMORY
     memset( &_bss_start, 0, &_bss_end - &_bss_start );
+    reset_system();
 
-    // RESET THE DISPLAY
-    reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
+    pcmsample_upload( 1, 2048, ghost_bitmap );
+    beep( 1, 6, 1, 1000 );
 
-    // SETUP INITIAL WELCOME MESSAGE
+    // SET THE DISPLAY
+    set_background( UK_BLUE, UK_GOLD, 1 );
     draw_paws_logo();
-
     gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 70, 34, "Risc-V RV64GC+ CPU", 0 );
 

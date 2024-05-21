@@ -1,7 +1,30 @@
 bitfield  cmentry{
+    uint5   attributes,
     uint8   background,
     uint8   foreground,
-    uint9   character
+    uint8   character
+}
+
+unit characterrom512(
+    input   uint1   cursor_blink,
+    input   uint8   character,
+    input   uint3   x,
+    input   uint3   y,
+    input   uint5   attribute,
+    input   uint1   double_right,
+    input   uint1   double_bottom,
+    output! uint1   pixel
+) <reginputs> {
+    brom uint8 characterGenerator8x8[4096] =  {
+        $include('ROM/FONTS/CODE437-THINBOLD.inc')
+        ,pad(uninitialized)
+    };
+
+    // Setup the reading of the characterGenerator8x8 ROM
+    characterGenerator8x8.addr := { attribute[0,1], character, attribute[2,1] ? { double_bottom, y[1,2] } : y };
+    pixel := attribute[3,1] & ~cursor_blink ? 0 :
+             attribute[4,1] & |character & ( ( attribute[2,1] ? { double_bottom, y[1,2] } : y ) == 7 ) ? 1 :
+             characterGenerator8x8.rdata[ attribute[1,1] ? ~{ double_right, x[1,2] } : ~x, 1 ];
 }
 
 unit character_map(
@@ -23,19 +46,23 @@ unit character_map(
     input   uint8   tpu_background,
     input   uint1   tpu_showcursor
 ) <reginputs> {
-    characterrom512 CGROM <@clockCG> ( tile <: cmentry(charactermap.rdata0).character, y <: pix_y[0,3] );                       // Character ROM 8x8 512 characters, 256 normal, 256 bold
+    characterrom512 CGROM <@clockCG> (                                                                                          // Character ROM 8x8 512 characters, 256 normal, 256 bold
+        cursor_blink <: blink,
+        character <: cmentry(charactermap.rdata0).character,
+        attribute <: cmentry(charactermap.rdata0).attributes,
+        x <: pix_x[0,3],
+        y <: pix_y[0,3],
+        double_right <: pix_x1[3,1],
+        double_bottom <: pix_y[3,1]
+    );
 
-    charactermap.addr0 := pix_x1[3,7] + 80 * pix_y[3,6]; charactermap.wenable0 := 0;
+    uint1   is_cursor <:: tpu_showcursor & blink & ( cursor_x == ( pix_x[3,7] ) ) & ( cursor_y == pix_y[3,6] );                 // Is current coordinate the cursor coordinate, cursor visible?
 
-    always_after {
-        uint1   characterpixel = CGROM.line[ ~pix_x[0,3], 1 ];                                                                  // Present pixel
-        uint1   is_cursor = tpu_showcursor & blink & ( cursor_x == ( pix_x[3,7] ) ) & ( cursor_y == pix_y[3,6] );               // Is current coordinate the cursor coordinate, and is cursor visible this cycle
-
-        character_map_display = pix_active & ( characterpixel | ( cmentry(charactermap.rdata0).background != 64 ) | is_cursor );
-        pixel = is_cursor ? characterpixel ? tpu_background : tpu_foreground :                                                  // IF CURSOR, INVERT PIXEL
-                            characterpixel ? cmentry(charactermap.rdata0).foreground :                                          // IF PIXEL, FOREGROUND
-                                             cmentry(charactermap.rdata0).background;                                           // ELSE BACKGROUND
-    }
+    charactermap.addr0 := pix_x1[3,7] + 80 * pix_y[3,6];
+    character_map_display := pix_active & ( CGROM.pixel | ( cmentry(charactermap.rdata0).background != 64 ) | is_cursor );
+    pixel := is_cursor ? CGROM.pixel ? tpu_background : tpu_foreground :                                                     // IF CURSOR, INVERT PIXEL
+                         CGROM.pixel ? cmentry(charactermap.rdata0).foreground :                                             // IF PIXEL, FOREGROUND
+                                       cmentry(charactermap.rdata0).background;                                              // ELSE BACKGROUND
 }
 
 unit cmcursorx(
@@ -43,18 +70,14 @@ unit cmcursorx(
     output  uint7   NEXT,
     output  uint1   ATLAST
 ) <reginputs> {
-    always_after {
-        ATLAST = ( tpu_active_x == 79 );
-        NEXT = tpu_active_x + 1;
-    }
+    ATLAST := ( tpu_active_x == 79 );
+    NEXT := tpu_active_x + 1;
 }
 unit cmcursory(
     input   uint6   tpu_active_y,
     output  uint6   NEXT,
 ) <reginputs> {
-    always_after {
-        NEXT = ( tpu_active_y == 59 ) ? 0 : tpu_active_y + 1;
-    }
+        NEXT := ( tpu_active_y == 59 ) ? 0 : tpu_active_y + 1;
 }
 unit cmaddresses(
     input   uint7   tpu_active_x,
@@ -64,27 +87,26 @@ unit cmaddresses(
     output  uint13  YSTARTADDR,
     output  uint13  YENDADDR
 ) <reginputs> {
-    always_after {
-        WRITEADDR = tpu_active_x + tpu_active_y * 80;
-        YSTARTADDR = tpu_y * 80;
-        YENDADDR = YSTARTADDR + 80;
-    }
+    WRITEADDR := tpu_active_x + tpu_active_y * 80;
+    YSTARTADDR := tpu_y * 80;
+    YENDADDR := YSTARTADDR + 80;
 }
 
 unit character_map_writer(
     dualport_bram_port1 charactermap,
 
-    input!  uint13  memoryAddressDirect,                                                                                        // CPU MEMORY ADDRESS
+    input   uint13  memoryAddressDirect,                                                                                        // CPU MEMORY ADDRESS
     input   uint1   memoryWriteDirect,                                                                                          // CPU WRITE FLAG
-    input   uint25  writeDataDirect,                                                                                            // CPU WRITE DATA
-    output! uint25  readDataDirect,                                                                                             // CPU READ DATA
+    input   uint29  writeDataDirect,                                                                                            // CPU WRITE DATA
+    output! uint29  readDataDirect,                                                                                             // CPU READ DATA
 
     // TPU to SET characters, background, foreground
     input   uint7   tpu_x,
     input   uint6   tpu_y,
-    input   uint9   tpu_character,
+    input   uint8   tpu_character,
     input   uint8   tpu_foreground,
     input   uint8   tpu_background,
+    input   uint5   tpu_attributes,
     input   uint2   tpu_write,
 
     output  uint7   cursor_x,
@@ -95,16 +117,14 @@ unit character_map_writer(
 
     charactermap.addr1 := memoryWriteDirect ? memoryAddressDirect : TPUA.WRITEADDR;                                             // SET ADDRESS AS TPU ADDRESS FOR WRITE OR CPU ADDRESS
     charactermap.wdata1 := memoryWriteDirect ? writeDataDirect :                                                                // WRITE CPU INPUT DIRECT
-                           { tpu_background, tpu_foreground, tpu_character };                                                   // VIA TPU OUTPUT
+                            { tpu_attributes, tpu_background, tpu_foreground, tpu_character };                                  // VIA TPU OUTPUT
+    charactermap.wenable1 := memoryWriteDirect | tpu_write[1,1];
 
-    charactermap.wenable1 := memoryWriteDirect;
-
-    always_after {
+    algorithm <autorun> { while(1) {
         switch( tpu_write ) {
             default: {}
             case 1: { ( cursor_x, cursor_y ) = copycoordinates( tpu_x, tpu_y ); }                                               // Set cursor position
             case 2: {                                                                                                           // Write character,foreground, background and move
-                charactermap.wenable1 = 1;
                 if( TPUX.ATLAST ) {
                     cursor_x = 0; cursor_y = TPUY.NEXT;
                 } else {
@@ -112,5 +132,5 @@ unit character_map_writer(
                 }
             }
         }
-    }
+    } }
 }

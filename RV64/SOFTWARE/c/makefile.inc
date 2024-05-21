@@ -3,6 +3,7 @@ IS_APPLE := $(shell echo $(OS)|grep -i darwin)
 
 everything: all
 
+NLARCH=riscv64
 ARCH=riscv64-unknown
 AR=$(ARCH)-elf-ar
 CC=$(ARCH)-elf-gcc
@@ -21,7 +22,7 @@ ifndef CFLAGSEXTRA
 CFLAGSEXTRA=
 endif
 ifndef INCLUDEEXTRA
-INCLUDEEXTRA=
+INCLUDEEXTRA=/usr/riscv64-elf/include/
 endif
 
 CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcd_zfh_zicond_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -mno-strict-align
@@ -43,8 +44,8 @@ LCONFIG=-Wl,-T../config_c_SDRAM.ld
 PAWSBASE=../
 INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I$(INCLUDEEXTRA) -I/usr/$(ARCH)-elf/include/
 
-LIBRARY=	/usr/$(ARCH)-elf/lib/rv64imafdc/lp64d/libc.a \
-		/usr/$(ARCH)-elf/lib/rv64imafdc/lp64d/libm.a \
+LIBRARY=	/usr/$(NLARCH)-elf/lib/rv64imafdc/lp64d/libc.a \
+		/usr/$(NLARCH)-elf/lib/rv64imafdc/lp64d/libm.a \
 		/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/libgcc.a \
 		/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/crtbegin.o \
 		/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/crtend.o
@@ -76,7 +77,7 @@ LIBPAWS= $(LIBPAWSOBJ) $(PAWSPS2OBJ) $(NANOJPEGOBJ) $(FATIOLIBOBJ)
 PRJSRC=
 
 $(LIBPAWSOBJ) : $(LIBPAWSSOURCE) $(CRT0OBJ)
-	$(CC) $(CFLAGS) -c $(PAWSBASE)library/PAWSlibrary.c -o $@
+	$(CC) $(CFLAGS) $(INCLUDE) -c $(PAWSBASE)library/PAWSlibrary.c -o $@
 
 $(PAWSPS2OBJ) : $(PAWSPS2SOURCE)
 	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
@@ -85,14 +86,14 @@ $(NANOJPEGOBJ) : $(NANOJPEGSOURCE)
 	$(CC) $(CFLAGS) $(INCLUDE) -c $< -o $@
 
 $(FATIOLIBOBJ) : $(FATIOLIBSOURCE)
-	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_filelib.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o
-	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_access.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_access.o
-	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_table.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_table.o
-	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_write.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_write.o
-	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_misc.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_misc.o
-	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_string.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_string.o
-	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_cache.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_cache.o
-	$(CC) $(CFLAGS) -c $(PAWSBASE)library/fat_io_lib/fat_format.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_format.o
+	$(CC) $(CFLAGS) -I$(INCLUDEEXTRA) -c $(PAWSBASE)library/fat_io_lib/fat_filelib.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_filelib.o
+	$(CC) $(CFLAGS) -I$(INCLUDEEXTRA) -c $(PAWSBASE)library/fat_io_lib/fat_access.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_access.o
+	$(CC) $(CFLAGS) -I$(INCLUDEEXTRA) -c $(PAWSBASE)library/fat_io_lib/fat_table.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_table.o
+	$(CC) $(CFLAGS) -I$(INCLUDEEXTRA) -c $(PAWSBASE)library/fat_io_lib/fat_write.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_write.o
+	$(CC) $(CFLAGS) -I$(INCLUDEEXTRA) -c $(PAWSBASE)library/fat_io_lib/fat_misc.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_misc.o
+	$(CC) $(CFLAGS) -I$(INCLUDEEXTRA) -c $(PAWSBASE)library/fat_io_lib/fat_string.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_string.o
+	$(CC) $(CFLAGS) -I$(INCLUDEEXTRA) -c $(PAWSBASE)library/fat_io_lib/fat_cache.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_cache.o
+	$(CC) $(CFLAGS) -I$(INCLUDEEXTRA) -c $(PAWSBASE)library/fat_io_lib/fat_format.c -o $(PAWSBASE)library/$(BUILD_DIR)/fat_format.o
 
 $(CRT0OBJ) : $(CRT0SOURCE)
 	$(CC) $(CFLAGS) -c $< -o $@

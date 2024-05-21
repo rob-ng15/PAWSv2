@@ -13,6 +13,7 @@ unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf102;
 
 // SDCARD
 unsigned char volatile *SDCARD_READY = (unsigned char volatile *) 0xf400;
+unsigned char volatile *SDCARD_ERROR = (unsigned char volatile *) 0xf401;
 unsigned char volatile *SDCARD_READSTART = (unsigned char volatile *) 0xf400;
 unsigned char volatile *SDCARD_WRITESTART = (unsigned char volatile *) 0xf402;
 unsigned int volatile *SDCARD_SECTOR = (unsigned int *) 0xf404;
@@ -134,11 +135,12 @@ unsigned char volatile *UPPER_SPRITE_WRITER_COLOUR = (unsigned char volatile *) 
 
 unsigned char volatile *TPU_X = (unsigned char volatile *) 0xd500;
 unsigned char volatile *TPU_Y = (unsigned char volatile *) 0xd502;
-unsigned short volatile *TPU_CHARACTER = (unsigned short volatile *) 0xd504;
+unsigned char volatile *TPU_CHARACTER = (unsigned char volatile *) 0xd504;
 unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd506;
 unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd508;
 unsigned char volatile *TPU_COMMIT = (unsigned char volatile *) 0xd50a;
 unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd50c;
+unsigned char volatile *TPU_ATTRIBUTES = (unsigned char volatile *) 0xd50e;
 
 unsigned char volatile *AUDIO_WAVEFORM = (unsigned char volatile *) 0xe000;
 unsigned char volatile *AUDIO_FREQUENCY = (unsigned char volatile *) 0xe002;
@@ -177,7 +179,7 @@ unsigned int volatile *DMASET32 = (unsigned int volatile *) 0xfd0c;
 unsigned int volatile *DMASOURCE = (unsigned int volatile *) 0xfe00;
 unsigned int volatile *DMADEST = (unsigned int volatile *) 0xfe04;
 unsigned int volatile *DMACOUNT = (unsigned int volatile *) 0xfe08;
-unsigned char volatile *DMAMODE = (unsigned char volatile *) 0xfe0c;
+unsigned short volatile *DMAMODE = (unsigned short volatile *) 0xfe0c;
 unsigned char volatile *DMASET = (unsigned char volatile *) 0xfe0e;
 unsigned int volatile *DMASETRGB = (unsigned int volatile *) 0xfe0c;
 
@@ -252,6 +254,11 @@ typedef struct {
     unsigned short boot_sector_signature;
 } __attribute((packed)) Fat32VolumeID;
 
+union fname {
+    unsigned char string[8];
+    long sortvalue;
+};
+
 typedef struct {
     unsigned char   filename[8];
     unsigned char   ext[3];
@@ -265,7 +272,7 @@ typedef struct {
 } __attribute((packed)) FAT32DirectoryEntry;
 
 typedef struct {
-    unsigned char   filename[8];
+    union fname     filename;
     unsigned char   ext[3];
     unsigned char   type;
     unsigned int    starting_cluster;
@@ -370,51 +377,14 @@ typedef struct {
 #define CU_RR 0
 #define CU_RL 1
 
- // MISCELLANEOUS USEFUL INTRINSICS
-static inline int _rv32_mulh(int rs1, int rs2) { int rd; __asm__ ("mulh   %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_mulhsu(int rs1, int rs2) { int rd; __asm__ ("mulhsu  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_mulhu(int rs1, int rs2) { int rd; __asm__ ("mulhu  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-
-// BIT MANIPULATION INSTRUCTIONS INTRINSICS (Zba Zbb Zbc Zbs)
-static inline int _rv32_andn(int rs1, int rs2) { int rd; __asm__ ("andn %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_orn(int rs1, int rs2) { int rd; __asm__ ("orn %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_xnor(int rs1, int rs2) { int rd; __asm__ ("xnor %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-
-static inline int _rv32_clz(int rs1) { int rd; __asm__ ("clz     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-static inline int _rv32_ctz(int rs1) { int rd; __asm__ ("ctz     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-static inline int _rv32_cpop(int rs1) { int rd; __asm__ ("cpop    %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-
-static inline int _rv32_sext_b(int rs1) { int rd; __asm__ ("sext.b  %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-static inline int _rv32_sext_h(int rs1) { int rd; __asm__ ("sext.h  %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-static inline int _rv32_zext_h(int rs1) { int rd; __asm__ ("zext.h  %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-
-static inline int _rv32_min(int rs1, int rs2) { int rd; __asm__ ("min  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_minu(int rs1, int rs2) { int rd; __asm__ ("minu %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_max(int rs1, int rs2) { int rd; __asm__ ("max  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_maxu(int rs1, int rs2) { int rd; __asm__ ("maxu %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-
-static inline int _rv32_bset(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("bseti %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 & rs2)); else __asm__ ("bset %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_bclr(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("bclri %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 & rs2)); else __asm__ ("bclr %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_binv(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("binvi %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 & rs2)); else __asm__ ("binv %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_bext(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("bexti %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 & rs2)); else __asm__ ("bext %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-
-static inline int _rv32_rol(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_ror(int rs1, int rs2) { int rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(31 &  rs2)); else __asm__ ("ror     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-
-static inline int _rv32_rev8(int rs1)  { int rd; __asm__ ("rev8     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-static inline int _rv32_orc_b(int rs1)  { int rd; __asm__ ("orc.b     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-
-static inline int _rv32_clmul(int rs1, int rs2) { int rd; __asm__ ("clmul   %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_clmulh(int rs1, int rs2) { int rd; __asm__ ("clmulh  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_clmulr(int rs1, int rs2) { int rd; __asm__ ("clmulr  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-
-static inline int _rv32_sh1add(int rs1, int rs2) { int rd; __asm__ ("sh1add %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_sh2add(int rs1, int rs2) { int rd; __asm__ ("sh2add %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_sh3add(int rs1, int rs2) { int rd; __asm__ ("sh3add %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-
-// SCALAR CRYPTO BIT MANIPULATION INTRINSICS (Zbkb)
-static inline int _rv32_brev8(int rs1) { int rd; __asm__ ("brev8     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-static inline int _rv32_pack(int rs1, int rs2) { int rd; __asm__ ("pack  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_packh(int rs1, int rs2) { int rd; __asm__ ("packh  %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline int _rv32_unzip(int rs1) { int rd; __asm__ ("unzip     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
-static inline int _rv32_zip(int rs1) { int rd; __asm__ ("zip     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+// DMA TRANSFER PROTOCOLS
+#define DMA_SET_TO_S    0x10
+#define DMA_SET_TO_M    0x12
+#define DMA_CPY_S_TO_S  0x20
+#define DMA_CPY_M_TO_S  0x21
+#define DMA_CPY_S_TO_M  0x22
+#define DMA_CPY_M_TO_M  0x23
+#define DMA_CPY_STEP_SD 0x27
+#define DMA_TO_IO       0x100
+#define DMA_FROM_IO     0x101
+#define DMA_PB_RGB      0x200

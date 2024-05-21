@@ -251,13 +251,9 @@ void wavesample_upload( unsigned char channel_number, unsigned char *samples ) {
 // PCM SAMPLES UPLOAD
 void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples ) {
     beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_PCMSAMPLE = channel_number; *DMASET = 0;
-    if( channel_number & 1 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_LEFT_PCMSAMPLE, *AUDIO_PCM_LENGTH, DMA_SET_TO_S ); }
-    if( channel_number & 2 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, *AUDIO_PCM_LENGTH, DMA_SET_TO_S );}
 
-    *AUDIO_NEW_PCMSAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_PCMSAMPLE, count, DMA_TO_IO ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, count, DMA_TO_IO ); }
+    if( channel_number & 1 ) { *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_L_BASE = (unsigned int)samples; *AUDIO_DMA_L_LENGTH = count; *AUDIO_DMA_L_REPEAT = 0; *AUDIO_DMA_L_STATUS = 2; }
+    if( channel_number & 2 ) { *AUDIO_DMA_R_STATUS = 1; *AUDIO_DMA_R_BASE = (unsigned int)samples; *AUDIO_DMA_R_LENGTH = count; *AUDIO_DMA_R_REPEAT = 0; *AUDIO_DMA_R_STATUS = 2; }
 }
 
 // SDCARD FUNCTIONS
@@ -1969,7 +1965,7 @@ unsigned int paws_sleep( unsigned int seconds ) {
     return(0);
 }
 
-int paws_select(int nfds, fd_set *restrict readfds, fd_set *restrict writefds, fd_set *restrict exceptfds, struct timeval *restrict timeout) {
+unsigned int paws_select(int nfds, fd_set *restrict readfds, fd_set *restrict writefds, fd_set *restrict exceptfds, struct timeval *restrict timeout) {
     return(0);
 }
 

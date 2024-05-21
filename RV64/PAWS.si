@@ -128,10 +128,10 @@ $$else
     );
 $$end
 
-    uint2   ACCESSSIZE <:: DMA_NEW.ACTIVE ? DMA_NEW.ACCESSSIZE : CPU.accesssize;                                                // SELECT ACTIVE BUS, DMA OR CPU    MEMORY ACCESSSIZE
-    uint$addr_width$ ADDRESS <:: DMA_NEW.ACTIVE ? DMA_NEW.ADDRESS : CPU.address;                                                //                                  ADDRESS
+    uint2   ACCESSSIZE <:: DMA_NEW.ACTIVE ? DMA_NEW.ACCESSSIZE : DMA_AUDIO.ACTIVE ? 2b10 : CPU.accesssize;                      // SELECT ACTIVE BUS, DMA OR CPU    MEMORY ACCESSSIZE
+    uint$addr_width$ ADDRESS <:: DMA_NEW.ACTIVE ? DMA_NEW.ADDRESS : DMA_AUDIO.ACTIVE ? DMA_AUDIO.ADDRESS : CPU.address;         //                                  ADDRESS
     uint32  WRITEDATA <:: DMA_NEW.ACTIVE ? DMA_NEW.WRITEDATA : CPU.writedata;                                                   //                                  WRITEDATA
-    uint1   READFLAG <:: CPU.readmemory | DMA_NEW.READFLAG;                                                                     //                                  READFLAG
+    uint1   READFLAG <:: CPU.readmemory | DMA_NEW.READFLAG | DMA_AUDIO.READFLAG;                                                //                                  READFLAG
     uint1   WRITEFLAG <:: CPU.writememory | DMA_NEW.WRITEFLAG;                                                                  //                                  WRITEFLAG
 
     uint$addr_width$  address2 <:: ADDRESS + 2;                                                                                 // CPU ADDRESS PLUS 2 ( second 16 bits of 32 bits )
@@ -223,7 +223,9 @@ $$end
         writeData <: WRITEDATA,
         audio_l :> audio_l,
         audio_r :> audio_r,
-        static8bit <: TIMERS_Map.static16bit[0,8]
+        static8bit <: TIMERS_Map.static16bit[0,8],
+        L_SAMPLE <: DMA_AUDIO.L_AUDIO_DMA_SAMPLE,
+        R_SAMPLE <:  DMA_AUDIO.R_AUDIO_DMA_SAMPLE
     );
 
     video_memmap VIDEO_Map <@clock_system,!reset> (                                                                             // VIDEO REGISTERS AND MEMORY CONTROLLERS
@@ -260,8 +262,7 @@ $$end
 
     uint1   MEMORYBUSY <:: DRAM.busy |                                                                                          // CPU MEMORY BUSY FLAG FROM    SDRAM
                            ( ( READFLAG | WRITEFLAG ) & SDRAM ) |                                                               //                              SDRAM READ/WRITE REQUEST
-                           ( READFLAG & ( BRAM ) );                                                 //                              BRAM BITMAP CMAP READ REQUEST
-//                           ( READFLAG & ( BITMAPDIRECT | BRAM | CMAPDIRECT ) );                                                 //                              BRAM BUITMAP CMAP READ REQUEST
+                           ( READFLAG & ( BRAM ) );                                                                             //                              BRAM READ REQUEST
     uint32  READDATA <:: SDRAM ? DRAM.readdata :                                                                                // READ FROM SDRAM
                          BITMAPDIRECT ? VIDEO_Map.BITMAPreadDataDirect :                                                        // READ FROM FRAMEBUFFERS
                          CMAPDIRECT ? VIDEO_Map.CMAPreadDataDirect :                                                            // READ FROM CHARACTERMAP
@@ -279,8 +280,8 @@ $$end
         readdata <: READDATA,
         SMTRUNNING <: IO_Map.SMTRUNNING,                                                                                        //  SMT CONTROL FROM I/O
         SMTSTARTPC <: IO_Map.SMTSTARTPC[0,27],
-        DMAREQ <: DMAREQ,
-        DMAACTIVE <: DMA_NEW.ACTIVE
+        DMAREQ <: DMAREQ, DMA_AUDIO_REQ <: DMA_AUDIO.REQUEST,
+        DMAACTIVE <: DMA_NEW.ACTIVE, DMA_AUDIO_ACTIVE <: DMA_AUDIO.ACTIVE
      );
 
     dma_new DMA_NEW <@clock_cpu,!reset> (                                                                                       // MINI DMA CONTROLLER
@@ -295,6 +296,24 @@ $$end
         DMACYCLES <: IO_Map.DMACYCLES,
         DMAMODE <: IO_Map.DMAMODE,
         DMASET <: IO_Map.DMASET
+    );
+
+    dma_digital_audio DMA_AUDIO <@clock_cpu,!reset> (
+        START <: CPU.DMA_AUDIO_START,
+        MEMORYBUSY <: MEMORYBUSY,                                                                                               //  MEMORY BUSY FLAG
+        READDATA <: READDATA,                                                                                                   //  READ RESULT
+
+        L_AUDIO_UPDATE <: AUDIO_Map.L_UPDATE,
+        L_AUDIO_DMA_STATUS <: AUDIO_Map.L_AUDIO_DMA_STATUS,
+        L_AUDIO_DMA_BASE <: AUDIO_Map.L_AUDIO_DMA_BASE,
+        L_AUDIO_DMA_LENGTH <: AUDIO_Map.L_AUDIO_DMA_LENGTH,
+        L_AUDIO_DMA_REPEAT <: AUDIO_Map.L_AUDIO_DMA_REPEAT,
+
+        R_AUDIO_UPDATE <: AUDIO_Map.R_UPDATE,
+        R_AUDIO_DMA_STATUS <: AUDIO_Map.R_AUDIO_DMA_STATUS,
+        R_AUDIO_DMA_BASE <: AUDIO_Map.R_AUDIO_DMA_BASE,
+        R_AUDIO_DMA_LENGTH <: AUDIO_Map.R_AUDIO_DMA_LENGTH,
+        R_AUDIO_DMA_REPEAT <: AUDIO_Map.R_AUDIO_DMA_REPEAT
     );
 
     DRAM.readflag := SDRAM & READFLAG; DRAM.writeflag := SDRAM & WRITEFLAG;                                                     // SDRAM REQUESTS

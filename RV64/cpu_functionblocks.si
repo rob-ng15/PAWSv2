@@ -19,6 +19,7 @@ unit control(
     output  uint64  immediateValue,
     output  uint1   IS_AUIPCLUI,
     output  uint1   IS_JAL,
+    output  uint1   IS_BRANCH,
     output  uint1   IS_CSR,
     output  uint1   IS_ATOMIC,
     output  uint1   IS_FPU,
@@ -28,6 +29,7 @@ unit control(
     output  uint1   IS_ALU,
     output  uint1   IS_FAST,
     output  uint1   IS_FASTFPU,
+    output  uint1   IS_FPUCONVERT,
     output  uint1   IS_ALU32,
     output  uint1   IS_ALU32SIGNX,
 
@@ -45,18 +47,25 @@ unit control(
     output  uint1   writeRegister,
 
     // REGISTER COMPARISONS
-    output  uint1   LT,
-    output  uint1   LTU,
-    output  uint1   EQ,
+    output  uint4   COMPARISONS,
 
     // ADDRESS GENERATION
     output  uint64  AUIPCLUI,
-    output  uint$addr_width$  loadAddress,
+    output! uint$addr_width$  loadAddress,
     output  uint$addr_width$  storeAddress,
     output  uint1   IS_MA,
     output  uint$addr_width$  nextPC,
     output  uint$addr_width$  newPC
 ) <reginputs> {
+    simple_dualport_bram int64 I1[64] = { 0, pad(uninitialized) };                                                              // 32 MAIN, 32 SMT INTEGER REGISTERS - sourceReg1
+    simple_dualport_bram int64 I2[64] = { 0, pad(uninitialized) };                                                              // 32 MAIN, 32 SMT INTEGER REGISTERS - sourceReg2
+
+    uint1   Iwrite <:: write & ~frd & |Rtype(instruction).destReg;                                                              // INTEGER REGISTER WRITE SWITCH
+    regR I1R( SMT <: SMT, regfile <:> I1, addr0 <: Rtype(instruction).sourceReg1, rdata0 :> sourceReg1 );                       // INTEGER REGISTERS - sourceReg1 - READ
+    regR I2R( SMT <: SMT, regfile <:> I2, addr0 <: Rtype(instruction).sourceReg2, rdata0 :> sourceReg2 );                       // INTEGER REGISTERS - sourceReg2 - READ
+    regW I1W( SMT <: COMMIT_SMT, regfile <:> I1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );   // INTEGER REGISTERS - sourceReg1 - WRITE
+    regW I2W( SMT <: COMMIT_SMT, regfile <:> I2, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );   // INTEGER REGISTERS - sourceReg2 - WRITE
+
     // INSTRUCTION CLASSIFICATION AND CPU CONTROL FLAGS
     controlflags FLAGS(
         opCode <: Rtype(instruction).opCode[2,5],
@@ -64,6 +73,7 @@ unit control(
         function7 <: Rtype(instruction).function7,
         IS_AUIPCLUI :> IS_AUIPCLUI,
         IS_JAL :> IS_JAL,
+        IS_BRANCH :> IS_BRANCH,
         IS_CSR :> IS_CSR,
         IS_ATOMIC :> IS_ATOMIC,
         IS_LOAD :> IS_LOAD,
@@ -76,14 +86,15 @@ unit control(
         IS_ALU32 :> IS_ALU32,
         IS_ALU32SIGNX :> IS_ALU32SIGNX,
         IS_FAST :> IS_FAST,
-        IS_FASTFPU :> IS_FASTFPU
+        IS_FASTFPU :> IS_FASTFPU,
+        IS_FPUCONVERT :> IS_FPUCONVERT
     );
 
     // DETERMINE MEMORY ACCESS FLAGS
     memsize MEMACCESSFLAGS(
         cacheselect <: cacheselect,
         function3 <: Rtype(instruction).function3[0,2],
-        I1R <: I1R.rdata0[0,1],
+        I1R <: I1.rdata0[0,1],
         I20 <: instruction[20,1],
         I7 <: instruction[7,1],
         IS_ATOMIC <: FLAGS.IS_ATOMIC,
@@ -95,39 +106,23 @@ unit control(
     );
 
     // ADDRESS GENERATORS
-    loadaddress LA( instruction <: instruction, IS_ATOMIC <: FLAGS.IS_ATOMIC, I1R <: I1R.rdata0, loadAddress :> loadAddress );
+    loadaddress LA( instruction <: instruction, IS_ATOMIC <: FLAGS.IS_ATOMIC, I1R <: I1.rdata0, loadAddress :> loadAddress );
     storeaddress SA( instruction <: instruction, IS_ATOMIC <: FLAGS.IS_ATOMIC, I1R <: I1R.rdata0, storeAddress :> storeAddress );
     jumpaddress JA( instruction <: instruction, IS_BRANCH <: FLAGS.IS_BRANCH, PC <: PC );
     auipclui AUI( instruction <: instruction, PC <: PC, AUIPCLUI :> AUIPCLUI );
     incpc INCPC( PC <: PC, compressed <: compressed, nextPC :> nextPC );
 
-    simple_dualport_bram int64 I1[64] = { 0, pad(uninitialized) };                                                              // 32 MAIN, 32 SMT INTEGER REGISTERS - sourceReg1
-    simple_dualport_bram int64 I2[64] = { 0, pad(uninitialized) };                                                              // 32 MAIN, 32 SMT INTEGER REGISTERS - sourceReg2
+    abs3264 S1_abs( sourceReg <: I1R.rdata0, abs32 :> S1_abs32, abs64 :> S1_abs64 );                                             // ABSOLUTE VALUES OF sourceReg1
+    abs3264 S2_abs( sourceReg <: I2R.rdata0, abs32 :> S2_abs32, abs64 :> S2_abs64 );                                             // ABSOLUTE VALUES OF sourceReg2
 
-    uint1   Iwrite <:: write & ~frd & |Rtype(instruction).destReg;                                                              // INTEGER REGISTER WRITE SWITCH
-    regR I1R( SMT <: SMT, regfile <:> I1, addr0 <: Rtype(instruction).sourceReg1, rdata0 :> sourceReg1 );                       // INTEGER REGISTERS - sourceReg1 - READ
-    regR I2R( SMT <: SMT, regfile <:> I2, addr0 <: Rtype(instruction).sourceReg2, rdata0 :> sourceReg2 );                       // INTEGER REGISTERS - sourceReg2 - READ
-    regW I1W( SMT <: COMMIT_SMT, regfile <:> I1, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );   // INTEGER REGISTERS - sourceReg1 - WRITE
-    regW I2W( SMT <: COMMIT_SMT, regfile <:> I2, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Iwrite );   // INTEGER REGISTERS - sourceReg2 - WRITE
-
-    abs3264 S1_abs( sourceReg <: I1R.rdata0, abs32 :> S1_abs32, abs64 :> S1_abs64 );                                            // ABSOLUTE VALUES OF sourceReg1
-    abs3264 S2_abs( sourceReg <: I2R.rdata0, abs32 :> S2_abs32, abs64 :> S2_abs64 );                                            // ABSOLUTE VALUES OF sourceReg2
-
-    int64   operand2 <:: instruction[5,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate };             // REGISTER OR IMMEDIATE FOR COMPARISONS
-    uint4   flags <:: { COMPARE.LTU, COMPARE.LT, 1b0, COMPARE.EQ };                                                             // COMPARISON RESULT { LESS UNSIGNED, LESS SIGNED, 0, EQUAL }
-    integercomparisons COMPARE(                                                                                                 // GENERATE INTEGER COMPARISONS
-        sourceReg1 <: I1R.rdata0,
-        operand2 <: operand2,
-        LT :> LT,
-        LTU :> LTU,
-        EQ :> EQ
-    );
+    uint64  operand2 <:: instruction[5,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate };              // REGISTER OR IMMEDIATE FOR COMPARISONS
+    integercomparisons COMPARE( sourceReg1 <: I1R.rdata0, operand2 <: operand2, FLAGS :> COMPARISONS );                          // GENERATE INTEGER COMPARISONS
 
     opCode := instruction[2,5]; function3 := Rtype(instruction).function3; function7 := Rtype(instruction).function7;           // EXTRACT BITFIELDS FROM INSTRUCTION
     immediateValue := { {52{instruction[31,1]}}, Itype(instruction).immediate };                                                // EXTRACT AND SIGN EXTEND IMMEDIATE VALUE FROM INSTRUCTION
     rs1 := Rtype(instruction).sourceReg1; rs2 := Rtype(instruction).sourceReg2;                                                 // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
 
-    newPC := FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).function3[0,1] ^ flags[ Rtype(instruction).function3[1,2], 1 ] ) ? JA.jumpAddress : INCPC.nextPC ) :
+    newPC := FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).function3[0,1] ^ COMPARE.FLAGS[ Rtype(instruction).function3[1,2], 1 ] ) ? JA.jumpAddress : INCPC.nextPC ) :
                            ( instruction[3,1] ? JA.jumpAddress : LA.loadAddress );
 }
 
@@ -177,14 +172,14 @@ unit float_control(
     // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
     typeF class1F( dsh <: Rtype(instruction).function7[0,2], a <: F1.rdata0, zeroFRACTION :> aZEROFRACTION, type :> typeAF );  // CLASSIFY A FOR { INF, sNAN, qNAN, ZERO }, EXPORT ZEROFRACTION FLAG
     typeF class2F( dsh <: Rtype(instruction).function7[0,2], a <: F2.rdata0, zeroFRACTION :> bZEROFRACTION, type :> typeBF );  // CLASSIFY B FOR { INF, sNAN, qNAN, ZERO }, EXPORT ZEROFRACTION FLAG
-    typeF class3F( dsh <: Rtype(instruction).function7[0,2], a <: F3R.rdata0, type :> typeCF );                                 // CLASSIFY C FOR { INF, sNAN, qNAN, ZERO }
+    typeF class3F( dsh <: Rtype(instruction).function7[0,2], a <: F3.rdata0, type :> typeCF );                                 // CLASSIFY C FOR { INF, sNAN, qNAN, ZERO }
 
-    typeF class1Fopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, type :> typeAopp );                           // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
-    repackage_wide Aopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, repack :> sourceReg1Fxopp );               // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION FOR changeprecision
+    typeF class1Fopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1.rdata0, type :> typeAopp );                           // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
+    repackage_wide Aopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1.rdata0, repack :> sourceReg1Fxopp );               // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION FOR changeprecision
 
     repackage_wide A( dsh <: Rtype(instruction).function7[0,2], a <: F1.rdata0, repack :> sourceReg1Fx );                      // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
     repackage_wide B( dsh <: Rtype(instruction).function7[0,2], a <: F2.rdata0, repack :> sourceReg2Fx );                      // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
-    repackage_wide C( dsh <: Rtype(instruction).function7[0,2], a <: F3R.rdata0, repack :> sourceReg3Fx );                      // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
+    repackage_wide C( dsh <: Rtype(instruction).function7[0,2], a <: F3.rdata0, repack :> sourceReg3Fx );                      // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
 
     floatcompare FPUcompare(                                                                                                    // FLOATING POINT COMPARISONS
         a <: A.repack, b <: B.repack,                                                                                           // PASS REPACKED VALUES TO COMPARE
@@ -214,8 +209,8 @@ unit memsize(
     output  uint1   IS_MEM64,
     output  uint2   accesssize
 ) <reginputs> {
-    accesssize := cacheselect ? IS_MA ? 2b00 : function3 : 2b10;                                                                // DETERMINE MEMORY ACCESS SIZE - INSTRUCTION (cacheselect == 0) 32
-                                                                                                                                // ELSE BY function3 ( IS_MA AS BYTES )
+    accesssize := cacheselect ? IS_MA ? 2b00 : function3 : 2b10;                                                                // DETERMINE MEMORY ACCESS SIZE - FETCH (cacheselect == 0) 32
+                                                                                                                                //  ELSE BY function3 ( IS_MA AS BYTES )
     IS_MA := ~IS_ATOMIC & |function3 & (                                                                                        // ATOMIC OPERATIONS CANNOT BE MISALIGNED
             ( IS_LOAD & ( I20 ^ I1R ) ) |                                                                                       // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
             ( IS_STORE & ( I7 ^ I1R ) ) );                                                                                      // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
@@ -226,7 +221,7 @@ unit memsize(
 unit loadaddress(
     input   uint32  instruction,
     input   uint1   IS_ATOMIC,
-    output  uint$addr_width$  loadAddress,
+    output! uint$addr_width$  loadAddress,
     input   uint64  I1R
 ) <reginputs> {
     loadAddress := ( IS_ATOMIC ? 0 : { {52{instruction[31,1]}}, Itype(instruction).immediate } ) + I1R;
@@ -314,18 +309,19 @@ unit controlflags(
     output  uint1   IS_ALU,
     output  uint1   IS_FAST,
     output  uint1   IS_FASTFPU,
+    output  uint1   IS_FPUCONVERT,
     output  uint1   IS_ALU32,
     output  uint1   IS_ALU32SIGNX
 ) <reginputs> {
-    writeRegisterF := 0; writeRegister := 1; incPC := 1; IS_FAST := 1;                                                          // DEFAULT TO SINGLE-CYCLE, WRITE INTEGER REGISTER AND INCREMENT PC
+    writeRegisterF := 0; writeRegister := 1; incPC := 1; IS_FAST := 1;                                                          // DEFAULT TO SINGLE-CYCLE, WRITE INT REGISTER AND INCREMENT PC
     IS_ALU := 0; IS_ALU32 := 0; IS_ALU32SIGNX := 1;                                                                             // ALU DETECTED FLAGS, DEFAULT TO 32-BIT SIGN EXTENSION
     IS_AUIPCLUI := 0; IS_JAL := 0; IS_BRANCH := 0; IS_CSR := 0; IS_ATOMIC := 0; IS_LOAD := 0; IS_STORE := 0; IS_FENCE := 0;     // NON-ALU/FPU INSTRUCTION DETECTED FLAGS
-    IS_FPU := 0; IS_FASTFPU := 0;                                                                                               // FLOATING-POINT UNIT DETECTION FLAGS
+    IS_FPU := 0; IS_FASTFPU := 0; IS_FPUCONVERT := 0;                                                                           // FLOATING-POINT UNIT DETECTION FLAGS
 
     algorithm <autorun> {
         uint1   f7E0000001 <:: ( function7 == 7b0000001 );                                                                      // DETECT MULTIPLICATION / DIVISION EXTENSION
-        uint1   f7N0000100 <:: ( function7 != 7b0000100 );
-        uint1   f7N0010000 <:: ( function7 != 7b0010000 );
+        uint1   f7N0000100 <:: ( function7 != 7b0000100 );                                                                      // DETECT ADD.UW
+        uint1   f7N0010000 <:: ( function7 != 7b0010000 );                                                                      // DETECT SHxADD.UW
 
         while(1) {
             switch( opCode ) {                                                                                                  // DETERMINE CPU CONTROL FLAGS BY OPCODE
@@ -360,7 +356,11 @@ unit controlflags(
                     }
                 }
                 case 5b01011: { IS_ATOMIC = 1; IS_FAST = 0; }                                                                   // LR.W SC.W ATOMIC LOAD - MODIFY - STORE
-                case 5b10100: { IS_FPU = 1; IS_FAST = 0; IS_FASTFPU = function7[4,1] | &function7[5,2]; }                       // NON-FUSED FPU ( FAST NOT ADD SUB MUL DIV SQRT )
+                case 5b10100: {                                                                                                 // NON-FUSED FPU
+                    IS_FPU = 1; IS_FAST = 0;
+                    IS_FASTFPU = function7[4,1] | &function7[5,2];                                                              // ( FAST NOT ADD SUB MUL DIV SQRT )
+                    IS_FPUCONVERT = ( function7[2,5] == 5b11000 ) | ( function7[2,5] == 5b11010 ) | ( function7[2,5] == 5b01000 );
+                }
                 default: { IS_FPU = 1; IS_FAST = 0; }                                                                           // FUSED-FPU
             }
         }
@@ -370,7 +370,7 @@ unit controlflags(
 // COMPRESSED INSTRUCTION EXPANSION
 unit compressed00(
     input   uint14  i16,
-    output!  uint28  i32                                                                                                         // { 00 xxxxxxxxxxxxxxxxxxxxxxxxxxxx 11 }
+    output! uint28  i32                                                                                                         // { 00 xxxxxxxxxxxxxxxxxxxxxxxxxxxx 11 }
 ) {
     algorithm <autorun> { while(1) {
         switch( CBalu(i16).function3 ) {
@@ -436,7 +436,7 @@ unit compressed00(
 }
 unit compressed01(
     input   uint14  i16,
-    output!  uint30  i32
+    output! uint30  i32
 ) {
     algorithm <autorun> { while(1) {
         if( CBalu(i16).function3[2,1] ) {
@@ -579,7 +579,7 @@ unit compressed01(
 }
 unit compressed10(
     input   uint14  i16,
-    output!  uint27  i32                                                                                                         // { 000 xxxxxxxxxxxxxxxxxxxxxxxxxxx 11 }
+    output! uint27  i32                                                                                                         // { 000 xxxxxxxxxxxxxxxxxxxxxxxxxxx 11 }
 ) {
     algorithm <autorun> { while(1) {
         switch( CBalu(i16).function3 ) {
