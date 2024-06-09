@@ -24,7 +24,7 @@ void* operator new(size_t size) {
 extern unsigned int volatile *DMASOURCE;
 extern unsigned int volatile *DMADEST;
 extern unsigned int volatile *DMACOUNT;
-extern unsigned char volatile *DMAMODE;
+extern unsigned short volatile *DMAMODE;
 extern unsigned char volatile *DMASET;
 
 void cpp_DMASTART( void *source, void *destination, unsigned int count, unsigned short mode ) {

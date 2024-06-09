@@ -28,7 +28,7 @@ $$ PCM = 65535
 // 256 is 1k
 // blocks must be a power of 2
 // HART 0 - MAIN
-$$ L00Iblocks = 2048
+$$ L00Iblocks = 4096
 $$ L00Icount = clog2(L00Iblocks)
 $$ L00Ipartaddresswidth = addr_width - 1 - L00Icount
 $$ L00Ipartaddressstart = 1 + L00Icount

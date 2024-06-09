@@ -90,3 +90,8 @@ unsigned int __wrap___builtin_bswap32(unsigned int a) {
 unsigned long __wrap___builtin_bswap64(unsigned long a) {
     return( _rv64_rev8( a ) );
 }
+
+void __wrap___assert_fail( const char *__assertion, const char *file, unsigned int __line, const char *__function ) __THROW __attribute__ ((__noreturn__));
+void __wrap___assert_fail( const char *__assertion, const char *file, unsigned int __line, const char *__function ) {
+    uart_outputstring( __assertion ); uart_outputstring( __function );
+}

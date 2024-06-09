@@ -107,7 +107,7 @@ unit PAWSCPU(
         opCode <: RV64CONTROL.opCode,
         function3 <: RV64CONTROL.function3,
         function7 <: RV64CONTROL.function7,
-        rs2 <: RV64CONTROL.rs2,
+        rs1 <: RV64CONTROL.rs1, rs2 <: RV64CONTROL.rs2,
         sourceReg1 <: RV64CONTROL.sourceReg1, S1_abs32 <: RV64CONTROL.S1_abs32, S1_abs64 <: RV64CONTROL.S1_abs64,
         sourceReg1F <: RV64CONTROLF.sourceReg1F, sourceReg1Fx <: RV64CONTROLF.sourceReg1Fx, sourceReg1Fxopp <: RV64CONTROLF.sourceReg1Fxopp, typeAF <: RV64CONTROLF.typeAF, typeAopp <: RV64CONTROLF.typeAopp,
         sourceReg2F <: RV64CONTROLF.sourceReg2F, sourceReg2Fx <: RV64CONTROLF.sourceReg2Fx, typeBF <: RV64CONTROLF.typeBF,
@@ -382,6 +382,7 @@ unit cpuexecuteFPU(
     input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
+    input   uint5   rs1,
     input   uint5   rs2,
     input   int64   sourceReg1,
     input   uint32  S1_abs32,
@@ -419,15 +420,16 @@ unit cpuexecuteFPU(
     uint3   converttype <:: {
                                 ( function7[2,5] == 5b11000 ),                                                                  // FD2IL
                                 ( function7[2,5] == 5b11010 ),                                                                  // IL2FD
-                                ( function7[2,5] == 5b01000 )                                                                   // CHANGE PRECISION HSD <-> HSD
+                                ( function7[2,5] == 5b01000 )                                                                   // CHANGE PRECISION HSD <-> HSD, FROUND IF RS2[2,1]
                             };
-    uint1   fpufast <:: isFASTFPU | isFPUCONVERT;                                                                                 // SINGLE CYCLE OR CONVERSION DETECTION
+    uint1   fpufast <:: isFASTFPU | isFPUCONVERT;                                                                               // SINGLE CYCLE OR CONVERSION DETECTION
     uint1   fpucalc <:: ~fpufast;                                                                                               // CALCULATION DETECTION
-    uint3   operation <:: { fpucalc, isFPUCONVERT, fpufast & ~isFPUCONVERT };                                                       // PRESENT INSTRUCTION ROUTE
+    uint3   operation <:: { fpucalc, isFPUCONVERT, fpufast & ~isFPUCONVERT };                                                   // PRESENT INSTRUCTION ROUTE
 
     fpuSINGLECYCLE FPUFAST(                                                                                                     // FLOATING POINT SINGLE CYCLE OPERATIONS
         dsh <: function7[0,2],
         function3 <: function3[0,2], function7 <: function7[2,5],
+        rs1 <: rs1, rs2 <: rs2,
         sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
         sign1F <: fp64( sourceReg1Fx ).sign, sign2F <: fp64( sourceReg2Fx ).sign,
         typeAF <: typeAF, typeBF <: typeBF,
@@ -436,7 +438,7 @@ unit cpuexecuteFPU(
         FLT <: FLT, FEQ <: FEQ
     );
 
-    uint1   rm <:: ( &FPUflags[5,3] ? function3 : FPUflags[5,3] ) != 3b001;                                                     // SET ROUNDING FLAG ( RNE, RTZ SUPPORTED ), FCSR UNLESS 111
+    uint2   rm <:: &FPUflags[5,3] ? function3[0,2] : FPUflags[5,2];                                                             // SET ROUNDING FLAG, FCSR UNLESS 111
     floatcalc FPUCALC(                                                                                                          // FLOATING POINT CALCULATIONS CONTROLLER
         rm <: rm, dsh <: function7[0,2],                                                                                        //  RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
         BIAS <: BIAS,
@@ -448,18 +450,21 @@ unit cpuexecuteFPU(
     );
     repackage_actual CALCRESULT( dsh <: function7[0,2], a <: FPUCALC.result );                                                  // REPACKAGE CALCULATION RESULT INTO CORRECT BITFIELDS
 
-    uint1   convertrm <:: ( function3 != 3b001 );                                                                               // SET ROUNDING FLAG FOR CONVERSIONS ( always uses function3 )
     intlong2float FPUIL2F(                                                                                                      // INTEGER TO FLOATING-POINT CONVERSION
-        rm <: convertrm, dounsigned <: rs2[0,1], il <: rs2[1,1], dsh <: function7[0,2], BIAS <: BIAS,                           //  FLAGS ROUNDING, UNSIGNED, 32/64-BIT, HALF/SINGLE/DOUBLE
+        rm <: function3[0,2], dounsigned <: rs2[0,1], il <: rs2[1,1], dsh <: function7[0,2], BIAS <: BIAS,                      //  FLAGS ROUNDING, UNSIGNED, 32/64-BIT, HALF/SINGLE/DOUBLE
         sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64
     );
     float2intlong FPUF2IL(                                                                                                      // FLOTING-POINT TO INTEGER CONVERSION
-        rm <: convertrm, dounsigned <: rs2[0,1], il <: rs2[1,1], BIAS <: BIAS,                                                  //  FLAGS ROUNDING, UNSIGNED, 32/64-BIT
+        rm <: function3[0,2], dounsigned <: rs2[0,1], domod <: rs2[3,1], il <: rs2[1,1], BIAS <: BIAS,                          //  FLAGS ROUNDING, UNSIGNED, MODULAR CONVERTR, 32/64-BIT
         sourceReg1Fx <: sourceReg1Fx, typeAF <: typeAF
     );
-    changeprecision FPUF_CP(                                                                                                    // FLOATING-POINT CHANGE PRECISION
-        dest <: function7[0,2], DBIAS <: BIAS, source <: rs2[0,2], SBIAS <: SBIAS,                                              //  FLAGS DESTINATION PRECISION, SOUCRE PRECISION
+    floatchangeprecision FPUF_CP(                                                                                               // FLOATING-POINT CHANGE PRECISION
+        rm <: function3[0,2], dest <: function7[0,2], DBIAS <: BIAS, source <: rs2[0,2], SBIAS <: SBIAS,                        //  FLAGS ROUNDING, DESTINATION PRECISION, SOUCRE PRECISION
         sourceReg1Fx <: sourceReg1Fxopp, typeAF <: typeAopp
+    );
+    floatround FPUROUND(                                                                                                        // FLOATING-POINT ROUND ROUNDNX
+        rm <: function3[0,2], dsh <: function7[0,2], nx <: rs2[0,1], BIAS <: BIAS,                                              //  FLAGS ROUNDING, HALF/SINGLE/DOUBLE, NX
+        sourceReg1F <:sourceReg1F, sourceReg1Fx <:sourceReg1Fx, typeAF <: typeAF
     );
 
     FPUCALC.start := fpucalc & start; CSRupdateFPUflags := 0;                                                                   // START FLAGS AND UPDATE CSR
@@ -475,7 +480,7 @@ unit cpuexecuteFPU(
                 case 0: {
                     if( start ) {                                                                                               // START FPU OPERATION
                         onehot( operation ) {
-                            default: { CSRupdateFPUflags = 1; }                                                                 //  CONVERSION OR SINGLE-CYCLE OPERATION
+                            default: { CSRupdateFPUflags = 1; }                                                                 //  CONVERSION/ROUNDING OR SINGLE-CYCLE OPERATION
                             case 2: { busy = 1; STATE = $STATE_FPU_CALC$; }                                                     //  CALCULATION
                         }
                     }
@@ -490,13 +495,13 @@ unit cpuexecuteFPU(
             result = operation[0,1] ? FPUFAST.result :                                                                          // COLLECT THE APPROPRIATE RESULT
                      operation[1,1] ? converttype[2,1] ? FPUF2IL.result :
                                       converttype[1,1] ? FPUIL2F.result :
-                                                         FPUF_CP.result :
+                                                         rs2[2,1] ? FPUROUND.result : FPUF_CP.result :
                                       CALCRESULT.repack;
-            frd = isFPUCONVERT ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd;                                               // WRITE TO F REGISTERS FLAG
+            frd = isFPUCONVERT ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd;                                             // WRITE TO F REGISTERS FLAG
             FPUnewflags = FPUflags | (                                                                                          // MERGE OLD AND NEW FLAGS
                                         isFPUCONVERT ? converttype[2,1] ? FPUF2IL.FPUflags :
-                                                     converttype[1,1] ? FPUIL2F.FPUflags :
-                                                                        FPUF_CP.FPUflags :
+                                                       converttype[1,1] ? FPUIL2F.FPUflags :
+                                                                          rs2[2,1] ? FPUROUND.FPUflags : FPUF_CP.FPUflags :
                                         fpucalc ? FPUCALC.FPUnewflags :
                                                   FPUFAST.FPUnewflags
                                      );

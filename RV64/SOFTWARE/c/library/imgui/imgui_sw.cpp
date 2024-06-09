@@ -20,7 +20,7 @@ extern unsigned int volatile *DMASOURCE;
 extern unsigned int volatile *DMADEST;
 extern unsigned int volatile *DMACOUNT;
 extern unsigned short volatile *DMAMODE;
-extern unsigned int volatile *DMASET;
+extern unsigned char volatile *DMASET;
 extern unsigned int volatile *DMASET32;
 #define DMA_SET_RECT    0x40
 

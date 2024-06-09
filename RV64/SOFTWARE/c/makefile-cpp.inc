@@ -3,6 +3,7 @@ IS_APPLE := $(shell echo $(OS)|grep -i darwin)
 
 everything: all
 
+NLARCH=riscv64
 ARCH=riscv64
 AR=$(ARCH)-elf-ar
 CC=$(ARCH)-elf-gcc
@@ -11,10 +12,10 @@ LD=$(ARCH)-elf-ld.bfd
 NM=$(ARCH)--elf-nm
 RANLIB=$(ARCH)--elf-ranlib
 
-GCCVER=12.2.0
+GCCVER=14.1.0
 COMPILER=$(CC)
 
-BUILD_DIR=build
+BUILD_DIR=build_lto
 OUTPUT_DIR=../../PAWS/
 
 ifndef CFLAGSEXTRA
@@ -24,10 +25,10 @@ ifndef INCLUDEEXTRA
 INCLUDEEXTRA=
 endif
 
-CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zfh_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -mno-strict-align
+CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcd_zfa_zfh_zicond_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -mno-strict-align
 
-CFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
-CXXFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib
+CFLAGS=-O2 $(CPUOPTS) -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib $(CFLAGSEXTRA)
+CXXFLAGS=-O2 $(CPUOPTS) -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,-melf64lriscv -Wl,-belf64-littleriscv
 	-Wl,--wrap=memcpy -Wl,--wrap=memset \
 	-Wl,--wrap=__clzsi2 -Wl,--wrap=__clzdi2 \

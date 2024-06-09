@@ -875,7 +875,7 @@ void Host_Init (quakeparms_t *parms)
 	SV_Init ();
 
 	Con_Printf ("Exe: "__TIME__" "__DATE__"\n");
-	Con_Printf ("%4.1f megabyte heap\n",parms->memsize/ (1024*1024.0));
+	//Con_Printf ("%4.1f megabyte heap\n",parms->memsize/ (1024*1024.0));
 
 	R_InitTextures ();		// needed even for dedicated servers
 
@@ -893,13 +893,13 @@ void Host_Init (quakeparms_t *parms)
 #endif
 		VID_Init (host_basepal);
 
-		Draw_Init ();
-		SCR_Init ();
-		R_Init ();
+		Draw_Init (); Sys_Printf("Draw_Init");
+		SCR_Init (); Sys_Printf("SCR_Init");
+		R_Init (); Sys_Printf("R_Init");
 #ifndef	_WIN32
 	// on Win32, sound initialization has to come before video initialization, so we
 	// can put up a popup if the sound hardware is in use
-		S_Init ();
+		S_Init (); Sys_Printf("S_Init");
 #else
 
 #ifdef	GLQUAKE
@@ -908,9 +908,9 @@ void Host_Init (quakeparms_t *parms)
 #endif
 
 #endif	// _WIN32
-		CDAudio_Init ();
-		Sbar_Init ();
-		CL_Init ();
+		CDAudio_Init (); Sys_Printf("CDAudio_Init");
+		Sbar_Init (); Sys_Printf("Sbar_Init");
+		CL_Init (); Sys_Printf("CL_Init");
 #ifdef _WIN32 // on non win32, mouse comes before video for security reasons
 		IN_Init ();
 #endif

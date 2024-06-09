@@ -206,7 +206,7 @@ void	VID_UnlockBuffer (void);
 #define	MAX_SCOREBOARD		16
 #define	MAX_SCOREBOARDNAME	32
 
-#define	SOUND_CHANNELS		8
+#define	SOUND_CHANNELS		2
 
 // This makes anyone on id's net privileged
 // Use for multiplayer testing only - VERY dangerous!!!

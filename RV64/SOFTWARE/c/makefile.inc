@@ -4,7 +4,7 @@ IS_APPLE := $(shell echo $(OS)|grep -i darwin)
 everything: all
 
 NLARCH=riscv64
-ARCH=riscv64-unknown
+ARCH=riscv64
 AR=$(ARCH)-elf-ar
 CC=$(ARCH)-elf-gcc
 CXX=$(ARCH)-elf-g++
@@ -12,7 +12,7 @@ LD=$(ARCH)-elf-ld.bfd
 NM=$(ARCH)--elf-nm
 RANLIB=$(ARCH)--elf-ranlib
 
-GCCVER=13.2.0
+GCCVER=14.1.0
 COMPILER=$(CC)
 
 BUILD_DIR=build
@@ -25,7 +25,7 @@ ifndef INCLUDEEXTRA
 INCLUDEEXTRA=/usr/riscv64-elf/include/
 endif
 
-CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcd_zfh_zicond_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -mno-strict-align
+CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcd_zfa_zfh_zicond_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -mno-strict-align
 
 CFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
 CXXFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib
@@ -38,7 +38,8 @@ LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,--relax-gp -Wl,-melf64lriscv -Wl,-b
 	-Wl,--wrap=__builtin_ctz -Wl,--wrap=__builtin_ctzl \
 	-Wl,--wrap=__builtin_popcount -Wl,--wrap=__builtin_popcountl \
 	-Wl,--wrap=__builtin_parity -Wl,--wrap=__builtin_parityl \
-	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64
+	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64 \
+	-Wl,--wrap=__assert_fail
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 
 PAWSBASE=../
