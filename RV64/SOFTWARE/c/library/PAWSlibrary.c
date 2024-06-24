@@ -217,11 +217,15 @@ void set_volume( unsigned char left, unsigned char right ) {
     *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
 }
 void await_beep( unsigned char channel_number ) {
-    while( ( ( channel_number & 1) & *AUDIO_L_ACTIVE ) | ( ( channel_number & 2) & *AUDIO_R_ACTIVE ) ) {}
+    while( ( *AUDIO_ACTIVE & channel_number ) != 0 ) {}
 }
 
 unsigned short get_beep_active( unsigned char channel_number ) {
-    return( ( ( channel_number & 1) & *AUDIO_L_ACTIVE ) | ( ( channel_number & 2) & *AUDIO_R_ACTIVE ) );
+//    unsigned short active = 0;
+
+//    if( channel_number & 1 ) { active += ( *AUDIO_ACTIVE & 1 ); }
+//    if( channel_number & 2 ) { active += ( *AUDIO_ACTIVE & 2 ) >> 1; }
+    return( ( channel_number & *AUDIO_ACTIVE ) != 0 );
 }
 
 // USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
@@ -248,12 +252,15 @@ void wavesample_upload( unsigned char channel_number, unsigned char *samples ) {
     if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_WAVESAMPLE, 256, DMA_TO_IO ); }
 }
 
-// PCM SAMPLES UPLOAD
-void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-
+// PCM SAMPLE HANDLING CODE
+void pcmsample_start( unsigned char channel_number, unsigned short count, const unsigned char *samples ) {
     if( channel_number & 1 ) { *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_L_BASE = (unsigned int)samples; *AUDIO_DMA_L_LENGTH = count; *AUDIO_DMA_L_REPEAT = 0; *AUDIO_DMA_L_STATUS = 2; }
     if( channel_number & 2 ) { *AUDIO_DMA_R_STATUS = 1; *AUDIO_DMA_R_BASE = (unsigned int)samples; *AUDIO_DMA_R_LENGTH = count; *AUDIO_DMA_R_REPEAT = 0; *AUDIO_DMA_R_STATUS = 2; }
+}
+
+void pcmsample_stop( unsigned char channel_number ) {
+    if( channel_number & 1 ) { *AUDIO_DMA_L_STATUS = 1; }
+    if( channel_number & 2 ) { *AUDIO_DMA_R_STATUS = 1; }
 }
 
 // SDCARD FUNCTIONS
@@ -316,7 +323,7 @@ void wait_gpu_finished( void ) {
     while( !*GPU_FINISHED );
 }
 // WAIT FOR VBLANK TO START/FINISH
-int is_vblank( void ) {
+unsigned char is_vblank( void ) {
     return( *VBLANK );
 }
 void await_vblank( void ) {
@@ -324,6 +331,10 @@ void await_vblank( void ) {
 }
 void await_vblank_finish( void ) {
     while( *VBLANK );
+}
+
+unsigned int get_framecount( void ) {
+    return *FRAMECOUNT;
 }
 
 // SET THE LAYER ORDER FOR THE DISPLAY, COLOUR MODE ( RRGGGBBM OR GREY ), TILES AND CHARACTER MAP DOUBLE FLAGS
@@ -1267,34 +1278,30 @@ short get_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_num
     if( sprite_layer == 0 ) {
         switch( attribute ) {
             case 0:
-                return( (short)LOWER_SPRITE_ACTIVE[sprite_number] );
+                return( LOWER_SPRITE_ACTIVE[sprite_number] );
             case 1:
-                return( (short)LOWER_SPRITE_TILE[sprite_number] );
-            case 2:
-                return( 0 );
+                return( LOWER_SPRITE_TILE[sprite_number] );
             case 3:
                 return( LOWER_SPRITE_X[sprite_number] );
             case 4:
                 return( LOWER_SPRITE_Y[sprite_number] );
             case 5:
-                return( (short)LOWER_SPRITE_ACTIONS[sprite_number] );
+                return( LOWER_SPRITE_ACTIONS[sprite_number] );
             default:
                 return( 0 );
         }
     } else {
         switch( attribute ) {
             case 0:
-                return( (short)UPPER_SPRITE_ACTIVE[sprite_number] );
+                return( UPPER_SPRITE_ACTIVE[sprite_number] );
             case 1:
-                return( (short)UPPER_SPRITE_TILE[sprite_number] );
-            case 2:
-                return( 0 );
+                return( UPPER_SPRITE_TILE[sprite_number] );
             case 3:
                 return( UPPER_SPRITE_X[sprite_number] );
             case 4:
                 return( UPPER_SPRITE_Y[sprite_number] );
             case 5:
-                return( (short)UPPER_SPRITE_ACTIONS[sprite_number] );
+                return( UPPER_SPRITE_ACTIONS[sprite_number] );
             default:
                 return( 0 );
         }
@@ -1302,13 +1309,13 @@ short get_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_num
 }
 
 // RETURN THE COLLISION STATUS for sprite_number in sprite_layer to other in layer sprites
-//  bit is 1 if sprite is in collision with { in layer sprite 15, in layer sprite 14 .. in layer sprite 0 }
-unsigned short get_sprite_collision( unsigned char sprite_layer, unsigned char sprite_number ) {
+//  bit is 1 if sprite is in collision with { in layer sprite 31, in layer sprite 14 .. in layer sprite 0 }
+unsigned int get_sprite_collision( unsigned char sprite_layer, unsigned char sprite_number ) {
     return( sprite_layer ? UPPER_SPRITE_COLLISION_BASE[sprite_number] : LOWER_SPRITE_COLLISION_BASE[sprite_number] );
 }
 // RETURN THE COLLISION STATUS for sprite number in sprite layer to other layers
 // bit is 1 if sprite is in collision with { bitmap, tilemap L, tilemap U, other sprite layer }
-unsigned short get_sprite_layer_collision( unsigned char sprite_layer, unsigned char sprite_number ) {
+unsigned char get_sprite_layer_collision( unsigned char sprite_layer, unsigned char sprite_number ) {
     return( sprite_layer ? UPPER_SPRITE_LAYER_COLLISION_BASE[sprite_number] : LOWER_SPRITE_LAYER_COLLISION_BASE[sprite_number] );
 }
 

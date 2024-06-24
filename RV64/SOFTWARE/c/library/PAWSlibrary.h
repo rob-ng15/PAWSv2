@@ -60,10 +60,12 @@ extern unsigned short get_beep_active( unsigned char );
 extern void tune_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
 extern void bitsample_upload_128( unsigned char channel_number, unsigned char *samples );
 extern void wavesample_upload( unsigned char channel_number, unsigned char *samples );
-extern void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples );
+extern void pcmsample_start( unsigned char channel_number, unsigned short count, const unsigned char *samples );
+extern void pcmsample_stop( unsigned char channel_number );
 
 // DISPLAY
-extern int is_vblank( void );
+extern unsigned char is_vblank( void );
+extern int get_framecount( void );
 extern void await_vblank( void );
 extern void await_vblank_finish( void );
 extern void screen_mode( unsigned char, unsigned char, unsigned char );
@@ -160,8 +162,8 @@ extern void set_sprite32( unsigned char sprite_layer, unsigned char sprite_numbe
 extern short get_sprite_attribute( unsigned char, unsigned char , unsigned char );
 extern void set_sprite_attribute( unsigned char, unsigned char, unsigned char, short );
 extern void update_sprite( unsigned char, unsigned char, unsigned short );
-extern unsigned short get_sprite_collision( unsigned char, unsigned char );
-extern unsigned short get_sprite_layer_collision( unsigned char, unsigned char );
+extern unsigned int get_sprite_collision( unsigned char, unsigned char );
+extern unsigned char get_sprite_layer_collision( unsigned char, unsigned char );
 extern void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps );
 extern void set_sprite_bitamps_from_spritesheet( unsigned char sprite_layer, unsigned char *sprite_bitmaps );
 extern void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_layer, unsigned char *sprite_bitmaps );

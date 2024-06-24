@@ -206,14 +206,18 @@
 #define SPRITE_ACTION 5
 
 // SPRITE OTHER LAYER COLLISION FLAGS
+#define SPRITE_TO_BITMAP_1 32
+#define SPRITE_TO_BITMAP_0 16
 #define SPRITE_TO_BITMAP 8
 #define SPRITE_TO_LOWER_TILEMAP 4
 #define SPRITE_TO_UPPER_TILEMAP 2
 #define SPRITE_TO_OTHER_SPRITES 1
 
-// DOUBLE/QUADRUPAL SIZE OF SPRITE ( IN ADDITION TO THE FLAGS BELOW )
+// DOUBLE/QUADRUPAL HALF/QUARTER SIZE OF SPRITE ( IN ADDITION TO THE FLAGS BELOW )
 #define SPRITE_DOUBLE 8
 #define SPRITE_QUAD 16
+#define SPRITE_HALF 40
+#define SPRITE_QUARTER 48
 
 // FOR TILEMAP, BLITTERS, SPRITES
 #define REFLECT_X 1
@@ -270,13 +274,15 @@
 #define CHANNEL_LEFT 1
 #define CHANNEL_RIGHT 2
 #define CHANNEL_BOTH 3
+#define CHANNEL_LEFT_PCM 64
+#define CHANNEL_RIGHT_PCM 128
 #define WAVE_SQUARE 0
 #define WAVE_SAW 1
 #define WAVE_TRIANGLE 2
 #define WAVE_SINE 3
 #define WAVE_NOISE 4
 #define WAVE_USER 5
-#define WAVE_PCM 6
+#define WAVE_HARMONIC 6
 #define WAVE_BITS 7
 #define WAVE_TUNE 8
 #define SAMPLE_REPEAT 16
@@ -330,6 +336,13 @@ typedef struct {
     int height;
     unsigned char *bitmap;
 } bitmap_sprite;
+
+// WAVE FILE, AS CONVERTED BY FFMPEG
+typedef struct {
+    unsigned char   pad[74];
+    unsigned int    size;
+    unsigned char   *data;
+} wave_file;
 
 // PACK RGB MACRO
 #define PACKRGB(r,g,b) _rv64_packw( _rv64_packh( b, g ), _rv64_packh( r, 0 ) )

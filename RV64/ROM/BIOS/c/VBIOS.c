@@ -476,14 +476,6 @@ void beep( unsigned char channel_number, unsigned char waveform, unsigned char n
     *AUDIO_START = channel_number;
 }
 
-// PCM SAMPLES UPLOAD
-void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-
-    if( channel_number & 1 ) { *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_L_BASE = (unsigned int)samples; *AUDIO_DMA_L_LENGTH = count; *AUDIO_DMA_L_REPEAT = 0; *AUDIO_DMA_L_STATUS = 2; }
-    if( channel_number & 2 ) { *AUDIO_DMA_R_STATUS = 1; *AUDIO_DMA_R_BASE = (unsigned int)samples; *AUDIO_DMA_R_LENGTH = count; *AUDIO_DMA_R_REPEAT = 0; *AUDIO_DMA_R_STATUS = 2; }
-}
-
 // SMT START STOP
 void SMTSTOP( void ) {
     *SMTSTATUS = 0;
@@ -540,9 +532,6 @@ void main( void ) {
     *SMTSTATUS = 0;
     memset( &_bss_start, 0, &_bss_end - &_bss_start );
     reset_system();
-
-    pcmsample_upload( 1, 2048, ghost_bitmap );
-    beep( 1, 6, 1, 1000 );
 
     // SET THE DISPLAY
     set_background( UK_BLUE, UK_GOLD, 1 );

@@ -120,10 +120,9 @@ unsigned char __lastchannel = 1;
 int I_StartSound (int id, int vol, int sep, int pitch, int priority)
 {
     __lastchannel = 3 - __lastchannel;      // MOVE TO NEXT CHANNEL
-    beep( __lastchannel, 0, 0, 0 );         // STOP CHANNEL
+    pcmsample_stop( __lastchannel );         // STOP CHANNEL
 
-    pcmsample_upload( __lastchannel, s_sfx_lengths[id] - 40, S_sfx[id].data + 0x18 );       // UPLOAD TO SAMPLE BUFFER, WILL CLEAR PREVIOUS SAMPLE BUFFER
-    beep( __lastchannel, WAVE_PCM, 13, ( 1000 * (s_sfx_lengths[id] - 40) ) / 11025 + 1 );   // START SAMPLE, NOTE 13 ~11025KHz
+    pcmsample_start( __lastchannel, s_sfx_lengths[id] - 40, S_sfx[id].data + 0x18 );       // START A NEW PCM SAMPLE
     return id;
 }
 
@@ -134,7 +133,7 @@ void I_StopSound (int handle)
 
 void I_StopAllSounds ()
 {
-    beep( CHANNEL_BOTH, WAVE_SQUARE, 0, 0 );
+    pcmsample_stop( CHANNEL_BOTH );
 }
 
 int I_SoundIsPlaying (int handle)

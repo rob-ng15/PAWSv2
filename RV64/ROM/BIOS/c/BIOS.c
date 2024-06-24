@@ -257,7 +257,7 @@ void reset_display( void ) {
     *TPU_CURSOR = 0; tpu_cs();
     *LOWER_TM_SCROLLWRAPCLEAR = *UPPER_TM_SCROLLWRAPCLEAR = 5;
     *UPPER_TM_SCROLLWRAPAMOUNT = *LOWER_TM_SCROLLAMOUNT = 1;
-    for( unsigned short i = 0; i < 16; i++ ) {
+    for( unsigned short i = 0; i < 31; i++ ) {
         LOWER_SPRITE_ACTIVE[i] = UPPER_SPRITE_ACTIVE[i] = 0;
     }
 }
