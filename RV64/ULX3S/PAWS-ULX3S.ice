@@ -3,11 +3,11 @@ $$ uart_in_clock_freq_mhz = 50
 
 // ADDRESS WIDTH OF THE SDRAM ( 26 bits is 32Mb )
 // CHIP SELECT is done by readflag/writeflag
-$$ sdram_addr_width = 26
+$$ sdram_addr_width = 25
 
 // REGISTER AND MEMORY BUS DEFINITIONS
 $$ reg_width = 64
-$$ addr_width = sdram_addr_width + 1
+$$ addr_width = 27
 
 // NuCU COPPER BACKGROUND PROCESSOR DEFINITIONS
 // blocks number of program entries, mem number of memory registers, stack number of rstack and dstack entries
@@ -22,14 +22,9 @@ $$ NUCUstackaddr = clog2(NUCUstack)
 // PCM AUDIO SAMPLES BUFFER SIZE via DMA
 $$ PCM = 65535
 
-// 32x32 LARGE SPRITES
-$$ NUM32_SPRITES = 4
-$$ NUM32_SPRITE_TILES = 64
-
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 
 // L0 CACHE SIZES FOR HART ID 0 AND 1
-// 256 is 1k
 // blocks must be a power of 2
 // HART 0 - MAIN
 $$ L00Iblocks = 4096
@@ -39,7 +34,7 @@ $$ L00Ipartaddressstart = 1 + L00Icount
 bitfield L00cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
 
 // HART 1 - SMT
-$$ L01Iblocks = 1024
+$$ L01Iblocks = 512
 $$ L01Icount = clog2(L01Iblocks)
 $$ L01Ipartaddresswidth = addr_width - 1 - L01Icount
 $$ L01Ipartaddressstart = 1 + L01Icount
@@ -57,6 +52,9 @@ $$ L1cacheaddrwidth = clog2(L1size)
 $$ L1partaddresswidth = sdram_addr_width - 2 - L1cacheaddrwidth
 $$ L1partaddressstart = 2 + L1cacheaddrwidth
 bitfield L1cachetag{ uint1 needswrite, uint1 valid, uint$L1partaddresswidth$ partaddress }
+
+$$ print('CACHE BLOCK CONFIGURATION')
+$$ print("BLOCKS: "..L1size.." WIDTH: "..L1cacheaddrwidth.." TAG SIZE: "..L1partaddresswidth.." AT: "..L1partaddressstart)
 
 // BIT WIDTH FOR CSR COUNTERS ( spec is 64 bit )
 $$ CWIDTH = 40
@@ -108,7 +106,7 @@ $include('../video_memmap.si')
 $include('../io_memmap.si')
 $include('../timers_random.si')
 
-// CPU SPECIFICATION - RV32GCB
+// CPU SPECIFICATION - RV64GCB
 $$CPUISA = 0x4001102F
 $include('../cpu_functionblocks.si')
 $include('../ALU.si')

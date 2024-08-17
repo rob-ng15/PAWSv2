@@ -6,44 +6,53 @@
 //  10x BYTES TO/FROM I/O       x == 0 TO I/O, == 1 FROM I/O
 //  200 PIXELBLOCK 24-bit RGB
 unit dma_new_flags(                                                                                                             // DETERMINE IF 32/16/8 BIT TRANSFERS
-    input   uint2   DESTLOW,                                                                                                    // LOW 2 BITS OF DESTINATION
-    input   uint1   DEST15,                                                                                                     // BIT 15 OF DESTINATION ( I/O )
-    input   uint3   DESTHIGH,                                                                                                   // HIGH 3 BITS OF DESTINATION -> RAM, BITMAP, CMAP, BRAM or I/O
+    input   uint16  DMADEST,
+    input   uint4   DESTHIGH,                                                                                                   // HIGH 3 BITS OF DESTINATION -> RAM, BITMAP, CMAP, BRAM or I/O
     input   uint2   SRCLOW,                                                                                                     // LOW 2 BITS OF SOURCE
     input   uint1   SRC15,                                                                                                      // BIT 15 OF SOURCE ( I/O )
-    input   uint3   SRCHIGH,                                                                                                    // HIGH 3 BITS OF SOURCE -> RAM, BITMAP, CMAP, BRAM or I/O
+    input   uint4   SRCHIGH,                                                                                                    // HIGH 3 BITS OF SOURCE -> RAM, BITMAP, CMAP, BRAM or I/O
     input   uint2   DESTADD,                                                                                                    // LOW 2 BITS OF +D
     input   uint2   SRCADD,                                                                                                     // LOW 2 BITS OF +S
     input   uint2   COUNT,                                                                                                      // LOW 2 BITS OF COUNT
     output  uint10  FLAGS                                                                                                       // DMA CAPABILITY FLAGS
 ) <reginputs> {
-    uint1   dest16 <:: ( |DESTHIGH | ( ~|DESTHIGH & ~DEST15 ) ) & ~DESTLOW[0,1];                                                // DESTINATION IS 16 BIT CAPABLE DRAM, BITMAP, CMAP OR BRAM
-    uint1   src16 <:: ( |SRCHIGH | ( ~|SRCHIGH & ~SRC15 ) ) & ~SRCLOW[0,1];                                                     // SOURCE IS 16 BIT CAPABLE DRAM, BITMAP, CMAP
+    // MEMORY ACCESS CONSTRAINTS
+    // 8, 16, 32 BIT ACCESSIBLE MEMORY  SDRAM, BRAM AND BITMAP FRAMEBUFFERS
+    // 16 BIT                           TILEMAP MEMORY
+    // 32 BIT                           CHARACTER MAP BUFFERS
+    //
+    // I/O REGISTERS HAVE SPECIFIC SIZES DEPENDING ON THEIR FUNCTION
+    // AND MUST BE ACCESSED ACCORDINGLY
 
-    uint1   count16 <:: ~COUNT[0,1];                                                                                            // COUNT MULTIPLE OF    16
-    uint1   count32 <:: ~|COUNT[0,2];                                                                                           //                      32
+    uint1   BRAM_DEST <:: ~|DESTHIGH & ~DMADEST[15,1];                                                                          // DETECT DESTINATION IS BRAM
+    uint1   BRAM_SRC  <:: ~|SRCHIGH & ~SRC15;                                                                                   // DETECT SOURCE IS BRAM
 
-    uint1   destadd16 <:: ~DESTADD[0,1];                                                                                        // +D MULTIPLE OF       16
-    uint1   destadd32 <:: ~|DESTADD[0,2];                                                                                       //                      32
+    uint1   dest16 <:: ( ~|DESTHIGH & ( DMADEST[0,16] == 16hd642 ) ) |                                                          // DESTINATION 16 BIT   SINGLE COLOUR BLIT TILE WRITER
+                       ( ( |DESTHIGH | BRAM_DEST ) & ~DMADEST[0,1] );                                                           //                      DRAM, BITMAP, CMAP, TMAP OR BRAM
+    uint1   src16 <:: ( |SRCHIGH | BRAM_SRC ) & ~SRCLOW[0,1];                                                                   // SOURCE 16 BIT        DRAM, BITMAP, CMAP, TMAP OR BRAM
 
-    uint1   srcadd16 <:: ~SRCADD[0,1];                                                                                          // +S MULTIPLE OF       16
-    uint1   srcadd32 <:: ~|SRCADD[0,2];                                                                                         //                      32
-
-    uint1   dest32 <:: ( |DESTHIGH | ( ~|DESTHIGH & ~DEST15 ) ) & ~|DESTLOW;                                                    // DESTINATION IS 32 BIT CAPABLE
-    uint1   src32 <:: ( |SRCHIGH | ( ~|SRCHIGH & ~SRC15 ) ) & ~|SRCLOW;                                                         // SOURCE IS 32 BIT CAPABLE
+    uint1   dest32 <:: ( ( |DESTHIGH[1,3] | BRAM_DEST ) & ~|DMADEST[0,2] ) |                                                    // DESTINATION 32 BIT   DRAM, BITMAP, CMAP OR BRAM ( not TMAP )
+                       ( ~|DESTHIGH & ( DMADEST[4,12] == 12hd68 ) );                                                            //                      ARGB ( variants ) FOR PIXELBLOCK
+    uint1   src32 <:: ( |SRCHIGH[1,3] | BRAM_SRC ) & ~|SRCLOW;                                                                  // SOURCE IS 32 BIT     DRAM, BITMAP, CMAP OR BRAM ( not TMAP )
 
     FLAGS := {
-        count32,
-        count16,
-        destadd32,
-        destadd16,
-        dest32,
-        dest16,
-        srcadd32,
-        srcadd16,
-        src32,
-        src16
+        ~|COUNT[0,2], ~COUNT[0,1],                                                                                              // COUNT    32/16 BIT
+        ~|DESTADD[0,2], ~DESTADD[0,1],                                                                                          // DESTADD  32/16 BIT
+        dest32, dest16,
+        ~|SRCADD[0,2], ~SRCADD[0,1],                                                                                            // SRCADD   32/16 BIT
+        src32, src16
     };
+
+    $$ SRC16 = "DMAFLAGS[0,1]"
+    $$ SRC32 = "DMAFLAGS[1,1]"
+    $$ SRCADD16 = "DMAFLAGS[2,1]"
+    $$ SRCADD32 = "DMAFLAGS[3,1]"
+    $$ DEST16 = "DMAFLAGS[4,1]"
+    $$ DEST32 = "DMAFLAGS[5,1]"
+    $$ DESTADD16 = "DMAFLAGS[6,1]"
+    $$ DESTADD32 = "DMAFLAGS[7,1]"
+    $$ COUNT16 = "DMAFLAGS[8,1]"
+    $$ COUNT32 = "DMAFLAGS[9,1]"
 }
 
 unit dma_new(                                                                                                                   // MINI-DMA ADDRESS AND DATA MULTIPLEXER
@@ -67,9 +76,11 @@ unit dma_new(                                                                   
     output  uint2   ACCESSSIZE,
     output  uint1   ACTIVE(0)
 ) <reginputs> {
+    uint1   DMAMODE_SET = uninitialised;                                                                                        // USE CPU SET VALUE OR MEMORY FLAG
+
     dma_new_flags FLAGS(                                                                                                        // GENERATE THE 16/32 BIT CAPABILITY FLAGS
-        DESTLOW <: DMADEST[0,2], DEST15 <: DMADEST[15,1], DESTHIGH <: DMADEST[24,3],
-        SRCLOW <: DMASOURCE[0,2], SRC15 <: DMASOURCE[15,1], SRCHIGH <: DMASOURCE[24,3],
+        DESTHIGH <: DMADEST[$addr_width-4$,4], DMADEST <: DMADEST[0,16],                                                        // TOP 4 AND LOW 16 BITS OF THE DESTINATION
+        SRCLOW <: DMASOURCE[0,2], SRC15 <: DMASOURCE[15,1], SRCHIGH <: DMASOURCE[$addr_width-4$,4],
         DESTADD <: DMADESTADD[0,2], SRCADD <: DMASOURCEADD[0,2],
         COUNT <: DMACOUNT[0,2]
     );
@@ -99,15 +110,7 @@ unit dma_new(                                                                   
         DMAFLAGS <: FLAGS.FLAGS
     );
 
-    dma_bytes_to_io DMA_TO_IO(                                                                                                  // MOVE BLOCK OF MEMORY TO I/O 32/16/8 BIT
-        memorybusy <: MEMORYBUSY,                                                                                               //  MEMORY BUSY FLAG
-        readdata <: READDATA,                                                                                                   //  READ RESULT
-        DMASOURCE <: DMASOURCE,                                                                                                 //  REGISTERS FROM IO MEMORY MAP
-        DMADEST <: DMADEST,
-        DMACOUNT <: DMACOUNT,
-        DMAFLAGS <: FLAGS.FLAGS
-    );
-    dma_bytes_from_io DMA_FROM_IO(                                                                                              // MOVE FROM I/O TO MEMORY 32/16/8 BIT
+    dma_bytes_io DMA_IO(                                                                                                        // MOVE BLOCK OF MEMORY TO/FROM I/O 32/16/8 BIT
         memorybusy <: MEMORYBUSY,                                                                                               //  MEMORY BUSY FLAG
         readdata <: READDATA,                                                                                                   //  READ RESULT
         DMASOURCE <: DMASOURCE,                                                                                                 //  REGISTERS FROM IO MEMORY MAP
@@ -123,45 +126,40 @@ unit dma_new(                                                                   
         DMACOUNT <: DMACOUNT
     );
 
-    uint1   DMAMODE_SET = uninitialised;                                                                                        // USE CPU SET VALUE OR MEMORY FLAG
-    DMAMODE_SET := DMASTART ? DMAMODE[4,1] | DMAMODE[6,1] : DMAMODE_SET;
-
     DMA_SETCOPY.start := DMASTART & |DMAMODE[4,2];                                                                              // PASS START FLAG TO APPROPRIATE MINI-DMA CONTROLLER
     DMA_SETCOPY_RECTANGLE.start := DMASTART & |DMAMODE[6,2];
-    DMA_TO_IO.start := DMASTART & DMAMODE[8,1] & ~DMAMODE[0,1];
-    DMA_FROM_IO.start := DMASTART & DMAMODE[8,1] & DMAMODE[0,1];
+    DMA_IO.start := DMASTART & DMAMODE[8,1];
     DMA_PB_RGB.start := DMASTART & DMAMODE[9,1];
 
-    ACTIVE := DMA_SETCOPY.ACTIVE | DMA_SETCOPY_RECTANGLE.ACTIVE | DMA_TO_IO.ACTIVE | DMA_FROM_IO.ACTIVE | DMA_PB_RGB.ACTIVE;    // DMA HAS CONTROL OF MEMORY BUS
+    DMA_IO.DIRECTION := DMASTART ? DMAMODE[0,1] : DMA_IO.DIRECTION;
+    DMAMODE_SET := DMASTART ? DMAMODE[4,1] | DMAMODE[6,1] : DMAMODE_SET;
+
+    ACTIVE := DMA_SETCOPY.ACTIVE | DMA_SETCOPY_RECTANGLE.ACTIVE | DMA_IO.ACTIVE | DMA_PB_RGB.ACTIVE;                            // DMA HAS CONTROL OF MEMORY BUS
 
     ACCESSSIZE := DMA_SETCOPY.ACTIVE ? DMA_SETCOPY.ACCESSSIZE :                                                                 // ACCESSSIZE
                   DMA_SETCOPY_RECTANGLE.ACTIVE ? DMA_SETCOPY_RECTANGLE.ACCESSSIZE :
-                  DMA_TO_IO.ACTIVE ? DMA_TO_IO.ACCESSSIZE :
-                  DMA_FROM_IO.ACTIVE ? DMA_FROM_IO.ACCESSSIZE :
+                  DMA_IO.ACTIVE ? DMA_IO.ACCESSSIZE :
                   2b00;
 
     ADDRESS := DMA_SETCOPY.ACTIVE ? DMA_SETCOPY.address :                                                                       // ADDRESS
                DMA_SETCOPY_RECTANGLE.ACTIVE ? DMA_SETCOPY_RECTANGLE.address :
-               DMA_TO_IO.ACTIVE ? DMA_TO_IO.address :
-               DMA_FROM_IO.ACTIVE ? DMA_FROM_IO.address :
+               DMA_IO.ACTIVE ? DMA_IO.address :
                DMA_PB_RGB.address;
 
-    WRITEDATA := DMA_SETCOPY.ACTIVE ? DMAMODE_SET ? DMASET : DMA_SETCOPY.writedata :                                            // WRITEDATA
-                 DMA_SETCOPY_RECTANGLE.ACTIVE ? DMAMODE_SET ? DMASET : DMA_SETCOPY_RECTANGLE.writedata :
-                 DMA_TO_IO.ACTIVE ? DMA_TO_IO.writedata :
-                 DMA_FROM_IO.ACTIVE ? DMA_FROM_IO.writedata :
+    WRITEDATA := DMAMODE_SET ? DMASET :                                                                                         // WRITEDATA    DMASET VALUE?
+                 DMA_SETCOPY.ACTIVE ? DMA_SETCOPY.writedata :
+                 DMA_SETCOPY_RECTANGLE.ACTIVE ? DMA_SETCOPY_RECTANGLE.writedata :
+                 DMA_IO.ACTIVE ? DMA_IO.writedata :
                  DMA_PB_RGB.writedata;
 
     READFLAG := DMA_SETCOPY.readmemory |                                                                                        //  READFLAG
                 DMA_SETCOPY_RECTANGLE.readmemory |
-                DMA_TO_IO.readmemory |
-                DMA_FROM_IO.readmemory |
+                DMA_IO.readmemory |
                 DMA_PB_RGB.readmemory;
 
     WRITEFLAG := DMA_SETCOPY.writememory |                                                                                      // WRITEFLAG
                  DMA_SETCOPY_RECTANGLE.writememory |
-                 DMA_TO_IO.writememory |
-                 DMA_FROM_IO.writememory |
+                 DMA_IO.writememory |
                  DMA_PB_RGB.writememory;
 }
 
@@ -171,14 +169,17 @@ unit dma_setcopy_flags(
     input   uint1   mode_add,
     input   uint1   mode_set,
     input   uint10  DMAFLAGS,
-    input   uint$addr_width$  DMADEST,
     output  uint2   ACCESSSIZE,
 ) <reginputs> {
-    ACCESSSIZE := mode_add ? 2b00 :
-                  mode_set ? ( DMAFLAGS[5,1] & DMAFLAGS[9,1] ) ? 2b10 : ( DMAFLAGS[4,1] & DMAFLAGS[8,1] ) ? 2b01 : 2b00 :
-                  ( ( DMAFLAGS[1,1] & DMAFLAGS[5,1] & DMAFLAGS[9,1] ) | ( ( DMADEST[24,3] == 3b000 ) & ( DMADEST[4,12] == 12hd68 ) ) ) ? 2b10 :
-                  ( ( DMAFLAGS[0,1] & DMAFLAGS[4,1] & DMAFLAGS[8,1] ) | ( DMADEST == 27hd642 ) ) ? 2b01 :
-                  2b00;
+    ACCESSSIZE := mode_add ? ( $SRC32$ & $DEST32$ & $COUNT32$ & $SRCADD32$ & $DESTADD32$ ) ? 2b10 :
+                             ( $SRC16$ & $DEST16$ & $COUNT16$ & $SRCADD16$ & $DESTADD16$ ) ? 2b01 :
+                                                                                             2b00 :
+                  mode_set ? ( $DEST32$ & $COUNT32$ ) ? 2b10 :
+                             ( $DEST16$ & $COUNT16$ ) ? 2b01 :
+                                                        2b00 :
+                             ( $SRC32$ & $DEST32$ & $COUNT32$ ) ? 2b10 :
+                             ( $SRC16$ & $DEST16$ & $COUNT16$ ) ? 2b01 :
+                                                                  2b00;
 }
 unit dma_setcopy_write_data(
     input   uint1   mode_set,
@@ -217,10 +218,10 @@ unit dma_setcopy(
     uint1   COUNT_NE0 <:: |dmacount;                                                                                            //  DMACOUNT != 0
     uint3   dmamode = uninitialized;                                                                                            // DMA MODE SINGLE/MULTI SOURCE/DESTINATION
     uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA SOURCE ADDRESS
+    uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA DESTINATION ADDRESS
     dma_setcopy_flags FLAGS(
         mode_set <: DMAMODE_SET,
         mode_add <: dmamode[2,1],
-        DMADEST <: DMADEST,
         DMAFLAGS <: DMAFLAGS,
         ACCESSSIZE :> ACCESSSIZE
     );
@@ -240,36 +241,29 @@ unit dma_setcopy(
         $$ STATE_DMA_SETCPY_CPY_WRITE   = 8
         $$ STATE_DMA_SETCPY_NEXT        =16
 
+    address := DMAMODE_SET | |STATE[3,2] ? dmadest : dmasrc;
     writememory := ( STATE[1,1] & COUNT_NE0 & DMAMODE_SET ) | STATE[3,1];
     readmemory := STATE[1,1] & COUNT_NE0 & ~DMAMODE_SET;
 
     algorithm <autorun> {
         uint$addr_width$  dmasrc_NEXT <:: dmamode[0,1] ? ( dmasrc + ( dmamode[2,1] ? DMASOURCEADD : BYTES ) ) : dmasrc;         // DMA SOURCE NEXT ADDRESS
-        uint$addr_width$  dmadest = uninitialised;                                                                              // DMA DESTINATION ADDRESS
         uint$addr_width$  dmadest_NEXT <:: dmamode[1,1] ? ( dmadest + ( dmamode[2,1] ? DMADESTADD : BYTES ) ) : dmadest;        // DMA DESTINATION NEXT ADDRESS
         uint$addr_width$  dmacount_NEXT <:: dmacount - BYTES;
         uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                            // NUMBER OF BYTES PER CYCLE
 
         ACTIVE = 0; while(1) {
             onehot( STATE ) {
-                case 0:{                                                                                                        // STATE_DMA_SETCPY_WAIT
-                    dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmamode = DMAMODE; ACTIVE = start;              //  IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
-                    if( start ) { STATE = $STATE_DMA_SETCPY_SET_OR_READ$; }                                                     //  MOVE TO ACTIVE STATE
+                case 0: {                                                                                                        // STATE_DMA_SETCPY_WAIT
+                    ACTIVE = start; if( start ) { STATE = $STATE_DMA_SETCPY_SET_OR_READ$; }                                     //  MOVE TO ACTIVE STATE
                 }
-                case 1:{                                                                                                        // STATE_DMA_SETCPY_SET_OR_READ
-                    if( COUNT_NE0 ) {                                                                                           //  MORE TO DO?
-                        if( DMAMODE_SET ) {                                                                                     //  USE SET VALUE?
-                            address = dmadest; STATE = $STATE_DMA_SETCPY_NEXT$;                                                 //      START WRITE
-                        } else {
-                            address = dmasrc; STATE = $STATE_DMA_SETCPY_WAIT_READ$;                                             //      START READ
-                        }
-                    } else {
-                        STATE = $STATE_DMA_SETCPY_WAIT$;                                                                        //  NO, RETURN TO WAIT STATE
-                    }
+                case 1: {                                                                                                        // STATE_DMA_SETCPY_SET_OR_READ
+                    STATE = COUNT_NE0 ? DMAMODE_SET ? $STATE_DMA_SETCPY_NEXT$ :
+                                                      $STATE_DMA_SETCPY_WAIT_READ$ :
+                                                      $STATE_DMA_SETCPY_WAIT$;
                 }
-                case 2:{ if( ~memorybusy ) { STATE = $STATE_DMA_SETCPY_CPY_WRITE$; } }                                          // STATE_DMA_SETCPY_WAIT_READ
-                case 3:{ address = dmadest; STATE = $STATE_DMA_SETCPY_NEXT$; }                                                  // STATE_DMA_SETCPY_CPY_WRITE
-                case 4:{                                                                                                        // STATE_DMA_SETCPY_NEXT
+                case 2: { if( ~memorybusy ) { STATE = $STATE_DMA_SETCPY_CPY_WRITE$; } }                                          // STATE_DMA_SETCPY_WAIT_READ
+                case 3: { STATE = $STATE_DMA_SETCPY_NEXT$; }                                                                     // STATE_DMA_SETCPY_CPY_WRITE
+                case 4: {                                                                                                        // STATE_DMA_SETCPY_NEXT
                     if( ~memorybusy ) {                                                                                         //  WAIT FOR WRITE TO COMPLETE
                         dmasrc = dmasrc_NEXT; dmadest = dmadest_NEXT; dmacount = dmacount_NEXT;                                 //  UPDATE ADDRESSES AND COUNT
                         STATE = $STATE_DMA_SETCPY_SET_OR_READ$;                                                                 //  RETURN TO STATE_DMA_SETCPY_SET_OR_READ
@@ -278,6 +272,8 @@ unit dma_setcopy(
             }
         }
     }
+
+    always_after { if( ~ACTIVE ) { dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmamode = DMAMODE; } }           // IF NOT ACTIVE SET VALUES TO I/O REGISTERS
 }
 
 // DMA SET/COPY RECTANGLE ONLY TO MULTI DESTINATION
@@ -286,10 +282,12 @@ unit dma_setcopy_rectangle_flags(
     input   uint10  DMAFLAGS,
     output  uint2   ACCESSSIZE,
 ) <reginputs> {
-    ACCESSSIZE := mode_set ? ( DMAFLAGS[5,1] & DMAFLAGS[9,1] & DMAFLAGS[7,1] ) ? 2b10 : ( DMAFLAGS[4,1] & DMAFLAGS[8,1] & DMAFLAGS[6,1] ) ? 2b01 : 2b00 :
-    ( DMAFLAGS[0,1] & DMAFLAGS[5,1] & DMAFLAGS[9,1] & DMAFLAGS[3,1] & DMAFLAGS[7,1] ) ? 2b10 :
-    ( DMAFLAGS[0,1] & DMAFLAGS[4,1] & DMAFLAGS[8,1] & DMAFLAGS[2,1] & DMAFLAGS[6,1] ) ? 2b01 :
-    2b00;
+    ACCESSSIZE := mode_set ? ( $DEST32$ & $COUNT32$ & $DESTADD32$ ) ? 2b10 :
+                             ( $DEST16$ & $COUNT16$ & $DESTADD16$ ) ? 2b01 :
+                                                                      2b00 :
+                             ( $SRC16$ & $DEST32$ & $COUNT32$ & $SRCADD32$ & $DESTADD32$ ) ? 2b10 :
+                             ( $SRC16$ & $DEST16$ & $COUNT16$ & $SRCADD16$ & $DESTADD16$ ) ? 2b01 :
+                                                                                             2b00;
 }
 unit dma_setcopy_rectangle(
     input   uint$addr_width$  DMASOURCE,
@@ -320,6 +318,7 @@ unit dma_setcopy_rectangle(
         $$ STATE_DMA_SETCPYRECT_NEXT_CYCLE  = 32
 
     uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA SOURCE ADDRESS
+    uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
     uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
     uint8   dmacycles = uninitialised;                                                                                          // DMA CYCLES ( LINE OF RECTANGLE )
     uint1   dmacount_NE0 <:: |dmacount;                                                                                         //  COUNT != 0
@@ -339,13 +338,13 @@ unit dma_setcopy_rectangle(
         latch <: writememory
     );
 
+    address := DMAMODE_SET | |STATE[3,2] ? dmadest : dmasrc;
     writememory := STATE[3,1] | ( STATE[1,1] & dmacycles_NE0 & dmacount_NE0 & DMAMODE_SET );
     readmemory := STATE[1,1] & dmacycles_NE0 & dmacount_NE0 & ~DMAMODE_SET;
 
     algorithm <autorun> {
         uint$addr_width$  dmasrc_NEXT <:: dmasrc + BYTES;
         uint$addr_width$  dmasrc_CYCLE <:: dmasrc + DMASOURCEADD - DMACOUNT;
-        uint$addr_width$  dmadest = uninitialised;                                                                              // DMA PRESENT DESTINATION ADDRRESS
         uint$addr_width$  dmadest_NEXT <:: dmadest + BYTES;
         uint$addr_width$  dmadest_CYCLE <:: dmadest + DMADESTADD - DMACOUNT;
         uint$addr_width$  dmacount_NEXT <:: dmacount - BYTES;
@@ -355,39 +354,31 @@ unit dma_setcopy_rectangle(
         ACTIVE = 0; while(1) {
             onehot( STATE ) {
                 case 0: {                                                                                                       // STATE_DMA_SETCPYRECT_WAIT
-                    dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES; ACTIVE = start;          //  IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
-                    if( start ) { STATE = $STATE_DMA_SETCPYRECT_SET_OR_READ$; }                                                 //  MOVE TO ACTIVE STATE
+                    ACTIVE = start; if( start ) { STATE = $STATE_DMA_SETCPYRECT_SET_OR_READ$; }                                 //  MOVE TO ACTIVE STATE
                 }
                 case 1: {                                                                                                       // STATE_DMA_SETCPYRECT_SET_OR_READ
-                    if( dmacycles_NE0 ) {
-                        if( dmacount_NE0 ) {
-                            if( DMAMODE_SET ) {
-                                address = dmadest; STATE = $STATE_DMA_SETCPYRECT_NEXT$;
-                            } else {
-                                address = dmasrc; STATE = $STATE_DMA_SETCPYRECT_WAIT_READ$;
-                            }
-                        } else {
-                            STATE = $STATE_DMA_SETCPYRECT_NEXT_CYCLE$;
-                        }
-                    } else {
-                        STATE = $STATE_DMA_SETCPYRECT_WAIT$;
-                    }
+                    STATE = dmacycles_NE0 ? dmacount_NE0 ? DMAMODE_SET ? $STATE_DMA_SETCPYRECT_NEXT$ :
+                                                                         $STATE_DMA_SETCPYRECT_WAIT_READ$ :
+                                                                         $STATE_DMA_SETCPYRECT_NEXT_CYCLE$ :
+                                                                         $STATE_DMA_SETCPYRECT_WAIT$;
                 }
-                case 2: { if( ~memorybusy ) { STATE = $STATE_DMA_SETCPYRECT_CPY_WRITE$; } }
-                case 3: { address = dmadest; STATE = $STATE_DMA_SETCPYRECT_NEXT$; }
+                case 2: { if( ~memorybusy ) { STATE = $STATE_DMA_SETCPYRECT_CPY_WRITE$; } }                                     // STATE_DMA_SETCPYRECT_WAIT_READ
+                case 3: { STATE = $STATE_DMA_SETCPYRECT_NEXT$; }                                                                // STATE_DMA_SETCPYRECT_CPY_WRITE
                 case 4: {
-                    if( ~memorybusy ) {
+                    if( ~memorybusy ) {                                                                                         // STATE_DMA_SETCPYRECT_NEXT
                         dmasrc = dmasrc_NEXT; dmadest = dmadest_NEXT; dmacount = dmacount_NEXT;
                         STATE = $STATE_DMA_SETCPYRECT_SET_OR_READ$;
                     }
                 }
-                case 5: {
+                case 5: {                                                                                                       // STATE_DMA_SETCPYRECT_NEXT_CYCLE
                     dmacycles = dmacycles_NEXT; dmasrc = dmasrc_CYCLE; dmadest = dmadest_CYCLE; dmacount = DMACOUNT;
                     STATE = $STATE_DMA_SETCPYRECT_SET_OR_READ$;
                 }
             }
         }
     }
+
+    always_after { if( ~ACTIVE ) { dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES;  } }      // IF NOT ACTIVE SET VALUES TO I/O REGISTERS
 }
 
 unit dma_pb_rgb_write_data(
@@ -415,13 +406,15 @@ unit dma_pb_rgb(
     input   uint1   memorybusy
 ) <reginputs> {
     uint5   STATE = 1;
+        $$ STATE_DMA_PB_WAIT        = 1
+        $$ STATE_DMA_PB_READ        = 2
+        $$ STATE_DMA_PB_WAITREAD    = 4
+        $$ STATE_DMA_PB_WRITE       = 8
+        $$ STATE_DMA_PB_WAITWRITE   = 16
 
     uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
-    uint$addr_width$  dmasrc_NEXT <:: dmasrc + 1;
-    uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
-    uint$addr_width$  dmadest_NEXT <:: &dmadest[1,2] ? $addr_width$hd672: dmadest + 2;
+    uint2 dmadest = uninitialised;                                                                                              // DMA PRESENT DESTINATION ADDRRESS
     uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
-    uint$addr_width$  dmacount_NEXT <:: dmacount - 1;
     uint1   dmacount_NE0 <:: |dmacount;
 
     dma_pb_rgb_write_data WRITE(
@@ -431,31 +424,44 @@ unit dma_pb_rgb(
         latch <: writememory
     );
 
+    address := |STATE[1,2] ? dmasrc : { 12hd67, 1b0, dmadest, 1b0 };                                                            // CYCLE BETWEEN THE PIXELBLOCK R, G AND B REGISTERS
     writememory := STATE[3,1];
     readmemory := STATE[1,1] & dmacount_NE0;
 
     algorithm <autorun> {
+        uint$addr_width$  dmasrc_NEXT <:: dmasrc + 1;
+        uint2  dmadest_NEXT <:: &dmadest ? 1: dmadest + 1;
+        uint$addr_width$  dmacount_NEXT <:: dmacount - 1;
+
         ACTIVE = 0; while(1) {
             onehot( STATE ) {
-                case 0: {
-                    dmasrc = DMASOURCE; dmadest = $addr_width$hd672; dmacount = DMACOUNT; ACTIVE = start;                       // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
-                    if( start ) { STATE = 2; }
+                case 0: {                                                                                                       // STATE_DMA_PB_WAIT
+                    ACTIVE = start; if( start ) { STATE = $STATE_DMA_PB_READ$; }                                                //  IF START, GO TO READ THE FIRST BYTE
                 }
-                case 1: { if( dmacount_NE0 ) { address = dmasrc; STATE = 4; } else { STATE = 1; } }
-                case 2: { if( ~memorybusy ) { STATE = 8; } }
-                case 3: { address = dmadest; STATE = 16; }
-                case 4: { if( ~memorybusy ) { dmasrc = dmasrc_NEXT; dmadest = dmadest_NEXT; dmacount = dmacount_NEXT; STATE = 2; } }
+                case 1: { STATE = dmacount_NE0 ? $STATE_DMA_PB_WAITREAD$ : $STATE_DMA_PB_WAIT$; }                               // STATE_DMA_PB_READ, MORE TO DO?
+                case 2: { if( ~memorybusy ) { STATE = $STATE_DMA_PB_WRITE$; } }                                                 // STATE_DMA_PB_WAITREAD
+                case 3: { STATE = $STATE_DMA_PB_WAITWRITE$; }                                                                   // STATE_DMA_PB_WRITE
+                case 4: {                                                                                                       // STATE_DMA_PB_WAITWRITE
+                    if( ~memorybusy ) {
+                        dmasrc = dmasrc_NEXT; dmadest = dmadest_NEXT; dmacount = dmacount_NEXT; STATE = $STATE_DMA_PB_READ$;
+                    }
+                }
             }
         }
     }
+
+    always_after { if( ~ACTIVE ) { dmasrc = DMASOURCE; dmadest = 1; dmacount = DMACOUNT; } }                                    // IF NOT ACTIVE SET VALUES TO I/O REGISTERS
 }
 
-unit dma_bytes_to_io_flags(
-    input   uint$addr_width$  DMASOURCE,
-    input   uint10  DMAFLAGS,
-    output  uint2   ACCESSSIZE,
+// MOVE BYTES TO/FROM I/O REGISTER IN 32/16/8 BIT CHUNKS ( minimises read/writes )
+unit dma_bytes_io_flags(
+    input   uint10  DMAFLAGS,                                                                                                   // SOURCE/DESTINATION CAPABILITY FLAGS
+    input   uint1   DIRECTION,                                                                                                  // == 0 TO I/O == 1 FROM I/O
+    output  uint2   ACCESSSIZE
 ) <reginputs> {
-    ACCESSSIZE := ( DMAFLAGS[1,1] & DMAFLAGS[9,1] ) ? 2b10 : ( DMAFLAGS[0,1] & DMAFLAGS[8,1] ) ? 2b01 : 2b00;
+    ACCESSSIZE := ( ( DIRECTION ? $DEST32$ : $SRC32$ ) & $COUNT32$ ) ? 2b10 :                                                   // 32 BIT CAPABLE, 4 BYTES AT A TIME
+                  ( ( DIRECTION ? $DEST16$ : $SRC16$ ) & $COUNT16$ ) ? 2b01 :                                                   // 16 BIT CAPABLE, 2 BYTES AT A TIME
+                                                                       2b00;                                                    //  8 BIT CAPABLE, 1 BYTE AT A TIME
 }
 unit dma_bytes_to_io_write_data(
     input   uint2   BYTE,
@@ -468,7 +474,7 @@ unit dma_bytes_to_io_write_data(
     memoryinput := latch ? readdata : memoryinput;
     writedata := memoryinput[ { BYTE, 3b000 }, 8];
 }
-unit dma_bytes_to_io(
+unit dma_bytes_io(
     input   uint$addr_width$  DMASOURCE,
     input   uint$addr_width$  DMADEST,
     input   uint$addr_width$  DMACOUNT,
@@ -477,130 +483,133 @@ unit dma_bytes_to_io(
     output  uint1   ACTIVE(0),
 
     input   uint1   start(0),
+    input   uint1   DIRECTION,                                                                                                  // == 0 TO I/O == 1 FROM I/O
+
     output  uint$addr_width$  address,
-    output  uint8   writedata,
+    output  uint32  writedata,
     output  uint1   writememory,
     output  uint1   readmemory,
     input   uint32  readdata,
     input   uint1   memorybusy
 ) <reginputs> {
-    uint6   STATE = 1;
+    uint10  STATE = 1;
+        $$ STATE_DMA_IO_IDLE            = 1
+        $$ STATE_DMA_NEW_BYTES          = 2
+
+        $$ STATE_DMA_TOIO_READ          = 4
+        $$ STATE_DMA_TOIO_READLATCH     = 8
+        $$ STATE_DMA_TOIO_WRITE         = 16
+        $$ STATE_DMA_TOIO_SPRITE        = 32
+
+        $$ STATE_DMA_FROMIO_READ        = 64
+        $$ STATE_DMA_FROMIO_READLATCH   = 128
+        $$ STATE_DMA_FROMIO_PREPWRITE   = 256
+        $$ STATE_DMA_FROMIO_WRITE       = 512
 
     uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
     uint$addr_width$  dmasrc_NEXT <:: dmasrc + BYTES;
     uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
+    uint$addr_width$  dmadest_NEXT <:: dmadest + BYTES;
     uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
     uint$addr_width$  dmacount_NEXT <:: dmacount - BYTES;
+
     uint1   dmacount_NE0 <:: |dmacount;
     uint3   BYTE = uninitialised;
     uint3   BYTE_NEXT <:: BYTE + 1;
     uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                                // NUMBER OF BYTES PER CYCLE
     uint1   BYTE_NE_BYTES <:: BYTE != BYTES;
+    uint1   NEXTBLOCK = uninitialised;
 
-    dma_bytes_to_io_flags FLAGS( DMAFLAGS <: DMAFLAGS, ACCESSSIZE :> ACCESSSIZE );
-    dma_bytes_to_io_write_data WRITE( BYTE <: BYTE[0,2], readdata <: readdata );  //, writedata :> writedata );
+    uint1   IS_SPRITE <:: ( DMADEST == 16hd802 ) | ( DMADEST == 16hd902 );
 
-    writememory := STATE[4,1] & BYTE_NE_BYTES;
-    readmemory := STATE[1,1] & dmacount_NE0;
+    dma_bytes_io_flags FLAGS( DMAFLAGS <: DMAFLAGS, DIRECTION <: DIRECTION, ACCESSSIZE :> ACCESSSIZE );
+    dma_bytes_to_io_write_data WRITE( BYTE <: BYTE[0,2], readdata <: readdata );
+
+    address := DIRECTION ? ( ( STATE[1,1] | |STATE[6,2] ) & BYTE_NE_BYTES ) ? dmasrc : dmadest :
+                           |STATE[1,2] ? dmasrc : dmadest;
+    writememory := DIRECTION ? ( STATE[6,1] & ~BYTE_NE_BYTES ) :
+                               ( STATE[4,1] & BYTE_NE_BYTES );
+    readmemory := DIRECTION ? ( STATE[6,1] & BYTE_NE_BYTES ) :
+                              ( STATE[1,1] & dmacount_NE0 );
     WRITE.latch := STATE[3,1];
+    NEXTBLOCK := 0;
 
     algorithm <autorun> {
-        uint1   IS_SPRITE <:: ( dmadest == 27hd802 ) | ( dmadest == 27hd902 );
-
         ACTIVE = 0; while(1) {
             onehot( STATE ) {
-                case 0: {
-                    dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; ACTIVE = start;                                 // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
-                    if( start ) { STATE = 2; }
+                case 0: { ACTIVE = start; if( start ) { STATE = $STATE_DMA_NEW_BYTES$; } }                                      // STATE_DMA_IO_IDLE
+
+                case 1: {                                                                                                       // STATE_DMA_NEW_BYTES
+                    BYTE = 0; writedata = 0;                                                                                    //  RESET NUMBER OF BYTES AND WRITEDATA VALUE
+                    STATE = dmacount_NE0 ? DIRECTION ? $STATE_DMA_FROMIO_READ$ : $STATE_DMA_TOIO_READ$ : $STATE_DMA_IO_IDLE$;   //  MORE DATA? YES GO TO TO/FROM, NO GO TO IDLE
                 }
-                case 1: {
-                    if( dmacount_NE0 ) {
-                        BYTE = 0; address = dmasrc; STATE = 4;
+
+                // TO I/O BLOCK
+                case 2: { if( ~memorybusy ) { STATE = $STATE_DMA_TOIO_READLATCH$; } }                                           // STATE_DMA_TOIO_READ
+                case 3: { STATE = $STATE_DMA_TOIO_WRITE$; }                                                                     // STATE_DMA_TOIO_READLATCH
+                case 4: {                                                                                                       // STATE_DMA_TOIO_WRITE
+                    if( BYTE_NE_BYTES ) {                                                                                       //  MORE BYTES TO SEND TO I/O?
+                        writedata = WRITE.writedata; BYTE = BYTE_NEXT;                                                          //      OUTPUT THE NEXT BYTE
+                        STATE = IS_SPRITE ? $STATE_DMA_TOIO_SPRITE$ : $STATE_DMA_TOIO_WRITE$;                                   //      IF TO SPRITE REGISTER DELAY 1 CYCLE
                     } else {
-                        STATE = 1;
+                        NEXTBLOCK = 1;                                                                                           //  FINISHED OUTPUT OF THIS BLOCK OF BYTES
                     }
                 }
-                case 2: { if( ~memorybusy ) { STATE = 8; } }
-                case 3: { address = dmadest; STATE = 16; }
-                case 4: {
-                    if( BYTE_NE_BYTES ) {
-                        writedata = WRITE.writedata; BYTE = BYTE_NEXT; STATE = IS_SPRITE ? 32 : 16;
-                    } else {
-                        dmasrc = dmasrc_NEXT; dmacount = dmacount_NEXT; STATE = 2;
-                    }
+                case 5: { STATE = $STATE_DMA_TOIO_WRITE$; }                                                                     // STATE_DMA_TOIO_SPRITE
+
+                // FROM I/O BLOCK
+                case 6: {                                                                                                       // STATE_DMA_FROMIO_READ
+                    STATE = BYTE_NE_BYTES ? $STATE_DMA_FROMIO_READLATCH$ : $STATE_DMA_FROMIO_WRITE$;                            //  MORE BYTES TO READ FROM I/O OR OUTPUT TO DESTINATION?
                 }
-                case 5: { STATE = 16; }
+                case 7: { if( ~memorybusy ) { STATE = $STATE_DMA_FROMIO_PREPWRITE$; } }                                         // STATE_DMA_FROMIO_READLATCH
+                case 8: { writedata[ { BYTE, 3b000 }, 8 ] = readdata; BYTE = BYTE_NEXT; STATE = $STATE_DMA_FROMIO_READ$; }      // STATE_DMA_FROMIO_PREPWRITE
+                case 9: { if( ~memorybusy ) { NEXTBLOCK = 1; } }                                                                // STATE_DMA_FROMIO_WRITE
             }
+        }
+    }
+
+    always_after {
+        if( NEXTBLOCK ) {                                                                                                       // NUMBER OF BYTES FOR THIS BLOCK REACHED?
+            dmasrc = DIRECTION ? dmasrc : dmasrc_NEXT;                                                                          //  UPDATE SOURCE IF TO I/O
+            dmadest = DIRECTION ? dmadest_NEXT : dmadest;                                                                       //  UPDATE DESTINATION IF FROM I/O
+            dmacount = dmacount_NEXT; STATE = $STATE_DMA_NEW_BYTES$;                                                            //  UPDATE COUNT AND START A NEW BLOCK OF BYTES
+        } else {
+            if( ~ACTIVE ) { dmadest = DMADEST; dmasrc = DMASOURCE; dmacount = DMACOUNT; }                                       // IF NOT ACTIVE SET VALUES TO I/O REGISTERS
         }
     }
 }
 
-unit dma_bytes_from_io_flags(
-    input   uint10  DMAFLAGS,
-    output  uint2   ACCESSSIZE,
+// DIGITAL AUDIO DMA, PLAYS 8 BIT SAMPLES AT APPROXIMATELY 11025KHz or 22050KHz, USING A JUST IN TIME DMA MEMORY FETCHING SYSTEM
+// 11025KHz/22050KHz timer for audio dma
+unit pulse11025(
+    output  uint1   UPDATE,
+    input   uint1   START,
+    input   uint1   STOP,
+    input   uint1   RATE,
 ) <reginputs> {
-    ACCESSSIZE := ( DMAFLAGS[5,1] & DMAFLAGS[9,1] ) ? 2b10 : ( DMAFLAGS[4,1] & DMAFLAGS[8,1] ) ? 2b01 : 2b00;
-}
-unit dma_bytes_from_io(
-    input   uint$addr_width$  DMASOURCE,
-    input   uint$addr_width$  DMADEST,
-    input   uint$addr_width$  DMACOUNT,
-    input   uint10  DMAFLAGS,
-    output  uint2   ACCESSSIZE,
-    output  uint1   ACTIVE(0),
+    uint2   STATE = 1;
+        $$ STATE_PULSE_INACTIVE = 1
+        $$ STATE_PULSE_ACTIVE   = 2
 
-    input   uint1   start(0),
-    output  uint$addr_width$  address,
-    output  uint32  writedata,
-    output  uint1   writememory,
-    output  uint1   readmemory,
-    input   uint8   readdata,
-    input   uint1   memorybusy
-) <reginputs> {
-    uint6   STATE = 1;
-
-    uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
-    uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
-    uint$addr_width$  dmadest_NEXT <:: dmadest + BYTES;
-    uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
-    uint$addr_width$  dmacount_NEXT <:: dmacount - BYTES;
-    uint3   BYTE = uninitialised;
-    uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                                // NUMBER OF BYTES PER CYCLE
-    uint1   BYTE_NE_BYTES <:: BYTE != BYTES;
-    dma_bytes_from_io_flags FLAGS( DMAFLAGS <: DMAFLAGS, ACCESSSIZE :> ACCESSSIZE );
-
-    writememory := STATE[2,1] & ~BYTE_NE_BYTES;
-    readmemory := STATE[2,1] & BYTE_NE_BYTES;
+    UPDATE := 0;
 
     algorithm <autorun> {
-        uint3   BYTE_NEXT <:: BYTE + 1;
+        uint13  counter50mhz = uninitialised;
+        uint1   zero <:: ~|counter50mhz;
+        uint13  counter50mhz_m1 <:: counter50mhz -1 ;
 
-        ACTIVE = 0; while(1) {
+        while(1) {
             onehot( STATE ) {
-                case 0: {
-                    dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; ACTIVE = start;                                 // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
-                    if( start ) { STATE = 2; }
-                }
+                case 0: { if( START ) { counter50mhz = RATE ? 2267 : 4535; STATE = $STATE_PULSE_ACTIVE$; } }                    // STATE_PULSE_INACTIVE
                 case 1: {
-                    if( |dmacount ) {
-                        BYTE = 0; writedata = 0; address = dmasrc; STATE = 4;
-                    } else {
-                        STATE = 1;
-                    }
+                    UPDATE = zero;                                                                                              // TIMER COMPLETE, SIGNAL TO CHANNEL
+                    if( zero ) { counter50mhz = RATE ? 2267 : 4535; } else { counter50mhz = counter50mhz_m1; }                  // START NEW TIMER OR CONTINUE COUNTING DOWN?
                 }
-                case 2: {
-                    if( BYTE_NE_BYTES ) {
-                        STATE = 8;
-                    } else {
-                        address = dmadest; STATE = 32;
-                    }
-                }
-                case 3: { if( ~memorybusy ) { STATE = 16; } }
-                case 4: { writedata[ { BYTE, 3b000 }, 8 ] = readdata; BYTE = BYTE_NEXT; STATE = 4; }
-                case 5: { if( ~memorybusy ) { dmadest = dmadest_NEXT; dmacount = dmacount_NEXT; STATE = 2; } }
             }
         }
     }
+
+    always_after { if( STOP ) { STATE = $STATE_PULSE_INACTIVE$; } }
 }
 
 unit dma_digital_audio(
@@ -615,18 +624,25 @@ unit dma_digital_audio(
     // DMA DIGITAL AUDIO SAMPLES
     output  uint1   L_ADMA_ACTIVE,
     output  uint8   L_AUDIO_DMA_SAMPLE,
-    input   uint2   L_AUDIO_DMA_STATUS,
+    input   uint4   L_AUDIO_DMA_STATUS,
     input   uint$addr_width$ L_AUDIO_DMA_BASE,
     input   uint16  L_AUDIO_DMA_LENGTH,
     input   uint1   L_AUDIO_DMA_REPEAT,
 
     output  uint1   R_ADMA_ACTIVE,
     output  uint8   R_AUDIO_DMA_SAMPLE,
-    input   uint2   R_AUDIO_DMA_STATUS,
+    input   uint4   R_AUDIO_DMA_STATUS,
     input   uint$addr_width$ R_AUDIO_DMA_BASE,
     input   uint16  R_AUDIO_DMA_LENGTH,
     input   uint1   R_AUDIO_DMA_REPEAT
 ) <reginputs> {
+    uint5   STATE = 1;
+        $$ STATE_ADMA_WAIT          = 1
+        $$ STATE_ADMA_WAIT_LEFT     = 2
+        $$ STATE_ADMA_RUN_LEFT      = 4
+        $$ STATE_ADMA_WAIT_RIGHT    = 8
+        $$ STATE_ADMA_RUN_RIGHT     = 16
+
     pulse11025 L_UPDATE(
         START <: L_AUDIO_DMA_STATUS[1,1],
         STOP <: L_AUDIO_DMA_STATUS[0,1]
@@ -642,6 +658,7 @@ unit dma_digital_audio(
         READDATA <: READDATA,
         MEMORYBUSY <: MEMORYBUSY
     );
+
     pulse11025 R_UPDATE(
         START <: R_AUDIO_DMA_STATUS[1,1],
         STOP <: R_AUDIO_DMA_STATUS[0,1]
@@ -658,13 +675,6 @@ unit dma_digital_audio(
         MEMORYBUSY <: MEMORYBUSY
     );
 
-    uint5   STATE = 1;
-        $$ STATE_ADMA_WAIT          = 1
-        $$ STATE_ADMA_WAIT_LEFT     = 2
-        $$ STATE_ADMA_RUN_LEFT      = 4
-        $$ STATE_ADMA_WAIT_RIGHT    = 8
-        $$ STATE_ADMA_RUN_RIGHT     = 16
-
     LEFT.DMASTART := START & STATE[1,1];
     RIGHT.DMASTART := START & STATE[3,1];
     ACTIVE := START | LEFT.DMAACTIVE | RIGHT.DMAACTIVE;
@@ -672,16 +682,16 @@ unit dma_digital_audio(
     algorithm <autorun> {
         REQUEST = 0; while(1) {
             onehot( STATE ) {
-                case 0: {                                                                                                       // WAIT FOR DMA AUDIO REQUEST
+                case 0: {                                                                                                       // STATE_ADMA_WAIT
                     STATE = LEFT.DMAREQ ? $STATE_ADMA_WAIT_LEFT$ :                                                              //  START LEFT
                            RIGHT.DMAREQ ? $STATE_ADMA_WAIT_RIGHT$ :                                                             //  START RIGHT
                                           $STATE_ADMA_WAIT$;
                     REQUEST = LEFT.DMAREQ | RIGHT.DMAREQ;                                                                       //  ALERT CPU TO AUDIO DMA REQUEST
                 }
-                case 1: { if( START ) { REQUEST = 0; STATE = $STATE_ADMA_RUN_LEFT$; } }                                         //  WAIT FOR START, LEFT
-                case 2: { if( ~LEFT.DMAACTIVE ) { STATE = $STATE_ADMA_WAIT$; } }                                                //      PROCESS LEFT
-                case 3: { if( START ) { REQUEST = 0; STATE = $STATE_ADMA_RUN_RIGHT$; } }                                        //  WAIT FOR START, RIGHT
-                case 4: { if( ~RIGHT.DMAACTIVE ) { STATE = $STATE_ADMA_WAIT$; } }                                               //      PROCESS RIGHT
+                case 1: { if( START ) { REQUEST = 0; STATE = $STATE_ADMA_RUN_LEFT$; } }                                         // STATE_ADMA_WAIT_LEFT
+                case 2: { if( ~LEFT.DMAACTIVE ) { STATE = $STATE_ADMA_WAIT$; } }                                                // STATE_ADMA_RUN_LEFT
+                case 3: { if( START ) { REQUEST = 0; STATE = $STATE_ADMA_RUN_RIGHT$; } }                                        // STATE_ADMA_WAIT_RIGHT
+                case 4: { if( ~RIGHT.DMAACTIVE ) { STATE = $STATE_ADMA_WAIT$; } }                                               // STATE_ADMA_RUN_RIGHT
             }
         }
     }
@@ -689,6 +699,9 @@ unit dma_digital_audio(
     always_after {
         ADDRESS = LEFT.DMAACTIVE ? LEFT.ADDRESS : RIGHT.ADDRESS;                                                                // SET MEMORY ADDRESS
         READFLAG = LEFT.READFLAG | RIGHT.READFLAG;                                                                              // PASS READMEMORY FLAG
+
+        if( |L_AUDIO_DMA_STATUS ) { L_UPDATE.RATE = L_AUDIO_DMA_STATUS[3,1]; LEFT.REPEAT = L_AUDIO_DMA_STATUS[2,1]; }
+        if( |R_AUDIO_DMA_STATUS ) { R_UPDATE.RATE = R_AUDIO_DMA_STATUS[3,1]; RIGHT.REPEAT = R_AUDIO_DMA_STATUS[2,1]; }
     }
 }
 
@@ -697,67 +710,70 @@ unit dma_digital_audio_channel(
     input   uint16              LENGTH,
     input   uint1               START,
     input   uint1               STOP,
+    input   uint1               REPEAT,
 
     input   uint1               UPDATE,
     output  uint8               SAMPLE,
     output  uint1               ADMA_ACTIVE,
-    output  uint$addr_width$  ADDRESS,
-    output  uint1   READFLAG,
-    input   uint32  READDATA,
-    input   uint1   MEMORYBUSY,
+    output  uint$addr_width$    ADDRESS,
+    output  uint1               READFLAG,
+    input   uint32              READDATA,
+    input   uint1               MEMORYBUSY,
 
-    input   uint1   DMASTART,
-    output  uint1   DMAREQ,
-    output  uint1   DMAACTIVE
+    input   uint1               DMASTART,
+    output  uint1               DMAREQ,
+    output  uint1               DMAACTIVE
 ) <reginputs> {
-    uint6   STATE = 1;
+    uint7   STATE = 1;
         $$ STATE_ADMA_CHANNEL_IDLE          = 1
         $$ STATE_ADMA_CHANNEL_WAIT_START    = 2
         $$ STATE_ADMA_CHANNEL_WAIT_MEMORY   = 4
         $$ STATE_ADMA_CHANNEL_LATCH_SAMPLE  = 8
         $$ STATE_ADMA_CHANNEL_NEXT_ADDR     = 16
         $$ STATE_ADMA_CHANNEL_WAIT_LOADNEW  = 32
+        $$ STATE_ADMA_CHANNEL_WAIT_FINISH   = 64
 
-    uint1   LOAD_SAMPLE = 0;
+    uint32  samples = uninitialised;
+    uint1   LOAD_SAMPLE = uninitialised;
+    uint2   BYTE = uninitialised;
+    uint2   BYTE_NEXT <:: BYTE + UPDATE;
 
     DMAACTIVE := DMASTART | STATE[2,1];
     DMAREQ := ( START & STATE[0,1] ) | ( LOAD_SAMPLE & STATE[5,1] ) | ( STATE[1,1] & ~DMASTART );
     READFLAG := DMASTART & STATE[1,1];
-
     ADMA_ACTIVE := ~STATE[0,1];
 
     algorithm <autorun> {
-        uint32  samples = uninitialised;
-        uint2   BYTE = 0;
-        uint2   BYTE_NEXT <:: BYTE + UPDATE;
         uint1   NOT_SAMPLE_MAX <:: ( ( ADDRESS + BYTE  - BASE ) < LENGTH );
         uint1   AT_ADDRESS_MAX <:: ( ADDRESS >= ( BASE + LENGTH ) );
         uint$addr_width$ ADDRESS_NEXT <:: ADDRESS + 4;
 
         while(1) {
-            if( STOP ) { STATE = $STATE_ADMA_CHANNEL_IDLE$; LOAD_SAMPLE = 0; }
-
-            if( UPDATE & ~STATE[0,1] ) {
-                SAMPLE = samples[ { BYTE, 3b0 }, 8 ];
-                LOAD_SAMPLE = &BYTE;
-                BYTE = BYTE_NEXT;
-            }
-
             onehot( STATE ) {
-                case 0: { LOAD_SAMPLE = 0; if( START ) { BYTE = 0; ADDRESS = BASE; STATE = $STATE_ADMA_CHANNEL_WAIT_START$; } }
-                case 1: { if( DMASTART ) { STATE = $STATE_ADMA_CHANNEL_WAIT_MEMORY$; } }
-                case 2: { if( ~MEMORYBUSY ) { STATE = $STATE_ADMA_CHANNEL_LATCH_SAMPLE$; } }
-                case 3: { samples = READDATA; STATE = $STATE_ADMA_CHANNEL_NEXT_ADDR$; }
-                case 4: {
-                    if( AT_ADDRESS_MAX ) {
-                        STATE = $STATE_ADMA_CHANNEL_IDLE$;
+                case 0: { LOAD_SAMPLE = 0; if( START ) { BYTE = 0; ADDRESS = BASE; STATE = $STATE_ADMA_CHANNEL_WAIT_START$; } } // STATE_ADMA_CHANNEL_IDLE
+                case 1: { if( DMASTART ) { STATE = $STATE_ADMA_CHANNEL_WAIT_MEMORY$; } }                                        // STATE_ADMA_CHANNEL_WAIT_START
+                case 2: { if( ~MEMORYBUSY ) { STATE = $STATE_ADMA_CHANNEL_LATCH_SAMPLE$; } }                                    // STATE_ADMA_CHANNEL_WAIT_MEMORY
+                case 3: { samples = READDATA; STATE = $STATE_ADMA_CHANNEL_NEXT_ADDR$; }                                         // STATE_ADMA_CHANNEL_LATCH_SAMPLE
+                case 4: {                                                                                                       // STATE_ADMA_CHANNEL_NEXT_ADDR
+                    if( AT_ADDRESS_MAX ) {                                                                                      //  AT LAST ADDRESS?
+                        if( REPEAT ) { ADDRESS = BASE; } else { STATE = $STATE_ADMA_CHANNEL_WAIT_FINISH$; }                     //      REPEAT ? RETURN TO START : WAIT FOR LAST SAMPLE TO PLAY
                     } else {
-                        ADDRESS = ADDRESS_NEXT; STATE = $STATE_ADMA_CHANNEL_WAIT_LOADNEW$;
+                        ADDRESS = ADDRESS_NEXT; STATE = $STATE_ADMA_CHANNEL_WAIT_LOADNEW$;                                      //      MOVE TO NEXT ADDRESS AND WAIT FOR LOAD SIGNAL
                     }
                 }
-                case 5: { if( LOAD_SAMPLE ) { LOAD_SAMPLE = 0; STATE = $STATE_ADMA_CHANNEL_WAIT_START$; } }                     // BUFFER USED, NEXT 4 BYTES NEED LOADING
+                case 5: { if( LOAD_SAMPLE ) { LOAD_SAMPLE = 0; STATE = $STATE_ADMA_CHANNEL_WAIT_START$; } }                     // STATE_ADMA_CHANNEL_WAIT_LOADNEW
+                case 6: { STATE = NOT_SAMPLE_MAX ? STATE : $STATE_ADMA_CHANNEL_IDLE$; }                                         // STATE_ADMA_CHANNEL_WAIT_FINISH
             }
         }
     }
-}
 
+    always_after {
+        if( STOP ) { STATE = $STATE_ADMA_CHANNEL_IDLE$; LOAD_SAMPLE = 0; }                                                      // STTOP, RETURN TO IDLE AND CANCEL ANY LOAD
+
+        if( UPDATE & ~STATE[0,1] ) {                                                                                            // TIMER UPDATE SIGNALLED
+            SAMPLE = samples[ { BYTE, 3b000 }, 8 ];                                                                             //  OUTPUT SAMPLE
+            LOAD_SAMPLE = &BYTE;                                                                                                //  USED ALL 4 LOADED SAMPLES?
+            BYTE = BYTE_NEXT;                                                                                                   //  MOVE TO NEXT BYTE IN THE SAMPLE
+        }
+    }
+}

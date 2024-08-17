@@ -1,8 +1,11 @@
-include ../makefile.inc
+include ../makefile-lto.inc
 
 PROJECT=QUAKE
 PROJECTTYPE=DEMO
+CFLAGSEXTRA=-trigraphs
+
 PRJSRC=$(wildcard WinQuake/*.c) $(wildcard WinQuake/*.cpp) $(wildcard WinQuake/*.s) $(wildcard WinQuake/*.h)
+
 PRJOBJ=\
 	WinQuake/chase.o \
 	WinQuake/cl_demo.o \
@@ -66,10 +69,10 @@ PRJOBJ=\
 	WinQuake/net_loop.o \
 	WinQuake/net_main.o \
 	WinQuake/net_vcr.o \
-	WinQuake/in_null.o \
+	WinQuake/in_paws.o \
 	WinQuake/net_none.o \
-	WinQuake/snd_null.o \
-	WinQuake/sys_mc1.o \
-	WinQuake/vid_mc1.o
+	WinQuake/snd_paws.o \
+	WinQuake/sys_paws.o \
+	WinQuake/vid_paws.o
 
 include ../makefile-paws.inc

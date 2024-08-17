@@ -42,9 +42,9 @@ unit PAWSCPU(
     uint1   frd <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.frd : RV64CONTROL.writeRegisterF;                                           // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
     uint1   write <:: COMMIT & RV64CONTROL.writeRegister;                                                                       // WRITE TO REGISTERS FLAG
 
-    control RV64CONTROL <@clock_CPUdecoder> (                                                                                   // RISC-V INSTRUCTION DECODER, ADDRESS GENERATOR, INTEGER REGISTERS
-        cacheselect <: cacheselect,
-        SMT <:: SMT,
+    control RV64CONTROL <@clock_CPUdecoder> (                                                                                   // RISC-V   INSTRUCTION DECODER
+        cacheselect <: cacheselect,                                                                                             //          ADDRESS GENERATOR
+        SMT <:: SMT,                                                                                                            //          INTEGER REGISTERS
         COMMIT_SMT <: COMMIT_SMT,
         frd <: frd,
         write <: write,
@@ -55,8 +55,8 @@ unit PAWSCPU(
         accesssize :> accesssize
     );
 
-    float_control RV64CONTROLF <@clock_CPUdecoder> (                                                                            // RISC-V FLOATING POINT REGISTERS AND REGISTER CLASSIFIERS
-        SMT <:: SMT,
+    float_control RV64CONTROLF <@clock_CPUdecoder> (                                                                            // RISC-V   FLOATING POINT REGISTERS
+        SMT <:: SMT,                                                                                                            //          FLOATING POINT REGISTER CLASSIFIERS
         COMMIT_SMT <: COMMIT_SMT,
         frd <: frd,
         write <: write,
@@ -121,14 +121,10 @@ unit PAWSCPU(
         FPUflags <: EXECUTESLOW.FPUflags
     );
 
-    uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );                                             // CPU L0 CACHE MATCH FOR PC
-    uint30  L0instruction <:: SMT ? ICACHE_1.instruction : ICACHE_0.instruction;                                                //  L0 instruction
-    uint1   L0compressed <:: SMT ? ICACHE_1.compressed : ICACHE_0.compressed;                                                   //  L0 compressed flag
     memory_controller MEMORY(
         clock_CPUdecoder <: clock_CPUdecoder,
         accesssize <: RV64CONTROL.accesssize, IS_MA <: RV64CONTROL.IS_MA, IS_64 <: RV64CONTROL.IS_MEM64,
         IS_FLOAT <:RV64CONTROL.opCode[0,1], IS_UNSIGNED <: RV64CONTROL.function3[2,1],
-        L0match <: L0match, L0instruction <: L0instruction, L0compressed <: L0compressed,
         loadAddress <: RV64CONTROL.loadAddress, storeAddress <: RV64CONTROL.storeAddress,
         SMT <: SMT, pc <: pc, pcSMT <: pcSMT,
         readdata <: readdata, memorybusy <: memorybusy,
@@ -136,10 +132,6 @@ unit PAWSCPU(
         writedata :> writedata,
         writememory :> writememory,
         readmemory :> readmemory
-//        address = MEMORY.address;                                                                                               // OUTPUT ADDRESS TO MEMORY BUS
-//        writedata = MEMORY.writedata;                                                                                           // OUTPUT WRITEDATA TO MEMORY BUS
-//        writememory = MEMORY.writememory;                                                                                       // OUTPUT MEMORY WRITE FLAG
-//        readmemory = MEMORY.readmemory;                                                                                         // OUTPUT MEMORY READ FLAG
     );
 
     simple_dualport_bram uint32 L00cache <@clock_cache,@clock> [$L00Iblocks$] = uninitialized;                                  // SMALL ON CPU L0 CACHE - 1 per HART - RESET FENCE MEM IS 1
@@ -160,7 +152,14 @@ unit PAWSCPU(
     ITAGS_0W.update := ~SMT & ICACHEUPDATE; ITAGS_1W.update := SMT & ICACHEUPDATE;                                              // UPDATE CPU l0 TAGS FOR MAIN/SMT THREAD FLAG
     CACHEL0CLEAR := 0;
 
-    MEMORY.start := 0;
+    MEMORY.start := 0;                                                                                                          // MEMORY CONTROLLER FLAGS
+    MEMORY.L0match := ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );                                               //  CPU L0 CACHE MATCH FOR PC
+    MEMORY.L0instruction := SMT ? ICACHE_1.instruction : ICACHE_0.instruction;                                                  //  L0 instruction
+    MEMORY.L0compressed := SMT ? ICACHE_1.compressed : ICACHE_0.compressed;                                                     //  L0 compressed flag
+    MEMORY.storedata := RV64CONTROL.IS_FAST ? RV64CONTROL.opCode[0,1] ? RV64CONTROLF.sourceReg2F :                              //  SELECT RESULT TO STORE  FAST FLOATING-POINT REGISTER
+                                                                        RV64CONTROL.sourceReg2 :                                //                          FAST INTEGER REGISTER
+                                              EXECUTESLOW.memoryoutput;                                                         //                          SLOW ATOMIC MEMORY OPERATION
+
     DMASTART := 0; DMA_AUDIO_START := 0;                                                                                        // DMA CONTROLLER START FLAG
     EXECUTESLOW.start := 0;                                                                                                     // CPU CSR, ATOMIC, INTEGER DIVIDE START FLAG
     EXECUTEFPU.start := 0;                                                                                                      // CPU FPU START FLAG
@@ -268,12 +267,6 @@ unit PAWSCPU(
             }
         }
     }
-
-    always_after {
-        MEMORY.storedata = RV64CONTROL.IS_FAST ? RV64CONTROL.opCode[0,1] ? RV64CONTROLF.sourceReg2F :                           // SELECT RESULT TO STORE   FAST FLOATING-POINT REGISTER
-                                                                           RV64CONTROL.sourceReg2 :                             //                          FAST INTEGER REGISTER
-                                                 EXECUTESLOW.memoryoutput;                                                      //                          SLOW ATOMIC MEMORY OPERATION
-    }
 }
 
 unit cpuexecuteFASTPATH(
@@ -328,10 +321,8 @@ unit cpuexecuteSLOWPATH(
         function7 <: function7[2,5], memoryinput <: memoryinput, sourceReg2 <: sourceReg2
     );
 
-    uint12  csrRegister <:: { function7, rs2 };                                                                                 // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
     CSRblock CSR(                                                                                                               // RISC-V CSR REGISTERS
         SMT <: SMT,                                                                                                             //  HARTID == 0 MAIN THREAD == 1 SMT THREAD
-        csrRegister <: csrRegister,
         function3 <: function3,
         rs1 <: rs1,
         sourceReg1 <: sourceReg1,
@@ -347,6 +338,7 @@ unit cpuexecuteSLOWPATH(
         sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
     );
 
+    CSR.csrRegister := { function7, rs2 };                                                                                      // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
     CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                      // START FLAGS
 
     result := operation[0,1] ? |function3 ? CSR.result : 0 :                                                                    //  CSR
@@ -418,7 +410,6 @@ unit cpuexecuteFPU(
     output  uint1   CSRupdateFPUflags
 ) <reginputs> {
     uint10  BIAS <:: function7[0,1] ? $BIAS64$ : function7[1,1] ? $BIAS16$ : $BIAS32$;                                          // SELECT BIAS
-    uint10  SBIAS <:: rs2[0,1] ? $BIAS64$ : rs2[1,1] ? $BIAS16$ : $BIAS32$;                                                     // SELECT BIAS ( SOURCE FOR CHANGE PRECISION )
 
     uint3   converttype <:: {
                                 ( function7[2,5] == 5b11000 ),                                                                  // FD2IL
@@ -462,7 +453,7 @@ unit cpuexecuteFPU(
         sourceReg1Fx <: sourceReg1Fx, typeAF <: typeAF
     );
     floatchangeprecision FPUF_CP(                                                                                               // FLOATING-POINT CHANGE PRECISION
-        rm <: function3[0,2], dest <: function7[0,2], DBIAS <: BIAS, source <: rs2[0,2], SBIAS <: SBIAS,                        //  FLAGS ROUNDING, DESTINATION PRECISION, SOUCRE PRECISION
+        rm <: function3[0,2], dest <: function7[0,2], DBIAS <: BIAS, source <: rs2[0,2],                                        //  FLAGS ROUNDING, DESTINATION PRECISION, SOUCRE PRECISION
         sourceReg1Fx <: sourceReg1Fxopp, typeAF <: typeAopp
     );
     floatround FPUROUND(                                                                                                        // FLOATING-POINT ROUND ROUNDNX
@@ -470,7 +461,22 @@ unit cpuexecuteFPU(
         sourceReg1F <:sourceReg1F, sourceReg1Fx <:sourceReg1Fx, typeAF <: typeAF
     );
 
+    FPUF_CP.SBIAS := rs2[0,1] ? $BIAS64$ : rs2[1,1] ? $BIAS16$ : $BIAS32$;                                                      // SELECT BIAS ( SOURCE FOR CHANGE PRECISION )
     FPUCALC.start := fpucalc & start; CSRupdateFPUflags := 0;                                                                   // START FLAGS AND UPDATE CSR
+
+    result := operation[0,1] ? FPUFAST.result :                                                                                 // COLLECT THE APPROPRIATE RESULT
+              operation[1,1] ? converttype[2,1] ? FPUF2IL.result :
+                               converttype[1,1] ? FPUIL2F.result :
+                                                  rs2[2,1] ? FPUROUND.result : FPUF_CP.result :
+                               CALCRESULT.repack;
+    frd := isFPUCONVERT ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd;                                                    // WRITE TO F REGISTERS FLAG
+    FPUnewflags := FPUflags | (                                                                                                 // MERGE OLD AND NEW FLAGS
+                                isFPUCONVERT ? converttype[2,1] ? FPUF2IL.FPUflags :
+                                               converttype[1,1] ? FPUIL2F.FPUflags :
+                                                                  rs2[2,1] ? FPUROUND.FPUflags : FPUF_CP.FPUflags :
+                                fpucalc ? FPUCALC.FPUnewflags :
+                                          FPUFAST.FPUnewflags
+                              );
 
     algorithm <autorun> {
         uint3   STATE = 1;
@@ -493,22 +499,6 @@ unit cpuexecuteFPU(
             }
         }
     }
-
-    always_after {
-            result = operation[0,1] ? FPUFAST.result :                                                                          // COLLECT THE APPROPRIATE RESULT
-                     operation[1,1] ? converttype[2,1] ? FPUF2IL.result :
-                                      converttype[1,1] ? FPUIL2F.result :
-                                                         rs2[2,1] ? FPUROUND.result : FPUF_CP.result :
-                                      CALCRESULT.repack;
-            frd = isFPUCONVERT ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd;                                             // WRITE TO F REGISTERS FLAG
-            FPUnewflags = FPUflags | (                                                                                          // MERGE OLD AND NEW FLAGS
-                                        isFPUCONVERT ? converttype[2,1] ? FPUF2IL.FPUflags :
-                                                       converttype[1,1] ? FPUIL2F.FPUflags :
-                                                                          rs2[2,1] ? FPUROUND.FPUflags : FPUF_CP.FPUflags :
-                                        fpucalc ? FPUCALC.FPUnewflags :
-                                                  FPUFAST.FPUnewflags
-                                     );
-    }
 }
 
 
@@ -523,11 +513,11 @@ unit memory_controller(
     input   uint1   IS_FLOAT,
     input   uint1   IS_UNSIGNED,
 
-    output uint$addr_width$ address,
+    output  uint$addr_width$ address,
     input   uint1   memorybusy,
-    output uint1   writememory,
-    output uint32  writedata,
-    output uint1   readmemory,
+    output  uint1   writememory,
+    output  uint32  writedata,
+    output  uint1   readmemory,
     input   uint32  readdata,
 
     input   uint1   SMT,

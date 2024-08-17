@@ -5,6 +5,7 @@ unsigned short volatile *BUTTONS = (unsigned short volatile *) 0xf200;
 unsigned short volatile *MOUSE_X = (unsigned short volatile *) 0xf202;
 unsigned short volatile *MOUSE_Y = (unsigned short volatile *) 0xf204;
 unsigned short volatile *MOUSE_BUTTONS = (unsigned short volatile *) 0xf206;
+unsigned char volatile *MOUSE_RESET = (unsigned char *) 0xf200;
 unsigned char volatile *LEDS = (unsigned char volatile *) 0xf300;
 
 // SDCARD
@@ -46,24 +47,22 @@ unsigned short volatile *BACKGROUND_COPPER_MEMVINIT = (unsigned short volatile *
 
 unsigned char volatile *LOWER_TM_X = (unsigned char volatile *) 0xd100;
 unsigned char volatile *LOWER_TM_Y = (unsigned char volatile *) 0xd102;
-unsigned char volatile *LOWER_TM_TILE = (unsigned char volatile *) 0xd104;
-unsigned char volatile *LOWER_TM_ACTION = (unsigned char volatile *) 0xd106;
-unsigned char volatile *LOWER_TM_COMMIT = (unsigned char volatile *) 0xd108;
-unsigned char volatile *LOWER_TM_STATUS = (unsigned char volatile *) 0xd108;
+short volatile *LOWER_TM_OFFSET_X = (short volatile *) 0xd104;
+short volatile *LOWER_TM_OFFSET_Y = (short volatile *) 0xd106;
 unsigned char volatile *LOWER_TM_WRITER_TILE_NUMBER = (unsigned char volatile *) 0xd10a;
 unsigned char volatile *LOWER_TM_WRITER_COLOUR = (unsigned char volatile *) 0xd10c;
 unsigned char volatile *LOWER_TM_SCROLLWRAPCLEAR = (unsigned char volatile *) 0xd10e;
+unsigned char volatile *LOWER_TM_LASTACTION = (unsigned char volatile *) 0xd10e;
 unsigned char volatile *LOWER_TM_SCROLLAMOUNT = (unsigned char volatile *) 0xd10f;
 
 unsigned char volatile *UPPER_TM_X = (unsigned char volatile *) 0xd200;
 unsigned char volatile *UPPER_TM_Y = (unsigned char volatile *) 0xd202;
-unsigned char volatile *UPPER_TM_TILE = (unsigned char volatile *) 0xd204;
-unsigned char volatile *UPPER_TM_ACTION = (unsigned char volatile *) 0xd206;
-unsigned char volatile *UPPER_TM_COMMIT = (unsigned char volatile *) 0xd208;
-unsigned char volatile *UPPER_TM_STATUS = (unsigned char volatile *) 0xd208;
+short volatile *UPPER_TM_OFFSET_X = (short volatile *) 0xd204;
+short volatile *UPPER_TM_OFFSET_Y = (short volatile *) 0xd206;
 unsigned char volatile *UPPER_TM_WRITER_TILE_NUMBER = (unsigned char volatile *) 0xd20a;
 unsigned char volatile *UPPER_TM_WRITER_COLOUR = (unsigned char volatile *) 0xd20c;
 unsigned char volatile *UPPER_TM_SCROLLWRAPCLEAR = (unsigned char volatile *) 0xd20e;
+unsigned char volatile *UPPER_TM_LASTACTION = (unsigned char volatile *) 0xd20e;
 unsigned char volatile *UPPER_TM_SCROLLWRAPAMOUNT = (unsigned char volatile *) 0xd20f;
 
 short volatile *GPU_X = (short volatile *) 0xd600;
@@ -117,7 +116,6 @@ unsigned char volatile *LOWER_SPRITE_TILE = (unsigned char volatile *) 0xd340;
 unsigned char volatile *LOWER_SPRITE_LAYER_COLLISION_BASE = (unsigned char volatile *) 0xd360;
 short volatile *LOWER_SPRITE_X = (short volatile *) 0xd380;
 short volatile *LOWER_SPRITE_Y = (short volatile *) 0xd3c0;
-unsigned short volatile *LOWER_SPRITE_UPDATE = (unsigned short volatile *) 0xda00;
 unsigned int volatile *LOWER_SPRITE_COLLISION_BASE = (unsigned int volatile *) 0xd800;
 unsigned char volatile *LOWER_SPRITE_WRITER_NUMBER = (unsigned char volatile *) 0xd800;
 unsigned char volatile *LOWER_SPRITE_WRITER_COLOUR = (unsigned char volatile *) 0xd802;
@@ -128,19 +126,15 @@ unsigned char volatile *UPPER_SPRITE_TILE = (unsigned char volatile *) 0xd440;
 unsigned char volatile *UPPER_SPRITE_LAYER_COLLISION_BASE = (unsigned char volatile *) 0xd460;
 short volatile *UPPER_SPRITE_X = (short volatile *) 0xd480;
 short volatile *UPPER_SPRITE_Y = (short volatile *) 0xd4c0;
-unsigned short volatile *UPPER_SPRITE_UPDATE = (unsigned short volatile *) 0xdb00;
 unsigned int volatile *UPPER_SPRITE_COLLISION_BASE = (unsigned int volatile *) 0xd900;
 unsigned char volatile *UPPER_SPRITE_WRITER_NUMBER = (unsigned char volatile *) 0xd900;
 unsigned char volatile *UPPER_SPRITE_WRITER_COLOUR = (unsigned char volatile *) 0xd902;
 
 unsigned char volatile *TPU_X = (unsigned char volatile *) 0xd500;
 unsigned char volatile *TPU_Y = (unsigned char volatile *) 0xd502;
-unsigned char volatile *TPU_CHARACTER = (unsigned char volatile *) 0xd504;
-unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd506;
-unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd508;
-unsigned char volatile *TPU_COMMIT = (unsigned char volatile *) 0xd50a;
-unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd50c;
-unsigned char volatile *TPU_ATTRIBUTES = (unsigned char volatile *) 0xd50e;
+unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd504;
+unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd506;
+unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd508;
 
 unsigned char volatile *AUDIO_WAVEFORM = (unsigned char volatile *) 0xe000;
 unsigned char volatile *AUDIO_FREQUENCY = (unsigned char volatile *) 0xe002;
@@ -181,7 +175,7 @@ unsigned short volatile *TIMER1KHZ1 = (unsigned short volatile *) 0xc016;
 unsigned short volatile *SLEEPTIMER0 = (unsigned short volatile *) 0xc018;
 unsigned short volatile *SLEEPTIMER1 = (unsigned short volatile *) 0xc01a;
 unsigned long volatile *SET_RTC_TIME = (unsigned long volatile *) 0xc020;
-unsigned int volatile *SYSTEMSECONDS = (unsigned int volatile *) 0xc020;
+unsigned long volatile *SYSTEMSECONDS = (unsigned long volatile *) 0xc020;
 unsigned int volatile *SYSTEMMILLISECONDS = (unsigned int volatile *)0xc028;
 unsigned char volatile *SET_RTC = (unsigned char volatile *)0xc02a;
 unsigned long volatile *RTC = (unsigned long volatile *) 0xf600;
@@ -192,8 +186,9 @@ unsigned int volatile *RAMBASE = (unsigned int volatile *) 0xf704;
 unsigned int volatile *RAMTOP = (unsigned int volatile *) 0xf708;
 
 // HANDLE SMT - RUNNING STATUS AND POINTER TO CODE TO RUN
-unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;
 unsigned int volatile *SMTPC = (unsigned int volatile *) 0xff00;
+unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;
+unsigned int volatile *SMTSTACK = (unsigned int volatile *) 0xff08;
 
 // HANDLE MINI DMA CONTROLLER
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
@@ -210,3 +205,5 @@ unsigned int volatile *DMASETRGB = (unsigned int volatile *) 0xfe0c;
 unsigned char volatile *FRAMEBUFFER0 = (unsigned char volatile *)0x2000000;
 unsigned char volatile *FRAMEBUFFER1 = (unsigned char volatile *)0x2020000;
 unsigned int volatile *TPUBUFFER = (unsigned int volatile *)0x1000000;
+unsigned short volatile *LTMAPBUFFER = (unsigned short volatile *)0x800000;
+unsigned short volatile *UTMAPBUFFER = (unsigned short volatile *)0x808000;

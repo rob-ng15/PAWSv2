@@ -21,14 +21,19 @@ OUTPUT_DIR=../../PAWS/
 ifndef CFLAGSEXTRA
 CFLAGSEXTRA=
 endif
+
 ifndef INCLUDEEXTRA
 INCLUDEEXTRA=/usr/riscv64-elf/include/
 endif
 
+ifndef OPTLEVEL
+OPTLEVEL=2
+endif
+
 CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcd_zfa_zfh_zicond_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -mno-strict-align
 
-CFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
-CXXFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib
+CFLAGS=$(CPUOPTS) -O$(OPTLEVEL) -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -nostdlib $(CFLAGSEXTRA)
+CXXFLAGS=$(CPUOPTS) -O$(OPTLEVEL) -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -nostdlib
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,--relax-gp -Wl,-melf64lriscv -Wl,-belf64-littleriscv
 	-Wl,--wrap=memcpy -Wl,--wrap=memset \
 	-Wl,--wrap=__clzsi2 -Wl,--wrap=__clzdi2 \
@@ -38,21 +43,19 @@ LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,--relax-gp -Wl,-melf64lriscv -Wl,-b
 	-Wl,--wrap=__builtin_ctz -Wl,--wrap=__builtin_ctzl \
 	-Wl,--wrap=__builtin_popcount -Wl,--wrap=__builtin_popcountl \
 	-Wl,--wrap=__builtin_parity -Wl,--wrap=__builtin_parityl \
-	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64 \
-	-Wl,--wrap=__assert_fail
+	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64
 LCONFIG=-Wl,-T../config_c_SDRAM.ld
 
 PAWSBASE=../
 INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I$(INCLUDEEXTRA) -I/usr/$(ARCH)-elf/include/
 
 LIBRARY=	/usr/$(NLARCH)-elf/lib/rv64imafdc/lp64d/libc.a \
+		/usr/$(NLARCH)-elf/lib/rv64imafdc/lp64d/libg.a \
 		/usr/$(NLARCH)-elf/lib/rv64imafdc/lp64d/libm.a \
-		/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/libgcc.a \
-		/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/crtbegin.o \
-		/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/crtend.o
+		/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/libgcc.a
 
 CRT0SOURCE=	$(PAWSBASE)library/crt0.s
-CRT0OBJ=	$(PAWSBASE)library/build/crt0.o
+CRT0OBJ=	$(PAWSBASE)library/$(BUILD_DIR)/crt0.o
 
 LIBPAWSSOURCE=	$(PAWSBASE)library/PAWS.h $(PAWSBASE)library/PAWSdefinitions.h $(PAWSBASE)library/PAWSncurses.c $(PAWSBASE)library/curses.h $(PAWSBASE)library/PAWSlibrary.c
 LIBPAWSOBJ=	$(PAWSBASE)library/$(BUILD_DIR)/libPAWS.o

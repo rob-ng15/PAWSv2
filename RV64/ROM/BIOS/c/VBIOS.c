@@ -1,30 +1,8 @@
 #include "PAWS.h"
-
-typedef unsigned int size_t;
+#include <stdint.h>
 
 // BACKGROUND PATTERN GENERATOR
 #define BKG_SOLID 0
-
-// PAWS LOGO BLITTER TILE
-unsigned short PAWSLOGO[] = {
-    0b0000000001000000,
-    0b0000100011100000,
-    0b0001110011100000,
-    0b0001110011100000,
-    0b0001111011100100,
-    0b0000111001001110,
-    0b0010010000001110,
-    0b0111000000001110,
-    0b0111000111001100,
-    0b0111001111110000,
-    0b0011011111111000,
-    0b0000011111111000,
-    0b0000011111111100,
-    0b0000111111111100,
-    0b0000111100001000,
-    0b0000010000000000
-};
-
 
 // PACMAN GHOST GRAPHICS 2 EACH FOR RIGHT
 unsigned char ghost_bitmap[] = {
@@ -135,318 +113,7 @@ unsigned char pacman_bitmap[] = {
     0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40
 };
 
-// DMA CONTROLLER
-void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned short mode ) {
-    *DMASOURCE = (unsigned long)source;
-    *DMADEST = (unsigned long)destination;
-    *DMACOUNT = count;
-    *DMAMODE = mode;
-}
-
-// STANDARD C FUNCTIONS ( from @sylefeb mylibc )
-void *memset(void *dest, int val, size_t len) {
-    *DMASET = val;
-    DMASTART( (const void *restrict)DMASET, dest, len, DMA_SET_TO_M );
-    return dest;
-}
-void *memset32( void *restrict destination, int value, size_t count ) {
-    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_TO_M );
-    return( destination );
-}
-
-short strlen( char *s ) {
-    short i = 0;
-    while( *s ) {
-        s++;
-        i++;
-    }
-    return(i);
-}
-
-// TIMER AND PSEUDO RANDOM NUMBER GENERATOR
-// SLEEP FOR counter milliseconds
-void sleep( unsigned short counter ) {
-    *SLEEPTIMER0 = counter;
-    while( *SLEEPTIMER0 );
-}
-// SLEEP FOR counter milliseconds
-void sleep1khz( unsigned short counter, unsigned char timer ) {
-    *( timer ? SLEEPTIMER1 : SLEEPTIMER0 ) = counter; while( timer ? *SLEEPTIMER1 : *SLEEPTIMER0 );
-}
-
-// WAIT FOR VBLANK TO START
-void await_vblank( void ) {
-    while( !*VBLANK );
-}
-void await_vblank_finish( void ) {
-    while( *VBLANK );
-}
-
-// BACKGROUND GENERATOR
-void set_background( unsigned char colour, unsigned char altcolour, unsigned char backgroundmode ) {
-    *BACKGROUND_COPPER_STARTSTOP = 0;
-    *BACKGROUND_COLOUR = colour;
-    *BACKGROUND_ALTCOLOUR = altcolour;
-    *BACKGROUND_MODE = backgroundmode;
-}
-
-// GPU AND BITMAP
-// The bitmap is 320 x 240 pixels (0,0) is top left
-// The GPU can draw pixels, filled rectangles, lines, (filled) circles, filled triangles and has a 16 x 16 pixel blitter from user definable tiles
-
-// INTERNAL FUNCTION - WAIT FOR THE GPU TO FINISH THE LAST COMMAND
-inline void wait_gpu( void )  __attribute__((always_inline));
-void wait_gpu( void ) {
-    while( *GPU_STATUS );
-}
-
-// SET GPU TO RECEIVE A PIXEL BLOCK, SEND INDIVIDUAL PIXELS, STOP
-void gpu_pixelblock_start( short x, short y, unsigned short w ) {
-    wait_gpu();
-    *GPU_X = x;
-    *GPU_Y = y;
-    *GPU_PARAM0 = w;
-    *GPU_PARAM1 = TRANSPARENT;
-    *GPU_WRITE = 10;
-}
-
-// DRAW A FILLED RECTANGLE from (x1,y1) to (x2,y2) in colour
-void gpu_rectangle( unsigned char colour, short x1, short y1, short x2, short y2 ) {
-    *GPU_COLOUR = colour;
-    *GPU_X = x1;
-    *GPU_Y = y1;
-    *GPU_PARAM0 = x2;
-    *GPU_PARAM1 = y2;
-
-    wait_gpu();
-    *GPU_WRITE = 3;
-}
-
-// DRAW A LINE FROM (x1,y1) to (x2,y2) in colour - uses Bresenham's Line Drawing Algorithm - single pixel width
-void gpu_line( unsigned char colour, short x1, short y1, short x2, short y2 ) {
-    *GPU_COLOUR = colour;
-    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = 1;
-    wait_gpu();
-    *GPU_WRITE = 2;
-}
-
-// DRAW A LINE FROM (x1,y1) to (x2,y2) in colour - uses Bresenham's Line Drawing Algorithm - multi-pixel width
-void gpu_wideline( unsigned char colour, short x1, short y1, short x2, short y2, unsigned char width ) {
-    if( width ) {
-        *GPU_COLOUR = colour;
-        *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2; *GPU_PARAM2 = width;
-        wait_gpu();
-        *GPU_WRITE = 2;
-    }
-}
-
-// DRAW A FILLED TRIANGLE with vertices (x1,y1) (x2,y2) (x3,y3) in colour
-// VERTICES SHOULD BE PRESENTED CLOCKWISE FROM THE TOP ( minimal adjustments made to the vertices to comply )
-void gpu_triangle( unsigned char colour, short x1, short y1, short x2, short y2, short x3, short y3 ) {
-    *GPU_COLOUR = colour;
-    *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = x2; *GPU_PARAM1 = y2;
-    *GPU_PARAM2 = x3; *GPU_PARAM3 = y3;
-    wait_gpu();
-    *GPU_WRITE = 6;
-}
-
-// CLEAR THE BITMAP by drawing a transparent rectangle from (0,0) to (639,479) and resetting the bitamp scroll position
-void gpu_cs( void ) {
-    wait_gpu();
-    gpu_rectangle( 64, 0, 0, 319, 239 );
-}
-
-// BLIT A 16 x 16 ( blit_size == 1 doubled to 32 x 32 ) TILE ( from tile 0 to 31 ) to (x1,y1) in colour
-void gpu_blit( unsigned char colour, short x1, short y1, short tile, unsigned char blit_size ) {
-    *GPU_COLOUR = colour;
-    *GPU_X = x1;
-    *GPU_Y = y1;
-    *GPU_PARAM0 = tile;
-    *GPU_PARAM1 = blit_size;
-    *GPU_PARAM2 = 0; // NO REFLECTION
-
-    wait_gpu();
-    *GPU_WRITE = 7;
-}
-
-// BLIT AN 8 x8  ( blit_size == 1 doubled to 16 x 16, blit_size == 1 doubled to 32 x 32 ) CHARACTER ( from tile 0 to 255 ) to (x1,y1) in colour
-void gpu_character_blit( unsigned char colour, short x1, short y1, unsigned char tile, unsigned char blit_size ) {
-    *GPU_COLOUR = colour;
-    *GPU_X = x1;
-    *GPU_Y = y1;
-    *GPU_PARAM0 = tile;
-    *GPU_PARAM1 = blit_size;
-    *GPU_PARAM2 = 0; // NO REFLECTION
-
-    wait_gpu();
-    *GPU_WRITE = 8;
-}
-
-// OUTPUT A STRING TO THE GPU
-void gpu_outputstring( unsigned char colour, short x, short y, char *s, unsigned char size ) {
-    while( *s ) {
-        gpu_character_blit( colour, x, y, *s++, size );
-        x = x + ( 8 << size );
-    }
-}
-void gpu_outputstringcentre( unsigned char colour, short y, char *s, unsigned char size ) {
-    gpu_rectangle( TRANSPARENT, 0, y, 319, y + ( 8 << size ) - 1 );
-    gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1), y, s, 0 );
-}
-// SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as is halfed by dma engine)
-void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
-    *BLIT_WRITER_TILE = tile;
-    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, DMA_CPY_M_TO_S );
-}
-
-// CHARACTER MAP FUNCTIONS
-// The character map is an 80 x 30 character window with a 256 character 8 x 16 pixel character generator ROM )
-// NO SCROLLING, CURSOR WRAPS TO THE TOP OF THE SCREEN
-
-// CLEAR THE CHARACTER MAP
-void tpu_cs( void ) {
-    memset32( ( void *)0x1000000, ( 64 << 16 ), 4800 * 4 );
-}
-// POSITION THE CURSOR to (x,y) and set background and foreground colours
-void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground, unsigned char attributes ) {
-    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_ATTRIBUTES = attributes; *TPU_COMMIT = 1;
-}
-// OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
-void tpu_output_character( unsigned char c ) {
-    *TPU_CHARACTER = c; *TPU_COMMIT = 2;
-}
-void tpu_outputstring( char *s ) {
-    while( *s ) {
-        tpu_output_character( *s );
-        s++;
-    }
-}
-
-// SET THE TILEMAP TILE at (x,y) to tile
-void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
-    switch( tm_layer ) {
-        case 0:
-            while( *LOWER_TM_STATUS );
-            *LOWER_TM_X = x;
-        *LOWER_TM_Y = y;
-        *LOWER_TM_TILE = tile;
-        *LOWER_TM_ACTION = action;
-        *LOWER_TM_COMMIT = 1;
-        break;
-        case 1:
-            while( *UPPER_TM_STATUS );
-            *UPPER_TM_X = x;
-        *UPPER_TM_Y = y;
-        *UPPER_TM_TILE = tile;
-        *UPPER_TM_ACTION = action;
-        *UPPER_TM_COMMIT = 1;
-        break;
-    }
-}
-// SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
-//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN
-//  action == 5 clear the tilemap
-//  RETURNS 0 if no action taken other than pixel shift, action if SCROLL WRAP or CLEAR was actioned
-unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
-    while( *( tm_layer ? UPPER_TM_STATUS : LOWER_TM_STATUS ) );
-    *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
-    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = action;
-    return( tm_layer ? *UPPER_TM_SCROLLWRAPCLEAR : *LOWER_TM_SCROLLWRAPCLEAR );
-}
-
-// SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 pixel bitmaps ( 2048 ARRGGBB pixels )
-void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
-    *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = sprite_number;
-    DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, DMA_TO_IO );
-}
-
-// SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
-void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
-    switch( sprite_layer ) {
-        case 0:
-            LOWER_SPRITE_ACTIVE[sprite_number] = active;
-            LOWER_SPRITE_TILE[sprite_number] = tile;
-            LOWER_SPRITE_X[sprite_number] = x;
-            LOWER_SPRITE_Y[sprite_number] = y;
-            LOWER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
-            break;
-
-        case 1:
-            UPPER_SPRITE_ACTIVE[sprite_number] = active;
-            UPPER_SPRITE_TILE[sprite_number] = tile;
-            UPPER_SPRITE_X[sprite_number] = x;
-            UPPER_SPRITE_Y[sprite_number] = y;
-            UPPER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
-            break;
-    }
-}
-
-// SET or GET ATTRIBUTES for sprite_number in sprite_layer
-//  attribute == 0 active status ( 0 == inactive, 1 == active )
-//  attribute == 1 tile number ( 0 to 7 )
-//  attribute == 2 colour
-//  attribute == 3 x coordinate
-//  attribute == 4 y coordinate
-//  attribute == 5 attributes bit 0 = size == 0 16x16 == 1 32x32. bit 1 = x-mirror bit 2 = y-mirror
-void set_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_number, unsigned char attribute, short value ) {
-    if( sprite_layer == 0 ) {
-        switch( attribute ) {
-            case 0:
-                LOWER_SPRITE_ACTIVE[sprite_number] = ( unsigned char) value;
-                break;
-            case 1:
-                LOWER_SPRITE_TILE[sprite_number] = ( unsigned char) value;
-                break;
-            case 2:
-                break;
-            case 3:
-                LOWER_SPRITE_X[sprite_number] = value;
-                break;
-            case 4:
-                LOWER_SPRITE_Y[sprite_number] = value;
-                break;
-            case 5:
-                LOWER_SPRITE_ACTIONS[sprite_number] = ( unsigned char) value;
-                break;
-        }
-    } else {
-        switch( attribute ) {
-            case 0:
-                UPPER_SPRITE_ACTIVE[sprite_number] = ( unsigned char) value;
-                break;
-            case 1:
-                UPPER_SPRITE_TILE[sprite_number] = ( unsigned char) value;
-                break;
-            case 2:
-                break;
-            case 3:
-                UPPER_SPRITE_X[sprite_number] = value;
-                break;
-            case 4:
-                UPPER_SPRITE_Y[sprite_number] = value;
-                break;
-            case 5:
-                UPPER_SPRITE_ACTIONS[sprite_number] = ( unsigned char) value;
-                break;
-        }
-    }
-}
-
-// UPDATE A SPITE moving by x and y deltas, with optional wrap/kill and optional changing of the tile
-//  update_flag = { y action, x action, tile action, 5 bit y delta, 5 bit x delta }
-//  x and y action ( 0 == wrap, 1 == kill when moves offscreen )
-//  x and y deltas a 2s complement -15 to 15 range
-//  tile action, increase the tile number ( provides limited animation effects )
-void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned short update_flag ) {
-    switch( sprite_layer ) {
-        case 0:
-            LOWER_SPRITE_UPDATE[sprite_number] = update_flag;
-            break;
-        case 1:
-            UPPER_SPRITE_UPDATE[sprite_number] = update_flag;
-            break;
-    }
-}
+#include "PAWS_BIOS_LIBRARY.h"
 
 void draw_paws_logo( void ) {
     set_blitter_bitmap( 3, &PAWSLOGO[0] );
@@ -461,28 +128,11 @@ void reset_system( void ) {
     *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1;
     *SCREENMODE = 0; *COLOUR = 0;
     tpu_cs();
-    *LOWER_TM_SCROLLWRAPCLEAR = 5;
-    *UPPER_TM_SCROLLWRAPCLEAR = 5;
+    tm_cs( 0 ); tm_cs( 1 );
     for( unsigned short i = 0; i < 16; i++ ) {
         LOWER_SPRITE_ACTIVE[i] = 0;
         UPPER_SPRITE_ACTIVE[i] = 0;
     }
-}
-
-void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
-    *AUDIO_WAVEFORM = waveform;
-    *AUDIO_FREQUENCY = note;
-    *AUDIO_DURATION = duration;
-    *AUDIO_START = channel_number;
-}
-
-// SMT START STOP
-void SMTSTOP( void ) {
-    *SMTSTATUS = 0;
-}
-void SMTSTART( unsigned int code ) {
-    *SMTPC = code;
-    *SMTSTATUS = 1;
 }
 
 void smtmandel( void ) {
@@ -516,16 +166,14 @@ void smtmandel( void ) {
 
 void smtthread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp ,0x5f80000");
+    asm volatile ("li   sp ,0xff08");               // ADDRESS OF SMT STACKTOP
+    asm volatile ("lwu  sp, (sp)");                 // LOAD FROM SMT STACKTOP
     smtmandel();
     SMTSTOP();
 }
 
 extern int _bss_start, _bss_end;
-static inline long _rv64_rol(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-
 void main( void ) {
-    unsigned int isa;
     unsigned short i,j = 0, x, y;
 
     // STOP SMT, RESET THE SYSTEM, ZERO THE VARIABLE SPACE
@@ -536,8 +184,8 @@ void main( void ) {
     // SET THE DISPLAY
     set_background( UK_BLUE, UK_GOLD, 1 );
     draw_paws_logo();
-    gpu_outputstring( WHITE, 66, 2, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 70, 34, "Risc-V RV64GC+ CPU", 0 );
+    gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
+    gpu_outputstring( WHITE, 70, 34, 1, "Risc-V RV64GC+ CPU", 0 );
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 63; i++ ) {
@@ -546,27 +194,27 @@ void main( void ) {
         set_tilemap_tile( 0, i, 16, i+1, 0 );
         set_tilemap_tile( 1, i, 30, i+1, 0 );
     }
-    gpu_outputstringcentre( UK_GOLD, 74, "VERILATOR - SMT + FPU TEST", 0 );
-    gpu_outputstringcentre( UK_GOLD, 82, "THREAD 0 - PACMAN SPRITES", 0 );
-    gpu_outputstringcentre( UK_GOLD, 90, "THREAD 1 - GPU AND FPU MANDELBROT", 0 );
+    gpu_outputstringcentre( UK_GOLD, 74, 0, "VERILATOR - SMT + FPU TEST", 0 );
+    gpu_outputstringcentre( UK_GOLD, 82, 0, "THREAD 0 - PACMAN SPRITES", 0 );
+    gpu_outputstringcentre( UK_GOLD, 90, 0, "THREAD 1 - GPU AND FPU MANDELBROT", 0 );
 
     gpu_triangle( WHITE, 300, 0, 310, 10, 305, 30 );
 
-    SMTSTART( (unsigned long)smtthread );
+    SMTSTART( smtthread );
 
     set_sprite_bitmaps( 1, 0, &pacman_bitmap[0] );
     set_sprite_bitmaps( 1, 1, &ghost_bitmap[0] );
 
     set_sprite( 1, 0, 1, 0, 440, 4, 13 );
-    set_sprite( 1, 1, 1, 64, 440, 0, 8);
+    set_sprite( 1, 2, 1, 64, 440, 0, 8);
 
     while(1) {
         await_vblank();
-        tilemap_scrollwrapclear( 0, 3, 1 );
-        tilemap_scrollwrapclear( 1, 1, 1 );
-        for( i = 0; i < 2; i++ ) update_sprite( 1, i, 1 );
-        set_sprite_attribute( 1, 1, 1, ( j & 128 ) >> 7 );
+        tilemap_scroll( 0, 3, 1 );
+        tilemap_scroll( 1, 1, 1 );
+        update_sprite( 1, 0, 0, 1, 0, 0 ); update_sprite( 1, 2, 0, 1, 0, 0 );
         set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
+        set_sprite_attribute( 1, 2, 1, ( j & 128 ) >> 7 );
         j++;
         tpu_set( 0, 17, TRANSPARENT, WHITE, 1 );
         long rtc = *RTC + 0x2000000000000000;

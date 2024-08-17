@@ -132,9 +132,9 @@ void draw_screen_hires( void ) {
 void display_state( void ) {
     // DISPLAY STATE
     set_sprite32( UPPER_LAYER, 0, SPRITE_SHOW, 608, 64, machine.MODE, SPRITE_DOUBLE );
-    set_sprite32( UPPER_LAYER, 4, machine.crashed ? ( systemclock() & 1 ) : SPRITE_SHOW, 608, 128, machine.crashed ? 0 : machine.running, SPRITE_DOUBLE );
-    set_sprite32( UPPER_LAYER, 8, SPRITE_SHOW, 608, 192, machine.limit, SPRITE_DOUBLE );
-    set_sprite32( UPPER_LAYER, 12, ( machine.crashed == 0 ) ? SPRITE_SHOW : ( systemclock() & 1 ), 608, 256, machine.crashed, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 8, machine.crashed ? ( systemclock() & 1 ) : SPRITE_SHOW, 608, 128, machine.crashed ? 0 : machine.running, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 16, SPRITE_SHOW, 608, 192, machine.limit, SPRITE_DOUBLE );
+    set_sprite32( UPPER_LAYER, 24, ( machine.crashed == 0 ) ? SPRITE_SHOW : ( systemclock() & 1 ), 608, 256, machine.crashed, SPRITE_DOUBLE );
     set_sprite32( LOWER_LAYER, 0, SPRITE_SHOW, 608, 320, machine.debug, SPRITE_DOUBLE );
 
     tpu_set( 1, 1, TRANSPARENT, BLACK, TPU_BOLD ); tpu_printf( 0, "PC[%03x] I[%03x]", machine.PC, machine.I );
@@ -159,24 +159,24 @@ void display_state( void ) {
         for( int x = 0; x < 4; x++ ) {
             int number;
             if( keys[ y * 4 + x ] >= 'A' ) { number = keys[ y * 4 + x ] - 'A' + 10; } else { number = keys[ y * 4 + x ] - '0'; }
-            set_tilemap_tile( LOWER_LAYER, 2 + x, y + 4, _rv64_bext( machine.KEYS, number ) ? 1 : 2, 0 );
-            set_tilemap_tile( UPPER_LAYER, 2 + x, y + 4, y * 4 + x + 1, 0 );
-            set_tilemap_tile( LOWER_LAYER, 7 + x, y + 4, _rv64_bext( machine.KEYS, number ) ? 1 : 2, 0 );
-            set_tilemap_tile( UPPER_LAYER, 7 + x, y + 4, y*4 + x + 17, 0 );
+            set_tilemap_tile_abs( LOWER_LAYER, 2 + x, y + 4, _rv64_bext( machine.KEYS, number ) ? 1 : 2, 0 );
+            set_tilemap_tile_abs( UPPER_LAYER, 2 + x, y + 4, y * 4 + x + 1, 0 );
+            set_tilemap_tile_abs( LOWER_LAYER, 7 + x, y + 4, _rv64_bext( machine.KEYS, number ) ? 1 : 2, 0 );
+            set_tilemap_tile_abs( UPPER_LAYER, 7 + x, y + 4, y*4 + x + 17, 0 );
         }
     }
 
     for( int y = 0; y < 3; y++ ) {
         for( int x = 0; x < 4; x++ ) {
-            set_tilemap_tile( LOWER_LAYER, 12 + x * 2, y + 5, 3, 0 );
-            set_tilemap_tile( LOWER_LAYER, 13 + x * 2, y + 5, 4, 0 );
+            set_tilemap_tile_abs( LOWER_LAYER, 12 + x * 2, y + 5, 3, 0 );
+            set_tilemap_tile_abs( LOWER_LAYER, 13 + x * 2, y + 5, 4, 0 );
             int number = y * 4 + x;
             if( number < 6 ) {
-                set_tilemap_tile( UPPER_LAYER, 12 + x * 2, y + 5, number + 33, 0 );
-                set_tilemap_tile( UPPER_LAYER, 13 + x * 2, y + 5, number + 41, 0 );
+                set_tilemap_tile_abs( UPPER_LAYER, 12 + x * 2, y + 5, number + 33, 0 );
+                set_tilemap_tile_abs( UPPER_LAYER, 13 + x * 2, y + 5, number + 41, 0 );
             } else {
-                set_tilemap_tile( UPPER_LAYER, 12 + x * 2, y + 5, number + 43, 0 );
-                set_tilemap_tile( UPPER_LAYER, 13 + x * 2, y + 5, number + 51, 0 );
+                set_tilemap_tile_abs( UPPER_LAYER, 12 + x * 2, y + 5, number + 43, 0 );
+                set_tilemap_tile_abs( UPPER_LAYER, 13 + x * 2, y + 5, number + 51, 0 );
             }
         }
     }
@@ -326,8 +326,8 @@ int main( void ) {
 
     set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, tml );
     set_tilemap_bitamps_from_spritesheet( UPPER_LAYER, tmu );
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR ); tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scrollwrapclear( UPPER_LAYER, TM_DOWN, 8 );
+    tm_cs( LOWER_LAYER ); tm_cs( UPPER_LAYER );
+    tilemap_scroll( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scroll( UPPER_LAYER, TM_DOWN, 8 );
 
     reset_machine(); SMTSTART( smt_thread );                                                                                    // START THE KEYBOARD MONITOR
 
@@ -339,10 +339,11 @@ int main( void ) {
         if( machine.loading ) {
             set_background( BLACK, BLACK, BKG_SOLID );
             while( SMTSTATE() ); gpu_cs(); tpu_cs();
-            tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR ); tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
-            tilemap_scrollwrapclear( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scrollwrapclear( UPPER_LAYER, TM_DOWN, 8 );
+            tm_cs( LOWER_LAYER ); tm_cs( UPPER_LAYER );
+            tilemap_scroll( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scroll( UPPER_LAYER, TM_DOWN, 8 );
 
             restart_machine();
+            gpu_rectangle( BLACK, FULLSCREEN );
             int filesize; uint8_t *filebuffer = sdcard_selectfile( "Please select a CHIP-8 File", "CH8", &filesize, "Running" );    // LOAD A FILE
             if( filebuffer && ( filesize > 0 ) && ( filesize < 65536 ) ) {
                 gpu_cs();                                                                                                   // START EXECUTION

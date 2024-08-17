@@ -10,124 +10,103 @@ unit timers_memmap(
     output  uint16  static16bit,
     output  uint1   cursor
 ) <reginputs> {
-    timers_rng timers( seconds :> cursor, g_noise_out :> static16bit ); timers.resetcounter := 0;                               // TIMERS and RNG UNITS
-
-    algorithm <autorun> { while(1) {
-        // READ IO Memory
-        uint64  LATCHseconds = uninitialised; uint25  LATCHmilliseconds = uninitialised;                                        // LATCH TIME OF DAY SO READ RETURNS THE SAME TIME
-
-        if( memoryRead ) {
-            if( memoryAddress[5,1] ) {
-                switch( memoryAddress[2,2] ) {
-                    default: { LATCHseconds = timers.seconds; LATCHmilliseconds = timers.milliseconds; readData = timers.seconds[0,32]; }
-                    case 2h1: { readData = LATCHseconds[32,32]; }
-                    case 2h2: { readData = LATCHmilliseconds; }
-                }
-            } else {
-                switch( memoryAddress[1,4] ) {
-                    // RNG ( 2 interger, 1 float 0 <= fng < 1 ) and TIMERS
-                    default: { readData = timers.g_noise_out; }                                                                 // RANDOM NUMBER GENERATOR 0
-                    case 4h1: { readData = timers.u_noise_out; }                                                                // RANDOM NUMBER GENERATOR 1
-                    case 4h2: { readData = { timers.u_noise_out[0,7], timers.g_noise_out, timers.u_noise_out[7,7] }; }          // COMBINE TO FLOATING POINT RNG
-                    case 4h8: { readData = timers.timer1hz0; }
-                    case 4h9: { readData = timers.timer1hz1; }
-                    case 4ha: { readData = timers.timer1khz0; }
-                    case 4hb: { readData = timers.timer1khz1; }
-                    case 4hc: { readData = timers.sleepTimer0; }
-                    case 4hd: { readData = timers.sleepTimer1; }
-                }
-            }
-        }
-        // WRITE IO Memory
-        if( memoryWrite ) {
-            if( memoryAddress[5,1] ) {
-                switch( memoryAddress[2,2] ) {
-                    case 2h0: { timers.newtime[0,32] = writeData; }                                                             // SET CLOCK TIME
-                    case 2h1: { timers.newtime[32,32] = writeData; }
-                    default: { timers.resetcounter = 7; }
-                }
-            } else {
-                timers.counter = writeData; timers.resetcounter = memoryAddress[1,3] + 1;                                       // SET A COUNTER
-            }
-        }
-    } }
-}
-
-// TIMERS and RNG Controllers
-unit timers_rng(
-    output  uint64  seconds,
-    input   uint64  newtime,
-    output  uint20  milliseconds,
-    output  uint16  timer1hz0,
-    output  uint16  timer1hz1,
-    output  uint16  timer1khz0,
-    output  uint16  timer1khz1,
-    output  uint16  sleepTimer0,
-    output  uint16  sleepTimer1,
-    output  uint16  u_noise_out,
-    output  uint16  g_noise_out,
-    input   uint16  counter,
-    input   uint3   resetcounter
-) <reginputs> {
     // RNG random number generator
-    random rng( u_noise_out :> u_noise_out,  g_noise_out :> g_noise_out );
+    random RNG( g_noise_out :> static16bit );
 
     // 1hz timers (P1 used for systemClock, T1hz0 and T1hz1 for user purposes)
-    timesinceboot P1( newtime <: newtime, counter1hz :> seconds, counter1mhz :> milliseconds );
-    pulse1hz T1hz0( counter1hz :> timer1hz0 );
-    pulse1hz T1hz1( counter1hz :> timer1hz1 );
+    timesinceboot P1( counter1hz :> cursor );
+    pulse1hz T1hz0();
+    pulse1hz T1hz1();
 
     // 1khz timers (sleepTimers used for sleep command, timer1khzs for user purposes)
-    pulse1khz T0khz0( counter1khz :> timer1khz0 );
-    pulse1khz T1khz1( counter1khz :> timer1khz1 );
-    pulse1khz STimer0( counter1khz :> sleepTimer0 );
-    pulse1khz STimer1( counter1khz :> sleepTimer1 );
+    pulse1khz T0khz0();
+    pulse1khz T1khz1();
+    pulse1khz STimer0();
+    pulse1khz STimer1();
 
     P1.resettime := 0;
     T1hz0.resetCounter := 0; T1hz1.resetCounter := 0;
     T0khz0.resetCounter := 0; T1khz1.resetCounter := 0;
     STimer0.resetCounter := 0; STimer1.resetCounter := 0;
 
+
     algorithm <autorun> { while(1) {
-        switch( resetcounter ) {
-            case 0: {}
-            case 1: { T1hz0.resetCounter = 1; }
-            case 2: { T1hz1.resetCounter = 1; }
-            case 3: { T0khz0.resetCounter = counter; }
-            case 4: { T1khz1.resetCounter = counter; }
-            case 5: { STimer0.resetCounter = counter; }
-            case 6: { STimer1.resetCounter = counter; }
-            case 7: { P1.resettime = 1; }
+        // WRITE IO Memory
+        if( memoryWrite ) {
+            if( memoryAddress[5,1] ) {
+                switch( memoryAddress[2,2] ) {
+                    case 2h0: { P1.newtime[0,32] = writeData; }                                                             // SET CLOCK TIME
+                    case 2h1: { P1.newtime[32,$CWIDTH-32$] = writeData; }
+                    default: { P1.resettime = 1; }
+                }
+            } else {
+                switch( memoryAddress[1,3] ) {
+                    case 0: { T1hz0.resetCounter = 1; }
+                    case 1: { T1hz1.resetCounter = 1; }
+                    case 2: { T0khz0.resetCounter = writeData; }
+                    case 3: { T1khz1.resetCounter = writeData; }
+                    case 4: { STimer0.resetCounter = writeData; }
+                    case 5: { STimer1.resetCounter = writeData; }
+                    default: {}
+                }
+            }
         }
     } }
+
+    always_after {
+        // READ IO Memory
+        uint$CWIDTH$  LATCHseconds = uninitialised; uint20  LATCHmilliseconds = uninitialised;                                  // LATCH TIME OF DAY SO READ RETURNS THE SAME TIME
+
+        if( memoryRead ) {
+            if( memoryAddress[5,1] ) {
+                switch( memoryAddress[2,2] ) {
+                    default: { LATCHseconds = P1.counter1hz; LATCHmilliseconds = P1.counter1mhz; readData = P1.counter1hz[0,32]; }
+                    case 2h1: { readData = LATCHseconds[32,$CWIDTH-32$]; }
+                    case 2h2: { readData = LATCHmilliseconds; }
+                }
+            } else {
+                switch( memoryAddress[1,4] ) {
+                    // RNG ( 2 interger, 1 float 0 <= fng < 1 ) and TIMERS
+                    default: { readData = RNG.g_noise_out; }                                                                 // RANDOM NUMBER GENERATOR 0
+                    case 4h1: { readData = RNG.u_noise_out; }                                                                // RANDOM NUMBER GENERATOR 1
+                    case 4h2: { readData = { RNG.u_noise_out[0,7], RNG.g_noise_out, RNG.u_noise_out[7,7] }; }          // COMBINE TO FLOATING POINT RNG
+                    case 4h8: { readData = T1hz0.counter1hz; }
+                    case 4h9: { readData = T1hz1.counter1hz; }
+                    case 4ha: { readData = T0khz0.counter1khz; }
+                    case 4hb: { readData = T1khz1.counter1khz; }
+                    case 4hc: { readData = STimer0.counter1khz; }
+                    case 4hd: { readData = STimer1.counter1khz; }
+                }
+            }
+        }
+    }
 }
 
 // Create seconds and milliseconds since boot
 // Create 1hz (1 second counter)
 unit timesinceboot(
-    output  uint64  counter1hz(0),
+    output  uint$CWIDTH$  counter1hz(0),
+    input   uint$CWIDTH$  newtime,
     output  uint20  counter1mhz(0),
-    input   uint64  newtime,
     input   uint1   resettime
 ) <reginputs> {
     algorithm <autorun> {
+        uint$CWIDTH$  counter1hz_p1 <:: counter1hz + 1;
         uint6   counter50mhz = uninitialised;
         uint6   counter50mhz_m1 <:: counter50mhz - 1;
-        uint64  counter1hz_p1 <:: counter1hz + 1;
         uint20  counter1mhz_p1 <:: counter1mhz + 1;
-        uint2   ACTION = { counter1mhz == 1000000, ~|counter50mhz };
+        uint2   ACTION <:: { counter1mhz == 1000000, ~|counter50mhz };
 
         while(1) {
             if( resettime ) {
                 counter1hz = newtime;
                 counter1mhz = 0;
-                counter50mhz = 0;
+                counter50mhz = 50;
             } else {
                 switch( ACTION ) {
                     case 2b00: { counter50mhz = counter50mhz_m1; }
                     case 2b01: { counter1mhz = counter1mhz_p1; counter50mhz = 50; }
-                    case 2b10: { counter1hz = counter1hz_p1; counter1mhz =  0; }
-                    case 2b11: { counter1hz = counter1hz_p1; counter1mhz = 0; counter50mhz = counter50mhz_m1; }
+                    default: { counter1hz = counter1hz_p1; counter1mhz = 0; counter50mhz = 50; }
                 }
             }
         }
@@ -171,32 +150,6 @@ unit pulse1khz(
                 counter1khz = resetCounter; counter50mhz = 50000;
             } else {
                 if( zero ) { if( |counter1khz) { counter1khz = counter1khz_m1; } counter50mhz = 50000; } else { counter50mhz = counter50mhz_m1; }
-            }
-        }
-    }
-}
-
-// 11025KHz timer for audio dma
-unit pulse11025(
-    output  uint1   UPDATE,
-    input   uint1   START,
-    input   uint1   STOP
-) <reginputs> {
-    UPDATE := 0;
-
-    algorithm <autorun> {
-        uint13  counter50mhz = uninitialised;
-        uint1   zero <:: ~|counter50mhz;
-        uint13  counter50mhz_m1 <:: counter50mhz -1 ;
-
-        uint2   STATE = 1;
-
-        while(1) {
-            if( STOP ) { STATE = 1; }
-
-            onehot( STATE ) {
-                case 0: { if( START ) { counter50mhz = 4535; STATE = 2; } }
-                case 1: { UPDATE = zero; if( zero ) { counter50mhz = 4535; } else { counter50mhz = counter50mhz_m1; } }
             }
         }
     }

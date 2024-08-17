@@ -30,15 +30,15 @@ CPUOPTS=-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcd_zfa_zfh_zicond_zifencei_
 CFLAGS=$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib $(CFLAGSEXTRA)
 CXXFLAGS=-$(CPUOPTS) -O2 -ffunction-sections -fdata-sections -finline -fno-pic -fno-unroll-loops -fno-threadsafe-statics -fno-rtti -fno-exceptions -Wno-stringop-overread -flto -fuse-linker-plugin -nostdlib
 LFLAGS=-Wl,--as-needed -Wl,--gc-sections -Wl,--relax-gp -Wl,-melf64lriscv -Wl,-belf64-littleriscv \
-	-Wl,--wrap=memcpy -Wl,--wrap=memset \
-	-Wl,--wrap=__clzsi2 -Wl,--wrap=__clzdi2 \
-	-Wl,--wrap=__ctzsi2 -Wl,--wrap=__ctzdi2 \
-	-Wl,--wrap=__popcountsi2 -Wl,--wrap=__popcountdi2 \
-	-Wl,--wrap=__builtin_clz -Wl,--wrap=__builtin_clzl \
-	-Wl,--wrap=__builtin_ctz -Wl,--wrap=__builtin_ctzl \
-	-Wl,--wrap=__builtin_popcount -Wl,--wrap=__builtin_popcountl \
-	-Wl,--wrap=__builtin_parity -Wl,--wrap=__builtin_parityl \
-	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64
+	-Wl,--wrap=memcpy -Wl,--wrap=memset
+#	-Wl,--wrap=__clzsi2 -Wl,--wrap=__clzdi2 \
+#	-Wl,--wrap=__ctzsi2 -Wl,--wrap=__ctzdi2 \
+#	-Wl,--wrap=__popcountsi2 -Wl,--wrap=__popcountdi2 \
+#	-Wl,--wrap=__builtin_clz -Wl,--wrap=__builtin_clzl \
+#	-Wl,--wrap=__builtin_ctz -Wl,--wrap=__builtin_ctzl \
+#	-Wl,--wrap=__builtin_popcount -Wl,--wrap=__builtin_popcountl \
+#	-Wl,--wrap=__builtin_parity -Wl,--wrap=__builtin_parityl \
+#	-Wl,--wrap=__builtin_bswap16 -Wl,--wrap=__builtin_bswap32 -Wl,--wrap=__builtin_bswap64
 LCONFIG=-Wl,-T../config_c_SDRAM-lto.ld
 
 PAWSBASE=../
@@ -46,9 +46,7 @@ INCLUDE=-I$(PAWSBASE)/library/ -I$(PAWSBASE)/library/newlib/ -I$(INCLUDEEXTRA) -
 
 LIBRARY=	/usr/$(NLARCH)-elf/lib/rv64imafdc/lp64d/libc.a \
 			/usr/$(NLARCH)-elf/lib/rv64imafdc/lp64d/libm.a \
-			/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/libgcc.a \
-			/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/crtbegin.o \
-			/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/crtend.o
+			/usr/lib/gcc/$(ARCH)-elf/$(GCCVER)/rv64imafdc/lp64d/libgcc.a
 
 CRT0SOURCE=	$(PAWSBASE)library/crt0.s
 CRT0OBJ=	$(PAWSBASE)library/$(BUILD_DIR)/crt0.o

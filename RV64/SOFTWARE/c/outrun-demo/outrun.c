@@ -73,8 +73,8 @@ unsigned char *cityscape[]={
 };
 
 void set_tilemaps( void ) {
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
-    tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+    tm_cs( LOWER_LAYER );
+    tm_cs( UPPER_LAYER );
 
     // SET BUILDINGS TILEMAPS
     set_tilemap_bitamps_from_spritesheet( UPPER_LAYER, &building_graphics[ 0 ] );
@@ -93,10 +93,10 @@ void set_tilemaps( void ) {
                 default:
                     if( cityscape[y][x] > 'Z' ) {
                         // LOWER CASE - REFLECTION
-                        set_tilemap_tile( UPPER_LAYER, x, y+1, cityscape[y][x] - 96, REFLECT_X );
+                        set_tilemap_tile_abs( UPPER_LAYER, x, y+1, cityscape[y][x] - 96, REFLECT_X );
                     } else {
                         // UPPER CASE - NO REFLECTION
-                        set_tilemap_tile( UPPER_LAYER, x, y+1, cityscape[y][x] - 64, 0 );
+                        set_tilemap_tile_abs( UPPER_LAYER, x, y+1, cityscape[y][x] - 64, 0 );
                     }
                     break;
             }
@@ -104,10 +104,10 @@ void set_tilemaps( void ) {
     }
 
     // DRAW THE CLOUD
-    set_tilemap_tile32x32( LOWER_LAYER, 17, 5, 1 );
-    set_tilemap_tile32x32( LOWER_LAYER, 17, 7, 5 );
-    set_tilemap_tile32x32( LOWER_LAYER, 19, 5, 9 );
-    set_tilemap_tile32x32( LOWER_LAYER, 19, 7, 13 );
+    set_tilemap_32x32tile_abs( LOWER_LAYER, 17, 5, 1 );
+    set_tilemap_32x32tile_abs( LOWER_LAYER, 17, 7, 5 );
+    set_tilemap_32x32tile_abs( LOWER_LAYER, 19, 5, 9 );
+    set_tilemap_32x32tile_abs( LOWER_LAYER, 19, 7, 13 );
 }
 
 // DRAW THE TRAFFIC IN FONT OF THE CITY
@@ -129,7 +129,7 @@ void set_sprites() {
 
 void move_sprites() {
     for( int i = 0; i < 14; i++ ) {
-        update_sprite( LOWER_LAYER, i, updateflags[i] );
+        update_sprite_compat( LOWER_LAYER, i, updateflags[i] );
     }
 }
 
@@ -431,7 +431,8 @@ void update() {
 }
 
 // NUMBER OF SEGMENTS TO DRAW EACH ITERATION
-#define DRAWSEGMENTS 32
+#define DRAWSEGMENTS 27
+
 void drawtrapezium( unsigned char colour, short x1, short y1, short w1, short x2, short y2, short w2 ) {
     if( (((x1-w1)<0) && ((x1+w1)<0) && ((x2+w2)<0) && ((x2-w2)<0)) ||
         (((x1-w1)>319) && ((x1+w1)>319) && ((x2+w2)>319) && ((x2-w2)>319)) ) return;
@@ -507,12 +508,12 @@ void draw() {
 
     // MOVE THE TILEMAPS
     if( road[cnr].tu < 0 ) {
-        tilemap_scrollwrapclear( LOWER_LAYER, TM_LEFT, ( road[cnr].tu <= -0.5 ) ? 2 : 1 );
-        tilemap_scrollwrapclear( UPPER_LAYER, TM_LEFT,1 );
+        tilemap_scroll( LOWER_LAYER, TM_LEFT, ( road[cnr].tu <= -0.5 ) ? 2 : 1 );
+        tilemap_scroll( UPPER_LAYER, TM_LEFT,1 );
     }
     if( road[cnr].tu > 0 ) {
-        tilemap_scrollwrapclear( LOWER_LAYER, TM_RIGHT, ( road[cnr].tu >= 0.5 ) ? 2 : 1 );
-        tilemap_scrollwrapclear( UPPER_LAYER, TM_RIGHT, 1 );
+        tilemap_scroll( LOWER_LAYER, TM_RIGHT, ( road[cnr].tu >= 0.5 ) ? 2 : 1 );
+        tilemap_scroll( UPPER_LAYER, TM_RIGHT, 1 );
    }
 
     for( int i = 0; i < DRAWSEGMENTS; i++ ) {

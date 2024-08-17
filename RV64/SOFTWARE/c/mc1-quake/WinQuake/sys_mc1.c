@@ -19,6 +19,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
+#ifdef MC1_SDK
+#include <mc1/newlib_integ.h>
+#endif
+
 #include "quakedef.h"
 #include "errno.h"
 #include "mc1.h"
@@ -26,7 +30,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdint.h>
 #include <sys/time.h>
 
-#include <PAWSlibrary.h>
+// Memory config.
+#define HEAP_SIZE_MB 16
 
 qboolean isDedicated;
 
@@ -268,11 +273,11 @@ void Sys_Error (char *error, ...)
 {
 	va_list argptr;
 
-	fprintf (stderr,"Sys_Error: ");
+	printf ("Sys_Error: ");
 	va_start (argptr, error);
-	vfprintf (stderr,error, argptr);
+	vprintf (error, argptr);
 	va_end (argptr);
-	fprintf (stderr,"\n");
+	printf ("\n");
 
 	exit (1);
 }
@@ -282,7 +287,7 @@ void Sys_Printf (char *fmt, ...)
 	va_list argptr;
 
 	va_start (argptr, fmt);
-	vfprintf (stderr,fmt, argptr);
+	vprintf (fmt, argptr);
 	va_end (argptr);
 }
 
@@ -293,6 +298,8 @@ void Sys_Quit (void)
 
 double Sys_FloatTime (void)
 {
+#if 1
+	// MRISC32 simulator timing: Use gettimeofday().
 	static qboolean s_first = true;
 	static struct timeval s_t0;
 	struct timeval t;
@@ -307,6 +314,33 @@ double Sys_FloatTime (void)
 	t_sec = (float)(t.tv_sec - s_t0.tv_sec) +
 			0.000001F * (float)(t.tv_usec - s_t0.tv_usec);
 	return (double)t_sec;
+#else
+	// MC1 timing: Use CLKCNTHI:CLKCNTLO MMIO registers directly.
+	static qboolean s_first = true;
+	static double s_inv_clk;
+	uint32_t hi_old, hi, lo;
+	uint64_t cycles;
+	double t;
+
+	// Get 1 / cycles per s.
+	if (s_first)
+	{
+		s_inv_clk = 1.0 / (double)GET_MMIO (CPUCLK);
+		s_first = false;
+	}
+
+	// Get number of CPU cycles (64-bit number).
+	hi = GET_MMIO (CLKCNTHI);
+	do
+	{
+		hi_old = hi;
+		lo = GET_MMIO (CLKCNTLO);
+		hi = GET_MMIO (CLKCNTHI);
+	} while (hi != hi_old);
+
+	cycles = (((uint64_t)hi) << 32) | (uint64_t)lo;
+	return s_inv_clk * (double)cycles;
+#endif
 }
 
 char *Sys_ConsoleInput (void)
@@ -344,16 +378,16 @@ void main (int argc, char **argv)
 	mc1newlib_init(MC1NEWLIB_ALL & ~MC1NEWLIB_CONSOLE);
 #endif
 
-	parms.memsize = 8 * 1024 * 1024;
+	parms.memsize = HEAP_SIZE_MB * 1024 * 1024;
 	parms.membase = malloc (parms.memsize);
-	parms.basedir = "/DEMO";
-	fprintf (stderr,"Host_Init, membase = 0x%016lx\n",(long)parms.membase);
+	parms.basedir = ".";
 
 	COM_InitArgv (argc, argv);
 
 	parms.argc = com_argc;
 	parms.argv = com_argv;
 
+	printf ("Host_Init\n");
 	Host_Init (&parms);
 
 	s_keyptr = GET_MMIO (KEYPTR);
@@ -369,7 +403,6 @@ void main (int argc, char **argv)
 		else
 			oldtime += (double)time;
 
-		fprintf(stderr,"Calling Host_Frame( %f )\n",time);
 		Host_Frame (time);
 	}
 }

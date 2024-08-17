@@ -1,247 +1,11 @@
 #include "PAWS.h"
+#include <stdint.h>
 
-typedef unsigned int size_t;
-
-// BACKGROUND PATTERN GENERATOR
-#define BKG_SOLID 0
-#define BKG_5050_V 1
-#define BKG_5050_H 2
-#define BKG_CHKBRD_5 3
-#define BKG_RAINBOW 4
-#define BKG_SNOW 5
-#define BKG_STATIC 6
-#define BKG_CHKBRD_1 7
-#define BKG_CHKBRD_2 8
-#define BKG_CHKBRD_3 9
-#define BKG_CHKBRD_4 10
-
-// PAWS LOGO BLITTER TILE
-unsigned short PAWSLOGO[] = {
-    0b0000000001000000,
-    0b0000100011100000,
-    0b0001110011100000,
-    0b0001110011100000,
-    0b0001111011100100,
-    0b0000111001001110,
-    0b0010010000001110,
-    0b0111000000001110,
-    0b0111000111001100,
-    0b0111001111110000,
-    0b0011011111111000,
-    0b0000011111111000,
-    0b0000011111111100,
-    0b0000111111111100,
-    0b0000111100001000,
-    0b0000010000000000
-};
-
-// BIOS MALLOC - ALLLOCATE FROM TOP OF MEMORY DOWN
-void *HEAPEND;
-void *bios_malloc( int size ) {
-    HEAPEND = HEAPEND - size;
-    return( HEAPEND );
-}
-
-// DMA CONTROLLER
-void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned short mode ) {
-    *DMASOURCE = (unsigned long)source;
-    *DMADEST = (unsigned long)destination;
-    *DMACOUNT = count;
-    *DMAMODE = mode;
-}
-
-// STANDARD C FUNCTIONS ( from @sylefeb mylibc )
-void *memset(void *dest, int val, size_t len) {
-    *DMASET = val;
-    DMASTART( (const void *restrict)DMASET, dest, len, DMA_SET_TO_M );
-    return dest;
-}
-void *memset32( void *restrict destination, int value, size_t count ) {
-    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_TO_M );
-    return( destination );
-}
-
-void *memcpy( void *dest, void *src, size_t len ) {
-    DMASTART( src, dest, len, DMA_CPY_M_TO_M );
-    return dest;
-}
-
-int strlen( char *s ) {
-    int i = 0;
-    while( *s++ ) {
-        i++;
-    }
-    return(i);
-}
-
-// TIMER AND PSEUDO RANDOM NUMBER GENERATOR
-// SLEEP FOR counter milliseconds
-void sleep( unsigned short counter ) {
-    *SLEEPTIMER0 = counter;
-    while( *SLEEPTIMER0 );
-}
-
-// I/O FUNCTIONS
-// READ THE ULX3S JOYSTICK BUTTONS
-unsigned short get_buttons( void ) {
-    return( *BUTTONS );
-}
-
-// WAIT FOR VBLANK TO START
-void await_vblank( void ) {
-    while( !*VBLANK );
-}
-
-// AUDIO CONTROLS
-void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
-    *AUDIO_WAVEFORM = waveform; *AUDIO_FREQUENCY = note; *AUDIO_DURATION = duration; *AUDIO_START = channel_number;
-}
-void volume( unsigned char left, unsigned char right ) {
-    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
-}
-void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_SAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, DMA_TO_IO ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, DMA_TO_IO ); }
-}
-
-// BACKGROUND GENERATOR
-void set_background( unsigned char colour, unsigned char altcolour, unsigned char backgroundmode ) {
-    *BACKGROUND_COPPER_STARTSTOP = 0;
-    *BACKGROUND_COLOUR = colour;
-    *BACKGROUND_ALTCOLOUR = altcolour;
-    *BACKGROUND_MODE = backgroundmode;
-}
-
-// GPU AND BITMAP
-// The bitmap is 320 x 240 pixels (0,0) is top left
-// The GPU can draw pixels, filled rectangles, lines, (filled) circles, filled triangles and has a 16 x 16 pixel blitter from user definable tiles
-
-// INTERNAL FUNCTION - WAIT FOR THE GPU TO FINISH THE LAST COMMAND
-void wait_gpu( void ) {
-    while( *GPU_STATUS );
-}
-
-// DRAW A FILLED RECTANGLE from (x1,y1) to (x2,y2) in colour
-void gpu_rectangle( unsigned char colour, short x1, short y1, short x2, short y2 ) {
-    *GPU_COLOUR = colour;
-    *GPU_X = x1;
-    *GPU_Y = y1;
-    *GPU_PARAM0 = x2;
-    *GPU_PARAM1 = y2;
-
-    wait_gpu();
-    *GPU_WRITE = 3;
-}
-
-// CLEAR THE BITMAP by drawing a transparent rectangle from (0,0) to (639,479) and resetting the bitamp scroll position
-void gpu_cs( void ) {
-    wait_gpu();
-    gpu_rectangle( 64, 0, 0, 319, 239 );
-}
-
-// BLIT A 16 x 16 ( blit_size == 1 doubled to 32 x 32 ) TILE ( from tile 0 to 31 ) to (x1,y1) in colour
-void gpu_blit( unsigned char colour, short x1, short y1, short tile, unsigned char blit_size ) {
-    *GPU_COLOUR = colour;
-    *GPU_X = x1;
-    *GPU_Y = y1;
-    *GPU_PARAM0 = tile;
-    *GPU_PARAM1 = blit_size;
-    *GPU_PARAM2 = 0; // NO REFLECTION
-
-    wait_gpu();
-    *GPU_WRITE = 7;
-}
-
-// BLIT AN 8 x8  ( blit_size == 1 doubled to 16 x 16, blit_size == 1 doubled to 32 x 32 ) CHARACTER ( from tile 0 to 255 ) to (x1,y1) in colour
-void gpu_character_blit( short x1, short y1, unsigned short tile, unsigned char blit_size ) {
-    *GPU_X = x1;
-    *GPU_Y = y1;
-    *GPU_PARAM0 = tile;
-    *GPU_PARAM1 = blit_size;
-    *GPU_PARAM2 = 0; // NO REFLECTION
-
-    wait_gpu();
-    *GPU_WRITE = 8;
-}
-
-// OUTPUT A STRING TO THE GPU
-void gpu_outputstring( unsigned char colour, short x, short y, char bold, char *s, unsigned char size ) {
-    *GPU_COLOUR = colour;
-    while( *s ) {
-        gpu_character_blit( x, y, ( bold ? 256 : 0 ) + *s++, size );
-        x = x + ( 8 << size );
-    }
-}
-void gpu_outputstringcentre( unsigned char colour, short y, char bold, char *s, unsigned char size ) {
-    gpu_rectangle( TRANSPARENT, 0, y, 319, y + ( 8 << size ) - 1 );
-    gpu_outputstring( colour, 160 - ( ( ( 8 << size ) * strlen(s) ) >> 1) , y, bold, s, size );
-}
-
-// SET THE BLITTER TILE to the 16 x 16 pixel bitmap ( count is 32 as DMA engine uses bytes for count )
-void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
-    *BLIT_WRITER_TILE = tile;
-    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, DMA_CPY_M_TO_S );
-}
-
-// STOP PIXEL BLOCK - SENT DURING RESET TO ENSURE GPU RESETS
-void gpu_pixelblock_stop( void ) {
-    *PB_STOP = 3;
-}
-
-// SET THE TILEMAP TILE at (x,y) to tile
-void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
-    while( *LOWER_TM_STATUS | *UPPER_TM_STATUS );
-    switch( tm_layer ) {
-        case 0:
-            *LOWER_TM_X = x;
-            *LOWER_TM_Y = y;
-            *LOWER_TM_TILE = tile;
-            *LOWER_TM_ACTION = action;
-            *LOWER_TM_COMMIT = 1;
-            break;
-        case 1:
-            *UPPER_TM_X = x;
-            *UPPER_TM_Y = y;
-            *UPPER_TM_TILE = tile;
-            *UPPER_TM_ACTION = action;
-            *UPPER_TM_COMMIT = 1;
-            break;
-    }
-}
-
-// SMT START STOP
-void SMTSTOP( void ) {
-    *SMTSTATUS = 0;
-}
-void SMTSTART( void *code ) {
-    *SMTPC = (unsigned long )code;
-    *SMTSTATUS = 1;
-}
+#include "PAWS_BIOS_LIBRARY.h"
 
 void draw_paws_logo( void ) {
     set_blitter_bitmap( 3, &PAWSLOGO[0] );
     gpu_blit( UK_GOLD, 2, 2, 3, 2 );
-}
-
-// CLEAR THE CHARACTER MAP
-void tpu_cs( void ) {
-    memset32( ( void *)0x1000000, ( 64 << 16 ), 4800 * 4 );
-}
-// POSITION THE CURSOR to (x,y) and set background and foreground colours
-void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground, unsigned char attributes ) {
-    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_ATTRIBUTES = attributes; *TPU_COMMIT = 1;
-}
-// OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
-void tpu_output_character( unsigned char c ) {
-    *TPU_CHARACTER = c; *TPU_COMMIT = 2;
-}
-void tpu_outputstring( char *s ) {
-    while( *s ) {
-        tpu_output_character( *s );
-        s++;
-    }
 }
 
 void reset_display( void ) {
@@ -255,9 +19,9 @@ void reset_display( void ) {
     *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
     *SCREENMODE = 0; *COLOUR = 0; *REZ = 0; *DIMMER = 0; *STATUS_DISPLAY = 1; *STATUS_BACKGROUND = 0x40;
     *TPU_CURSOR = 0; tpu_cs();
-    *LOWER_TM_SCROLLWRAPCLEAR = *UPPER_TM_SCROLLWRAPCLEAR = 5;
+    tm_cs( 0 ); tm_cs( 1 );
     *UPPER_TM_SCROLLWRAPAMOUNT = *LOWER_TM_SCROLLAMOUNT = 1;
-    for( unsigned short i = 0; i < 31; i++ ) {
+    for( unsigned short i = 0; i < 32; i++ ) {
         LOWER_SPRITE_ACTIVE[i] = UPPER_SPRITE_ACTIVE[i] = 0;
     }
 }
@@ -349,7 +113,6 @@ void swapentries( unsigned int i, unsigned int j ) {
     memcpy( &directorynames[j], &temporary, sizeof( DirectoryEntry ) );
 }
 
-static inline long _rv64_rev8(long rs1) { long rd; __asm__ ("rev8     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
 void sortdirectoryentries( unsigned int entries ) {
     if( !entries )
         return;
@@ -478,8 +241,6 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
 extern int _bss_start, _bss_end;
 unsigned char chime[] = { 75, 83, 89, 0 };
 
-static inline long _rv64_rol(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-
 // SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
 __attribute__((used)) void scrollbars( void ) {
     unsigned char leds = 1;
@@ -489,7 +250,6 @@ __attribute__((used)) void scrollbars( void ) {
     while(1) {
         await_vblank(); count++;
         if( count == 64 ) {
-            while( *UPPER_TM_STATUS | *LOWER_TM_STATUS );
             *LOWER_TM_SCROLLWRAPCLEAR = 3; *UPPER_TM_SCROLLWRAPCLEAR = 1;
             count = 0;
             ledcount++;
@@ -522,7 +282,8 @@ __attribute__((used)) void scrollbars( void ) {
 
 void smtthread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp, 0x5f80000");
+    asm volatile ("li   sp ,0xff08");               // ADDRESS OF SMT STACKTOP
+    asm volatile ("lwu  sp, (sp)");                 // LOAD FROM SMT STACKTOP
     asm volatile ("j scrollbars");
 }
 
@@ -546,8 +307,8 @@ int main( void ) {
     reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
     beep( 3, 0, 0, 0 ); volume( 7, 7 );
 
-    // KEYBOARD INTO JOYSTICK MODE
-    *PS2_MODE = 0; *PS2_CAPSLOCK = 0; *PS2_NUMLOCK = 0;
+    // KEYBOARD INTO JOYSTICK MODE, RESET MOUSE
+    *PS2_MODE = 0; *PS2_CAPSLOCK = 0; *PS2_NUMLOCK = 0; *MOUSE_RESET = 0;
 
     // DRAW LOGO AND SDCARD
     draw_paws_logo();
@@ -562,13 +323,13 @@ int main( void ) {
     SMTSTART( smtthread );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
-    gpu_outputstring( WHITE, 66, 34, 0, "Risc-V RV64GC+", 0 );
+    gpu_outputstring( WHITE, 66, 34, 1, "Risc-V RV64GC+", 0 );
     gpu_outputstringcentre( UK_BLUE, 224, 0, "For ULX3S by Rob S in Silice", 0);
 
     // CLEAR UART AND PS/2 BUFFERS
     while( ( *UART_STATUS & 1 ) | *PS2_AVAILABLE ) { (void)*UART_DATA;( void)*PS2_DATA; }
 
-    gpu_outputstringcentre( RED, 72, 0, "SDCARD?", 0 );
+    gpu_outputstringcentre( RED, 72, 1, "SDCARD?", 0 );
     gpu_outputstringcentre( RED, 88, 0, "RESET", 0 );
     sdcard_readsector( 0, BOOTRECORD );
     PARTITIONS = (PartitionTable *) &BOOTRECORD[ 0x1BE ];

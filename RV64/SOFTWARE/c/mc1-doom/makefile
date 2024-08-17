@@ -1,11 +1,15 @@
-include ../makefile.inc
+include ../makefile-lto.inc
 
 PROJECT=DOOM
 PROJECTTYPE=GAMES
+OPTLEVEL=2
+
 PRJSRC=$(wildcard src/*.c) $(wildcard src/*.cpp) $(wildcard src/*.s) $(wildcard src/*.h)
+
 PRJOBJ=src/am_map.o \
 src/d_items.o \
 src/d_main.o \
+src/d_net.o \
 src/doomdef.o \
 src/doomstat.o \
 src/dstrings.o \

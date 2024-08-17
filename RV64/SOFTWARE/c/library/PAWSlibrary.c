@@ -1,3 +1,4 @@
+#include "PAWSlibrary.h"
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -16,7 +17,7 @@ extern int errno;
 #include <reent.h>
 #include "PAWS.h"
 #include "PAWSdefinitions.h"
-#include "PAWSintrinsics.h"
+//#include "PAWSintrinsics.h"
 
 #define FENCEIO asm volatile ("fence io, io");
 #define FENCEMEM asm volatile ("fence rw, rw");
@@ -118,6 +119,15 @@ void uart_outputcharacter(char c) {
 }
 void uart_outputstring( const char *s ) {
     while( *s ) uart_outputcharacter( *s++ );
+}
+void uart_printf( const char *fmt,... ) {
+    static char buffer[1024];
+    va_list args;
+    va_start (args, fmt);
+    vsnprintf( buffer, 1023, fmt, args);
+    va_end(args);
+
+    uart_outputstring( buffer );
 }
 // INPUT FROM UART
 // RETURN 1 IF UART CHARACTER AVAILABLE, OTHERWISE 0
@@ -244,18 +254,14 @@ void bitsample_upload_128( unsigned char channel_number, unsigned char *samples 
     if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 16, DMA_TO_IO ); }
 }
 
-// 256 ENTRY USER DEFINED WAVEFORM
-void wavesample_upload( unsigned char channel_number, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_WAVEFORM = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_WAVESAMPLE, 256, DMA_TO_IO ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_WAVESAMPLE, 256, DMA_TO_IO ); }
-}
-
 // PCM SAMPLE HANDLING CODE
-void pcmsample_start( unsigned char channel_number, unsigned short count, const unsigned char *samples ) {
-    if( channel_number & 1 ) { *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_L_BASE = (unsigned int)samples; *AUDIO_DMA_L_LENGTH = count; *AUDIO_DMA_L_REPEAT = 0; *AUDIO_DMA_L_STATUS = 2; }
-    if( channel_number & 2 ) { *AUDIO_DMA_R_STATUS = 1; *AUDIO_DMA_R_BASE = (unsigned int)samples; *AUDIO_DMA_R_LENGTH = count; *AUDIO_DMA_R_REPEAT = 0; *AUDIO_DMA_R_STATUS = 2; }
+void pcmsample_start( unsigned char channel_number, unsigned short count, const unsigned char *samples, unsigned char rate, unsigned char repeat ) {
+    if( channel_number & 1 ) {
+        *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_L_BASE = (uintptr_t)samples; *AUDIO_DMA_L_LENGTH = count; *AUDIO_DMA_L_REPEAT = 0; *AUDIO_DMA_L_STATUS = 2 + ( repeat << 2 ) + ( rate << 3 );
+    }
+    if( channel_number & 2 ) {
+        *AUDIO_DMA_R_STATUS = 1; *AUDIO_DMA_R_BASE = (uintptr_t)samples; *AUDIO_DMA_R_LENGTH = count; *AUDIO_DMA_R_REPEAT = 0; *AUDIO_DMA_R_STATUS = 2 + ( repeat << 2 ) + ( rate << 3 );
+    }
 }
 
 void pcmsample_stop( unsigned char channel_number ) {
@@ -310,7 +316,9 @@ unsigned short get_buttons( void ) {
 void get_mouse( short *x, short *y, short *buttons ) {
     *x = *MOUSE_X; *y = *MOUSE_Y; *buttons = *MOUSE_BUTTONS;
 }
-
+void reset_mouse( void ) {
+    *MOUSE_RESET = 0;
+}
 // DISPLAY FUNCTIONS
 // FUNCTIONS ARE IN LAYER ORDER: BACKGROUND, TILEMAP, SPRITES (for LOWER ), BITMAP & GPU, ( UPPER SPRITES ), CHARACTERMAP & TPU
 // colour is in the form { RRGGGBBM } { COLOUR 64 ALPHA - show layer below }
@@ -415,63 +423,32 @@ unsigned short get_copper_cpuoutput( void ) {
 }
 
 // SCROLLABLE TILEMAP
-// The tilemap is 42 x 32, with 40 x 30 displayed, with an x and y offset in the range -15 to 15 to scroll the tilemap
-// The tilemap can scroll or wrap once x or y is at -15 or 15
+// The tilemap is 64 x 64, with 40 x 30 displayed, with an x and y offset in the range -15 to 15 to scroll the tilemap
+// The tilemap will scroll once x or y is at -15 or 15
 
 // SET THE TILEMAP TILE at (x,y) to tile - (0,0) always top left, even after scrolling
-void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
-    switch( tm_layer ) {
-        case 0:
-            while( *LOWER_TM_STATUS );
-            *LOWER_TM_X = x;
-            *LOWER_TM_Y = y;
-            *LOWER_TM_TILE = tile;
-            *LOWER_TM_ACTION = action;
-            *LOWER_TM_COMMIT = 1;
-            break;
-        case 1:
-            while( *UPPER_TM_STATUS );
-            *UPPER_TM_X = x;
-            *UPPER_TM_Y = y;
-            *UPPER_TM_TILE = tile;
-            *UPPER_TM_ACTION = action;
-            *UPPER_TM_COMMIT = 1;
-            break;
-    }
+void set_tilemap_tile_abs( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
+    ( tm_layer ? UTMAPBUFFER : LTMAPBUFFER )[ y * 64 + x ] = ( action << 6 ) + ( tile & 63 );
 }
 
 // HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
-void set_tilemap_32x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
-    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
-    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y, start_tile + 2, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
+void set_tilemap_32x32tile_abs( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile_abs( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile_abs( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile_abs( tm_layer, x + 1, y, start_tile + 2, 0 );
+    set_tilemap_tile_abs( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
 }
 
 // HELPER FOR PLACING A 2 TILE 16 x 32 TILE TO THE TILEMAPS with REFLECTION for right hand side
-void set_tilemap_16x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
-    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
-    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y, start_tile, REFLECT_X );
-    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 1, REFLECT_X );
+void set_tilemap_16x32tile_abs( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile_abs( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile_abs( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile_abs( tm_layer, x + 1, y, start_tile, REFLECT_X );
+    set_tilemap_tile_abs( tm_layer, x + 1, y + 1, start_tile + 1, REFLECT_X );
 }
 
-// READ THE TILEMAP TILE+ACTION at (x,y) - (0,0) always top left, even after scrolling
-unsigned short read_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y ) {
-    switch( tm_layer ) {
-        case 0:
-            while( *LOWER_TM_STATUS );
-            *LOWER_TM_X = x;
-            *LOWER_TM_Y = y;
-            return( *LOWER_TM_TILE );
-            break;
-        case 1:
-            while( *UPPER_TM_STATUS );
-            *UPPER_TM_X = x;
-            *UPPER_TM_Y = y;
-            return( *UPPER_TM_TILE );
-            break;
-    }
+unsigned short read_tilemap_tile_abs( unsigned char tm_layer, unsigned char x, unsigned char y ) {
+    return ( tm_layer ? UTMAPBUFFER : LTMAPBUFFER )[ y * 64 + x ];
 }
 
 // SET THE TILE BITMAP for tile to the 16 x 16 pixel bitmap
@@ -509,42 +486,85 @@ void set_tilemap_bitamps_from_spritesheet( unsigned char tm_layer, unsigned char
     }
 }
 
-// HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
-void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
-    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
-    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y, start_tile + 2,  0 );
-    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
-}
-
-// SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
+// SCROLL TILEMAP by amount ( 0 - 15 ) pixels OR RESET PARAMETERS
 //  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN
-//  action == 5 clear the tilemap
+//  action == 5 reset base and offset
+//  action == 6 reset base
 //  action == 7 reset offset
 //  RETURNS 0 if no action taken other than pixel shift, action if SCROLL was actioned
-unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
-    while( *( tm_layer ? UPPER_TM_STATUS : LOWER_TM_STATUS ) );
+unsigned char tilemap_scroll( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
     *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
     *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = action;
     return( tm_layer ? *UPPER_TM_SCROLLWRAPCLEAR : *LOWER_TM_SCROLLWRAPCLEAR );
 }
 
 // SET THE BASE COORDINATE FOR THE TILEMAP - COORDINATE OFF TOP LEFT (offscreen) TILE
-void tilemap_setbase( unsigned char tm_layer, short x, short y ) {
+void tilemap_setbase( unsigned char tm_layer, unsigned char x, unsigned char y, short offset_x, short offset_y ) {
     switch( tm_layer ) {
         case 0:
-            while( *LOWER_TM_STATUS );
             *LOWER_TM_X = x;
             *LOWER_TM_Y = y;
+            *LOWER_TM_OFFSET_X = offset_x;
+            *LOWER_TM_OFFSET_Y = offset_y;
             break;
         case 1:
-            while( *UPPER_TM_STATUS );
             *UPPER_TM_X = x;
             *UPPER_TM_Y = y;
+            *UPPER_TM_OFFSET_X = offset_x;
+            *UPPER_TM_OFFSET_Y = offset_y;
             break;
     }
-    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = 6;
+    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = 5;
 }
+
+// READTILEMAP PARAMETERS
+void tilemap_readbase( unsigned char tm_layer, unsigned char *base_x, unsigned char *base_y, short *offset_x, short *offset_y ) {
+    *base_x = tm_layer ? *UPPER_TM_X : *LOWER_TM_X;
+    *base_y = tm_layer ? *UPPER_TM_Y : *LOWER_TM_Y;
+    *offset_x = tm_layer ? *UPPER_TM_OFFSET_X : *LOWER_TM_OFFSET_X;
+    *offset_y = tm_layer ? *UPPER_TM_OFFSET_Y : *LOWER_TM_OFFSET_Y;
+}
+
+// READ THE TILEMAP TILE+ACTION at (x,y) - (0,0) always top left, even after scrolling
+// READ THE TILEMAP BASE AND OFFSET, ADJUST INTO THE TILEMAP ( &63 to bring into range of 0-63 for x and y )
+unsigned short read_tilemap_tile_rel( unsigned char tm_layer, unsigned char x, unsigned char y ) {
+    unsigned char base_x, base_y;
+    short dummy;
+
+    tilemap_readbase( tm_layer, &base_x, &base_y, &dummy, &dummy );
+    return ( tm_layer ? UTMAPBUFFER : LTMAPBUFFER )[ ( ( base_y + y ) & 63 ) * 64 + ( ( base_x + x ) & 63 ) ];
+}
+
+// SET THE TILEMAP TILE at (x,y) to tile - (0,0) always top left, even after scrolling
+void set_tilemap_tile_rel( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
+    unsigned char base_x, base_y;
+    short dummy;
+
+    tilemap_readbase( tm_layer, &base_x, &base_y, &dummy, &dummy );
+   ( tm_layer ? UTMAPBUFFER : LTMAPBUFFER )[ ( ( base_y + y ) & 63 ) * 64 + ( ( base_x + x ) & 63 ) ] = ( action << 6 ) + tile;
+}
+
+// HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
+void set_tilemap_32x32tile_rel( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile_rel( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile_rel( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile_rel( tm_layer, x + 1, y, start_tile + 2, 0 );
+    set_tilemap_tile_rel( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
+}
+
+// HELPER FOR PLACING A 2 TILE 16 x 32 TILE TO THE TILEMAPS with REFLECTION for right hand side
+void set_tilemap_16x32tile_rel( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile_rel( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile_rel( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile_rel( tm_layer, x + 1, y, start_tile, REFLECT_X );
+    set_tilemap_tile_rel( tm_layer, x + 1, y + 1, start_tile + 1, REFLECT_X );
+}
+
+void tm_cs( unsigned char tm_layer ) {
+    memset( ( void *)( tm_layer ? UTMAPBUFFER : LTMAPBUFFER ), 0, 64 * 64 * 2 );
+    tilemap_setbase( tm_layer, 0, 0, 0, 0 );
+}
+
 
 // GPU AND BITMAP
 // The bitmap is 320 x 240 pixels (0,0) is top left
@@ -1216,12 +1236,13 @@ void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsi
         { 3, 2, 1, 0 }, // ROTATE 180
         { 1, 3, 0, 2 }, // ROTATE 270
     };
-    int size = ( sprite_actions & 16 ) ? 64 : ( sprite_actions & 8 ) ? 32 : 16;
+    static unsigned char sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2 };
+        int size = sizes[ sprite_actions >> 3 ];
 
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_actions & 7 ][0], active, x - size, y - size, tile, sprite_actions );
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_actions & 7 ][1], active, x - size, y, tile, sprite_actions );
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_actions & 7 ][2], active, x, y - size, tile, sprite_actions );
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_actions & 7 ][3], active, x, y, tile, sprite_actions );
+    set_sprite( sprite_layer, sprite_number + 2 * positions[ sprite_actions & 7 ][0], active, x - size, y - size, tile, sprite_actions );
+    set_sprite( sprite_layer, sprite_number + 2 * positions[ sprite_actions & 7 ][1], active, x - size, y, tile, sprite_actions );
+    set_sprite( sprite_layer, sprite_number + 2 * positions[ sprite_actions & 7 ][2], active, x, y - size, tile, sprite_actions );
+    set_sprite( sprite_layer, sprite_number + 2 * positions[ sprite_actions & 7 ][3], active, x, y, tile, sprite_actions );
 }
 
 // SET or GET ATTRIBUTES for sprite_number in sprite_layer
@@ -1320,29 +1341,60 @@ unsigned char get_sprite_layer_collision( unsigned char sprite_layer, unsigned c
 }
 
 // UPDATE A SPITE moving by x and y deltas, with optional wrap/kill and optional changing of the tile
-//  update_flag = { y action, x action, tile action, 5 bit y delta, 5 bit x delta }
-//  x and y action ( 0 == wrap, 1 == kill when moves offscreen )
-//  x and y deltas a 2s complement -15 to 15 range
-//  tile action, increase the tile number ( provides limited animation effects )
-void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned short update_flag ) {
-    switch( sprite_layer ) {
-        case 0:
-            LOWER_SPRITE_UPDATE[sprite_number] = update_flag;
-            break;
-        case 1:
-            UPPER_SPRITE_UPDATE[sprite_number] = update_flag;
-            break;
-    }
+void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char kill, short dx, short dy, unsigned char dt ) {
+    static short sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2 };
+
+    short x = ( sprite_layer ? UPPER_SPRITE_X : LOWER_SPRITE_X )[ sprite_number ] + dx;
+    short y = ( sprite_layer ? UPPER_SPRITE_Y : LOWER_SPRITE_Y )[ sprite_number ] + dy;
+    unsigned char tile = ( sprite_layer ? UPPER_SPRITE_TILE : LOWER_SPRITE_TILE )[ sprite_number ] + dt;
+    unsigned char active = ( sprite_layer ? UPPER_SPRITE_ACTIVE : LOWER_SPRITE_ACTIVE )[ sprite_number ];
+    short size = sizes[ (sprite_layer ? UPPER_SPRITE_ACTIONS : LOWER_SPRITE_ACTIONS )[ sprite_number ] >> 3 ];
+
+    if( ( ( x > 640 ) || ( x < -size ) ) ) { active = ( kill & 1 ) ? 0 : 1; x = ( x > 640 ) ? -size : 640; }
+    if( ( ( y > 480 ) || ( y < -size ) ) ) { active = ( kill & 2 ) ? 0 : 1; y = ( y > 480 ) ? -size : 480; }
+
+    ( sprite_layer ? UPPER_SPRITE_X : LOWER_SPRITE_X )[ sprite_number ] = x;
+    ( sprite_layer ? UPPER_SPRITE_Y : LOWER_SPRITE_Y )[ sprite_number ] = y;
+    ( sprite_layer ? UPPER_SPRITE_TILE : LOWER_SPRITE_TILE )[ sprite_number ] = tile;
+    ( sprite_layer ? UPPER_SPRITE_ACTIVE : LOWER_SPRITE_ACTIVE )[ sprite_number ] = active;
+}
+
+// COMPATABILITY FUNCTION FOR THE OLD SPRITE UPDATE FLAGS
+// kktyyyyyxxxxx
+void update_sprite_compat( unsigned char sprite_layer, unsigned char sprite_number, unsigned short updateflag ) {
+    static short directions[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1 };
+
+    update_sprite(
+        sprite_layer, sprite_number,
+        ( updateflag & 0b1100000000000 ) >> 11,
+        directions[ ( updateflag & 0b0000000011111 ) ],
+        directions[ ( updateflag & 0b0001111100000 ) >> 5 ],
+        ( updateflag & 0b0010000000000 ) >> 10
+    );
 }
 
 // CHARACTER MAP FUNCTIONS
-// The character map is an 80 x 30 character window with a 512 character 8 x 8 pixel character generator ROM ) normal/bold
+// The character map is an 80 x 30 character window with a 512 character 8 x 8 pixel character generator ROM ) normal/bold/underline/flash/2x/2y
 // NO SCROLLING, CURSOR WRAPS TO THE TOP OF THE SCREEN
 // CURSES LIBRARY PROVIDES MORE CAPABILITIES, SEE BELOW
+unsigned char __tpu_x = 0, __tpu_y = 0, __tpu_background = TRANSPARENT, __tpu_foreground = WHITE, __tpu_attributes = TPU_NORMAL;
 
+// POSITION THE CURSOR to (x,y) and set background, foreground colours and attributes
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground, unsigned char attributes ) {
+    *TPU_X = __tpu_x = x;
+    *TPU_Y = __tpu_y = y;
+    *TPU_BACKGROUND = __tpu_background = background;
+    *TPU_FOREGROUND = __tpu_foreground = foreground;
+    __tpu_attributes = attributes;
+}
+// SHOW/HIDE THE CURSOR
+void tpu_showcursor( unsigned char value ) {
+    *TPU_CURSOR = value;
+}
 // CLEAR THE CHARACTER MAP
 void tpu_cs( void ) {
     paws_memset32( ( void *)TPUBUFFER, ( 64 << 16 ), 4800 * 4 );
+    tpu_set( 0, 0, TRANSPARENT, WHITE, TPU_NORMAL );
 }
 void tpu_clearline( unsigned char y ) {
     paws_memset32( (void *)TPUBUFFER + 80 * y * 4, ( 64 << 16 ), 80 * 4 );
@@ -1350,21 +1402,33 @@ void tpu_clearline( unsigned char y ) {
 
 // POSITION THE CURSOR to (x,y)
 void tpu_move( unsigned char x, unsigned char y ) {
-    *TPU_X = x; *TPU_Y = y; *TPU_COMMIT = 1;
+    *TPU_X = __tpu_x = x;
+    *TPU_Y = __tpu_y = y;
 }
 
-// POSITION THE CURSOR to (x,y) and set background and foreground colours
-void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground, unsigned char attribute ) {
-    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_ATTRIBUTES = attribute; *TPU_COMMIT = 1;
+// MOVE TO NEXT TPU CELL
+void tpu_next( void ) {
+    __tpu_x++;
+    if( __tpu_x == 80 ) {
+        __tpu_x = 0;
+        __tpu_y++;
+        if( __tpu_y == 59)
+            __tpu_y = 0;
+    }
+    *TPU_X = __tpu_x; *TPU_Y = __tpu_y;
 }
-// OUTPUT CHARACTER, STRING, and PRINTF EQUIVALENT FOR THE TPU
+
+// OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
 void tpu_output_character( unsigned char c ) {
-    *TPU_CHARACTER = c; *TPU_COMMIT = 2;
+    TPUBUFFER[ __tpu_y * 80 + __tpu_x ] = ( __tpu_attributes << 24 ) + ( __tpu_background << 16 ) + ( __tpu_foreground << 8 ) + c;
+    tpu_next();
 }
 void tpu_outputstring( unsigned char attribute, char *s ) {
-    *TPU_ATTRIBUTES = attribute;
+    __tpu_attributes = attribute;
     while( *s ) {
         tpu_output_character( *s );
+        if( attribute & TPU_X2 )
+            tpu_output_character( *s );
         s++;
     }
 }
@@ -1382,8 +1446,13 @@ void tpu_printf( unsigned char attribute, const char *fmt,... ) {
 }
 void tpu_print_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, char *buffer ) {
     tpu_clearline( y );
-    tpu_set( 40 - ( strlen(buffer) >> 1 ), y, background, foreground, attribute );
+    tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
+    if( attribute & TPU_Y2 ) {
+        tpu_clearline( y + 1 );
+        tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y + 1, background, foreground, attribute );
+        tpu_outputstring( attribute, buffer );
+    }
 }
 void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, const char *fmt,...  ) {
     static char buffer[1024];
@@ -1393,8 +1462,14 @@ void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char
     va_end(args);
 
     tpu_clearline( y );
-    tpu_set( 40 - ( strlen(buffer) >> 1 ), y, background, foreground, attribute );
+    tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
+
+    if( attribute & TPU_Y2 ) {
+        tpu_clearline( y + 1 );
+        tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y + 1, background, foreground, attribute );
+        tpu_outputstring( attribute, buffer );
+    }
 }
 
 // NETPBM DECODER
@@ -1547,13 +1622,51 @@ char *_sbrk( int incr ) {
     prev_heap = _heap;
 
     if( incr < 0 ) { _heap = _heap; } else { _heap += incr; }
+    if( (unsigned long)_heap < (unsigned long)*RAMTOP ) {
+        return prev_heap;
+    } else {
+        errno = ENOMEM;
+        return (char *)-1;
+    }
+}
 
-    return prev_heap;
+// PAWS SYSTEMCLOCK
+int __gettimeofday_init = 0;
+int bcdtobin( int bcd ) {
+    return( ( ( bcd & 0xf0 ) >> 4) * 10 + ( bcd & 0x0f ) );
+}
+// CONVERT ULX3S BCD RTC TO LINUX EPOCH TIME
+void paws_settime( void ) {
+    struct tm calendar; uint64_t rtc = *RTC, sinceepoch;
+
+    calendar.tm_sec = bcdtobin( ( rtc & 0x00000000000000ff ) >> 0 );
+    calendar.tm_min = bcdtobin( ( rtc & 0x000000000000ff00 ) >> 8 );
+    calendar.tm_hour = bcdtobin( ( rtc & 0x0000000000ff0000 ) >> 16 );
+    calendar.tm_mday = bcdtobin( ( rtc & 0x000000ff00000000 ) >> 32 );
+    calendar.tm_mon = bcdtobin( ( rtc & 0x0000ff0000000000 ) >> 40 ) - 1;
+    calendar.tm_year = 2000 + bcdtobin( ( rtc & 0x00ff000000000000 ) >> 48 ) - 1900;
+    calendar.tm_wday = 0; calendar.tm_yday = 0; calendar.tm_isdst = 0;
+    sinceepoch = mktime( &calendar );
+    *SET_RTC_TIME = sinceepoch; *SET_RTC = 1;
+}
+int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
+    if( !__gettimeofday_init ) {
+        paws_settime();
+        __gettimeofday_init = 1;
+    }
+    tv->tv_sec = *SYSTEMSECONDS; tv->tv_usec = *SYSTEMMILLISECONDS;
+    return( 0 );
+}
+int paws_clock_gettime( clockid_t clk_id, void *tz ) {
+    struct timespec *tv = tz;
+    tv->tv_sec = (time_t)*((long *)SYSTEMSECONDS);
+    tv->tv_nsec = (long)(*SYSTEMMILLISECONDS/1000);
+    return( 0 );
 }
 
 // PAWS INITIALISATION FOR THE TERMNAL AND THE SDCARD for fat_io_lib
 void __start_stdinout( void ) {
-    initscr(); __pnc_start_color( stdscr ); __pnc_autorefresh( stdscr, TRUE ); ps2_keyboardmode( PS2_KEYBOARD );
+    paws_settime(); initscr(); __pnc_start_color( stdscr ); __pnc_autorefresh( stdscr, TRUE ); ps2_keyboardmode( PS2_KEYBOARD );
     __stdinout_init = TRUE;
 }
 void __start_sdmedia( void ) {
@@ -1616,7 +1729,7 @@ int paws_vfprintf( void *fd, const char *format, va_list args ) {
 
 // LINK NEWLIB STUB FUNCTIONS TO FAT_IO_LIB FUNCTIONS
 
-#define MAXOPENFILES 4
+#define MAXOPENFILES 16
 struct sFL_FILE *__filehandles[ MAXOPENFILES + 3 ]; // stdin, stdout, stderr
 
 // FIND AN UNUSED FILE HANDLE FROM 3, 0 = stdin, 1 = stdout, 2 = stderr
@@ -1648,15 +1761,12 @@ int _open( const char *file, int flags ) {
             case O_RDWR | O_CREAT | O_APPEND:   mode = 5; break;
             default: mode = -1;
         }
-        fprintf(stderr,"Opening file %s into handle %0d using mode %s : ",file,handle,(mode == -1 ) ? "err" : __openmodes[mode]);
         if( mode != -1 ) {
             __filehandles[ handle ] = fl_fopen( file, __openmodes[ mode ] );
             if( __filehandles[ handle ] != NULL ) {
-                fprintf(stderr,"Success\n");
                 return handle;
             }
         }
-        fprintf(stderr,"Failed\n");
         return( -1 );
     }
 }
@@ -1927,41 +2037,6 @@ int paws_ungetc( int c, void *fd ) {
 
 int paws_rmdir (const char *__path) {
     return(0);
-}
-
-// PAWS SYSTEMCLOCK
-int __gettimeofday_init = 0;
-int bcdtobin( int bcd ) {
-    return( ( ( bcd & 0xf0 ) >> 4) * 10 + ( bcd & 0x0f ) );
-}
-// CONVERT ULX3S BCD RTC TO LINUX EPOCH TIME
-void paws_settime( void ) {
-    struct tm calendar; uint64_t rtc = *RTC, sinceepoch;
-
-    calendar.tm_sec = bcdtobin( ( rtc & 0x00000000000000ff ) >> 0 );
-    calendar.tm_min = bcdtobin( ( rtc & 0x000000000000ff00 ) >> 8 );
-    calendar.tm_hour = bcdtobin( ( rtc & 0x0000000000ff0000 ) >> 16 );
-    calendar.tm_mday = bcdtobin( ( rtc & 0x000000ff00000000 ) >> 32 );
-    calendar.tm_mon = bcdtobin( ( rtc & 0x0000ff0000000000 ) >> 40 ) - 1;
-    calendar.tm_year = 2000 + bcdtobin( ( rtc & 0x00ff000000000000 ) >> 48 ) - 1900;
-    calendar.tm_wday = 0; calendar.tm_yday = 0; calendar.tm_isdst = 0;
-    sinceepoch = mktime( &calendar );
-    *SET_RTC_TIME = sinceepoch; *SET_RTC = 1;;
-}
-int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
-    int *storage = (int *)tv;
-    if( !__gettimeofday_init ) {
-        paws_settime();
-        __gettimeofday_init = 1;
-    }
-    storage[0] = TIMER_REGS[8]; storage[1] = TIMER_REGS[9]; storage[2] = storage[3] = TIMER_REGS[10];
-    return( 0 );
-}
-int paws_clock_gettime( clockid_t clk_id, void *tz ) {
-    struct timespec *tv = tz;
-    tv->tv_sec = (time_t)*((long *)SYSTEMSECONDS);
-    tv->tv_nsec = (long)(*SYSTEMMILLISECONDS/1000);
-    return( 0 );
 }
 
 // PAWS SLEEP FOR sys/unistd.h

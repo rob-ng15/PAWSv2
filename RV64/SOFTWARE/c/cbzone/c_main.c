@@ -96,6 +96,8 @@ int main(
      int argc,
      char* argv[])
 {
+  reset_mouse();
+
   Genericp o;
   Genericp pl, g, g2, s;
   char key;

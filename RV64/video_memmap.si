@@ -30,7 +30,7 @@ unit statusdisplay(
 
     uint8   y <:: pix_y - 1;                                                                                                    // MOVE 1 pixel in from top right
     sdcard.addr := y[0,4]; joystick.addr := y[0,4]; capslock.addr := y[0,4]; numlock.addr := y[0,4];
-    pixel_display := 0; COUNTER.resetCounter := 0;
+    pixel := 8h40; pixel_display := 0; COUNTER.resetCounter := 0;
 
     algorithm <autorun> { while(1) {
         if( RESETSTATUS ) { COUNTER.resetCounter = 1000; }                                                                      // REQUEST TO DISPLAY STATUS LIGHTS
@@ -50,9 +50,11 @@ unit statusdisplay(
                 case 2b10: { pixel = capslock.rdata[~pix_x[0,4],1] ? CAPSLOCK ? 8h38 : 8h5b : background; }                     // CAPSLOCK
                 case 2b11: { pixel = numlock.rdata[~pix_x[0,4],1] ? NUMLOCK ? 8h38 : 8h5b : background; }                       // NUMLOCK
             }
-            pixel_display = ( pixel != 8h40 );                                                                                  // CHECK NOT TRANSPARENT
         }
     } }
+
+    always_after { pixel_display = ( pixel != 8h40 ); }                                                                         // CHECK NOT TRANSPARENT
+
 }
 
 unit video_memmap(
@@ -68,13 +70,16 @@ unit video_memmap(
     input   uint32  writeData,
     output  uint32  readData,
 
-    // Memory access direct to bitmap / character map
+    // Memory access direct to bitmap / character map / tilemaps
     input   uint18  memoryAddressDirect,
     input   uint18  memoryAddressDirect0,
     input   uint1   BITMAPWriteDirect,
     output! uint32  BITMAPreadDataDirect,
     input   uint1   CMAPWriteDirect,
     output! uint32  CMAPreadDataDirect,
+    input   uint1   TMAPWriteDirect,
+    output! uint9   LTMAPreadDataDirect,
+    output! uint9   UTMAPreadDataDirect,
 
 $$if HDMI then
     // HDMI OUTPUT
@@ -243,7 +248,9 @@ $$end
         pix_active <: pix_active,
         pix_vblank <: vblank,
         memoryAddress <: memoryAddress,
-        writeData <: writeData
+        writeData <: writeData,
+        memoryAddressDirect <: memoryAddressDirect[1,12],
+        readDataDirect :> LTMAPreadDataDirect
     );
     tilemap_memmap UPPER_TILE(
         video_clock <: video_clock,
@@ -256,7 +263,9 @@ $$end
         pix_active <: pix_active,
         pix_vblank <: vblank,
         memoryAddress <: memoryAddress,
-        writeData <: writeData
+        writeData <: writeData,
+        memoryAddressDirect <: memoryAddressDirect[1,12],
+        readDataDirect :> UTMAPreadDataDirect
     );
 
     // STATUS LIGHTS
@@ -300,9 +309,10 @@ $$end
     BACKGROUND.memoryWrite := 0;
     BITMAP.memoryWrite := 0;
     CHARACTER_MAP.memoryWrite := 0;
-    LOWER_SPRITE.memoryWrite := 0; LOWER_SPRITE.bitmapwriter := 0; LOWER_SPRITE.updatewriter := 0;
-    UPPER_SPRITE.memoryWrite := 0; UPPER_SPRITE.bitmapwriter := 0; UPPER_SPRITE.updatewriter := 0;
-    LOWER_TILE.memoryWrite := 0; UPPER_TILE.memoryWrite := 0;
+    LOWER_SPRITE.memoryWrite := 0; LOWER_SPRITE.bitmapwriter := 0;
+    UPPER_SPRITE.memoryWrite := 0; UPPER_SPRITE.bitmapwriter := 0;
+    LOWER_TILE.memoryWrite := 0; LOWER_TILE.memoryWriteDirect := TMAPWriteDirect & ~memoryAddressDirect[15,1];
+    UPPER_TILE.memoryWrite := 0; UPPER_TILE.memoryWriteDirect := TMAPWriteDirect & memoryAddressDirect[15,1];
     palette.wenable1 := 0; palette.wdata1 := writeData;
 
     $$if VGA then
@@ -319,20 +329,6 @@ $$end
         STATUS.display = 1; STATUS.background = 64; display.display_order = 0; display.colour = 0; display.usepalette = 0;hilorez = 0;
 
         while(1) {
-            // READ IO Memory
-            switch( memoryAddress[8,4] ) {
-                case 4h0: { readData = BACKGROUND.readData; }
-                case 4h1: { readData = memoryAddress[1,1] ? LOWER_TILE.tm_lastaction : memoryAddress[2,1] ? LOWER_TILE.tm_read : LOWER_TILE.tm_active; }
-                case 4h2: { readData = memoryAddress[1,1] ? UPPER_TILE.tm_lastaction : memoryAddress[2,1] ? UPPER_TILE.tm_read : UPPER_TILE.tm_active; }
-                case 4h3: { readData = LOWER_SPRITE.readData; }
-                case 4h4: { readData = UPPER_SPRITE.readData; }
-                case 4h6: { readData = memoryAddress[1,1] ? BITMAP.gpu_queue_full : BITMAP.gpu_queue_complete; }
-                case 4h8: { readData = LOWER_SPRITE.readData; }
-                case 4h9: { readData = UPPER_SPRITE.readData; }
-                case 4hf: { readData = memoryAddress[2,1] ? framecount : vblank; }
-                default: {}
-            }
-
             // WRITE IO Memory
             if( memoryWrite ) {
                 switch( memoryAddress[8,4] ) {
@@ -345,8 +341,6 @@ $$end
                     case 4h6: { BITMAP.memoryWrite = 1; }
                     case 4h8: { LOWER_SPRITE.memoryWrite = 1; LOWER_SPRITE.bitmapwriter = 1; }
                     case 4h9: { UPPER_SPRITE.memoryWrite = 1; UPPER_SPRITE.bitmapwriter = 1; }
-                    case 4ha: { LOWER_SPRITE.updatewriter = 1; LOWER_SPRITE.memoryWrite = 1; } // L SPRITE UPDATE
-                    case 4hb: { UPPER_SPRITE.updatewriter = 1; UPPER_SPRITE.memoryWrite = 1; } // U SPRITE UPDATE
                     case 4hf: {
                         if( memoryAddress[4,1] ) {
                             if( memoryAddress[2,1] ) {
@@ -370,21 +364,106 @@ $$end
             }
         }
     }
+
+    always_after {
+        // READ IO Memory
+        switch( memoryAddress[8,4] ) {
+            case 4h0: { readData = BACKGROUND.readData; }
+            case 4h1: {
+                switch( memoryAddress[1,3] ) {
+                    case 3h0: { readData = LOWER_TILE.base_x; }
+                    case 3h1: { readData = LOWER_TILE.base_y; }
+                    case 3h2: { readData = { {11{LOWER_TILE.tm_offset_x[4,1]}}, LOWER_TILE.tm_offset_x }; }
+                    case 3h3: { readData = { {11{LOWER_TILE.tm_offset_y[4,1]}}, LOWER_TILE.tm_offset_y }; }
+                    case 3h7: { readData = LOWER_TILE.tm_lastaction; }
+                    default: {}
+                }
+            }
+            case 4h2: {
+                switch( memoryAddress[1,3] ) {
+                    case 3h0: { readData = UPPER_TILE.base_x; }
+                    case 3h1: { readData = UPPER_TILE.base_y; }
+                    case 3h2: { readData = { {11{UPPER_TILE.tm_offset_x[4,1]}}, UPPER_TILE.tm_offset_x }; }
+                    case 3h3: { readData = { {11{UPPER_TILE.tm_offset_y[4,1]}}, UPPER_TILE.tm_offset_y }; }
+                    case 3h7: { readData = UPPER_TILE.tm_lastaction; }
+                    default: {}
+                }
+            }
+            case 4h3: {
+                switch( memoryAddress[7,1] ) {
+                    case 0: {
+                        switch( memoryAddress[1,4] ) {
+                            $$for i=0,15 do
+                                case $i$: {
+                                    readData = ( ~|memoryAddress[5,2] ) ? { LOWER_SPRITE.sprite_read_active_$i*2+1$, 7b0, LOWER_SPRITE.sprite_read_active_$i*2$ }  :
+                                                ( &memoryAddress[5,2] ) ? { LOWER_SPRITE.layer_collision_$i*2+1$, 2b0, LOWER_SPRITE.layer_collision_$i*2$ } :
+                                                 ( memoryAddress[5,1] ) ? { LOWER_SPRITE.sprite_read_actions_$i*2+1$, 2b0, LOWER_SPRITE.sprite_read_actions_$i*2$ } :
+                                                                          { LOWER_SPRITE.sprite_read_tile_$i*2+1$, 5b0, LOWER_SPRITE.sprite_read_tile_$i*2+1$ };
+                                }
+                            $$end
+                        }
+                    }
+                    case 1: {
+                        switch( memoryAddress[1,5] ) {
+                            $$for i=0,31 do
+                                case $i$: {
+                                    readData = memoryAddress[6,1] ? {{6{LOWER_SPRITE.sprite_read_y_$i$[9,1]}}, LOWER_SPRITE.sprite_read_y_$i$} :
+                                                                    {{5{LOWER_SPRITE.sprite_read_x_$i$[10,1]}}, LOWER_SPRITE.sprite_read_x_$i$};
+                                }
+                            $$end
+                        }
+                    }
+                }
+            }
+            case 4h4: {
+                switch( memoryAddress[7,1] ) {
+                    case 0: {
+                        switch( memoryAddress[1,4] ) {
+                            $$for i=0,15 do
+                                case $i$: {
+                                    readData = ( ~|memoryAddress[5,2] ) ? { UPPER_SPRITE.sprite_read_active_$i*2+1$, 7b0, UPPER_SPRITE.sprite_read_active_$i*2$ }  :
+                                                ( &memoryAddress[5,2] ) ? { UPPER_SPRITE.layer_collision_$i*2+1$, 2b0, UPPER_SPRITE.layer_collision_$i*2$ } :
+                                                 ( memoryAddress[5,1] ) ? { UPPER_SPRITE.sprite_read_actions_$i*2+1$, 2b0, UPPER_SPRITE.sprite_read_actions_$i*2$ } :
+                                                                          { UPPER_SPRITE.sprite_read_tile_$i*2+1$, 5b0, UPPER_SPRITE.sprite_read_tile_$i*2+1$ };
+                                }
+                            $$end
+                        }
+                    }
+                    case 1: {
+                        switch( memoryAddress[1,5] ) {
+                            $$for i=0,31 do
+                                case $i$: {
+                                    readData = memoryAddress[6,1] ? {{6{UPPER_SPRITE.sprite_read_y_$i$[9,1]}}, UPPER_SPRITE.sprite_read_y_$i$} :
+                                                                    {{5{UPPER_SPRITE.sprite_read_x_$i$[10,1]}}, UPPER_SPRITE.sprite_read_x_$i$};
+                                }
+                            $$end
+                        }
+                    }
+                }
+            }
+            case 4h6: { readData = memoryAddress[1,1] ? BITMAP.gpu_queue_full : BITMAP.gpu_queue_complete; }
+            case 4h8: {
+                switch( memoryAddress[2,5] ) {
+                    $$for i=0,31 do
+                        case $i$: { readData = LOWER_SPRITE.collision_$i$; }
+                    $$end
+                }
+            }
+            case 4h9: {
+                switch( memoryAddress[2,5] ) {
+                    $$for i=0,31 do
+                        case $i$: { readData = UPPER_SPRITE.collision_$i$; }
+                    $$end
+                }
+            }
+            case 4hf: { readData = memoryAddress[2,1] ? framecount : vblank; }
+            default: {}
+        }
+    }
 }
 
 // ALL DISPLAY GENERATOR UNITS RUN AT 25MHz, 640 x 480 @ 60fps ( bitmap outputs 320 x 240 double sized pixels )
-// DISPLAY CONTROL UNITS RUN AT 50MHz - except GPU which runs at 25MHz
-// WRITING TO THE GPU THEREFORE
-// LATCHES THE OUTPUT FOR 2 x 50MHz clock cycles
-// AND THEN RESETS ANY CONTROLS
-//
-//         switch( { memoryWrite, LATCHmemoryWrite } ) {
-//             case 2b10: { PERFORM THE WRITE }
-//             case 2b00: { RESET }
-//             default: { HOLD THE OUTPUT }
-//         }
-//
-//         LATCHmemoryWrite = memoryWrite;
+// DISPLAY CONTROL UNITS RUN AT 50MHz
 
 unit background_memmap(
     // Clocks
@@ -407,11 +486,10 @@ unit background_memmap(
     input   uint2   colourmode,
     input   uint10  staticGenerator
 ) <reginputs> {
-    simple_dualport_bram uint4  OP  <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     // BACKGROUND CO-PROCESSOR PROGRAM STORAGE - OPCODE
-    simple_dualport_bram uint3  OPD <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     //                                           DESTINATION REGISTER ( SOURCE REG1 )
-    simple_dualport_bram uint1  OPF <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     //                                           REGISTER / LITERAL FLAG
-    simple_dualport_bram uint10 OPL <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     //                                           RSOURCE REG 2 / LITERAL VALUE
-    uint80  memoryinit = uninitialised;                                                                                         // COPPER MEMORY ( 8 x 10 BIT ENTRIES )
+    simple_dualport_bram uint4  OP  <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     // BACKGROUND   PROGRAM STORAGE - OPCODE
+    simple_dualport_bram uint3  OPD <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     //              DESTINATION REGISTER ( SOURCE REG1 )
+    simple_dualport_bram uint1  OPF <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     //              REGISTER / LITERAL FLAG
+    simple_dualport_bram uint10 OPL <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     //              RSOURCE REG 2 / LITERAL VALUE
 
     // BACKGROUND GENERATOR
     background_display BACKGROUND <@video_clock,!video_reset> (
@@ -436,8 +514,7 @@ unit background_memmap(
         OP <:> OP,
         OPD <:> OPD,
         OPF <:> OPF,
-        OPL <:> OPL,
-        memoryinit <: memoryinit
+        OPL <:> OPL
     );
     background_writer BACKGROUND_WRITER(
         OP <:> OP,
@@ -467,14 +544,14 @@ unit background_memmap(
                     case 4h9: { BACKGROUND_WRITER.copper_opf = writeData; }
                     case 4ha: { BACKGROUND_WRITER.copper_opl = writeData; }
                     case 4hb: { mempos = 0; }
-                    case 4hc: { memoryinit[ mempos * 10, 10 ] = writeData; mempos = mempos_NEXT; }
+                    case 4hc: { BACKGROUND_COPPER.memoryinit[ mempos * 10, 10 ] = writeData; mempos = mempos_NEXT; }
                     default: {}
                 }
             }
-
-            readData = BACKGROUND_COPPER.copper_cpu_output;
         }
     }
+
+    always_after { readData = BACKGROUND_COPPER.copper_cpu_output; }
 }
 
 unit bitmap_memmap(
@@ -724,37 +801,38 @@ unit charactermap_memmap(
     dualport_bram uint29 charactermap <@video_clock,@clock> [4800] = uninitialized;
 
     // CHARACTER MAP DISPLAY
-    uint10  dopix_x <:: lorez ? pix_x[1,9] : pix_x;  uint10  dopix_x1 <:: lorez ? pix_x1[1,9] : pix_x1; uint9  dopix_y <:: lorez ? pix_y[1,8] : pix_y;
     character_map character_map_window <@video_clock,!video_reset> (
         clockCG <: clockCG,
         charactermap <:> charactermap,
-        pix_x      <: dopix_x,
-        pix_x1     <: dopix_x1,
-        pix_y      <: dopix_y,
         pix_active <: pix_active,
         pix_vblank <: pix_vblank,
         pixel    :> pixel,
         character_map_display :> pixel_display,
-        blink <: blink,
-        cursor_x <: CMW.cursor_x,
-        cursor_y <: CMW.cursor_y
+        blink <: blink
     );
 
     // CHARACTER MAP WRITER
-    character_map_writer CMW( charactermap <:> charactermap, writeDataDirect <: writeData, memoryAddressDirect <: memoryAddressDirect[2,13], memoryWriteDirect <: memoryWriteDirect, readDataDirect :> readDataDirect );
-    CMW.tpu_write := 0;
+    character_map_writer CMW(
+        charactermap <:> charactermap,
+        writeDataDirect <: writeData,
+        memoryAddressDirect <: memoryAddressDirect[2,13],
+        memoryWriteDirect <: memoryWriteDirect,
+        readDataDirect :> readDataDirect
+    );
+
+    character_map_window.pix_x := lorez ? pix_x[1,9] : pix_x;
+    character_map_window.pix_x1 := lorez ? pix_x1[1,9] : pix_x1;
+    character_map_window.pix_y := lorez ? pix_y[1,8] : pix_y;
 
     algorithm <autorun> { while(1) {
         if( memoryWrite ) {
             switch( memoryAddress[1,3] ) {
-                case 3h0: { CMW.tpu_x = writeData; }
-                case 3h1: { CMW.tpu_y = writeData; }
-                case 3h2: { CMW.tpu_character = writeData; }
-                case 3h3: { CMW.tpu_background = writeData; character_map_window.tpu_background = writeData; }
-                case 3h4: { CMW.tpu_foreground = writeData; character_map_window.tpu_foreground = writeData; }
-                case 3h5: { CMW.tpu_write = writeData; }
-                case 3h6: { character_map_window.tpu_showcursor = writeData; }
-                case 3h7: { CMW.tpu_attributes = writeData; }
+                case 3h0: { character_map_window.cursor_x = writeData; }
+                case 3h1: { character_map_window.cursor_y = writeData; }
+                case 3h2: { character_map_window.tpu_background = writeData; }
+                case 3h3: { character_map_window.tpu_foreground = writeData; }
+                case 3h4: { character_map_window.tpu_showcursor = writeData; }
+                default: {}
             }
         }
     } }
@@ -776,7 +854,6 @@ unit sprite_memmap(
 
     // Memory access
     input   uint1   bitmapwriter,
-    input   uint1   updatewriter,
     input   uint12  memoryAddress,
     input   uint1   memoryWrite,
     input   uint16  writeData,
@@ -788,7 +865,16 @@ unit sprite_memmap(
     input   uint1   collision_bitmap_0,
     input   uint1   collision_bitmap_1,
 
-    output! uint32  readData
+    // For reading sprite characteristics
+    $$for i=0,31 do
+        output  uint1   sprite_read_active_$i$,
+        output  uint6   sprite_read_actions_$i$,
+        output  int11   sprite_read_x_$i$,
+        output  int10   sprite_read_y_$i$,
+        output  uint3   sprite_read_tile_$i$,
+        output  uint32  collision_$i$,                                                                                            // SPRITE TO SPRITE COLLISION
+        output  uint6   layer_collision_$i$,                                                                                      // SPRITE TO LAYER COLLISION
+    $$end
 ) <reginputs> {
     sprite_layer sprites <@video_clock,!video_reset> (
         pix_x      <: pix_x,
@@ -807,81 +893,57 @@ unit sprite_memmap(
         collision_bitmap_1 <: collision_bitmap_1,
 
         $$for i=0,31 do
-            sprite_read_active_$i$ <: SLW.sprite_read_active_$i$,
-            sprite_read_actions_$i$ <: SLW.sprite_read_actions_$i$,
-            sprite_read_x_$i$ <: SLW.sprite_read_x_$i$,
-            sprite_read_y_$i$ <: SLW.sprite_read_y_$i$,
-            sprite_read_tile_$i$ <: SLW.sprite_read_tile_$i$,
+            sprite_active_$i$ <: SLW.sprite_read_active_$i$,
+            sprite_actions_$i$ <: SLW.sprite_read_actions_$i$,
+            sprite_size_$i$ <: SLW.sprite_size_$i$,
+            sprite_x_$i$ <: SLW.sprite_read_x_$i$,
+            sprite_y_$i$ <: SLW.sprite_read_y_$i$,
+            sprite_tile_$i$ <: SLW.sprite_read_tile_$i$,
+            collision_$i$ :> collision_$i$,
+            layer_collision_$i$ :> layer_collision_$i$,
         $$end
 
         writeData <: writeData,
     );
-    sprite_layer_writer SLW( sprite_write_value <: writeData );
-
+    sprite_layer_writer SLW(
+        sprite_write_value <: writeData,
+        $$for i=0,31 do
+            sprite_read_active_$i$ :> sprite_read_active_$i$,
+            sprite_read_actions_$i$ :> sprite_read_actions_$i$,
+            sprite_read_x_$i$ :> sprite_read_x_$i$,
+            sprite_read_y_$i$ :> sprite_read_y_$i$,
+            sprite_read_tile_$i$ :> sprite_read_tile_$i$,
+        $$end
+    );
     SLW.sprite_layer_write := 0;
 
     algorithm <autorun> {
         uint1   latch = 0;
         uint1   add = 0;
         uint11  writerpixel_NEXT <:: sprites.writerpixel + 1;
+        uint4   writerspritenumber = uninitialised;
 
         while(1) {
             // SPRITE BITMAP WRITER - SETTING THE SPRITE NUMBER RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
-            uint4   writerspritenumber = uninitialised;
-
-            if( memoryAddress[11,1] ) {
-                switch( memoryAddress[2,5] ) {
-                    $$for i=0,31 do
-                        case $i$: { readData = sprites.collision_$i$; }
-                    $$end
-                }
-            } else {
-                if( memoryAddress[7,1] ) {
-                    switch( memoryAddress[1,5] ) {
-                        $$for i=0,31 do
-                            case $i$: {
-                                readData = memoryAddress[6,1] ? {{6{SLW.sprite_read_y_$i$[9,1]}}, SLW.sprite_read_y_$i$} :
-                                                                {{5{SLW.sprite_read_x_$i$[10,1]}}, SLW.sprite_read_x_$i$};
-                            }
-                        $$end
-                    }
-                } else {
-                    switch( memoryAddress[1,4] ) {
-                        $$for i=0,15 do
-                            case $i$: {
-                                readData = ( ~|memoryAddress[5,2] ) ? { SLW.sprite_read_active_$i*2+1$, 7b0, SLW.sprite_read_active_$i*2$ }  :
-                                            ( &memoryAddress[5,2] ) ? { sprites.layer_collision_$i*2+1$, 2b0, sprites.layer_collision_$i*2$ } :
-                                             ( memoryAddress[5,1] ) ? { SLW.sprite_read_actions_$i*2+1$, 2b0, SLW.sprite_read_actions_$i*2$ } :
-                                                                      { SLW.sprite_read_tile_$i*2+1$, 5b0, SLW.sprite_read_tile_$i*2+1$ };
-                            }
-                        $$end
-                    }
-                }
-            }
-
             if( latch ) { latch = 0; } else { sprites.wenable1 = 0; if( add ) { sprites.writerpixel = writerpixel_NEXT; add = 0; } }
 
-            if( memoryWrite ) {
-                if( bitmapwriter ) {
+            if( memoryWrite ) {                                                                                                 // WRITE TO SPRITE MEMORY?
+                if( bitmapwriter ) {                                                                                            //  WRITE TO BITMAP?
                     switch( memoryAddress[1,1] ) {
                         case 0: { writerspritenumber = writeData; sprites.writerpixel = 0; }
                         case 1: { sprites.wenable1[ writerspritenumber, 1 ] = 1; latch = 1; add = 1; }
                     }
                 } else {
-                    if( updatewriter ) {
-                        SLW.sprite_layer_write = 7; SLW.sprite_set_number = memoryAddress[1,5];                                     // UPDATE
-                    } else {
-                        if( memoryAddress[7,1] ) {
-                            SLW.sprite_set_number = memoryAddress[1,5];
-                            SLW.sprite_layer_write = { 2b10, memoryAddress[6,1] };
-                        } else {
-                            SLW.sprite_set_number = memoryAddress[0,5];
-                            switch( memoryAddress[5,2] ) {
-                                case 2h0: { SLW.sprite_layer_write = 1; }
-                                case 2h1: { SLW.sprite_layer_write = 2; }
-                                case 2h2: { SLW.sprite_layer_write = 6; }
-                                default: {}
-                            }
+                    if( memoryAddress[7,1] ) {                                                                                  //  WRITE X OR Y COORDINATE?
+                        SLW.sprite_set_number = memoryAddress[1,5];
+                        SLW.sprite_layer_write = { 2b10, memoryAddress[6,1] };
+                } else {
+                        SLW.sprite_set_number = memoryAddress[0,5];
+                        switch( memoryAddress[5,2] ) {
+                            case 2h0: { SLW.sprite_layer_write = 1; }                                                           //  WRITE ACTIVE FLAG?
+                            case 2h1: { SLW.sprite_layer_write = 2; }                                                           //  WRITE ACTIONS?
+                            case 2h2: { SLW.sprite_layer_write = 6; }                                                           //  WRITE TILE NUMBER?
+                            default: {}
                         }
                     }
                 }
@@ -910,11 +972,18 @@ unit tilemap_memmap(
     input   uint6   memoryAddress,
     input   uint1   memoryWrite,
     input   uint16  writeData,
-    output  uint9   tm_read,
-    output  uint6   tm_base_x,
-    output  uint6   tm_base_y,
-    output  uint4   tm_lastaction,
-    output  uint3   tm_active
+
+    // Memory access direct to charactermap
+    input   uint13  memoryAddressDirect,
+    input   uint1   memoryWriteDirect,
+    output! uint9   readDataDirect,
+
+    // Register Access
+    output  uint6   base_x,
+    output  uint6   base_y,
+    output  int5    tm_offset_x,
+    output  int5    tm_offset_y,
+    output  uint4   tm_lastaction
 ) <reginputs> {
     // Tiles 64 x 16 x 16 ARRGGBB ( first tile defaults to transparent )
     simple_dualport_bram uint8 tiles16x16 <@clockTG,@clock> [ 16384 ] = {
@@ -940,14 +1009,10 @@ unit tilemap_memmap(
     // 64 x 64 tile map, 40 x 32 visiable, allows for pixel scrolling with border { 3 bits rotation/reflection, 6 bits tile number }
     dualport_bram uint9 tiles <@video_clock,@clock> [4096] = uninitialized;
 
-    uint10  dopix_x <:: lorez ? pix_x[1,9] : pix_x; uint10  dopix_x1 <:: lorez ? pix_x1[1,9] : pix_x1; uint9  dopix_y <:: lorez ? pix_y[1,8] : pix_y;
     tilemap tile_map <@video_clock,!video_reset> (
         clockTG <: clockTG,
         tiles16x16 <:> tiles16x16,
         tiles <:> tiles,
-        pix_x      <: dopix_x,
-        pix_x1     <: dopix_x1,
-        pix_y      <: dopix_y,
         pix_active <: pix_active,
         pix_vblank <: pix_vblank,
         pixel    :> pixel,
@@ -958,8 +1023,24 @@ unit tilemap_memmap(
         tilemap_display :> pixel_display
     );
 
-    tile_map_writer TMW( tiles <:> tiles, tm_read :> tm_read, base_x :> tm_base_x, base_y :> tm_base_y, tm_lastaction :> tm_lastaction, tm_active :> tm_active );
-    tiles16x16.wdata1 := writeData; tiles16x16.wenable1 := 0; TMW.tm_write := 0; TMW.tm_scrollwrap := 0;
+    tile_map_writer TMW(
+        tiles <:> tiles,
+        writeData <: writeData,
+        memoryAddressDirect <: memoryAddressDirect,
+        memoryWriteDirect <: memoryWriteDirect,
+        readDataDirect :> readDataDirect,
+        base_x :> base_x,
+        base_y :> base_y,
+        tm_offset_x :> tm_offset_x,
+        tm_offset_y :> tm_offset_y,
+        tm_lastaction :> tm_lastaction
+    );
+
+    tile_map.pix_x := lorez ? pix_x[1,9] : pix_x;
+    tile_map.pix_x1 := lorez ? pix_x1[1,9] : pix_x1;
+    tile_map.pix_y := lorez ? pix_y[1,8] : pix_y;
+
+    tiles16x16.wdata1 := writeData; tiles16x16.wenable1 := 0; TMW.tm_scrollwrap := 0;
 
     algorithm <autorun> {
         uint8   TBMWpixel_NEXT <:: tiles16x16.addr1[0,8] + 1;                                                                   // NEXT PIXEL IN TILE
@@ -969,12 +1050,12 @@ unit tilemap_memmap(
                 switch( memoryAddress[1,3] ) {
                     case 3h0: { TMW.tm_x = writeData; }                                                                         // SET X
                     case 3h1: { TMW.tm_y = writeData; }                                                                         // SET Y
-                    case 3h2: { TMW.tm_character = writeData; }                                                                 // SET TILE NUMBER
-                    case 3h3: { TMW.tm_actions = writeData; }                                                                   // SET ACTION ( ROTATION AND REFLECTION )
-                    case 3h4: { TMW.tm_write = 1; }                                                                             // COMMIT TO TILEMAP
+                    case 3h2: { TMW.tm_x_off = writeData; }                                                                     // SET X OFFSET
+                    case 3h3: { TMW.tm_y_off = writeData; }                                                                     // SET Y OFFSET
                     case 3h5: { tiles16x16.addr1 = { writeData[0,6], 8hff }; }                                                  // TILE BITMAP WRITER, MOVE TO NEW TILE
-                    case 3h6: { tiles16x16.addr1[0,8] = TBMWpixel_NEXT; tiles16x16.wenable1 = |tiles16x16.addr1[8,6]; }         // TILE BITMAP WRITER, MOVE TO NEXT PIXEL, ONLY WRITE IF NOT TILE 0
+                    case 3h6: { tiles16x16.addr1[0,8] = TBMWpixel_NEXT; tiles16x16.wenable1 = |tiles16x16.addr1[8,6]; }         // TILE BITMAP WRITER, MOVE TO NEXT PIXEL, WRITE IF TILE != 0
                     case 3h7: { if( memoryAddress[0,1] ) { TMW.tm_adjust = writeData; } else { TMW.tm_scrollwrap = writeData; } }
+                    default: {}
                 }
             }
         }

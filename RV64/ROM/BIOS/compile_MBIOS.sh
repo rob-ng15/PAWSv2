@@ -1,0 +1,21 @@
+#!/bin/bash
+
+echo "COMPILING FOR INCLUSION IN THE BIOS"
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+export PATH=$PATH:$DIR/../../tools/fpga-binutils/mingw32/bin/
+
+ARCH="riscv64"
+GCCVER=14.1.0
+CPUOPTS="-march=rv64gc_zba_zbb_zbs_zbkb_zbkx_zca_zcb_zcd_zfa_zfh_zicond_zifencei_zicsr -mabi=lp64d -mshorten-memrefs -mrelax -mno-strict-align"
+
+echo "using $ARCH"
+
+# Following based on FemtoRV compile scripts https://github.com/BrunoLevy/learn-fpga/tree/master/FemtoRV
+
+$ARCH-elf-gcc -fwhole-program -ffunction-sections -fdata-sections -fno-unroll-loops -Os -fno-builtin -fno-pic $CPUOPTS -c -o build/code.o c/MBIOS.c
+$ARCH-elf-gcc -fwhole-program -ffunction-sections -fdata-sections -fno-unroll-loops -Os -fno-builtin -fno-pic $CPUOPTS -S -o build/code.s c/MBIOS.c
+$ARCH-elf-gcc -Os -fno-pic $CPUOPTS -c -o build/crt0.o M_crt0.c
+$ARCH-elf-ld -m elf64lriscv -b elf64-littleriscv -Tconfig_c.ld  --relax-gp -o build/code.elf build/code.o /usr/lib/gcc/$ARCH-elf/$GCCVER/rv64imafdc/lp64d/libgcc.a
+$ARCH-elf-objcopy -O binary build/code.elf ../MBIOS.bin
+

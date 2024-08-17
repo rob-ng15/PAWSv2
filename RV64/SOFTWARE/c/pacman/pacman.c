@@ -841,8 +841,8 @@ int2_t dist_to_tile_mid(int2_t pos) {
 // clear tile buffer
 static void vid_clear(uint8_t tile_code, uint8_t color_code) {
     memset(&state.gfx.video_ram, tile_code, sizeof(state.gfx.video_ram));
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
-    tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+    tm_cs( LOWER_LAYER );
+    tm_cs( UPPER_LAYER );
     gpu_cs();
 
     // CLEAR CENTRE TEXT
@@ -863,7 +863,7 @@ static bool valid_tile_pos(int2_t tile_pos) {
 }
 
 static void paws_tile(int2_t tile_pos, uint8_t tile_code) {
-    set_tilemap_tile( LOWER_LAYER, tile_pos.x + 8, tile_pos.y - 1, tile_code, 0 );
+    set_tilemap_tile_abs( LOWER_LAYER, tile_pos.x + 8, tile_pos.y - 1, tile_code, 0 );
     state.gfx.video_ram[tile_pos.y][tile_pos.x] = tile_code;
 }
 
@@ -916,16 +916,16 @@ static void vid_color_score(int2_t tile_pos, uint8_t color_code, uint32_t score)
 // draw the fruit bonus score tiles (when Pacman has eaten the bonus fruit)
 static void vid_fruit_score(fruit_t fruit_type) {
     if(fruit_type != FRUIT_NONE) {
-        set_sprite( UPPER_LAYER, 13, TRUE, 304, 256, fruit_type-1, SPRITE_DOUBLE );
+        set_sprite( UPPER_LAYER, 26, TRUE, 304, 256, fruit_type-1, SPRITE_DOUBLE );
     } else {
-        set_sprite_attribute( UPPER_LAYER, 13, SPRITE_ACTIVE, FALSE );
+        set_sprite_attribute( UPPER_LAYER, 26, SPRITE_ACTIVE, FALSE );
     }
 }
 
 // disable and clear all sprites
 static void spr_clear(void) {
     memset(&state.gfx.sprite, 0, sizeof(state.gfx.sprite));
-    for( int i = 0; i < 16; i++ )
+    for( int i = 0; i < 43; i++ )
         set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, FALSE );
 }
 
@@ -1166,7 +1166,7 @@ static void dbg_marker(int index, int2_t tile_pos, uint8_t tile_code, uint8_t co
 // initialize the playfield tiles
 static void game_init_playfield(void) {
     // MOVE THE TILEMAP UP 8 PIXELS TO ALLOW MAZE TO "FIT" + SET THE DEFAULT MAP TILES
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR ); tilemap_scrollwrapclear( LOWER_LAYER, TM_UP, 8 );
+    tm_cs( LOWER_LAYER ); tilemap_scroll( LOWER_LAYER, TM_UP, 8 );
     set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, &tilemap_lower[0] );
     // decode the playfield from an ASCII map into tiles codes
     static const char* tiles =
@@ -1215,7 +1215,7 @@ static void game_init_playfield(void) {
     for (int y = 3, i = 0; y <= 33; y++) {
         for (int x = 0; x < 28; x++, i++) {
             state.gfx.video_ram[y][x] = t[tiles[i] & 127];
-            set_tilemap_tile( LOWER_LAYER, x + 8, y - 1, t[tiles[i]]&0xff,(t[tiles[i]]&0xff00)>>8);
+            set_tilemap_tile_abs( LOWER_LAYER, x + 8, y - 1, t[tiles[i]]&0xff,(t[tiles[i]]&0xff00)>>8);
         }
     }
     gpu_line( 15, 48, 0, 271, 0 ); gpu_line( 15, 48, 239, 271, 239 );
@@ -1397,12 +1397,12 @@ static void game_update_tiles(void) {
     // remaining lives at left of screen
     for (int i = 0; i < NUM_LIVES; i++) {
         if(i < state.game.num_lives) {
-            set_tilemap_32x32tile( UPPER_LAYER, 2, 5 + i*2, 17 );
+            set_tilemap_32x32tile_abs( UPPER_LAYER, 2, 5 + i*2, 17 );
         } else {
-            set_tilemap_tile( UPPER_LAYER, 2, 6+i*2, 0, 0 );
-            set_tilemap_tile( UPPER_LAYER, 2, 5+i*2, 0, 0 );
-            set_tilemap_tile( UPPER_LAYER, 3, 5+i*2, 0, 0 );
-            set_tilemap_tile( UPPER_LAYER, 3, 6+i*2, 0, 0 );
+            set_tilemap_tile_abs( UPPER_LAYER, 2, 6+i*2, 0, 0 );
+            set_tilemap_tile_abs( UPPER_LAYER, 2, 5+i*2, 0, 0 );
+            set_tilemap_tile_abs( UPPER_LAYER, 3, 5+i*2, 0, 0 );
+            set_tilemap_tile_abs( UPPER_LAYER, 3, 6+i*2, 0, 0 );
         }
     }
 
@@ -1412,7 +1412,7 @@ static void game_update_tiles(void) {
         for (int i = ((int)state.game.round - NUM_STATUS_FRUITS + 1); i <= (int)state.game.round; i++) {
             if (i >= 0) {
                 fruit_t fruit = levelspec(i).bonus_fruit;
-                set_tilemap_32x32tile( UPPER_LAYER, 40, y, 4*fruit_tiles_colors[fruit][0]+21 );
+                set_tilemap_32x32tile_abs( UPPER_LAYER, 40, y, 4*fruit_tiles_colors[fruit][0]+21 );
                 y -= 2 ;
             }
         }
@@ -2143,7 +2143,7 @@ static void intro_tick(void) {
         const uint8_t y = 3*i + 6;
         delay += 30;
         if (after_once(state.intro.started, delay)) {
-            set_tilemap_32x32tile( UPPER_LAYER, 12, y+2, i*4+1 );
+            set_tilemap_32x32tile_abs( UPPER_LAYER, 12, y+2, i*4+1 );
         }
         // after 1 second, the name of the ghost
         delay += 60;
@@ -2233,46 +2233,46 @@ static void gfx_add_sprite_vertices(void) {
                         basesprite = 14; tile = spr->tile - 57; action = SPRITE_DOUBLE;
                         break;
                 }
-                set_sprite( UPPER_LAYER, basesprite, spr->enabled && (spr->tile != SPRITETILE_INVISIBLE), tocoords(spr->pos.x, spr->pos.y), tile, action );
-                set_sprite_attribute( UPPER_LAYER, (basesprite==15) ? 14: 15, SPRITE_ACTIVE, FALSE );
+                set_sprite( UPPER_LAYER, basesprite * 2, spr->enabled && (spr->tile != SPRITETILE_INVISIBLE), tocoords(spr->pos.x, spr->pos.y), tile, action );
+                set_sprite_attribute( UPPER_LAYER, ((basesprite==15) ? 14: 15)*2, SPRITE_ACTIVE, FALSE );
                 break;
             case SPRITE_BLINKY:
             case SPRITE_PINKY:
             case SPRITE_INKY:
             case SPRITE_CLYDE:
-                basesprite = i-1; ghost_t* ghost = &state.game.ghost[i-1];
+                basesprite = (i-1)*2; ghost_t* ghost = &state.game.ghost[i-1];
                 if (spr->enabled && (spr->tile != SPRITETILE_INVISIBLE)) {
                     action = SPRITE_DOUBLE;
                     switch (ghost->state) {
                         case GHOSTSTATE_EYES:
-                            set_sprite( UPPER_LAYER, basesprite+4, spr->color != COLOR_GHOST_SCORE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir + 4, action );
+                            set_sprite( UPPER_LAYER, basesprite+8, spr->color != COLOR_GHOST_SCORE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir + 4, action );
                             set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
-                            set_sprite( UPPER_LAYER, basesprite+8, spr->color == COLOR_GHOST_SCORE, tocoords(spr->pos.x, spr->pos.y), spr->tile, action );
+                            set_sprite( UPPER_LAYER, basesprite+16, spr->color == COLOR_GHOST_SCORE, tocoords(spr->pos.x, spr->pos.y), spr->tile, action );
                             break;
                         case GHOSTSTATE_ENTERHOUSE:
-                            set_sprite( UPPER_LAYER, basesprite+4, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->actor.dir + 4, action );
+                            set_sprite( UPPER_LAYER, basesprite+8, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->actor.dir + 4, action );
                             set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( UPPER_LAYER, basesprite+16, SPRITE_ACTIVE, 0 );
                             break;
                         case GHOSTSTATE_FRIGHTENED:
-                            set_sprite( UPPER_LAYER, basesprite+4, TRUE, tocoords(spr->pos.x, spr->pos.y), (spr->color == COLOR_FRIGHTENED_BLINKING) ? 2 : 0 + (ghost->actor.anim_tick&1), action );
+                            set_sprite( UPPER_LAYER, basesprite+8, TRUE, tocoords(spr->pos.x, spr->pos.y), (spr->color == COLOR_FRIGHTENED_BLINKING) ? 2 : 0 + (ghost->actor.anim_tick&1), action );
                             set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( UPPER_LAYER, basesprite+16, SPRITE_ACTIVE, 0 );
                             break;
                         default:
                             set_sprite( UPPER_LAYER, basesprite, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir * 2 + (ghost->actor.anim_tick&1), action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+4, SPRITE_ACTIVE, 0 );
                             set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( UPPER_LAYER, basesprite+16, SPRITE_ACTIVE, 0 );
                     }
                 } else {
                     set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
-                    set_sprite_attribute( UPPER_LAYER, basesprite+4, SPRITE_ACTIVE, 0 );
                     set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( UPPER_LAYER, basesprite+16, SPRITE_ACTIVE, 0 );
                 }
                 break;
             case SPRITE_FRUIT:
                 action = SPRITE_DOUBLE;
-                set_sprite( UPPER_LAYER, 12, spr->enabled, tocoords(spr->pos.x, spr->pos.y), state.game.active_fruit - 1, action );
+                set_sprite( UPPER_LAYER, 24, spr->enabled, tocoords(spr->pos.x, spr->pos.y), state.game.active_fruit - 1, action );
                 break;
         }
     }
@@ -2334,7 +2334,6 @@ static void paws_snd( int action ) {
 static void snd_shutdown(void) {
       paws_snd( SND_STOP_ALL );
 }
-
 
 int main( int argc, char **argv ) {
     init();

@@ -23,10 +23,6 @@
 #include "i_net.h"
 #include "doomstat.h"
 
-ticcmd_t        netcmds[MAXPLAYERS][BACKUPTICS];
-int             maketic;
-int             ticdup;
-
 void I_InitNetwork (void)
 {
     doomcom = (doomcom_t*) malloc (sizeof (*doomcom) );
@@ -48,18 +44,3 @@ void I_NetCmd (void)
 {
 }
 
-void NetUpdate (void)
-{
-}
-
-void D_QuitNetGame (void)
-{
-}
-
-void D_CheckNetGame (void)
-{
-}
-
-void TryRunTics (void)
-{
-}

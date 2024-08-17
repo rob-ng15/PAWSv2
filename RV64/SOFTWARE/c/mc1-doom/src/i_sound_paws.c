@@ -122,7 +122,7 @@ int I_StartSound (int id, int vol, int sep, int pitch, int priority)
     __lastchannel = 3 - __lastchannel;      // MOVE TO NEXT CHANNEL
     pcmsample_stop( __lastchannel );         // STOP CHANNEL
 
-    pcmsample_start( __lastchannel, s_sfx_lengths[id] - 40, S_sfx[id].data + 0x18 );       // START A NEW PCM SAMPLE
+    pcmsample_start( __lastchannel, s_sfx_lengths[id] - 40, S_sfx[id].data + 0x18, KHz11025, FALSE );       // START A NEW PCM SAMPLE
     return id;
 }
 

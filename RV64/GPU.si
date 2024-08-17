@@ -571,7 +571,7 @@ unit arccoords(
     input   int10   yc,
     input   int10   active_x,
     input   int10   count,
-    input   uint3   arc,
+    input   uint4   arc,
     output  int10   bitmap_x_write,
     output  int10   bitmap_y_write,
     output  uint1   centrepixel
@@ -585,7 +585,7 @@ unit arccoords(
         int10   ycmax <:: yc - active_x;                int10   ycmc <:: yc - count;
 
         while(1) {
-            switch( arc ) {
+            switch( arc[0,3] ) {
                 case 0: { bitmap_x_write = xcpax; bitmap_y_write = ycpc; }
                 case 1: { bitmap_y_write = ycmc; }
                 case 2: { bitmap_x_write = xcmax; }
@@ -611,26 +611,23 @@ unit drawcircle(
     output  int10   bitmap_y_write,
     output  uint1   bitmap_write
 ) <reginputs> {
-    int10   active_x = uninitialized;
     int10   active_y = uninitialized;
-    int10   count = uninitialised;
-    uint4   arc = uninitialised;
-    arccoords ARC( xc <: xc, yc <: yc, active_x <: active_x, count <: count, arc <: arc );
+    arccoords ARC( xc <: xc, yc <: yc );
 
     bitmap_write := 0;
 
     algorithm <autorun> {
         int10   numerator = uninitialised;
-        int10   countNEXT <:: filledcircle ? count - 1 : min_count;
+        int10   countNEXT <:: filledcircle ? ARC.count - 1 : min_count;
         int10   min_count = uninitialised;
         int10   min_count_NEXT <:: min_count + 1;
         uint1   countDONE <:: countNEXT == min_count;
 
-        int10   active_xNEXT <:: active_x + 1;
+        int10   active_xNEXT <:: ARC.active_x + 1;
         int10   active_yNEXT <:: active_y - ( ~numerator[9,1] & |numerator );
-        uint1   aY_GTE_aY <:: active_y >= active_x;
-        int10   numerator_NEXT <:: numerator[9,1] ? numerator + { active_x, 2b00 } + 6 : numerator + { (active_x - active_y), 2b00 } + 10;
-        uint4   arc_NEXT <:: arc + 1;
+        uint1   aY_GTE_aY <:: active_y >= ARC.active_x;
+        int10   numerator_NEXT <:: numerator[9,1] ? numerator + { ARC.active_x, 2b00 } + 6 : numerator + { (ARC.active_x - active_y), 2b00 } + 10;
+        uint4   arc_NEXT <:: ARC.arc + 1;
 
         uint4   STATE = 1;
             $$ STATE_CIRCLE_WAIT = 1
@@ -641,16 +638,16 @@ unit drawcircle(
         while(1) {
             bitmap_x_write = STATE[1,1] ? xc : ARC.bitmap_x_write;
             bitmap_y_write = STATE[1,1] ? yc : ARC.bitmap_y_write;
-            bitmap_write = ( STATE[1,1] & ARC.centrepixel & |draw_sectors ) | ( STATE[2,1] & ~arc[3,1] & draw_sectors[arc,1] );
+            bitmap_write = ( STATE[1,1] & ARC.centrepixel & |draw_sectors ) | ( STATE[2,1] & ~ARC.arc[3,1] & draw_sectors[ARC.arc,1] );
 
             onehot( STATE ) {
                 case 0: {
-                    active_x = 0; active_y = radius; count = radius; min_count = (-1); numerator = start_numerator;
+                    ARC.active_x = 0; active_y = radius; ARC.count = radius; min_count = (-1); numerator = start_numerator;
                     busy = start; if( start ) { STATE = 2; }
                 }
                 case 1: {
                     if( aY_GTE_aY ) {
-                        arc = 0;
+                        ARC.arc = 0;
                         if( ARC.centrepixel ) {
                             STATE = 8;
                         } else {
@@ -661,18 +658,18 @@ unit drawcircle(
                     }
                 }
                 case 2: {
-                    if( ~arc[3,1] ) {                                                                                    // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
-                        arc = arc_NEXT;
+                    if( ~ARC.arc[3,1] ) {                                                                                    // OUTPUT PIXELS IN THE 8 SEGMENTS/ARCS AS PER MASK
+                        ARC.arc = arc_NEXT;
                     } else {
                         STATE = 8;
                     }
                 }
                 case 3: {
                     if( countDONE ) {
-                        ( active_x, active_y ) = copycoordinates( active_xNEXT, active_yNEXT );
-                        count = active_y; min_count = min_count_NEXT; numerator = numerator_NEXT;
+                        ( ARC.active_x, active_y ) = copycoordinates( active_xNEXT, active_yNEXT );
+                        ARC.count = active_y; min_count = min_count_NEXT; numerator = numerator_NEXT;
                     } else {
-                        count = countNEXT;
+                        ARC.count = countNEXT;
                     }
                     STATE = 2;
                 }
@@ -693,17 +690,15 @@ unit circle(
     output  int10  bitmap_y_write,
     output  uint1  bitmap_write
 ) <reginputs> {
-    int10   gpu_numerator <:: 3 - ( { radius, 1b0 } );
-
     drawcircle CIRCLE(
         xc <: x, yc <: y,
         radius <: radius,
-        start_numerator <: gpu_numerator,
         filledcircle <: filledcircle,
         bitmap_x_write :> bitmap_x_write, bitmap_y_write :> bitmap_y_write, bitmap_write :> bitmap_write,
         start <: start
     );
 
+    CIRCLE.start_numerator := 3 - ( { radius, 1b0 } );
     CIRCLE.draw_sectors := { sectormask[5,1], sectormask[6,1], sectormask[1,1], sectormask[2,1], sectormask[4,1], sectormask[7,1], sectormask[0,1], sectormask[3,1] };
     busy := start | CIRCLE.busy;
 }
@@ -852,10 +847,7 @@ unit drawtriangle(                                                              
     output  uint8   bitmap_y_write,
     output  uint1   bitmap_write
 ) <reginputs> {
-    intriangle IS( x0 <: x0, x1 <: x1, x2 <: x2, px <: px, y0 <: y0, y1 <: y1, y2 <: y2, py <: py );                            // DETERMINE IF WORKING POINT IS IN THE TRIANGLE
-
-    uint9   px = uninitialized;                                                                                                 // PRESENT WORKING COORDINATE X
-    uint8   py = uninitialized;                                                                                                 // PRESNET WORKING COORDINATE Y
+    intriangle IS( x0 <: x0, x1 <: x1, x2 <: x2, y0 <: y0, y1 <: y1, y2 <: y2 );                                                // DETERMINE IF WORKING POINT IS IN THE TRIANGLE
 
     algorithm <autorun> {
         uint4   STATE = 1;
@@ -867,48 +859,48 @@ unit drawtriangle(                                                              
         uint1   beenInTriangle = uninitialized;                                                                                 // LOG IF BEEN IN TRIANGLE ON WORKING LINE
         uint9   startX <:: ( ( y0 == min_y ) & ( x0 > min_x ) & ( x0 <= max_x ) ) ? ( x0 - 1 ) : min_x;
         uint1   dx = uninitialized;                                                                                             // X DIRECTION, 1 == RIGHT, 0 == LEFT
-        uint9   pxNEXT <:: px + ( dx ? 1 : (-1) );
-        uint8   pyNEXT <:: py + 1;
-        uint1   pyMORE <:: py != max_y;
-        uint1   eol <:: px == ( dx ? max_x : min_x );                                                                           // AT END OF LINE ( MIN_X OR MAX_X )
-        uint9   sx = uninitialised;
-        uint9   sxSAVE <:: px + ( dx ? (-1) : 1 );                                                                              // SAVED COORDINATE WHEN DROPPING DOWN
+        uint10  pxNEXT <:: IS.px + ( dx ? 1 : (-1) );
+        uint10  pyNEXT <:: IS.py + 1;
+        uint1   pyMORE <:: IS.py != max_y;
+        uint1   eol <:: IS.px == ( dx ? max_x : min_x );                                                                        // AT END OF LINE ( MIN_X OR MAX_X )
+        uint10  sx = uninitialised;
+        uint10  sxSAVE <:: IS.px + ( dx ? (-1) : 1 );                                                                           // SAVED COORDINATE WHEN DROPPING DOWN
 
         busy = 0; while(1) {
-            bitmap_x_write = px; bitmap_y_write = py; bitmap_write = busy & IS.IN;                                              // OUTPUT IF ( PX, PY ) IS.IN THE TRIANGLE
+            bitmap_x_write = IS.px; bitmap_y_write = IS.py; bitmap_write = busy & IS.IN;                                        // OUTPUT IF ( PX, PY ) IS.IN THE TRIANGLE
             beenInTriangle = ( IS.IN | beenInTriangle ) & ~STATE[3,1];                                                          // SET TO 1 IF EVER BEEN IN TRIANGLE ON THIS LINE
 
-            onehot( STATE ) {                                                                                               // STATE_TRIANGLE_WAIT
+            onehot( STATE ) {                                                                                                   // STATE_TRIANGLE_WAIT
                 case 0: {
-                    dx = 1; px = startX; py = min_y; beenInTriangle = 0; busy = start;                                      //  SET TO STARTING COORDINATES, GOING RIGHT
-                    if( start ) { STATE = $STATE_TRIANGLE_SCAN$; }                                                          //  START SCANNING TRIANGLE LINE BY LINE
+                    dx = 1; IS.px = startX; IS.py = min_y; beenInTriangle = 0; busy = start;                                    //  SET TO STARTING COORDINATES, GOING RIGHT
+                    if( start ) { STATE = $STATE_TRIANGLE_SCAN$; }                                                              //  START SCANNING TRIANGLE LINE BY LINE
                 }
-                case 1: {                                                                                                   // STATE_TRIANGLE_SCAN
+                case 1: {                                                                                                       // STATE_TRIANGLE_SCAN
                     if( pyMORE ) {
                         if( beenInTriangle ^ IS.IN ) {                                                                          //  SCAN LINE UNTIL BEEN IN THEN OUT OF TRIANGLE
-                            py = pyNEXT; STATE = $STATE_TRIANGLE_DOWN$;                                                         //  LEFT THE TRIANGLE, NEXT LINE
+                            IS.py = pyNEXT; STATE = $STATE_TRIANGLE_DOWN$;                                                      //  LEFT THE TRIANGLE, NEXT LINE
                         } else {
                             if( eol )  {                                                                                        //  END OF LINE?
-                                dx = ~dx; beenInTriangle = 0; py = pyNEXT;                                                      //      SWITCH DIRECTION AND MOVE TO THE NEXT LINE
+                                dx = ~dx; beenInTriangle = 0; IS.py = pyNEXT;                                                   //      SWITCH DIRECTION AND MOVE TO THE NEXT LINE
                             } else {
-                                px = pxNEXT;                                                                                    //      MOVE TO THE NEXT PIXEL
+                                IS.px = pxNEXT;                                                                                 //      MOVE TO THE NEXT PIXEL
                             }
                         }
                     } else {
                         busy = 0; STATE = $STATE_TRIANGLE_WAIT$;
                     }
                 }
-                case 2: {                                                                                                   // STATE_TRIANGLE_REVERSE ( MOVED DOWN AND WAS IN TRIANGLE )
-                    if( ( beenInTriangle ^ IS.IN ) | eol ) {                                                                //  STILL IN TRIANGLE OR EOL?
-                        px = sx; dx = ~dx; STATE = $STATE_TRIANGLE_SCAN$;                                                   //      GO TO SAVED POSITION, SWITCH DIRECTION
+                case 2: {                                                                                                       // STATE_TRIANGLE_REVERSE ( MOVED DOWN AND WAS IN TRIANGLE )
+                    if( ( beenInTriangle ^ IS.IN ) | eol ) {                                                                    //  STILL IN TRIANGLE OR EOL?
+                        IS.px = sx; dx = ~dx; STATE = $STATE_TRIANGLE_SCAN$;                                                    //      GO TO SAVED POSITION, SWITCH DIRECTION
                     } else {
-                        px = pxNEXT;                                                                                        //      MOVE TO THE NEXT PIXEL
+                        IS.px = pxNEXT;                                                                                         //      MOVE TO THE NEXT PIXEL
                     }
                 }
-                case 3: {                                                                                                   // STATE_TRIANGLE_DOWN
+                case 3: {                                                                                                       // STATE_TRIANGLE_DOWN
                     if( pyMORE ) {
                         if( IS.IN ) {                                                                                           //  STILL IN TRIANGLE?
-                            sx = sxSAVE; px = pxNEXT;                                                                           //      SAVE AND MOVE TO NEXT PIXEL
+                            sx = sxSAVE; IS.px = pxNEXT;                                                                        //      SAVE AND MOVE TO NEXT PIXEL
                         } else {
                             dx = ~dx;                                                                                           //      SWITCH DIRECTION
                         }
@@ -1144,7 +1136,7 @@ unit pixelblock(
     uint1   changetransparent <:: ( mode[0,1] ? ( grey == 64 ) : ( rrgggbbm == 64 ) ) & ~mode[1,1];                             // TRANSPARENT NEEDS CHANGING?
 
     bitmap_write := STATE[1,1] & ~&toprocess & ( ( toprocess[0,1] ) & ( mode[1,1] | ( colour != ignorecolour ) ) ) |            // WRITE IF 8 BIT AND !ignore OR WRITEALL OR RGB
-                                                 ( toprocess[1,1] );
+                                                 ( toprocess == 2 );
     bitmap_colour_write := ( toprocess == 1 ) ? mode[0,1] ? colourmap.rdata0 : colour :                                         // 8 BIT COLOUR, REMAP?
                                                 mode[0,1] ? changetransparent ? 65 : grey :                                     // RGB -> GREY
                                                             changetransparent ? 128 : rrgggbbm;                                 // RGB -> RGBM

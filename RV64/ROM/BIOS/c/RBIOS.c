@@ -75,7 +75,7 @@ void main( void ) {
 
     // CLEAR MEMORY
     memset( &_bss_start, 0, &_bss_end - &_bss_start );
-    memcpy( ( void *)(long)*RAMBASE, &array[0], 8696 );
+    memcpy( ( void *)(long)*RAMBASE, &array[0], 6568 );
 
     // RESET THE DISPLAY
     reset_display();

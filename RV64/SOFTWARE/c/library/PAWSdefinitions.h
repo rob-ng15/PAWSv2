@@ -1,3 +1,4 @@
+#ifndef __PAWSDEFINITIONS__
 #include <stdbool.h>
 
 // STANDARD CONSTANTS
@@ -46,17 +47,6 @@
 #define BKG_RSLOPE 13
 #define BKG_VSTRIPE 14
 #define BKG_HSTRIPE 15
-
-// DMA CONTROLLER
-#define DMA_MULTI_TO_SINGLE 1
-#define DMA_PIXEL_RGB 2
-#define DMA_MEMCPY 3
-#define DMA_MEMSET 4
-#define DMA_SINGLE_TO_SINGLE 5
-#define DMA_ADD 6
-#define DMA_PIXELBLOCK 7
-#define DMA_MEMCPY_RECTANGLE 8
-#define DMA_MEMSET_RECTANGLE 9
 
 // DMA(NEW) TRANSFER PROTOCOLS
 #define DMA_SET_TO_S    0x10
@@ -235,15 +225,26 @@
 #define TM_UP 2
 #define TM_RIGHT 3
 #define TM_DOWN 4
-#define TM_CLEAR 5,0
-#define TM_0OFFSET 7,0
+#define TM_RESET 5,0
+#define TM_RESET_BASE 6,0
+#define TM_RESET_OFFSET 7,0
 
 // CROP RECTANGLE
 #define CROPFULLSCREEN 0,0,319,239
+#define FULLSCREEN 0,0,319,239
 
 // KEYBOARD MODE
 #define PS2_KEYBOARD 1
 #define PS2_JOYSTICK 0
+
+// JOYSTICK BUTTONS
+#define JOY_NONE    1
+#define JOY_FIRE1   1<<1
+#define JOY_FIRE2   1<<2
+#define JOY_UP      1<<3
+#define JOY_DOWN    1<<4
+#define JOY_LEFT    1<<5
+#define JOY_RIGHT   1<<6
 
 // FONT ATTRIBUTES
 #define TPU_NORMAL 0
@@ -267,25 +268,29 @@
 #define PB_REMAP 1
 #define PB_WRITEALL 2
 
-// SOUNDS
+// WAVE GENERATOR
 #define AUDIO_SILENCE 3,0,0,0
 #define LEFT_SILENCE 1,0,0,0
 #define RIGHT_SILENCE 2,0,0,0
 #define CHANNEL_LEFT 1
 #define CHANNEL_RIGHT 2
 #define CHANNEL_BOTH 3
-#define CHANNEL_LEFT_PCM 64
-#define CHANNEL_RIGHT_PCM 128
 #define WAVE_SQUARE 0
 #define WAVE_SAW 1
 #define WAVE_TRIANGLE 2
 #define WAVE_SINE 3
 #define WAVE_NOISE 4
-#define WAVE_USER 5
-#define WAVE_HARMONIC 6
+#define WAVE_WOOD 5
+#define WAVE_BRASS 6
 #define WAVE_BITS 7
 #define WAVE_TUNE 8
-#define SAMPLE_REPEAT 16
+#define WAVE_TUNE_REPEAT 16
+
+// PCM SAMPLE
+#define KHz11025 0
+#define KHz22050 1
+#define CHANNEL_LEFT_PCM 64
+#define CHANNEL_RIGHT_PCM 128
 
 // STRUCTURE OF THE SPRITE UPDATE FLAG
 struct sprite_update_flag {
@@ -362,4 +367,7 @@ typedef struct {
        __typeof__ (b) _b = (b); \
      _a > _b ? _a : _b; })
 #endif
+#endif
+
+#define __PAWSDEFINITIONS__
 #endif

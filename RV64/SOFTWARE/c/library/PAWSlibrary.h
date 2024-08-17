@@ -1,6 +1,6 @@
 #ifndef __PAWSLIBRARY__
 #include <stddef.h>
-#include <PAWSintrinsics.h>
+#include "PAWSintrinsics.h"
 #include "PAWSdefinitions.h"
 
 // MEMORY
@@ -19,7 +19,7 @@ extern unsigned char SMTSTATE( void );
 
 // UART INPUT / OUTPUT
 extern void uart_outputcharacter(char);
-extern void uart_outputstring( char *);
+extern void uart_outputstring( const char *);
 extern char uart_inputcharacter( void );
 extern unsigned char uart_character_available( void );
 
@@ -34,6 +34,7 @@ extern void ps2_keyboardmode( unsigned char mode );
 extern void set_leds( unsigned char );
 extern unsigned short get_buttons( void );
 extern void get_mouse( short *x, short *y, short *buttons );
+extern void reset_mouse( void );
 
 // TIMERS AND PSEUDO RANDOM NUMBER GENERATOR
 extern float frng( void );
@@ -59,13 +60,12 @@ extern void await_beep( unsigned char );
 extern unsigned short get_beep_active( unsigned char );
 extern void tune_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
 extern void bitsample_upload_128( unsigned char channel_number, unsigned char *samples );
-extern void wavesample_upload( unsigned char channel_number, unsigned char *samples );
-extern void pcmsample_start( unsigned char channel_number, unsigned short count, const unsigned char *samples );
+extern void pcmsample_start( unsigned char channel_number, unsigned short count, const unsigned char *samples, unsigned char rate, unsigned char repeat );
 extern void pcmsample_stop( unsigned char channel_number );
 
 // DISPLAY
 extern unsigned char is_vblank( void );
-extern int get_framecount( void );
+extern unsigned int get_framecount( void );
 extern void await_vblank( void );
 extern void await_vblank_finish( void );
 extern void screen_mode( unsigned char, unsigned char, unsigned char );
@@ -86,20 +86,25 @@ extern void set_copper_cpuinput( unsigned short );
 extern unsigned short get_copper_cpuoutput( void );
 
 // TILEMAP
-extern void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action );
-extern void set_tilemap_32x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile );
-extern void set_tilemap_16x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile );
-extern unsigned short read_tilemap_tile(  unsigned char tm_layer, unsigned char x, unsigned char y );
+extern void tm_cs( unsigned char tm_layer );
+extern unsigned char tilemap_scroll( unsigned char tm_layer, unsigned char action, unsigned char amount );
+extern void tilemap_setbase( unsigned char tm_layer, unsigned char x, unsigned char y, short offset_x, short offset_y );
+extern void tilemap_readbase( unsigned char tm_layer, unsigned char *base_x, unsigned char *base_y, short *offset_x, short *offset_y );
+extern void set_tilemap_tile_abs( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action );
+extern void set_tilemap_32x32tile_abs( unsigned char tm_layer, short x, short y, unsigned char start_tile );
+extern void set_tilemap_16x32tile_abs( unsigned char tm_layer, short x, short y, unsigned char start_tile );
+extern unsigned short read_tilemap_tile_abs(  unsigned char tm_layer, unsigned char x, unsigned char y );
+extern void set_tilemap_tile_rel( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action );
+extern void set_tilemap_32x32tile_rel( unsigned char tm_layer, short x, short y, unsigned char start_tile );
+extern void set_tilemap_16x32tile_rel( unsigned char tm_layer, short x, short y, unsigned char start_tile );
+extern unsigned short read_tilemap_tile_rel(  unsigned char tm_layer, unsigned char x, unsigned char y );
 extern void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap );
 extern void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap );
-extern void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned char start_tile );
 extern void set_tilemap_bitamps_from_spritesheet( unsigned char tm_layer, unsigned char *tile_bitmaps );
-extern unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount );
-extern void tilemap_setbase( unsigned char tm_layer, short x, short y );
 
 // GPU AND BITMAP
 extern void gpu_dither( unsigned char , unsigned char );
-extern void gpu_crop( unsigned short, unsigned short, unsigned short, unsigned short );
+extern void gpu_crop( short left, short top, short right, short bottom );
 extern void gpu_pixel( unsigned char, short, short );
 extern void gpu_pixel_RGB( unsigned int colour, short x, short y );
 extern void gpu_rectangle( unsigned char, short, short, short, short );
@@ -161,7 +166,8 @@ extern void set_sprite( unsigned char sprite_layer, unsigned char sprite_number,
 extern void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes );
 extern short get_sprite_attribute( unsigned char, unsigned char , unsigned char );
 extern void set_sprite_attribute( unsigned char, unsigned char, unsigned char, short );
-extern void update_sprite( unsigned char, unsigned char, unsigned short );
+extern void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char kill, short dx, short dy, unsigned char dt );
+extern void update_sprite_compat( unsigned char sprite_layer, unsigned char sprite_number, unsigned short updateflag );
 extern unsigned int get_sprite_collision( unsigned char, unsigned char );
 extern unsigned char get_sprite_layer_collision( unsigned char, unsigned char );
 extern void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps );
@@ -178,6 +184,7 @@ extern void tpu_printf( unsigned char attribute, const char *fmt,... );
 extern void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, const char *fmt,...  );
 extern void tpu_print( unsigned char attribute, char *buffer );
 extern void tpu_print_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, char *buffer );
+extern void tpu_showcursor( unsigned char value );
 
 // IMAGE DECODERS
 extern void netppm_display( unsigned char *, unsigned char );

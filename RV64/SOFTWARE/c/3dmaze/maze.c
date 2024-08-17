@@ -91,7 +91,8 @@ __attribute__((used)) void playtune( void ) {
 
 void smt_thread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li sp, 0x5f80000");
+    asm volatile ("li   sp ,0xff08");               // ADDRESS OF SMT STACKTOP
+    asm volatile ("lwu  sp, (sp)");                 // LOAD FROM SMT STACKTOP
     asm volatile ("j playtune");
 }
 
@@ -745,23 +746,23 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
         // CHECK IF PLAYER MOVE ALLOWED
         if( get_timer1khz( 0 ) == 0 ) {
             // POWER UP
-            if( ( get_buttons() & 2 ) && ( powerpills > 0 ) ) {
+            if( ( get_buttons() & JOY_FIRE1 ) && ( powerpills > 0 ) ) {
                 powerstatus += 200;
                 powerpills--;
             }
 
             // LEFT
-            if( get_buttons() & 32 ) {
+            if( get_buttons() & JOY_LEFT ) {
                 newdirection = ( newdirection == 0 ) ? 3 : newdirection - 1;
             }
 
             // RIGHT
-            if( get_buttons() & 64 ) {
+            if( get_buttons() & JOY_RIGHT ) {
                 newdirection = ( newdirection == 3 ) ? 0 : newdirection + 1;
             }
 
             // FORWARD
-            if( get_buttons() & 8 ) {
+            if( get_buttons() & JOY_UP ) {
                 switch( whatisfront( currentx, currenty, direction, 1 ) ) {
                     case ' ':
                     case 'X':
@@ -772,7 +773,7 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
             }
 
             // BACKWARD
-            if( get_buttons() & 16 ) {
+            if( get_buttons() & DOWN ) {
                 switch( whatisbehind( currentx, currenty, direction, 1 ) ) {
                     case ' ':
                     case 'X':
@@ -783,7 +784,7 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
             }
 
             // FIRE2 - PEEK ( only 4 goes! )
-            if( ( get_buttons() & 4 ) && ( mappeeks != 0 ) ) {
+            if( ( get_buttons() & JOY_FIRE2 ) && ( mappeeks != 0 ) ) {
                 peekactive = peekactive + 200;
                 mappeeks--;
             }
@@ -847,18 +848,18 @@ int main( int argc, char **argv ) {
             tpu_set( 0, 59, TRANSPARENT, BLACK, TPU_BOLD ); tpu_printf( 1, "Level: %3d", level );
             tpu_set( 60, 59, TRANSPARENT, BLACK, TPU_BOLD ); tpu_printf( 1, "Size: %5d x %5d", levelwidths[level], levelheights[level] );
 
-            while( get_buttons() == 1 );
+            while( get_buttons() == JOY_NONE );
             // LEFT / RIGHT to change level, FIRE to select
-            if( get_buttons() & 32 ) {
-                while( get_buttons() & 32 );
+            if( get_buttons() & JOY_LEFT ) {
+                while( get_buttons() & JOY_LEFT );
                 level = ( level == 0 ) ? MAXLEVEL : level - 1;
             }
-            if( get_buttons() & 64 ) {
-                while( get_buttons() & 64 );
+            if( get_buttons() & JOY_RIGHT ) {
+                while( get_buttons() & JOY_RIGHT );
                 level = ( level < MAXLEVEL ) ? level + 1 : 0;
             }
-            if( get_buttons() & 2 ) {
-                while( get_buttons() & 2 );
+            if( get_buttons() & JOY_FIRE1 ) {
+                while( get_buttons() & JOY_FIRE1 );
                 levelselected = 1;
             }
         } while( levelselected == 0 );
@@ -897,7 +898,7 @@ int main( int argc, char **argv ) {
             level = ( level < MAXLEVEL ) ? level + 1 : MAXLEVEL;
         }
 
-        tpu_print_centre( 58, TRANSPARENT, GREEN, 1, "Press FIRE to restart!" ); while( ( get_buttons() & 2 ) == 0 );
-        tpu_print_centre( 58, TRANSPARENT, PURPLE, 0, "Release FIRE!" ); while( get_buttons() & 2  );
+        tpu_print_centre( 58, TRANSPARENT, GREEN, 1, "Press FIRE to restart!" ); while( ( get_buttons() & JOY_FIRE1 ) == 0 );
+        tpu_print_centre( 58, TRANSPARENT, PURPLE, 0, "Release FIRE!" ); while( get_buttons() & JOY_FIRE1  );
     }
 }

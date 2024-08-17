@@ -221,6 +221,13 @@ void R_DrawColumn (void)
     if (count < 0)
         return;
 
+#ifdef RANGECHECK
+    if ((unsigned)dc_x >= SCREENWIDTH
+        || dc_yl < 0
+        || dc_yh >= SCREENHEIGHT)
+        I_Error ("R_DrawColumn: %i to %i at %i", dc_yl, dc_yh, dc_x);
+#endif
+
     // Framebuffer destination address.
     // Use ylookup LUT to avoid multiply with ScreenWidth.
     // Use columnofs LUT for subwindows?
@@ -264,6 +271,15 @@ void R_DrawFuzzColumn (void)
     if (count < 0)
         return;
 
+#ifdef RANGECHECK
+    if ((unsigned)dc_x >= SCREENWIDTH
+        || dc_yl < 0 || dc_yh >= SCREENHEIGHT)
+    {
+        I_Error ("R_DrawFuzzColumn: %i to %i at %i",
+                 dc_yl, dc_yh, dc_x);
+    }
+#endif
+
     // Does not work with blocky mode.
     dest = ylookup[dc_yl] + columnofs[dc_x];
 
@@ -292,6 +308,16 @@ void R_DrawTranslatedColumn (void)
     count = dc_yh - dc_yl;
     if (count < 0)
         return;
+
+#ifdef RANGECHECK
+    if ((unsigned)dc_x >= SCREENWIDTH
+        || dc_yl < 0
+        || dc_yh >= SCREENHEIGHT)
+    {
+        I_Error ( "R_DrawColumn: %i to %i at %i",
+                  dc_yl, dc_yh, dc_x);
+    }
+#endif
 
     // FIXME. As above.
     dest = ylookup[dc_yl] + columnofs[dc_x];
@@ -375,6 +401,18 @@ void R_DrawSpan (void)
     byte*               dest;
     int                 count;
 
+#ifdef RANGECHECK
+    if (ds_x2 < ds_x1
+        || ds_x1<0
+        || ds_x2>=SCREENWIDTH
+        || (unsigned)ds_y>SCREENHEIGHT)
+    {
+        I_Error( "R_DrawSpan: %i to %i at %i",
+                 ds_x1,ds_x2,ds_y);
+    }
+//      dscount++;
+#endif
+
     count = ds_x2 - ds_x1;
 
     // Zero length.
@@ -420,9 +458,8 @@ R_InitBuffer
         viewwindowy = (SCREENHEIGHT-SBARHEIGHT-height) >> 1;
 
     // Preclaculate all row offsets.
-    for (i=0 ; i<height ; i++) {
-        ylookup[i] = (byte*)0x2020000 + (i+viewwindowy)*SCREENWIDTH;
-    }
+    for (i=0 ; i<height ; i++)
+        ylookup[i] = screens[0] + (i+viewwindowy)*SCREENWIDTH;
 }
 
 //

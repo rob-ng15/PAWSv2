@@ -827,10 +827,10 @@ void displayreset( void ) {
     screen_mode( 0, MODE_RGBM, 0 ); bitmap_256( false );
     gpu_cs();
     tpu_cs();
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
-    tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+    tm_cs( LOWER_LAYER );
+    tm_cs( UPPER_LAYER );
     set_background( BLACK, BLACK, BKG_SOLID );
-    for( short i = 0; i < 16; i++ ) {
+    for( short i = 0; i < 32; i++ ) {
         set_sprite_attribute( LOWER_LAYER, i, SPRITE_ACTIVE, 0 );
         set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
     }
@@ -1000,8 +1000,8 @@ void tilemapdemo( void ) {
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Tilemap Scroll With Wrap Test" );
 
     unsigned char x, y, count, colour, actionflag;
-    (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
-    (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+    tm_cs( LOWER_LAYER );
+    (void)tm_cs( UPPER_LAYER );
 
     for( unsigned char tile_number = 0; tile_number < 10; tile_number++ ) {
         set_tilemap_bitmap( LOWER_LAYER, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
@@ -1009,13 +1009,13 @@ void tilemapdemo( void ) {
     }
 
     // PLACE NUMBERS ALONG THE TOP (LOWER LAYER) AND MIDDLE (UPPER LAYER)
-    x = 0; y = 2; count = 0; actionflag = 0;
-    for( unsigned char i = 0; i < 168; i++ ) {
-        set_tilemap_tile( LOWER_LAYER, x, y, count + 1, actionflag & 7 );
-        set_tilemap_tile( UPPER_LAYER, x, y + 16, count + 1, actionflag & 7 );
+    x = 0; y = 0; count = 0; actionflag = 0;
+    for( unsigned int i = 0; i < 512; i++ ) {
+        set_tilemap_tile_abs( LOWER_LAYER, x, y, count + 1, actionflag & 7 );
+        set_tilemap_tile_abs( UPPER_LAYER, y, x, count + 1, actionflag & 7 );
 
-        y = ( x == 41 ) ? y + 1 : y;
-        x = ( x == 41 ) ? 0 : x + 1;
+        y = ( x == 63 ) ? y + 1 : y;
+        x = ( x == 63 ) ? 0 : x + 1;
 
         count = ( count == 9 ) ? 0 : count + 1;
         actionflag++;
@@ -1024,11 +1024,11 @@ void tilemapdemo( void ) {
     for( unsigned short i = 0; i < 512; i++ ) {
         await_vblank();
         // LOWER LEFT AND UP 1 PIXEL AT A TIME
-        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_LEFT, 1 );
-        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_UP, 1 );
+        (void)tilemap_scroll( LOWER_LAYER, TM_LEFT, 1 );
+        (void)tilemap_scroll( LOWER_LAYER, TM_UP, 1 );
         // UPPER RIGHT AND DOWN 2 PIXELS AT A TIME
-        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_RIGHT, 2 );
-        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_DOWN, 2 );
+        (void)tilemap_scroll( UPPER_LAYER, TM_RIGHT, 2 );
+        (void)tilemap_scroll( UPPER_LAYER, TM_DOWN, 2 );
         await_vblank_finish();
     }
 }
@@ -1197,31 +1197,11 @@ unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
                                 12,  0,  0, 19, 12,  0,  0, 20,
                                 19,  0, 20,  0, 22,  0,  24, 0, 0xff };
 
-unsigned char harmonic_wave[256] = {
-127,137,147,156,165,174,182,190,196,203,208,213,216,220,223,225,226,
-228,229,230,231,232,233,234,235,236,238,239,241,243,245,247,249,250,
-252,253,254,254,254,253,252,251,249,246,243,240,237,234,231,227,224,
-222,219,217,216,215,215,215,216,217,219,221,223,225,228,230,233,234,
-236,237,238,238,237,236,234,231,228,224,220,215,210,204,199,194,188,
-183,178,174,169,166,162,159,156,154,152,150,148,146,144,143,141,139,
-136,134,131,128,125,122,118,115,111,108,105,102,99,97,96,95,95,
-96,97,99,102,105,108,113,117,122,127,132,137,141,146,149,152,
-155,157,158,159,159,158,157,155,152,149,146,143,139,136,132,129,126,
-123,120,118,115,113,111,110,108,106,104,102,100,98,95,92,88,85,
-80,76,71,66,60,55,50,44,39,34,30,26,23,20,18,17,16,
-16,17,18,20,21,24,26,29,31,33,35,37,38,39,39,39,38,
-37,35,32,30,27,23,20,17,14,11,8,5,3,2,1,0,0,
-0,1,2,4,5,7,9,11,13,15,16,18,19,20,21,22,23,
-24,25,26,28,29,31,34,38,41,46,51,58,64,72,80,89,98,
-107,117
-};
 
 void spritedemo( void ) {
     unsigned short animation_count = 0, ghost_animation_frame = 0, move_count = 0, do_power = 0, power = 0;
     char ghost_direction[4] = { 0, 1, 2, 3 };
     unsigned short trebleposition = 0, bassposition = 0, updateflag;
-
-    wavesample_upload( CHANNEL_BOTH, harmonic_wave );
 
     displayreset();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "SPRITE Demo" );
@@ -1234,31 +1214,31 @@ void spritedemo( void ) {
         for( short x = 0; x < 42; x++ ) {
             switch( pacman_maze[y][x] ) {
                 case '.':
-                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 0, 0 );
+                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 0, 0 );
                     break;
                 case '1':
-                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 1, 0 );
+                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 1, 0 );
                     break;
                 case '2':
-                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 1, ROTATE90 );
+                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 1, ROTATE90 );
                     break;
                 case '3':
-                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 1, ROTATE180 );
+                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 1, ROTATE180 );
                     break;
                 case '4':
-                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 1, ROTATE270 );
+                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 1, ROTATE270 );
                     break;
                 case '5':
-                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 2, ROTATE180 );
+                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 2, ROTATE180 );
                     break;
                 case '6':
-                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 2, 0 );
+                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 2, 0 );
                     break;
                 case '7':
-                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 2, ROTATE90 );
+                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 2, ROTATE90 );
                     break;
                 case '8':
-                    set_tilemap_tile( LOWER_LAYER, x+1, y+1, 2, ROTATE270 );
+                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 2, ROTATE270 );
                     break;
             }
         }
@@ -1326,11 +1306,11 @@ void spritedemo( void ) {
         set_sprite_bitmaps( LOWER_LAYER, i * 2 + 1, &colour_sprite_bitmap[ 0 ] );
     }
 
-    // EVEN SPRITES GHOST NON-POWER, ODD SPRITES GHOST POWER
-    set_sprite( LOWER_LAYER, 0, 1, 144, 64, 0, SPRITE_DOUBLE );     set_sprite( LOWER_LAYER, 1, 0, 144, 64, 0, SPRITE_DOUBLE );
-    set_sprite( LOWER_LAYER, 2, 1, 464, 64, 2, SPRITE_DOUBLE );     set_sprite( LOWER_LAYER, 3, 0, 464, 64, 2, SPRITE_DOUBLE );
-    set_sprite( LOWER_LAYER, 4, 1, 464, 384, 4, SPRITE_DOUBLE );    set_sprite( LOWER_LAYER, 5, 0, 464, 384, 4, SPRITE_DOUBLE );
-    set_sprite( LOWER_LAYER, 6, 1, 144, 384, 6, SPRITE_DOUBLE );    set_sprite( LOWER_LAYER, 7, 0, 144, 384, 6, SPRITE_DOUBLE );
+    // 0, 4, 8, 12 SPRITES GHOST NON-POWER, 2, 6, 10, 14 SPRITES GHOST POWER
+    set_sprite( LOWER_LAYER, 0, 1, 144, 64, 0, SPRITE_DOUBLE );     set_sprite( LOWER_LAYER, 2, 0, 144, 64, 0, SPRITE_DOUBLE );
+    set_sprite( LOWER_LAYER, 4, 1, 464, 64, 2, SPRITE_DOUBLE );     set_sprite( LOWER_LAYER, 6, 0, 464, 64, 2, SPRITE_DOUBLE );
+    set_sprite( LOWER_LAYER, 8, 1, 464, 384, 4, SPRITE_DOUBLE );    set_sprite( LOWER_LAYER, 10, 0, 464, 384, 4, SPRITE_DOUBLE );
+    set_sprite( LOWER_LAYER, 12, 1, 144, 384, 6, SPRITE_DOUBLE );    set_sprite( LOWER_LAYER, 14, 0, 144, 384, 6, SPRITE_DOUBLE );
 
     set_sprite_bitmaps( UPPER_LAYER, 0, &pacman_bitmap[0] );
     set_sprite( UPPER_LAYER, 0, 1, 304, 415, 0, 1 );
@@ -1342,13 +1322,13 @@ void spritedemo( void ) {
         // PACMAN "TUNE" - SLIGHTLY OUT
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
-                beep( 1, WAVE_USER, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
+                beep( 1, WAVE_WOOD, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
                 trebleposition++;
             }
         }
         if( tune_bass[ bassposition ] != 0xff ) {
             if( !get_beep_active( 2 ) ) {
-                beep( 2, WAVE_USER, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
+                beep( 2, WAVE_BRASS, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
                 bassposition++;
             }
         }
@@ -1362,16 +1342,16 @@ void spritedemo( void ) {
             if( power ) {
                 for( short i = 0; i < 4; i++ ) {
                     // TURN OFF NON-POWER UP SPRITE, TURN ON POWER UP SPRITE AND ANIMATE
-                    set_sprite_attribute( LOWER_LAYER, i * 2, SPRITE_ACTIVE, 0 );
-                    set_sprite_attribute( LOWER_LAYER, i * 2 + 1, SPRITE_ACTIVE, 1 );
-                    set_sprite_attribute( LOWER_LAYER, i * 2 + 1, SPRITE_TILE, ( ( move_count < 140 ) ? 0 : 1 ) * 2 + ghost_animation_frame );
+                    set_sprite_attribute( LOWER_LAYER, i * 4, SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( LOWER_LAYER, i * 4 + 2, SPRITE_ACTIVE, 1 );
+                    set_sprite_attribute( LOWER_LAYER, i * 4 + 2, SPRITE_TILE, ( ( move_count < 140 ) ? 0 : 1 ) * 2 + ghost_animation_frame );
                 }
             } else {
                 for( short i = 0; i < 4; i++ ) {
                     // TURN ON NON-POWER UP SPRITE AND ANIMATE, TURN OFF POWER UP SPRITE
-                    set_sprite_attribute( LOWER_LAYER, i * 2, SPRITE_TILE, ghost_direction[i] * 2 + ghost_animation_frame );
-                    set_sprite_attribute( LOWER_LAYER, i * 2, SPRITE_ACTIVE, 1 );
-                    set_sprite_attribute( LOWER_LAYER, i * 2 + 1, SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( LOWER_LAYER, i * 4, SPRITE_TILE, ghost_direction[i] * 2 + ghost_animation_frame );
+                    set_sprite_attribute( LOWER_LAYER, i * 4, SPRITE_ACTIVE, 1 );
+                    set_sprite_attribute( LOWER_LAYER, i * 4 + 2, SPRITE_ACTIVE, 0 );
                 }
             }
         }
@@ -1380,20 +1360,22 @@ void spritedemo( void ) {
         for( short i = 0; i <4; i++ ) {
             switch( ghost_direction[i] ) {
                 case 0:
-                    updateflag = 0b0000000000001;
+                    update_sprite( LOWER_LAYER, i * 4,     0, 1, 0, 0 );
+                    update_sprite( LOWER_LAYER, i * 4 + 2, 0, 1, 0, 0 );
                     break;
                 case 1:
-                    updateflag = 0b0000000100000;
+                    update_sprite( LOWER_LAYER, i * 4,     0, 0, 1, 0 );
+                    update_sprite( LOWER_LAYER, i * 4 + 2, 0, 0, 1, 0 );
                     break;
                 case 2:
-                    updateflag = 0b0000000011111;
+                    update_sprite( LOWER_LAYER, i * 4,     0, -1, 0, 0 );
+                    update_sprite( LOWER_LAYER, i * 4 + 2, 0, -1, 0, 0 );
                     break;
                 case 3:
-                    updateflag = 0b0001111100000;
+                    update_sprite( LOWER_LAYER, i * 4,     0, 0, -1, 0 );
+                    update_sprite( LOWER_LAYER, i * 4 + 2, 0, 0, -1, 0 );
                     break;
             }
-            update_sprite( LOWER_LAYER, i * 2, updateflag );
-            update_sprite( LOWER_LAYER, i * 2 + 1, updateflag );
         }
 
         // CHECK IF MOVED 160 SPACES

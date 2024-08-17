@@ -16,14 +16,14 @@ unit audio_memmap(
     // DMA DIGITAL AUDIO SAMPLES
     input   uint1   L_ADMA_ACTIVE,
     input   uint8   L_SAMPLE,
-    output  uint2   L_AUDIO_DMA_STATUS,
+    output  uint4   L_AUDIO_DMA_STATUS,
     output  uint$addr_width$ L_AUDIO_DMA_BASE,
     output  uint1   L_AUDIO_ACTIVE,
     output  uint16  L_AUDIO_DMA_LENGTH,
 
     input   uint1   R_ADMA_ACTIVE,
     input   uint8   R_SAMPLE,
-    output  uint2   R_AUDIO_DMA_STATUS,
+    output  uint4   R_AUDIO_DMA_STATUS,
     output  uint$addr_width$ R_AUDIO_DMA_BASE,
     output  uint16  R_AUDIO_DMA_LENGTH,
 ) <reginputs> {
@@ -38,12 +38,6 @@ unit audio_memmap(
     simple_dualport_bram uint8 bit_samples_right[16] = uninitialized;
     bitsample_writer BSL( bit_samples <:> bit_samples_left, samples <: writeData[0,8] );
     bitsample_writer BSR( bit_samples <:> bit_samples_right, samples <: writeData[0,8] );
-
-    // BLOCK STORAGE FOR USER DEFINED WAVEFORMS - 256 x 8 BIT SAMPLES
-    simple_dualport_bram uint8 wave_samples_left[256] = uninitialized;
-    simple_dualport_bram uint8 wave_samples_right[256] = uninitialized;
-    wave_samples_writer WSL( wave_samples <:> wave_samples_left, samples <: writeData[0,8] );
-    wave_samples_writer WSR( wave_samples <:> wave_samples_right, samples <: writeData[0,8] );
 
     dualport_bram uint8 sine[256] = {
         128,131,134,137,140,144,147,150,153,156,159,162,165,168,171,174,
@@ -63,12 +57,30 @@ unit audio_memmap(
         40,43,45,47,50,52,55,57,60,63,65,68,71,74,77,79,
         82,85,88,91,94,97,100,103,106,109,112,116,119,122,125
     };
+    dualport_bram uint8 harmonic[256] = {
+        127,137,147,156,165,174,182,190,196,203,208,213,216,220,223,225,226,
+        228,229,230,231,232,233,234,235,236,238,239,241,243,245,247,249,250,
+        252,253,254,254,254,253,252,251,249,246,243,240,237,234,231,227,224,
+        222,219,217,216,215,215,215,216,217,219,221,223,225,228,230,233,234,
+        236,237,238,238,237,236,234,231,228,224,220,215,210,204,199,194,188,
+        183,178,174,169,166,162,159,156,154,152,150,148,146,144,143,141,139,
+        136,134,131,128,125,122,118,115,111,108,105,102,99,97,96,95,95,
+        96,97,99,102,105,108,113,117,122,127,132,137,141,146,149,152,
+        155,157,158,159,159,158,157,155,152,149,146,143,139,136,132,129,126,
+        123,120,118,115,113,111,110,108,106,104,102,100,98,95,92,88,85,
+        80,76,71,66,60,55,50,44,39,34,30,26,23,20,18,17,16,
+        16,17,18,20,21,24,26,29,31,33,35,37,38,39,39,39,38,
+        37,35,32,30,27,23,20,17,14,11,8,5,3,2,1,0,0,
+        0,1,2,4,5,7,9,11,13,15,16,18,19,20,21,22,23,
+        24,25,26,28,29,31,34,38,41,46,51,58,64,72,80,89,98,
+        107,117
+    };
 
     // Left and Right audio channels
     audio_0 apu_processor_L(
         samples <:> samples_left,
         bit_samples <:> bit_samples_left,
-        wave_samples <:> wave_samples_left,
+        harmonic <:> harmonic,
         sine <:> sine,
         staticGenerator <: static8bit,
         audio :> audio_l,
@@ -79,7 +91,7 @@ unit audio_memmap(
     audio_1 apu_processor_R(
         samples <:> samples_right,
         bit_samples <:> bit_samples_right,
-        wave_samples <:> wave_samples_right,
+        harmonic <:> harmonic,
         sine <:> sine,
         staticGenerator <: static8bit,
         audio :> audio_r,
@@ -91,11 +103,9 @@ unit audio_memmap(
     // SAMPLE MEMORY CONTROLS
     DSL.newsample := 0; DSR.newsample := 0; DSL.load := 0; DSR.load := 0;                                                       // DOOM STYLE PC SPEAKER SAMPLES
     BSL.newsample := 0; BSR.newsample := 0; BSL.load := 0; BSR.load := 0;                                                       // CHIP8 1 BIT SAMPLES
-    WSL.newsample := 0; WSR.newsample := 0; WSL.load := 0; WSR.load := 0;                                                       // USER DEFINED WAVEFORM SAMPLES
     L_AUDIO_DMA_STATUS := 0; R_AUDIO_DMA_STATUS := 0;
 
     apu_processor_L.apu_write := 0; apu_processor_R.apu_write := 0;                                                             // HOLD WRITE TRIGGERS AT 0
-    readData :={ R_ADMA_ACTIVE, L_ADMA_ACTIVE, 4b0, apu_processor_R.audio_active, apu_processor_L.audio_active };               // RETURN AUDIO ACTIVE STATE TO CPU
 
     algorithm <autorun> {
         apu_processor_L.volume = 7; apu_processor_R.volume = 7;                                                                 // RESET VOLUMES
@@ -116,19 +126,20 @@ unit audio_memmap(
                     case 5ha: { BSL.newsample = writeData[0,1]; BSR.newsample = writeData[1,1]; }                               // RESET BIT SAMPLES
                     case 5hb: { BSL.load = 1; }                                                                                 // WRITE TO LEFT BIT SAMPLE MEMORY
                     case 5hc: { BSR.load = 1;  }                                                                                // WRITE TO RIGHT BIT SAMPLE MEMORY
-                    case 5hd: { WSL.newsample = writeData[0,1]; WSR.newsample = writeData[1,1]; }                               // RESET WAVE SAMPLES
-                    case 5he: { WSL.load = 1; }                                                                                 // WRITE TO LEFT WAVEFORM MEMORY
-                    case 5hf: { WSR.load = 1;  }                                                                                // WRITE TO RIGHT WAVEFORM MEMORY
                     case 5h10: { L_AUDIO_DMA_BASE = writeData; }                                                                // LEFT DMA AUDIO BASE ADDRESS
                     case 5h12: { L_AUDIO_DMA_LENGTH = writeData; }                                                              // LEFT DMA AUDIO SAMPLE LENGTH
                     case 5h13: { L_AUDIO_DMA_STATUS = writeData; }                                                              // LEFT DMA AUDIO [0,1] == STOP [1,1] == START
                     case 5h18: { R_AUDIO_DMA_BASE = writeData; }                                                                // RIGHT DMA AUDIO BASE ADDRESS
                     case 5h1a: { R_AUDIO_DMA_LENGTH = writeData; }                                                              // RIGHT DMA AUDIO SAMPLE LENGTH
-                    case 5h1b: { R_AUDIO_DMA_STATUS = writeData; }                                                              // RIGHT DMA AUDIO [0,1] == STOP [1,1] == START [2,1] == REPEAT
+                    case 5h1b: { R_AUDIO_DMA_STATUS = writeData; }                                                              // RIGHT DMA AUDIO b0 == STOP b1 == START b2 == REPEAT
                     default: {}
                 }
             }
         }
+    }
+
+    always_after {
+        readData = { R_ADMA_ACTIVE, L_ADMA_ACTIVE, 4b0, apu_processor_R.audio_active, apu_processor_L.audio_active };           // RETURN AUDIO ACTIVE STATE TO CPU}
     }
 }
 
@@ -136,8 +147,8 @@ unit audio_memmap(
 unit audio_0(
     simple_dualport_bram_port0  samples,
     simple_dualport_bram_port0  bit_samples,
-    simple_dualport_bram_port0  wave_samples,
     dualport_bram_port0  sine,
+    dualport_bram_port0  harmonic,
 
     input   uint1   pcm_active,
     input   uint8   pcm_sample,
@@ -157,9 +168,7 @@ unit audio_0(
 
     // Audio channel, 8 bit output from audio channel goes through PWM modulator
     apu_0 apu_processor(
-        bit_samples <:> bit_samples,
-        wave_samples <:> wave_samples,
-        sine <:> sine,
+        bit_samples <:> bit_samples, sine <:> sine, harmonic <:> harmonic,
         pcm_sample <: pcm_sample,
         volume <: volume,
         staticGenerator <: staticGenerator,
@@ -217,7 +226,7 @@ unit audio_0(
 
 unit apu_0(                                                                                                                       // Single channel audio output, outputs 8 bits for PWM. 25MHz
     simple_dualport_bram_port0  bit_samples,
-    simple_dualport_bram_port0  wave_samples,
+    dualport_bram_port0  harmonic,
     dualport_bram_port0  sine,
     input   uint3   waveform,
     input   uint13  frequency,
@@ -231,7 +240,7 @@ unit apu_0(                                                                     
 ) <reginputs> {
     waveform_0 WAVEFORM(
         active <: COUNTER.active,
-        bit_samples <:> bit_samples, wave_samples <:> wave_samples, sine <:> sine,
+        bit_samples <:> bit_samples, sine <:> sine, harmonic <:> harmonic,
         start <: apu_write, update <: COUNTER.updatepoint,
         selected_waveform <: waveform,
         staticGenerator <: staticGenerator,
@@ -246,7 +255,7 @@ unit apu_0(                                                                     
 
 unit waveform_0(
     simple_dualport_bram_port0  bit_samples,
-    simple_dualport_bram_port0  wave_samples,
+    dualport_bram_port0  harmonic,
     dualport_bram_port0  sine,
     input   uint1   start,
     input   uint1   update,
@@ -259,12 +268,11 @@ unit waveform_0(
     uint8   point = uninitialised;
     uint8   pointP1 <:: point + update;
 
-    sine.addr0 := point[0,8];                                                                                                   // POINTER INTO SINE TABLE
-    bit_samples.addr0 := point[3,4]; wave_samples.addr0 := point[0,8];                                                          // POINTERS INTO BITSAMPLES, USER WAVEFORM
+    sine.addr0 := point[0,8]; harmonic.addr0 := point[0,8];                                                                                                   // POINTER INTO SINE TABLE
+    bit_samples.addr0 := point[3,4];                                                          // POINTERS INTO BITSAMPLES, USER WAVEFORM
 
     point := ~active ? 0 : pointP1;                                                                                             // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE
                                                                                                                                 // ALLOWS BIT SAMPLES TO REPEAT
-
     algorithm <autorun> { while(1) {
         switch( selected_waveform ) {
             case 0: { audio_output = { point[7,1], 7b1111111 }; }                                                               // SQUARE
@@ -272,7 +280,7 @@ unit waveform_0(
             case 2: { audio_output = ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ); }                             // TRIANGLE
             case 3: { audio_output = sine.rdata0; }                                                                             // SINE
             case 4: { audio_output = staticGenerator; }                                                                         // NOISE
-            case 5: { audio_output = wave_samples.rdata0; }                                                                     // USER DEFINED UD1 = 5
+            case 5: { audio_output = harmonic.rdata0; }                                                                         // HARMONIC WAVE
             case 6: { audio_output = ( sine.rdata0 + ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ) ) >> 1; }      // HARMONIC TRIANGLE + SINE ( replaces old sample waveform )
             case 7: { audio_output = {8{bit_samples.rdata0[ point[0,3], 1]}}; }                                                 // 1 BIT SAMPLES, TRANSLATE TO SQUARE WAVE
         }
@@ -283,7 +291,7 @@ unit waveform_0(
 unit audio_1(
     simple_dualport_bram_port0  samples,
     simple_dualport_bram_port0  bit_samples,
-    simple_dualport_bram_port0  wave_samples,
+    dualport_bram_port1  harmonic,
     dualport_bram_port1  sine,
 
     input   uint1   pcm_active,
@@ -304,9 +312,7 @@ unit audio_1(
 
     // Audio channel, 8 bit output from audio channel goes through PWM modulator
     apu_1 apu_processor(
-        bit_samples <:> bit_samples,
-        wave_samples <:> wave_samples,
-        sine <:> sine,
+        bit_samples <:> bit_samples, sine <:> sine, harmonic <:> harmonic,
         pcm_sample <: pcm_sample,
         volume <: volume,
         staticGenerator <: staticGenerator,
@@ -364,7 +370,7 @@ unit audio_1(
 
 unit apu_1(                                                                                                                       // Single channel audio output, outputs 8 bits for PWM. 25MHz
     simple_dualport_bram_port0  bit_samples,
-    simple_dualport_bram_port0  wave_samples,
+    dualport_bram_port1  harmonic,
     dualport_bram_port1  sine,
     input   uint3   waveform,
     input   uint13  frequency,
@@ -378,7 +384,7 @@ unit apu_1(                                                                     
 ) <reginputs> {
     waveform_1 WAVEFORM(
         active <: COUNTER.active,
-        bit_samples <:> bit_samples, wave_samples <:> wave_samples, sine <:> sine,
+        bit_samples <:> bit_samples, sine <:> sine, harmonic <:> harmonic,
         start <: apu_write, update <: COUNTER.updatepoint,
         selected_waveform <: waveform,
         staticGenerator <: staticGenerator,
@@ -393,7 +399,7 @@ unit apu_1(                                                                     
 
 unit waveform_1(
     simple_dualport_bram_port0  bit_samples,
-    simple_dualport_bram_port0  wave_samples,
+    dualport_bram_port1  harmonic,
     dualport_bram_port1  sine,
     input   uint1   start,
     input   uint1   update,
@@ -406,12 +412,11 @@ unit waveform_1(
     uint8   point = uninitialised;
     uint8   pointP1 <:: point + update;
 
-    sine.addr1 := point[0,8];                                                                                                   // POINTER INTO SINE TABLE
-    bit_samples.addr0 := point[3,4]; wave_samples.addr0 := point[0,8];                                                          // POINTERS INTO BITSAMPLES, USER WAVEFORM
+    sine.addr1 := point[0,8]; harmonic.addr1 := point[0,8];                                                                                                  // POINTER INTO SINE TABLE
+    bit_samples.addr0 := point[3,4];                                                          // POINTERS INTO BITSAMPLES, USER WAVEFORM
 
     point := ~active ? 0 : pointP1;                                                                                             // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE
                                                                                                                                 // ALLOWS BIT SAMPLES TO REPEAT
-
     algorithm <autorun> { while(1) {
         switch( selected_waveform ) {
             case 0: { audio_output = { point[7,1], 7b1111111 }; }                                                               // SQUARE
@@ -419,7 +424,7 @@ unit waveform_1(
             case 2: { audio_output = ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ); }                             // TRIANGLE
             case 3: { audio_output = sine.rdata1; }                                                                             // SINE
             case 4: { audio_output = staticGenerator; }                                                                         // NOISE
-            case 5: { audio_output = wave_samples.rdata0; }                                                                     // USER DEFINED UD1 = 5
+            case 5: { audio_output = harmonic.rdata1; }                                                                         // HARMONIC WAVE
             case 6: { audio_output = ( sine.rdata1 + ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ) ) >> 1; }      // HARMONIC TRIANGLE + SINE ( replaces old sample waveform )
             case 7: { audio_output = {8{bit_samples.rdata0[ point[0,3], 1]}}; }                                                 // 1 BIT SAMPLES, TRANSLATE TO SQUARE WAVE
         }
@@ -441,7 +446,8 @@ unit audiocounter(
     algorithm <autorun> {
         uint13  counter50mhz_NEXT <:: counter50mhz - 1;
         uint16  duration_NEXT <:: duration - 1;
-        uint16  counter1khz = uninitialised;            uint16  counter1khz_NEXT <:: counter1khz - 1;
+        uint16  counter1khz = uninitialised;
+        uint16  counter1khz_NEXT <:: counter1khz - 1;
 
         while(1) {
             if( start ) {
@@ -474,20 +480,15 @@ unit doom_samples_writer(
     output  uint8   max
 ) <reginputs> {
     uint8   NEXT <:: doom_samples.addr1 + 1;
-
     doom_samples.wenable1 := 1; max := NEXT;
 
-    algorithm <autorun> {
-        while(1) {
-            if( newsample ) {
-                doom_samples.addr1 = -1;
-            } else {
-                if( load ) {
-                    doom_samples.addr1 = NEXT; doom_samples.wdata1 = samples;
-                }
-            }
+    algorithm <autorun> { while(1) {
+        if( newsample ) {
+            doom_samples.addr1 = -1;
+        } else {
+            if( load ) { doom_samples.addr1 = NEXT; doom_samples.wdata1 = samples; }
         }
-    }
+    } }
 }
 
 // HANDLE WRITING TO THE CHIP8 1 BIT SAMPLES MEMORY
@@ -506,35 +507,8 @@ unit bitsample_writer(
             if( newsample ) {
                 bit_samples.addr1 = -1;
             } else {
-                if( load ) {
-                    bit_samples.addr1 = NEXT; bit_samples.wdata1 = samples;
-                }
+                if( load ) { bit_samples.addr1 = NEXT; bit_samples.wdata1 = samples; }
             }
         }
     }
 }
-
-// HANDLE WRITING TO THE USER DEFINED WAVEFORM MEMORY
-unit wave_samples_writer(
-    simple_dualport_bram_port1  wave_samples,
-    input   uint8   samples,
-    input   uint1   load,
-    input   uint1   newsample
-) <reginputs> {
-    wave_samples.wenable1 := 1;
-
-    algorithm <autorun> {
-        uint8   NEXT <:: wave_samples.addr1 + 1;
-
-        while(1) {
-            if( newsample ) {
-                wave_samples.addr1 = -1;
-            } else {
-                if( load ) {
-                    wave_samples.addr1 = NEXT; wave_samples.wdata1 = samples;
-                }
-            }
-        }
-    }
-}
-
