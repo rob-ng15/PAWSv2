@@ -308,16 +308,16 @@ unit fpuSINGLECYCLE(
                    f7_32_10 ? FPUeqltle.flags :
                               0;
 
-    result :=       f7_32_00 ? function7[0,1] ? FPUminmax.MINMAX : FPUsign.SIGN :                                               // FMIN FMAX FSGNJ FSGNJN FSGNJX
-                    f7_32_10 ? FPUeqltle.COMPARE :                                                                              // FEQ FLT FLE
-              function7[1,1] ? rs2[0,1] ? FPUimmediate.immediate :                                                              // FLI
-                               dsh[0,1] ? sourceReg1 :                                                                          // FMV.W.D
-                               dsh[1,1] ? { 48hffffffffffff, sourceReg1[0,16] } :                                               // FMV.W.H
-                                          { 32hffffffff, sourceReg1[0,32] } :                                                   // FMV.W.S
-              function3[0,1] ? FPUclass.FCLASS :                                                                                // FCLASS
-                               dsh[0,1] ? sourceReg1F :                                                                         // FMV.D.W
-                               dsh[1,1] ? { {48{sourceReg1F[15,1]}}, sourceReg1F[0,16] } :                                      // FMV.H.W
-                                          { {32{sourceReg1F[31,1]}}, sourceReg1F[0,32] };                                       // FMV.S.W
+    result :=      f7_32_00 ? function7[0,1] ? FPUminmax.MINMAX : FPUsign.SIGN :                                                // FMIN FMAX FSGNJ FSGNJN FSGNJX
+                   f7_32_10 ? FPUeqltle.COMPARE :                                                                               // FEQ FLT FLE
+             function7[1,1] ? rs2[0,1] ? FPUimmediate.immediate :                                                               // FLI
+                              dsh[0,1] ? sourceReg1 :                                                                           // FMV.W.D
+                              dsh[1,1] ? { 48hffffffffffff, sourceReg1[0,16] } :                                                // FMV.W.H
+                                         { 32hffffffff, sourceReg1[0,32] } :                                                    // FMV.W.S
+             function3[0,1] ? FPUclass.FCLASS :                                                                                 // FCLASS
+                              dsh[0,1] ? sourceReg1F :                                                                          // FMV.D.W
+                              dsh[1,1] ? { {48{sourceReg1F[15,1]}}, sourceReg1F[0,16] } :                                       // FMV.H.W
+                                         { {32{sourceReg1F[31,1]}}, sourceReg1F[0,32] };                                        // FMV.S.W
 }
 
 // FPU CALCULATION CONTROLLER FOR FUSED ADD SUB MUL DIV SQRT - ALL CALCULATION UNITS USE AS INPUTS SINGLES, HALVES AND DOUBLES PACKED INTO DOUBLE BITFIELDS
@@ -878,130 +878,6 @@ unit floatround(                                                                
     }
 }
 
-// ADDSUB ADD/SUBTRACT TWO FLOATING POINT NUMBERS ( SUBTRACT ACHIEVED BY ALTERING SIGN OF SECOND INPUT )
-// ( NOT USED BY PAWS, ADDITION/SUBTRACTION IS DONE AS FUSED A*1.0+B or A*1.0-B )
-unit do_addsub_align(                                                                                                           // ALIGN FRACTIONS BASED UPON EXPONENTS
-    input   uint10  BIAS,                                                                                                       // BIAS FOR DOUBLE/SINGLE/HALF
-    input   uint11  expA,                                                                                                       // EXPONENT OF A INCLUDING BIAS
-    input   uint52  fractionA,                                                                                                  // FRACTION OF A ( no leading 1 bit )
-    input   uint11  expB,                                                                                                       // EXPONENT OF B INCLUDING BIAS
-    input   uint52  fractionB,                                                                                                  // FRACTION OF B ( no leading 1 bit )
-    output  uint106 sigA,                                                                                                       // ALIGNED FRACTION OF A ( including leading 1 bit )
-    output  uint106 sigB,                                                                                                       // ALIGNED FRACTION OF B ( including leading 1 bit )
-    output  int13   resultexp                                                                                                   // PROVISIONAL EXPONENT OF RESULT ( largest input exponent, bias removed )
-) <reginputs> {
-    uint1   expAvexpB <:: ( expA < expB );                                                                                      // FIND SMALLEST EXPONENT
-    uint11  shift <:: ( expAvexpB ? expB : expA ) - ( expAvexpB ? expA :expB );                                                 // FIND THE SHIFT FOR ALIGNMENT
-
-    sigA := { 2b01, fractionA, 52b0 } >> ( expAvexpB ? shift : 0 );                                                             // GENERATE A FROM FRACTION, ALIGN IF SMALLER
-    sigB := { 2b01, fractionB, 52b0 } >> ( expAvexpB ? 0 : shift );                                                             // GENERATE B FROM FRACTION, ALIGN IF SMALLER
-    resultexp := ( expAvexpB ? expB : expA ) - ( { BIAS[1,9], 1b0 } );                                                          // RESULT EXPONENT IS LARGEST EXPONENT, remove ( bias - 1 )
-                                                                                                                                // FOR OVERFLOW
-}
-unit do_float_addsub(
-    input   uint1   signA,
-    input   uint106 sigA,
-    input   uint1   signB,
-    input   uint106 sigB,
-    output  uint1   resultsign,
-    output  uint106 resultfraction
-) <reginputs> {
-    uint1   AvB <:: ( __unsigned( sigA ) > __unsigned( sigB ) );                                                                // FIND LARGEST FRACTION ( when exponents are equal )
-    uint1   sign <:: ( signA ^ signB ) ? ( signA ? AvB : ~AvB ) : signA;                                                        // DETERMINE RESULT SIGN
-
-    resultsign := sign;                                                                                                         // RETURN RESULT SIGN
-    resultfraction := ( signA ^ signB ) ? ( signA ^ sign ? sigB : sigA ) - ( signA ^ sign ? sigA : sigB ) : ( sigA + sigB );    // DIFFERING SIGNS, SUBTRACTION OR SAME SIGNS ADDITION
-}
-unit floataddsub(
-    input   uint1   start,
-    output  uint1   busy,
-    input   uint10  BIAS,                                                                                                       // BIAS FOR DOUBLE/SINGLE/HALF
-    input   uint64  a,                                                                                                          // A INPUT FOR A+B OR A-B
-    input   uint64  b,                                                                                                          // B INPUT FOR A+B OR A-B
-    input   uint1   aINF,                                                                                                       // A is INF?
-    input   uint1   bZERO,                                                                                                      // B is ZERO?
-    input   uint1   aObINF,                                                                                                     // EITHER A OR B INF?
-    input   uint1   aAbINF,                                                                                                     // BOTH A AND B INF?
-    input   uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
-    input   uint1   aObZERO,                                                                                                    // EITHER A OR B ZERO?
-    input   uint1   aAbZERO,                                                                                                    // BOTH A AND B ZERO?
-    input   uint1   OF,
-    input   uint1   UF,
-    output  uint5   flags,                                                                                                      // OPERATION FLAGS
-    output  uint7   special,
-    output  uint1   sign,
-    output  int13   exponent,
-    output  uint106 fraction
-) <reginputs> {
-    uint1   NV <:: aAbINF & ( fp64( a ).sign ^ fp64( b ).sign );                                                                // INVALID IF BOTH INFINITY WITH DIFFERING SIGNS
-    uint2   ACTION <:: { aObINF | aObNAN, aObZERO };                                                                            // DO ADDITION IF NOT INFINITY, NAN OR ZERO
-
-    do_addsub_align ALIGN(                                                                                                      // ALIGN THE FRACTIONS
-        BIAS <: BIAS,                                                                                                           // MOVE THE FRACTION WITH THE SMALLEST EXPONENT RIGHT
-        expA <: fp64( a ).exponent, fractionA <: fp64( a ).fraction,
-        expB <: fp64( b ).exponent, fractionB <: fp64( b ).fraction,
-        resultexp :> exponent
-    );
-    do_float_addsub ADDSUB(                                                                                                     // PERFORM THE ADDITION/SUBTRACTION, ACCOUNTING FOR SIGNS
-        signA <: fp64( a ).sign, sigA <: ALIGN.sigA,                                                                            // SPECIAL CASE FOR SUBTRACTION WHEN EQUAL EXPONENTS
-        signB <: fp64( b ).sign, sigB <: ALIGN.sigB,                                                                            // AND SECOND FRACTION IS LARGER THAN THE FIRST
-        resultsign :> sign, resultfraction :> fraction
-    );
-
-    uint1   wait = uninitialised; busy:= start | wait; wait := start;                                                           // PROVIDE WAIT STATES
-
-    flags := { NV, 1b0, ~|ACTION & OF, ~|ACTION & UF, 1b0 };                                                                    // RETURN FLAGS
-    special := 0;
-
-    algorithm <autorun> { while(1) {
-        switch( ACTION ) {
-            case 2b00: { special = ~|ADDSUB.resultfraction; }                                                                   // CALCULATION IS VALID, CHECK FOR ZERO RESULT
-            case 2b01: { special = aAbZERO ? 7b0000001 : ( bZERO ? 7b1000000 : 7b0100000 ); }                                   // BOTH ZERO, RETURN ZERO.  ONE ZERO, RETURN OTHER
-            default: {
-                switch( { aObINF, aObNAN } ) {
-                    case 2b10: { special = NV ? 7b0000010 : ( aINF ? 7b1000000 : 7b0100000 ); }                                 // INFINITY RETURN NAN IF OPPOSITE SIGNS ELSE RETURN INFINITY
-                    default: { special = 7b0000010; }                                                                           // NAN RETURN NAN
-                }
-            }
-        }
-    } }
-}
-
-// MULTIPLY TWO FLOATING POINT NUMBERS
-// ( NOT USED BY PAWS, MULTIPLICATION IS DONE AS FUSED A*B+0.0 )
-unit floatmultiply(
-    input   uint1   start,
-    output  uint1   busy,
-    input   uint1   aObINF,                                                                                                     // EITHER A OR B INF?
-    input   uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
-    input   uint1   aObZERO,                                                                                                    // EITHER A OR B ZERO?
-    input   uint1   OF,
-    input   uint1   UF,
-    output  uint5   flags,                                                                                                      // OPERATION FLAGS
-    output  uint4   special
-) <reginputs> {
-    uint2   ACTION <:: { aObINF | aObNAN, aObZERO };
-
-    busy := start;                                                                                                              // PROVIDE BUSY FLAG
-
-    flags := { aObINF & aObZERO, 1b0, ~|ACTION & OF, ~|ACTION & UF, 1b0 };                                                      // RETURN FLAGS, INVALID IF INFINITY x ZERO
-    special := 0;
-
-    algorithm <autorun> { while(1) {
-        switch( ACTION ) {
-            case 2b00: {}                                                                                                       // MULTIPLICATION IS VALID
-            case 2b01: { special = 7b0000001; }                                                                                 // ZERO INPUT RETURN ZERO
-            default: {
-                switch( { aObINF, aObZERO } ) {
-                    case 2b11: { special = 7b0000010; }                                                                         // INFINITY x ZERO RETURN qNAN
-                    case 2b10: { special = aObNAN ? 7b0000010 : 7b0001000; }                                                    // NAN OR INFITITY RETURN qNAN OR INFINITY
-                    default: { special = 7b0000010; }                                                                           // NAN OR ZERO RETURN qNAN
-                }
-            }
-        }
-    } }
-}
-
 // FUSED MULTIPLY AND ADD ( A*B+C A*B-C -A*B+C -A*B-C )
 //       MULTIPLICATION ( A*B+0.0 )
 //       ADDITION/SUBTRACTION ( A*1.0+B OR A*1.0-B )
@@ -1404,4 +1280,131 @@ unit floatcompare(
 
     less := ~aObNAN & ( ( fp64( a ).sign ^ fp64( b ).sign ) ? fp64( a ).sign & ~abTRUEZERO : ~aequalb & ( fp64( a ).sign ^ ( __unsigned( a ) < __unsigned( b ) ) ) );
     equal := ~aObNAN & ( aequalb | abTRUEZERO );
+}
+
+// ARCHIVED MODULES TO PERFORM FLOAT ADDITION/SUBTRACTION/MULTIPLICATION
+// REPLACED BY USING FUSED MULTIPLY AND ADD WITH MODIFIED INPUTS
+
+// ADDSUB ADD/SUBTRACT TWO FLOATING POINT NUMBERS ( SUBTRACT ACHIEVED BY ALTERING SIGN OF SECOND INPUT )
+// ( NOT USED BY PAWS, ADDITION/SUBTRACTION IS DONE AS FUSED A*1.0+B or A*1.0-B )
+unit do_addsub_align(                                                                                                           // ALIGN FRACTIONS BASED UPON EXPONENTS
+    input   uint10  BIAS,                                                                                                       // BIAS FOR DOUBLE/SINGLE/HALF
+    input   uint11  expA,                                                                                                       // EXPONENT OF A INCLUDING BIAS
+    input   uint52  fractionA,                                                                                                  // FRACTION OF A ( no leading 1 bit )
+    input   uint11  expB,                                                                                                       // EXPONENT OF B INCLUDING BIAS
+    input   uint52  fractionB,                                                                                                  // FRACTION OF B ( no leading 1 bit )
+    output  uint106 sigA,                                                                                                       // ALIGNED FRACTION OF A ( including leading 1 bit )
+    output  uint106 sigB,                                                                                                       // ALIGNED FRACTION OF B ( including leading 1 bit )
+    output  int13   resultexp                                                                                                   // PROVISIONAL EXPONENT OF RESULT ( largest input exponent, bias removed )
+) <reginputs> {
+    uint1   expAvexpB <:: ( expA < expB );                                                                                      // FIND SMALLEST EXPONENT
+    uint11  shift <:: ( expAvexpB ? expB : expA ) - ( expAvexpB ? expA :expB );                                                 // FIND THE SHIFT FOR ALIGNMENT
+
+    sigA := { 2b01, fractionA, 52b0 } >> ( expAvexpB ? shift : 0 );                                                             // GENERATE A FROM FRACTION, ALIGN IF SMALLER
+    sigB := { 2b01, fractionB, 52b0 } >> ( expAvexpB ? 0 : shift );                                                             // GENERATE B FROM FRACTION, ALIGN IF SMALLER
+    resultexp := ( expAvexpB ? expB : expA ) - ( { BIAS[1,9], 1b0 } );                                                          // RESULT EXPONENT IS LARGEST EXPONENT, remove ( bias - 1 )
+                                                                                                                                // FOR OVERFLOW
+}
+unit do_float_addsub(
+    input   uint1   signA,
+    input   uint106 sigA,
+    input   uint1   signB,
+    input   uint106 sigB,
+    output  uint1   resultsign,
+    output  uint106 resultfraction
+) <reginputs> {
+    uint1   AvB <:: ( __unsigned( sigA ) > __unsigned( sigB ) );                                                                // FIND LARGEST FRACTION ( when exponents are equal )
+    uint1   sign <:: ( signA ^ signB ) ? ( signA ? AvB : ~AvB ) : signA;                                                        // DETERMINE RESULT SIGN
+
+    resultsign := sign;                                                                                                         // RETURN RESULT SIGN
+    resultfraction := ( signA ^ signB ) ? ( signA ^ sign ? sigB : sigA ) - ( signA ^ sign ? sigA : sigB ) : ( sigA + sigB );    // DIFFERING SIGNS, SUBTRACTION OR SAME SIGNS ADDITION
+}
+unit floataddsub(
+    input   uint1   start,
+    output  uint1   busy,
+    input   uint10  BIAS,                                                                                                       // BIAS FOR DOUBLE/SINGLE/HALF
+    input   uint64  a,                                                                                                          // A INPUT FOR A+B OR A-B
+    input   uint64  b,                                                                                                          // B INPUT FOR A+B OR A-B
+    input   uint1   aINF,                                                                                                       // A is INF?
+    input   uint1   bZERO,                                                                                                      // B is ZERO?
+    input   uint1   aObINF,                                                                                                     // EITHER A OR B INF?
+    input   uint1   aAbINF,                                                                                                     // BOTH A AND B INF?
+    input   uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
+    input   uint1   aObZERO,                                                                                                    // EITHER A OR B ZERO?
+    input   uint1   aAbZERO,                                                                                                    // BOTH A AND B ZERO?
+    input   uint1   OF,
+    input   uint1   UF,
+    output  uint5   flags,                                                                                                      // OPERATION FLAGS
+    output  uint7   special,
+    output  uint1   sign,
+    output  int13   exponent,
+    output  uint106 fraction
+) <reginputs> {
+    uint1   NV <:: aAbINF & ( fp64( a ).sign ^ fp64( b ).sign );                                                                // INVALID IF BOTH INFINITY WITH DIFFERING SIGNS
+    uint2   ACTION <:: { aObINF | aObNAN, aObZERO };                                                                            // DO ADDITION IF NOT INFINITY, NAN OR ZERO
+
+    do_addsub_align ALIGN(                                                                                                      // ALIGN THE FRACTIONS
+        BIAS <: BIAS,                                                                                                           // MOVE THE FRACTION WITH THE SMALLEST EXPONENT RIGHT
+        expA <: fp64( a ).exponent, fractionA <: fp64( a ).fraction,
+        expB <: fp64( b ).exponent, fractionB <: fp64( b ).fraction,
+        resultexp :> exponent
+    );
+    do_float_addsub ADDSUB(                                                                                                     // PERFORM THE ADDITION/SUBTRACTION, ACCOUNTING FOR SIGNS
+        signA <: fp64( a ).sign, sigA <: ALIGN.sigA,                                                                            // SPECIAL CASE FOR SUBTRACTION WHEN EQUAL EXPONENTS
+        signB <: fp64( b ).sign, sigB <: ALIGN.sigB,                                                                            // AND SECOND FRACTION IS LARGER THAN THE FIRST
+        resultsign :> sign, resultfraction :> fraction
+    );
+
+    uint1   wait = uninitialised; busy:= start | wait; wait := start;                                                           // PROVIDE WAIT STATES
+
+    flags := { NV, 1b0, ~|ACTION & OF, ~|ACTION & UF, 1b0 };                                                                    // RETURN FLAGS
+    special := 0;
+
+    algorithm <autorun> { while(1) {
+        switch( ACTION ) {
+            case 2b00: { special = ~|ADDSUB.resultfraction; }                                                                   // CALCULATION IS VALID, CHECK FOR ZERO RESULT
+            case 2b01: { special = aAbZERO ? 7b0000001 : ( bZERO ? 7b1000000 : 7b0100000 ); }                                   // BOTH ZERO, RETURN ZERO.  ONE ZERO, RETURN OTHER
+            default: {
+                switch( { aObINF, aObNAN } ) {
+                    case 2b10: { special = NV ? 7b0000010 : ( aINF ? 7b1000000 : 7b0100000 ); }                                 // INFINITY RETURN NAN IF OPPOSITE SIGNS ELSE RETURN INFINITY
+                    default: { special = 7b0000010; }                                                                           // NAN RETURN NAN
+                }
+            }
+        }
+    } }
+}
+
+// MULTIPLY TWO FLOATING POINT NUMBERS
+// ( NOT USED BY PAWS, MULTIPLICATION IS DONE AS FUSED A*B+0.0 )
+unit floatmultiply(
+    input   uint1   start,
+    output  uint1   busy,
+    input   uint1   aObINF,                                                                                                     // EITHER A OR B INF?
+    input   uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
+    input   uint1   aObZERO,                                                                                                    // EITHER A OR B ZERO?
+    input   uint1   OF,
+    input   uint1   UF,
+    output  uint5   flags,                                                                                                      // OPERATION FLAGS
+    output  uint4   special
+) <reginputs> {
+    uint2   ACTION <:: { aObINF | aObNAN, aObZERO };
+
+    busy := start;                                                                                                              // PROVIDE BUSY FLAG
+
+    flags := { aObINF & aObZERO, 1b0, ~|ACTION & OF, ~|ACTION & UF, 1b0 };                                                      // RETURN FLAGS, INVALID IF INFINITY x ZERO
+    special := 0;
+
+    algorithm <autorun> { while(1) {
+        switch( ACTION ) {
+            case 2b00: {}                                                                                                       // MULTIPLICATION IS VALID
+            case 2b01: { special = 7b0000001; }                                                                                 // ZERO INPUT RETURN ZERO
+            default: {
+                switch( { aObINF, aObZERO } ) {
+                    case 2b11: { special = 7b0000010; }                                                                         // INFINITY x ZERO RETURN qNAN
+                    case 2b10: { special = aObNAN ? 7b0000010 : 7b0001000; }                                                    // NAN OR INFITITY RETURN qNAN OR INFINITY
+                    default: { special = 7b0000010; }                                                                           // NAN OR ZERO RETURN qNAN
+                }
+            }
+        }
+    } }
 }

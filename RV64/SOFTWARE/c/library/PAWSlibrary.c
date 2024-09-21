@@ -255,12 +255,12 @@ void bitsample_upload_128( unsigned char channel_number, unsigned char *samples 
 }
 
 // PCM SAMPLE HANDLING CODE
-void pcmsample_start( unsigned char channel_number, unsigned short count, const unsigned char *samples, unsigned char rate, unsigned char repeat ) {
+void pcmsample_start( unsigned char channel_number, unsigned int count, const unsigned char *samples, unsigned char rate, unsigned char repeat ) {
     if( channel_number & 1 ) {
-        *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_L_BASE = (uintptr_t)samples; *AUDIO_DMA_L_LENGTH = count; *AUDIO_DMA_L_REPEAT = 0; *AUDIO_DMA_L_STATUS = 2 + ( repeat << 2 ) + ( rate << 3 );
+        *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_L_BASE = (uintptr_t)samples; *AUDIO_DMA_L_LENGTH = count; *AUDIO_DMA_L_STATUS = 2 + ( repeat << 2 ) + ( rate << 3 );
     }
     if( channel_number & 2 ) {
-        *AUDIO_DMA_R_STATUS = 1; *AUDIO_DMA_R_BASE = (uintptr_t)samples; *AUDIO_DMA_R_LENGTH = count; *AUDIO_DMA_R_REPEAT = 0; *AUDIO_DMA_R_STATUS = 2 + ( repeat << 2 ) + ( rate << 3 );
+        *AUDIO_DMA_R_STATUS = 1; *AUDIO_DMA_R_BASE = (uintptr_t)samples; *AUDIO_DMA_R_LENGTH = count; *AUDIO_DMA_R_STATUS = 2 + ( repeat << 2 ) + ( rate << 3 );
     }
 }
 

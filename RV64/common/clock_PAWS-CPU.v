@@ -8,14 +8,14 @@ module ulx3s_clk_PAWS_CPU
     output  clkCPU,             // 50 MHz, 0 deg        // SYSTEM CLOCK cpu
     output  clkDECODE,          // 100 MHz, 0 deg       // CPU decoder and compressed instruction expander
     output  clkPAL,             // 50 MHz, 0 deg        // PALETTE LOOKUP CLOCK
-    output  clkCACHE,           // 100 MHz, 0 deg       // CPU instruction cache
+    output  clkCACHE,           // 100 MHz, 0 deg       // CACHES
     output  locked
 );
 (* FREQUENCY_PIN_CLKI="25" *)
 (* FREQUENCY_PIN_CLKOP="50" *)
-(* FREQUENCY_PIN_CLKOS="25" *)
+(* FREQUENCY_PIN_CLKOS="100" *)
 (* FREQUENCY_PIN_CLKOS2="50" *)
-(* FREQUENCY_PIN_CLKOS3="50" *)
+(* FREQUENCY_PIN_CLKOS3="100" *)
 (* ICP_CURRENT="12" *) (* LPF_RESISTOR="8" *) (* MFG_ENABLE_FILTEROPAMP="1" *) (* MFG_GMCREF_SEL="2" *)
 EHXPLLL #(
         .PLLRST_ENA("DISABLED"),

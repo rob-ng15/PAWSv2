@@ -56,7 +56,8 @@ void I_ShutdownGraphics (void) {
 void I_WaitVBL (int count) {
     unsigned int framecount = get_framecount() + count;
 
-    while( get_framecount() < framecount );
+    if( count > 1 )
+        while( get_framecount() < framecount );
 }
 
 void I_StartFrame (void) {

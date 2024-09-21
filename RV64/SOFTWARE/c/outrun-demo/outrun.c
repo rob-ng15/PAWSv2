@@ -72,6 +72,10 @@ unsigned char *cityscape[]={
     "                                                              ",
 };
 
+// Music
+unsigned char *passing_breeze;
+unsigned int music_size;
+
 void set_tilemaps( void ) {
     tm_cs( LOWER_LAYER );
     tm_cs( UPPER_LAYER );
@@ -431,7 +435,7 @@ void update() {
 }
 
 // NUMBER OF SEGMENTS TO DRAW EACH ITERATION
-#define DRAWSEGMENTS 27
+#define DRAWSEGMENTS 28
 
 void drawtrapezium( unsigned char colour, short x1, short y1, short w1, short x2, short y2, short w2 ) {
     if( (((x1-w1)<0) && ((x1+w1)<0) && ((x2+w2)<0) && ((x2-w2)<0)) ||
@@ -676,6 +680,11 @@ void set_background_generator( void ) {
 
 int main( int argc, char **argv ) {
     unsigned char dimmerlevel = 8, counter = 3;
+
+    // Choose Music
+    passing_breeze = sdcard_selectfile( "Please select Music", "WAV", &music_size, "Loading" );
+    if( music_size )
+        pcmsample_start( 1, music_size - 544, &passing_breeze[78], KHz11025, TRUE );
 
     // SETUP SCREEN
     screen_dimmer( dimmerlevel );

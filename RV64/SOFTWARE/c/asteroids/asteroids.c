@@ -482,7 +482,7 @@ void beepboop( void ) {
             case 2:
                 if( lives == 0 ) {
                     tpu_print_centre( 6, TRANSPARENT, ORANGE, 0, "Controls: Left / Right - TURN" );
-                    tpu_print_centre( 52, TRANSPARENT, YELLOW, 0, "Press UP to start" );
+                    tpu_print_centre( 52, TRANSPARENT, YELLOW, 0, "Press UP to start, DOWN to exit" );
                 }
                 break;
 
@@ -620,7 +620,10 @@ void check_hit( void ) {
 }
 
 void check_crash( void ) {
-    if( ( ( ( get_sprite_collision( LOWER_LAYER, SHIPSPRITE ) | get_sprite_collision( UPPER_LAYER, SHIPSPRITE ) ) & ( ASTEROIDCOLLISION | UFOBULLETSPRITE ) ) ) ) {
+    if(
+        ( ( get_sprite_collision( LOWER_LAYER, SHIPSPRITE ) | get_sprite_collision( UPPER_LAYER, SHIPSPRITE ) ) & ( ASTEROIDCOLLISION | UFOBULLETSPRITE ) ) |
+        ( get_sprite_layer_collision( LOWER_LAYER, SHIPSPRITE ) & SPRITE_TO_OTHER_SPRITES )
+    ) {
         if( ( get_sprite_collision( LOWER_LAYER, UFOBULLETSPRITE ) | get_sprite_collision( UPPER_LAYER, UFOBULLETSPRITE ) ) & SHIPCOLLISION ) {
             // DELETE UFO BULLET
             set_sprite_attribute( LOWER_LAYER, UFOBULLETSPRITE, SPRITE_ACTIVE, 0 );
@@ -745,20 +748,20 @@ int main( void ) {
             // EVERY 4th CYCLE
             if( ( counter & 3 ) == 0 ) {
                 // TURN LEFT
-                if( ( get_buttons() & 32 ) != 0 )
+                if( ( get_buttons() & JOY_LEFT ) != 0 )
                     shipdirection = ( shipdirection == 0 ) ? 15 : shipdirection - 1;
                 // TURN RIGHT
-                if( ( get_buttons() & 64 ) != 0 )
+                if( ( get_buttons() & JOY_RIGHT ) != 0 )
                     shipdirection = ( shipdirection == 15 ) ? 0 : shipdirection + 1;
             }
 
             // EVERY CYCLE
             // FIRE?
-            if( ( last_fire == 0 ) && ( get_buttons() & 2 ) != 0 )
+            if( ( last_fire == 0 ) && ( get_buttons() & JOY_FIRE1 ) != 0 )
                 fire_bullet();
 
             // MOVE SHIP, IF FUEL LEFT
-            if( ( ( get_buttons() & 8 ) != 0 ) && ( fuel > 0 ) ) {
+            if( ( ( get_buttons() & JOY_UP ) != 0 ) && ( fuel > 0 ) ) {
                 shipmove = 1;
                 move_ship();
                 fuel--;
@@ -768,7 +771,7 @@ int main( void ) {
             }
 
             // CHECK IF CRASHED ASTEROID -> SHIP, IF SHIELD BUTTON NOT HELD DOWN
-            if( ( ( get_buttons() & 4 ) != 0 ) && ( shield > 0 ) ) {
+            if( ( ( get_buttons() & JOY_FIRE2 ) != 0 ) && ( shield > 0 ) ) {
                 shipshield = 1;
                 shield--;
                 drawshield(0);
@@ -779,7 +782,7 @@ int main( void ) {
         } else {
             // GAME OVER OR EXPLODING SHIP
             // SEE IF NEW GAME
-            if( ( lives == 0 ) && ( ( get_buttons() & 8 ) != 0 ) ) {
+            if( ( lives == 0 ) && ( ( get_buttons() & JOY_UP ) != 0 ) ) {
                 // CLEAR ASTEROIDS
                 for( asteroid_number = 0; asteroid_number < MAXASTEROIDS; asteroid_number++ ) {
                     asteroid_active[asteroid_number] = 0; asteroid_direction[asteroid_number] = 0;
@@ -809,6 +812,10 @@ int main( void ) {
                 ufo_sprite_number = 0xff; ufo_leftright = 0;
                 draw_lives();
                 shipexplode = 0;
+            } else {
+                if( ( lives == 0 ) && ( ( get_buttons() & JOY_DOWN ) != 0 ) ) {
+                    exit( FALSE );
+                }
             }
 
             if( ( ( resetship >= 1 ) && ( resetship <= 16 ) ) || ( lives == 0 ) ) {

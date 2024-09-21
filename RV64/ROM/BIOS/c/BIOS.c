@@ -238,14 +238,29 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
     }
 }
 
-extern int _bss_start, _bss_end;
-unsigned char chime[] = { 75, 83, 89, 0 };
-
 // SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
+void printclock( void ) {
+    long rtc;
+
+    tpu_set( 0, 17, TRANSPARENT, WHITE, 1 );
+    rtc = *RTC + 0x2000000000000000;
+    for( int i = 0; i < 16; i++ ) {
+        rtc = _rv64_rol( rtc, 4 );
+        switch(i) {
+            case 8: case 9: break;
+            default: tpu_output_character( 48 + ( rtc & 0xf ) );
+        }
+        switch(i) {
+            case 3: case 5: tpu_output_character('-'); break;
+            case 7: tpu_output_character(' '); break;
+            case 11: case 13: tpu_output_character(':'); break;
+        }
+    }
+}
+
 __attribute__((used)) void scrollbars( void ) {
     unsigned char leds = 1;
     int count = 0, direction = 0, ledcount = 0;
-    long rtc;
 
     while(1) {
         await_vblank(); count++;
@@ -254,27 +269,14 @@ __attribute__((used)) void scrollbars( void ) {
             count = 0;
             ledcount++;
             if( ledcount == 32 ) {
+                ledcount = 0;
                 if( direction ) {
                     if( leds == 1 ) { direction = 0; } else { leds = leds >> 1; }
                 } else {
-                    if( leds == 128 ) { direction = 1; } else { leds = leds << 1; }
+                    if( ( leds & 128 ) != 0 ) { direction = 1; } else { leds = ( *SDCARD_READY ) ? ( leds << 1 ) : ( leds << 1 ) + 1; }
                 }
                 *LEDS = leds;
-                ledcount = 0;
-                tpu_set( 0, 17, TRANSPARENT, WHITE, 1 );
-                rtc = *RTC + 0x2000000000000000;
-                for( int i = 0; i < 16; i++ ) {
-                    rtc = _rv64_rol( rtc, 4 );
-                    switch(i) {
-                        case 8: case 9: break;
-                        default: tpu_output_character( 48 + ( rtc & 0xf ) );
-                    }
-                    switch(i) {
-                        case 3: case 5: tpu_output_character('-'); break;
-                        case 7: tpu_output_character(' '); break;
-                        case 11: case 13: tpu_output_character(':'); break;
-                    }
-                }
+                printclock();
             }
         }
     }
@@ -284,8 +286,11 @@ void smtthread( void ) {
     // SETUP STACKPOINTER FOR THE SMT THREAD
     asm volatile ("li   sp ,0xff08");               // ADDRESS OF SMT STACKTOP
     asm volatile ("lwu  sp, (sp)");                 // LOAD FROM SMT STACKTOP
-    asm volatile ("j scrollbars");
+    asm volatile ("j    scrollbars");
 }
+
+extern int _bss_start, _bss_end;
+unsigned char chime[] = { 75, 83, 89, 0 };
 
 int main( void ) {
     unsigned int i, j, x, y, selectedfile = 0;

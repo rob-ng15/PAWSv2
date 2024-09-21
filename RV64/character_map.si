@@ -21,10 +21,12 @@ unit characterrom512(
     };
 
     // Setup the reading of the characterGenerator8x8 ROM
-    characterGenerator8x8.addr := { attribute[0,1], character, attribute[2,1] ? { double_bottom, y[1,2] } : y };
-    pixel := attribute[3,1] & ~cursor_blink ? 0 :
-             attribute[4,1] & |character & ( ( attribute[2,1] ? { double_bottom, y[1,2] } : y ) == 7 ) ? 1 :
-             characterGenerator8x8.rdata[ attribute[1,1] ? ~{ double_right, x[1,2] } : ~x, 1 ];
+    always_after {
+        { characterGenerator8x8.addr = { attribute[0,1], character, attribute[2,1] ? { double_bottom, y[1,2] } : y }; }         // SET ADDRESS IN CHARACTER ROM, HANDLING BOLD AND DOUBLE Y FLAGS
+        { pixel = attribute[3,1] & ~cursor_blink ? 0 :                                                                          // HANDLE FLASHING
+                  attribute[4,1] & |character & ( ( attribute[2,1] ? { double_bottom, y[1,2] } : y ) == 7 ) ? 1 :               // HANDLE UNDERLINE
+                  characterGenerator8x8.rdata[ attribute[1,1] ? ~{ double_right, x[1,2] } : ~x, 1 ]; }                          // HANDLE DOUBLE X FLAGS
+    }
 }
 
 unit character_map(
@@ -46,6 +48,8 @@ unit character_map(
     input   uint8   tpu_background,
     input   uint1   tpu_showcursor
 ) <reginputs> {
+    uint1   is_cursor <:: tpu_showcursor & blink & ( cursor_x == ( pix_x[3,7] ) ) & ( cursor_y == pix_y[3,6] );                 // Is current coordinate the cursor coordinate, cursor visible?
+
     characterrom512 CGROM <@clockCG> (                                                                                          // Character ROM 8x8 512 characters, 256 normal, 256 bold
         cursor_blink <: blink,
         character <: cmentry(charactermap.rdata0).character,
@@ -56,26 +60,12 @@ unit character_map(
         double_bottom <: pix_y[3,1]
     );
 
-    uint1   is_cursor <:: tpu_showcursor & blink & ( cursor_x == ( pix_x[3,7] ) ) & ( cursor_y == pix_y[3,6] );                 // Is current coordinate the cursor coordinate, cursor visible?
-
-    charactermap.addr0 := pix_x1[3,7] + 80 * pix_y[3,6];
-    character_map_display := pix_active & ( CGROM.pixel | ( cmentry(charactermap.rdata0).background != 64 ) | is_cursor );
-    pixel := is_cursor ? CGROM.pixel ? tpu_background : tpu_foreground :                                                        // IF CURSOR, INVERT PIXEL
-                         CGROM.pixel ? cmentry(charactermap.rdata0).foreground :                                                // IF PIXEL, FOREGROUND
-                                       cmentry(charactermap.rdata0).background;                                                 // ELSE BACKGROUND
-}
-
-unit character_map_writer(
-    dualport_bram_port1 charactermap,
-
-    input   uint13  memoryAddressDirect,                                                                                        // CPU MEMORY ADDRESS
-    input   uint1   memoryWriteDirect,                                                                                          // CPU WRITE FLAG
-    input   uint29  writeDataDirect,                                                                                            // CPU WRITE DATA
-    output! uint29  readDataDirect                                                                                              // CPU READ DATA
-) <reginputs> {
-    charactermap.addr1 := memoryAddressDirect;                                                                                  // SET ADDRESS AS TPU ADDRESS FOR WRITE OR CPU ADDRESS
-    charactermap.wdata1 := writeDataDirect;                                                                                     // WRITE CPU INPUT DIRECT
-    charactermap.wenable1 := memoryWriteDirect;
-
-    readDataDirect := charactermap.rdata1;                                                                                      // CPU OUTPUT DIRECT
+    always_after {
+        { charactermap.addr0 = pix_x1[3,7] + 80 * pix_y[3,6]; }                                                                 // SET ADDRESS IN CHAARCTER MAP ( for next pixel )
+        { character_map_display = pix_active & ( CGROM.pixel |                                                                  // DISPLAY ( current pixel )    PIXEL SET IN CHARACTER ROM
+                                                 ( cmentry(charactermap.rdata0).background != 64 ) | is_cursor ); }             //                              OR IS THE FLASHING CURSOR
+        { pixel = is_cursor ? CGROM.pixel ? tpu_background : tpu_foreground :                                                   // IF CURSOR, INVERT PIXEL
+                              CGROM.pixel ? cmentry(charactermap.rdata0).foreground :                                           // IF PIXEL, FOREGROUND
+                                            cmentry(charactermap.rdata0).background; }                                          //  ELSE BACKGROUND
+    }
 }

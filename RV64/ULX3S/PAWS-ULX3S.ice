@@ -61,8 +61,9 @@ $$ CWIDTH = 40
 
 $$if not SIMULATION then
 // CLOCKS
-import('../common/clock_PAWS-sdram100.v')
+import('../common/clock_PAWS-SYS.v')
 import('../common/clock_PAWS-CPU.v')
+//import('../common/clock_PAWS-SDRAM.v')
 $$end
 
 // HDMI for FPGA, VGA for SIMULATION

@@ -104,7 +104,6 @@ struct Player Ship;
 struct Bomb {
     short x, y;
     short type;
-    short frame;
     short counter;
 };
 struct Bomb Bombs[ MAXBOMBS ];
@@ -114,7 +113,7 @@ unsigned short bomb_timers[] = { 32, 30, 28, 26, 24, };
 #define UFOSPRITE UPPER_LAYER,30
 #define PLAYERSPRITE UPPER_LAYER,31
 
-unsigned int framecount;
+unsigned int framecount, animationcount;
 
 // HELPER TO REMOVE ALL/SOME SPRITES
 void remove_sprites( int start_sprite ) {
@@ -336,7 +335,7 @@ void move_aliens( void ) {
                 default:
                     break;
             }
-        } while( ( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].type == 0 ) && ( AlienSwarm.direction < 2 ) );
+        } while( ( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].type == 0 ) && ( AlienSwarm.direction < 2 )  && ( AlienSwarm.count > 0 ) );
     }
 
     switch( AlienSwarm.direction ) {
@@ -346,7 +345,8 @@ void move_aliens( void ) {
             Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].x += ( AlienSwarm.direction == 1 ) ? 16 : -16;
             Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].animation_count = !Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].animation_count;
             set_sprite_attribute( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].layer, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].sprite, SPRITE_X, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].x );
-            set_sprite_attribute( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].layer, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].sprite, SPRITE_TILE, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].animation_count + 2 * ( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].type - 1) );
+            if( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].layer, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].type < 4 )
+                set_sprite_attribute( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].layer, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].sprite, SPRITE_TILE, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].animation_count + 2 * ( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].type - 1) );
             trim_aliens();
             break;
 
@@ -437,7 +437,6 @@ void ufo_actions( void ) {
 void bomb_actions( void ) {
     short bombdropped = 0, bombcolumn, bombrow, attempts = 8;
     short bomb_x, bomb_y;
-    static short lasttype = 0;
 
     // CHECK IF HIT AND MOVE BOMBS
     for( int i = BOMB_START; i <= BOMB_END; i++ ) {
@@ -471,8 +470,7 @@ void bomb_actions( void ) {
                                 gpu_blit( TRANSPARENT, bomb_x, bomb_y, 0, 0, 0 );
                             } else {
                                 update_sprite( UPPER_LAYER, i, ( Ship.level > 1 ) ? 4 : 3, 0, 2, 0 );
-                                Bombs[ i - BOMB_START ].frame = 1 - Bombs[ i - BOMB_START ].frame;
-                                set_sprite_attribute( UPPER_LAYER, i, SPRITE_TILE, ( Bombs[ i - BOMB_START ].type - 1 ) * 2 + Bombs[ i - BOMB_START ].frame );
+                                set_sprite_attribute( UPPER_LAYER, i, SPRITE_TILE, ( Bombs[ i - BOMB_START ].type - 1 ) * 2 + animationcount );
                             }
                         }
                     }
@@ -505,12 +503,11 @@ void bomb_actions( void ) {
                             case 3:
                                 Bombs[ i - BOMB_START ].x = Aliens[ bombrow * 11 + bombcolumn ].x + 4 + ( rng(5) - 2 );
                                 Bombs[ i - BOMB_START ].y = Aliens[ bombrow * 11 + bombcolumn ].y + 16;
-                                Bombs[ i - BOMB_START ].type = lasttype + 1;
-                                Bombs[ i - BOMB_START ].frame = 0;
+                                Bombs[ i - BOMB_START ].type = rng(2) + 1;
                                 Bombs[ i - BOMB_START ].counter = 0;
                                 set_sprite( UPPER_LAYER, i, 1, Bombs[ i - BOMB_START ].x, Bombs[ i - BOMB_START ].y, ( Bombs[ i - BOMB_START ].type - 1 ) * 2, SPRITE_DOUBLE );
                                 AlienSwarm.lastbombtimer = ( Ship.level < 10 ) ? 34 - Ship.level * 2 : 8;
-                                bombdropped = 1; lasttype = 1 - lasttype;
+                                bombdropped = 1;
                                 break;
                             default:
                                 break;
@@ -584,7 +581,7 @@ short missile_actions( void ) {
     } else {
         // MOVE MISSILE
         update_sprite( MISSILESPRITE, 3, 0, -5, 0 );
-        set_sprite_attribute( MISSILESPRITE, SPRITE_TILE, framecount & 1 );
+        set_sprite_attribute( MISSILESPRITE, SPRITE_TILE, 4 + animationcount );
     }
 
     return( points );
@@ -614,7 +611,7 @@ void player_actions( void ) {
             break;
         case SHIPEXPLODE:
             // EXPLODE
-            set_sprite( PLAYERSPRITE, 1, Ship.x, Ship.y, 1 + ( framecount & 1 ), SPRITE_DOUBLE );
+            set_sprite( PLAYERSPRITE, 1, Ship.x, Ship.y, 1 + animationcount, SPRITE_DOUBLE );
             Ship.counter--;
             if( !Ship.counter ) {
                 Ship.life--;
@@ -623,7 +620,7 @@ void player_actions( void ) {
             break;
         case SHIPEXPLODE2:
             // EXPLODE
-            set_sprite( PLAYERSPRITE, 1, Ship.x, Ship.y, 1 + ( framecount & 1 ), SPRITE_DOUBLE );
+            set_sprite( PLAYERSPRITE, 1, Ship.x, Ship.y, 1 + animationcount, SPRITE_DOUBLE );
             Ship.counter--;
             if( !Ship.counter ) {
                 Ship.life--;
@@ -686,6 +683,7 @@ void play( void ) {
 
         // SWITCH THE FRAMEBUFFER
         while( get_framecount() == framecount ) {}
+        animationcount = 1 - animationcount;
 
         draw_status();
     }
@@ -719,6 +717,7 @@ void demo( void ) {
             }
             draw_status();
         while ( get_framecount() == framecount ) {}
+        animationcount = 1 - animationcount;
     }
 
     tpu_cs();

@@ -60,7 +60,7 @@ extern void await_beep( unsigned char );
 extern unsigned short get_beep_active( unsigned char );
 extern void tune_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
 extern void bitsample_upload_128( unsigned char channel_number, unsigned char *samples );
-extern void pcmsample_start( unsigned char channel_number, unsigned short count, const unsigned char *samples, unsigned char rate, unsigned char repeat );
+extern void pcmsample_start( unsigned char channel_number, unsigned int count, const unsigned char *samples, unsigned char rate, unsigned char repeat );
 extern void pcmsample_stop( unsigned char channel_number );
 
 // DISPLAY

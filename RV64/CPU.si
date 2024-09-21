@@ -32,10 +32,9 @@ unit PAWSCPU(
     uint1   COMMIT = uninitialized;                 uint1   COMMIT_SMT = uninitialised;                                         // COMMIT RESULT TO REGISTERS FLAG AND TO WHICH THREAD
     uint1   SMT = 0;                                                                                                            // SMT FLAG
     uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;                                    // PROGRAMS COUNTERS FOR MAIN AND SMT THREADS
-    uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                  // SELECT PROGRAM COUNTER FOR THIS CYCLE
 
     uint64  result <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.result :                                                                 // SELECT RESULT FROM UNIT
-                      RV64CONTROL.IS_FAST ? RV64CONTROL.IS_ALU ? ( RV64CONTROL.IS_ALU32 & RV64CONTROL.IS_ALU32SIGNX ) ?
+                      RV64CONTROL.IS_FAST ? RV64CONTROL.IS_ALU ? ( RV64CONTROL.opCode[1,1] & RV64CONTROL.IS_ALU32SIGNX ) ?
                                                                  { {32{ALU.result[31,1]}}, ALU.result[0,32] } : ALU.result :    // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
                                             EXECUTEFAST.result :
                                             EXECUTESLOW.result;
@@ -49,7 +48,6 @@ unit PAWSCPU(
         frd <: frd,
         write <: write,
         result <: result,
-        PC <: PC,
         instruction <: MEMORY.instruction,
         compressed <: MEMORY.compressed,
         accesssize :> accesssize
@@ -76,9 +74,10 @@ unit PAWSCPU(
     );
 
     alu ALU(                                                                                                                    // SINGLE CYCLE INTEGER OPERATIONS
-        size32 <: RV64CONTROL.IS_ALU32,
-        opCode <: RV64CONTROL.opCode,
-        function3 <: RV64CONTROL.function3, function7 <: RV64CONTROL.function7,
+        OP <: RV64CONTROL.ALUOP,
+        immediate <: RV64CONTROL.opCode[3,1],                                                                                   //  IMMEDIATE OR SOURCEREG2 FLAG
+        size32 <: RV64CONTROL.opCode[1,1],                                                                                      //  32 BIT OPERATION FLAG
+        function3 <: RV64CONTROL.function3, shiftbit6 <: RV64CONTROL.function7[0,1],
         rs1 <: RV64CONTROL.rs1, rs2 <: RV64CONTROL.rs2,
         sourceReg1 <: RV64CONTROL.sourceReg1, sourceReg2 <: RV64CONTROL.sourceReg2,
         immediateValue <: RV64CONTROL.immediateValue,
@@ -86,9 +85,9 @@ unit PAWSCPU(
     );
 
     cpuexecuteSLOWPATH EXECUTESLOW(                                                                                             // RISC-V MULTI-CYCLE OPERATIONS
-        size32 <: RV64CONTROL.IS_ALU32,
-        size32extend <: RV64CONTROL.IS_ALU32SIGNX,
         SMT <: SMT,
+        size32 <: RV64CONTROL.opCode[1,1],
+        size32extend <: RV64CONTROL.IS_ALU32SIGNX,
         function3 <: RV64CONTROL.function3,
         function7 <: RV64CONTROL.function7,
         rs1 <: RV64CONTROL.rs1, rs2 <: RV64CONTROL.rs2,
@@ -148,6 +147,8 @@ unit PAWSCPU(
     il00tags_write ITAGS_0W( L0tags <:> L00tags, address <: pc );
     il01tags_write ITAGS_1W( L0tags <:> L01tags, address <: pcSMT );
 
+    RV64CONTROL.PC := SMT ? pcSMT : pc;                                                                                         // SELECT PROGRAM COUNTER FOR THIS CYCLE
+
     ICACHE_0W.update := ~SMT & ICACHEUPDATE; ICACHE_1W.update := SMT & ICACHEUPDATE;                                            // UPDATE CPU l0 CACHE FOR MAIN/SMT THREAD FLAG
     ITAGS_0W.update := ~SMT & ICACHEUPDATE; ITAGS_1W.update := SMT & ICACHEUPDATE;                                              // UPDATE CPU l0 TAGS FOR MAIN/SMT THREAD FLAG
     CACHEL0CLEAR := 0;
@@ -172,21 +173,23 @@ unit PAWSCPU(
                                                ICACHE_0W.CLS | ICACHE_1W.CLS | MEMORY.busy );
 
         uint9   STATE = 8b00000001;
-            $$ STATE_RESET = 1
-            $$ STATE_DMA_START   = 2
-            $$ STATE_DMA_WAIT = 4
-            $$ STATE_FETCH = 8
-            $$ STATE_EXEC  = 16
-            $$ STATE_LOAD  = 32
-            $$ STATE_MULTI = 64
-            $$ STATE_COMMIT= 128
-            $$ STATE_NEXT  = 256
+            $$ STATE_RESET      = 1
+            $$ STATE_DMA_START  = 2
+            $$ STATE_DMA_WAIT   = 4
+            $$ STATE_FETCH      = 8
+            $$ STATE_EXEC       = 16
+            $$ STATE_LOAD       = 32
+            $$ STATE_MULTI      = 64
+            $$ STATE_COMMIT     = 128
+            $$ STATE_NEXT       = 256
         uint1   DELAY = uninitialised;
         uint1   DMAREQUESTED = 0;
 
         CACHEL0CLEAR = 1;
 
         while(1) {                                                                                                              // CPU LOOP
+//            __display("PC = %h STATE = %b INSN = %h C = %b { %b, %b, %b } RESULT = %h",RV64CONTROL.PC,STATE,MEMORY.instruction,MEMORY.compressed,RV64CONTROL.IS_BRANCH,RV64CONTROL.IS_JAL,RV64CONTROL.IS_AUIPCLUI,result);
+
             onehot( STATE ) {
                 case 0: {                                                                                                       //  STATE_RESET
                     if( |resetCounter ) {
@@ -213,32 +216,22 @@ unit PAWSCPU(
                 case 3: {                                                                                                       //  STATE_FETCH
                     if( ~MEMORY.busy ) {
                         COMMIT_SMT = SMT; cacheselect = 1; ICACHEUPDATE = 1;                                                    //      LATCH THREAD MAIN/SMT, DATA CACHE, UPDATE ICACHE
-                        if( RV64CONTROL.IS_LOAD ) {                                                                             //      START LOAD?
-                            MEMORY.start = 3b010; STATE = RV64CONTROL.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$;                  //      LOAD ONLY -> COMMIT ELSE -> MULTI FOR ATOMIC
-                        } else {
-                            DELAY = RV64CONTROL.IS_FPU ? RV64CONTROL.IS_FASTFPU ? RV64CONTROL.IS_FPUCONVERT : 1 : 0;
-                            STATE = $STATE_EXEC$;                                                                               //      START EXEC
-                        }
+                        DELAY = RV64CONTROL.IS_FPU;                                                                             //      DELAY FOR FPU REGISTER PROPAGATION
+                        MEMORY.start = { 1b0, RV64CONTROL.IS_LOAD, 1b0 };                                                       //      START LOAD?
+                        STATE = RV64CONTROL.IS_LOAD ? RV64CONTROL.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$ : $STATE_EXEC$;       //      LOAD? COMMIT OR MULTI ELSE EXEC
                     }
                 }
                 case 4: {                                                                                                       // STATE_EXEC
-                    if( DELAY ) {                                                                                               //  CHECK FOR DELAY FLAG
-                        DELAY = 0;
+                    if( RV64CONTROL.IS_FAST ) {                                                                                 //      FAST OR START STORE?
+                        MEMORY.start = { RV64CONTROL.IS_STORE, 2b00 };                                                          //      START MEMORY CONTROLLER IF STORE
+                        STATE = $STATE_COMMIT$;                                                                                 //      FAST -> COMMIT ELSE -> MULTI FOR ATOMIC
                     } else {
-                        if( RV64CONTROL.IS_FAST & RV64CONTROL.IS_STORE ) {                                                      //      START STORE?
-                            MEMORY.start = 3b100; STATE = $STATE_COMMIT$;                                                       //      STORE ONLY -> COMMIT
+                        if( RV64CONTROL.IS_FPU ) {                                                                              //      START FPU ( after propogation delay )
+                            EXECUTEFPU.start = ~DELAY; STATE = DELAY ? $STATE_EXEC$ : $STATE_MULTI$; DELAY = 0;                 //      FPU
                         } else {
-                            if( RV64CONTROL.IS_FPU ) {                                                                          //      START FPU?
-                                EXECUTEFPU.start = 1; STATE = $STATE_MULTI$;                                                    //      FPU
-                            } else {
-                                if( RV64CONTROL.IS_FAST ) {                                                                     //      START ALU OR SINGLE CYCLE INSTRUCTIONS
-                                    STATE = $STATE_COMMIT$;                                                                     //      FAST AND ALU OPERATIONS
-                                } else {
-                                    EXECUTESLOW.start = 1;                                                                      //      START CSR, ATOMIC OR DIVISION
-                                    STATE = ( RV64CONTROL.IS_CSR | RV64CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ :                    //      MULTICYCLE CSR ATOMIC -> MULTI
-                                                                                             $STATE_COMMIT$;                    //      DIVISION -> COMMIT
-                                }
-                            }
+                            EXECUTESLOW.start = 1;                                                                              //      START CSR, ATOMIC OR DIVISION
+                            STATE = ( RV64CONTROL.IS_CSR | RV64CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ :                            //      MULTICYCLE CSR ATOMIC -> MULTI
+                                                                                     $STATE_COMMIT$;                            //      DIVISION -> COMMIT
                         }
                     }
                 }
@@ -500,7 +493,6 @@ unit cpuexecuteFPU(
         }
     }
 }
-
 
 unit memory_controller(
     input   uint1   clock_CPUdecoder,
