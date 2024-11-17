@@ -166,6 +166,10 @@ unit audio_$i$(
     uint13  CPUfrequency <:: frequency_table[ CPUINPUT.basefrequency ] >> CPUINPUT.shift;                                       // COUNTER FOR CPU INPUT
     uint13  Sfrequency <:: frequency_table[ SINPUT.basefrequency ] >> SINPUT.shift;                                             // COUNTER FOR SAMPLE INPUT
     uint7   SAMP0P1 <:: samples.addr0 + 1;                                                                                      // NEXT ADDRESS IN DOOM PC SPEAKER MODE
+    uint1   SAMPLEMODE = uninitialised;                                                                                     // IS CHANNEL IN DOOM PC SPEAKER SAMPLE MODE?
+    uint1   REPEAT = uninitialised;                                                                                         // IS REPEAT FOR DOOM PC SPEAKER MODE RQQUIRED?
+    uint1   newS = uninitialised;                                                                                           // IS A NEW NOTE REQUIRED WHEN AUDIO STOPS?
+
 
     apu_$i$ apu_processor(                                                                                                      // AUDIO CHANNEL
         bit_samples <:> bit_samples, sine <:> sine, harmonic <:> harmonic,                                                      // 8 bit output from audio channel goes through PWM modulator
@@ -178,12 +182,8 @@ unit audio_$i$(
 
     apu_processor.apu_write := 0;
 
-    always_after {
-        uint1   SAMPLEMODE = uninitialised;                                                                                     // IS CHANNEL IN DOOM PC SPEAKER SAMPLE MODE?
-        uint1   REPEAT = uninitialised;                                                                                         // IS REPEAT FOR DOOM PC SPEAKER MODE RQQUIRED?
-        uint1   newS = uninitialised;                                                                                           // IS A NEW NOTE REQUIRED WHEN AUDIO STOPS?
-
-        { if( SAMPLEMODE ) {                                                                                                    // DOOM PC SPEAKER MODE?
+    algorithm <autorun> { while(1) {
+        if( SAMPLEMODE ) {                                                                                                    // DOOM PC SPEAKER MODE?
             if( ~apu_processor.audio_active ) {                                                                                 //  PREVIOUS SAMPLE FINISHED?
                 if( newS ) {                                                                                                    //  NEW SAMPLE NEEDED?
                     { apu_processor.frequency = Sfrequency; } { apu_processor.apu_write = 1; } { newS = 0; }                    //  SEND NEW NOTE
@@ -198,9 +198,11 @@ unit audio_$i$(
             }
         } else {
             { samples.addr0 = 0; } { newS = 1; }                                                                                // DEFAULT TO START AND NEW NOTE REQUIRED
-        } }
+        }
+    } }
 
-        { if( apu_write ) {                                                                                                     // CPU AUDIO REQUEST
+    always_after {
+        if( apu_write ) {                                                                                                     // CPU AUDIO REQUEST
             { apu_processor.duration = duration; } { apu_processor.waveform = waveform[0,3]; }                                  // SET BASE DURATION AND WAVEFORM
             { SAMPLEMODE = waveform[3,1]; } { REPEAT = waveform[4,1]; }                                                         // SET DOOM PC SPEAKER SAMPLE MODE AND REPEAT FLAGS
             { if( waveform[3,1] ) {
@@ -209,7 +211,7 @@ unit audio_$i$(
                 { apu_processor.frequency = CPUfrequency; } { apu_processor.apu_write = 1; }                                    // NORMAL WAVEFORM MODE, SET FREQUENCY
 
             } }
-        } }
+        }
     }
 }
 
@@ -255,14 +257,12 @@ unit waveform_$i$(
     input   uint8   pcm_sample
 ) <reginputs> {
     uint8   point = uninitialised;
-    uint8   pointP1 <:: point + update;
 
     sine.addr$i$ := point[0,8]; harmonic.addr$i$ := point[0,8];                                                                 // POINTER INTO HARMONIC AND SINE TABLES
     bit_samples.addr0 := point[3,4];                                                                                            // POINTERS INTO BITSAMPLES
 
-    point := ~active ? 0 : pointP1;                                                                                             // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE
                                                                                                                                 // ALLOWS BIT SAMPLES TO REPEAT
-    always_after {
+    algorithm <autorun> { while(1) {
         switch( selected_waveform ) {
             case 0: { audio_output = { point[7,1], 7b1111111 }; }                                                               // SQUARE
             case 1: { audio_output = point[0,8]; }                                                                              // SAWTOOTH
@@ -273,7 +273,9 @@ unit waveform_$i$(
             case 6: { audio_output = ( sine.rdata$i$ + ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ) ) >> 1; }    // HARMONIC TRIANGLE + SINE ( replaces old sample waveform )
             case 7: { audio_output = {8{bit_samples.rdata0[ point[0,3], 1]}}; }                                                 // 1 BIT SAMPLES, TRANSLATE TO SQUARE WAVE
         }
-    }
+    } }
+
+    always_after { point = ~active ? 0 : point + update; }                                                                             // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE
 }
 $$ end
 
@@ -310,7 +312,7 @@ unit octave(
 ) <reginputs> {
     always_after {
         { shift = ( frequency > 120 ) ? 5 : ( frequency > 96 ) ? 4 : ( frequency > 72 ) ? 3 : ( frequency > 48 ) ? 2 : ( frequency > 24 ) ? 1 : 0; }
-        { basefrequency = frequency - ( shift * 24 ); }
+        { basefrequency = frequency - ( ( ( frequency > 120 ) ? 5 : ( frequency > 96 ) ? 4 : ( frequency > 72 ) ? 3 : ( frequency > 48 ) ? 2 : ( frequency > 24 ) ? 1 : 0 ) * 24 ); }
     }
 }
 
@@ -349,5 +351,30 @@ unit bitsample_writer(
         } else {
             if( load ) { bit_samples.addr1 = bit_samples.addr1 + 1; }
         }
+    }
+}
+
+// SL 12-2020
+// https://github.com/sylefeb/Silice
+// MIT license, see LICENSE_MIT in Silice repo root
+
+// This is a nice trick to 'interpolate' through a 4-bits only DAC
+// I got this from emard: https://github.com/emard/ulx3s-misc/blob/master/examples/audio/hdl/dacpwm.v
+
+// For now fixed to 8 bits in to 4 bits DAC
+// TODO make it more general
+
+unit audio_pwm(
+    input   uint1   active,
+    input   uint8   wave,
+    input   uint1   pcm_active,
+    input   uint8   pcm_sample,
+    output  uint4   audio,
+) <reginputs> {
+    uint8   combined <:: ( ( active ? wave : 0 ) + ( pcm_active ? pcm_sample : 0 ) ); //  >> ( active & pcm_active );
+    uint4   counter = 0;
+
+    always_after {
+        if( active | pcm_active ) { { audio = combined[4,4] + ( counter < combined[0,4] ); } { counter = counter + 1; } } else { counter = 0; }
     }
 }

@@ -1423,14 +1423,22 @@ void tpu_output_character( unsigned char c ) {
     TPUBUFFER[ __tpu_y * 80 + __tpu_x ] = ( __tpu_attributes << 24 ) + ( __tpu_background << 16 ) + ( __tpu_foreground << 8 ) + c;
     tpu_next();
 }
-void tpu_outputstring( unsigned char attribute, char *s ) {
-    __tpu_attributes = attribute;
+void tpu_do_outputstring( unsigned char x, unsigned char y, char *s ) {
+    tpu_move( x, y );
     while( *s ) {
         tpu_output_character( *s );
-        if( attribute & TPU_X2 )
+        if( __tpu_attributes & TPU_X2 )
             tpu_output_character( *s );
         s++;
     }
+}
+void tpu_outputstring( unsigned char attribute, char *s ) {
+    unsigned char y = __tpu_y; unsigned char x = __tpu_x;
+    __tpu_attributes = attribute;
+
+    tpu_do_outputstring( x, y, s );
+    if( attribute & TPU_Y2 )
+        tpu_do_outputstring( x, y + 1, s );
 }
 void tpu_print( unsigned char attribute, char *buffer ) {
     tpu_outputstring( attribute, buffer );
@@ -1446,13 +1454,15 @@ void tpu_printf( unsigned char attribute, const char *fmt,... ) {
 }
 void tpu_print_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, char *buffer ) {
     tpu_clearline( y );
+    if( attribute & TPU_Y2 )
+        tpu_clearline( y + 1 );
     tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
-    if( attribute & TPU_Y2 ) {
-        tpu_clearline( y + 1 );
-        tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y + 1, background, foreground, attribute );
-        tpu_outputstring( attribute, buffer );
-    }
+    // if( attribute & TPU_Y2 ) {
+    //     tpu_clearline( y + 1 );
+    //     tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y + 1, background, foreground, attribute );
+    //     tpu_outputstring( attribute, buffer );
+    // }
 }
 void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, const char *fmt,...  ) {
     static char buffer[1024];
@@ -1462,14 +1472,16 @@ void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char
     va_end(args);
 
     tpu_clearline( y );
+    if( attribute & TPU_Y2 )
+        tpu_clearline( y + 1 );
     tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
 
-    if( attribute & TPU_Y2 ) {
-        tpu_clearline( y + 1 );
-        tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y + 1, background, foreground, attribute );
-        tpu_outputstring( attribute, buffer );
-    }
+    // if( attribute & TPU_Y2 ) {
+    //     tpu_clearline( y + 1 );
+    //     tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y + 1, background, foreground, attribute );
+    //     tpu_outputstring( attribute, buffer );
+    // }
 }
 
 // NETPBM DECODER

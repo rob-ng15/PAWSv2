@@ -159,7 +159,7 @@ void	Host_FindMaxClients (void)
 	int		i;
 
 	svs.maxclients = 1;
-		
+
 	i = COM_CheckParm ("-dedicated");
 	if (i)
 	{

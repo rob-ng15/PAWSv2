@@ -82,10 +82,6 @@ unit sprite_layer(
                                 SPRITE_4.pix_visible,  SPRITE_3.pix_visible,  SPRITE_2.pix_visible,
                                 SPRITE_1.pix_visible, SPRITE_0.pix_visible
                                 };
-    uint6   layer_visible <: {
-                                collision_bitmap_1, collision_bitmap_0,                                                     // BITMAP 1 AND BITMAP 0 VISIBLE AT PIXEL
-                                collision_layer_1, collision_layer_2, collision_layer_3, collision_layer_4                  // BITMAP, TILEMAP L, TILEMAP U, OTHER SPRITE VISIBLE AT PIXEL
-                            };
 
     always_after {
         { sprite_layer_display = pix_active & |sprite_visible; }                                                                // PIXEL TO DISPLAY?
@@ -113,7 +109,10 @@ unit sprite_layer(
                 { pixel = SPRITE_$i$.pixel; }                                                                                   //  SET DISPLAY PIXEL
 
                 { detect_collision_$i$ = detect_collision_$i$ | ( pix_active ? sprite_visible : 0 ); }                          //  UPDATE SPRITE TO SPRITE COLLISIONS
-                { detect_layer_$i$ = detect_layer_$i$ | ( pix_active ? layer_visible : 0 ); }                                   //  UPDATE SPRITE TO LAYER COLLISIONS
+                { detect_layer_$i$ = detect_layer_$i$ | ( pix_active ? {
+                                collision_bitmap_1, collision_bitmap_0,                                                     // BITMAP 1 AND BITMAP 0 VISIBLE AT PIXEL
+                                collision_layer_1, collision_layer_2, collision_layer_3, collision_layer_4                  // BITMAP, TILEMAP L, TILEMAP U, OTHER SPRITE VISIBLE AT PIXEL
+                            } : 0 ); }                                   //  UPDATE SPRITE TO LAYER COLLISIONS
             }
             $$end
         } }
@@ -129,17 +128,15 @@ unit sprite_transform(                                                          
     output! uint4   x,                                                                                                          // TRANSFORMED X COORDINATE
     output! uint4   y                                                                                                           // TRANSFORMED Y COORDINATE
 ) {
-    uint4   revx <: ~xspriteshift;                                                                                              // X REVERSE FOR REFLECTION/ROTATION
-    uint4   revy <: ~yspriteshift;                                                                                              // Y REVERSE FOR REFLECTION/ROTATION
     uint1   action00 <: ( ~|actions[0,2] );                                                                                    // CHECK ACTION FLAGS FOR REFLECTION/ROTATION
     uint1   action01 <: ( actions[0,2] == 2b01 );
     uint1   action10 <: ( actions[0,2] == 2b10 );
 
     always_after {
-        { x = actions[2,1] ? action00 ? xspriteshift : action01 ? yspriteshift : action10 ? revx : revy :                         // CALCULATE X IN TILE FOR  ROTATION
-                         actions[0,1] ? revx : xspriteshift; }                                                                 //                          REFLECTION
-        { y = actions[2,1] ? action00 ? yspriteshift : action01 ? revx : action10 ? revy : xspriteshift :                         // CALCULATE Y IN TILE FOR  ROTATION
-                         actions[1,1] ? revy : yspriteshift; }                                                                  //                          REFLECTION
+        { x = actions[2,1] ? action00 ? xspriteshift : action01 ? yspriteshift : action10 ? ~xspriteshift : ~yspriteshift :                         // CALCULATE X IN TILE FOR  ROTATION
+                         actions[0,1] ? ~xspriteshift : xspriteshift; }                                                                 //                          REFLECTION
+        { y = actions[2,1] ? action00 ? yspriteshift : action01 ? ~xspriteshift : action10 ? ~yspriteshift : xspriteshift :                         // CALCULATE Y IN TILE FOR  ROTATION
+                         actions[1,1] ? ~yspriteshift : yspriteshift; }                                                                  //                          REFLECTION
     }
 }
 
@@ -159,8 +156,6 @@ unit sprite_generator(
 ) <reginputs> {
     int11   xspritex <: ( x1 - sprite_x );                                                                                      // X PIXEL IN THE SPRITE TILE
     int10   yspritey <: ( y - sprite_y );                                                                                       // Y PIXEL IN THE SPRITE TILE
-    uint1   xinrange <: ( __signed(x) >= __signed(sprite_x) ) & ( __signed(x) < __signed( sprite_x + sprite_size ) );           // IS ON SCREEN X?
-    uint1   yinrange <: ( __signed(y) >= __signed(sprite_y) ) & ( __signed(y) < __signed( sprite_y + sprite_size ) );           // IS ON SCREEN Y?
 
     sprite_transform TRANSFORM( actions <: sprite_actions );                                                                    // PERFORM ROTATION/REFLECTION
     TRANSFORM.xspriteshift := sprite_actions[5,1] ? ( xspritex << sprite_actions[3,2] ) : ( xspritex >>> sprite_actions[3,2] ); // SCALE X PIXEL
@@ -169,7 +164,7 @@ unit sprite_generator(
     always_after {
         { tiles.addr0 = { sprite_tile_number, TRANSFORM.y, TRANSFORM.x }; }                                                     // READ ADDRESS FOR SPRITE TILE ( next pixel )
         { pixel = tiles.rdata0; }                                                                                               // OUTPUT PIXEL COLOUR ( current pixel )
-        { pix_visible = sprite_active & xinrange & yinrange & ( tiles.rdata0 != 64 ); }                                         // Determine if pixel is visible ( current pixel )
+        { pix_visible = sprite_active & ( __signed(x) >= __signed(sprite_x) ) & ( __signed(x) < __signed( sprite_x + sprite_size ) ) & ( __signed(y) >= __signed(sprite_y) ) & ( __signed(y) < __signed( sprite_y + sprite_size ) ) & ( tiles.rdata0 != 64 ); }                                         // Determine if pixel is visible ( current pixel )
     }
 }
 
@@ -193,8 +188,6 @@ unit sprite1_generator(
 ) <reginputs> {
     int11   xspritex <: ( x1 - sprite_x );                                                                                      // X PIXEL IN THE SPRITE TILE
     int10   yspritey <: ( y - sprite_y );                                                                                       // Y PIXEL IN THE SPRITE TILE
-    uint1   xinrange <: ( __signed(x) >= __signed(sprite_x) ) & ( __signed(x) < __signed( sprite_x + sprite_size ) );           // IS ON SCREEN X?
-    uint1   yinrange <: ( __signed(y) >= __signed(sprite_y) ) & ( __signed(y) < __signed( sprite_y + sprite_size ) );           // IS ON SCREEN Y?
 
     sprite_transform TRANSFORM( actions <: sprite_actions );                                                                    // PERFORM ROTATION/REFLECTION
     TRANSFORM.xspriteshift := sprite_actions[5,1] ? ( xspritex << sprite_actions[3,2] ) : ( xspritex >>> sprite_actions[3,2] ); // SCALE X PIXEL
@@ -206,7 +199,7 @@ unit sprite1_generator(
         { tiles.wenable1 = wenable1; }                                                                                          // PIXEL WRITE ENABLE
 
         { pixel = tiles.rdata1; }                                                                                               // OUTPUT PIXEL COLOUR ( current pixel )
-        { pix_visible = sprite_active & xinrange & yinrange & ( tiles.rdata1 != 64 ); }                                         // Determine if pixel is visible ( current pixel )
+        { pix_visible = sprite_active & ( __signed(x) >= __signed(sprite_x) ) & ( __signed(x) < __signed( sprite_x + sprite_size ) ) & ( __signed(y) >= __signed(sprite_y) ) & ( __signed(y) < __signed( sprite_y + sprite_size ) ) & ( tiles.rdata1 != 64 ); }                                         // Determine if pixel is visible ( current pixel )
     }
 }
 

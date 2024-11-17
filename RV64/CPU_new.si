@@ -9,6 +9,7 @@ unit PAWSCPU(
     input   uint1   clock_CPUdecoder,                                                                                           // 100 MHz clocks for fast decode/register fetch
     input   uint1   clock_cache,                                                                                                // 100 MHz clock for on CPU instruction cache
 
+    output  uint1   cacheselect,                                                                                                // CACHESELECT == 0 instruction, == 1 data ( for accesssize )
     output  uint$addr_width$  address,                                                                                          // MEMORY INTERFACE LINES
     output  uint2   accesssize,
     output  uint32  writedata,
@@ -18,7 +19,7 @@ unit PAWSCPU(
     input   uint1   memorybusy,
 
     input   uint1   SMTRUNNING,                                                                                                 // SMT CONTROL FLAGS FROM IO REGISTERS
-    input   uint$addr_width$  SMTSTARTPC,                                                                                       // HART1 START ADDRESS
+    input   uint$addr_width$  SMTSTARTPC,                                                                                       //  HART1 START ADDRESS
 
     output  uint1   DMASTART,                                                                                                   // DMA CONTROLLER FLAGS     CPU TO DMA START FLAG
     input   uint1   DMAREQ,                                                                                                     //                          DMA START REQUEST WHEN != 0
@@ -28,6 +29,10 @@ unit PAWSCPU(
     input   uint1   DMA_AUDIO_REQ,                                                                                              //                          DMA START REQUEST WHEN != 0
     input   uint1   DMA_AUDIO_ACTIVE                                                                                            //                          DMA ACTIVE
 ) <reginputs> {
+    uint8  resetCounter = -1;                                                                                                   // RESET COUNTER
+    uint8  resetNEXT <:: resetCounter - ~( memorybusy | DMAACTIVE | EXECUTESLOW.busy | EXECUTEFPU.busy |                        // -1 WHEN ALL UNITS ARE NO LONGER BUSY
+                                           ICACHE_0W.CLS | ICACHE_1W.CLS | MEMORY.busy );
+
     uint9   STATE = 8b00000001;
         $$ STATE_RESET      = 1
         $$ STATE_DMA_START  = 2
@@ -39,23 +44,22 @@ unit PAWSCPU(
         $$ STATE_COMMIT     = 128
         $$ STATE_NEXT       = 256
 
-    uint8   resetCounter = -1;                                                                                              // RESET COUNTER
-    uint1   DELAY = uninitialised;
-    uint1   DMAREQUESTED = 0;
-
     uint1   COMMIT = uninitialized;                 uint1   COMMIT_SMT = uninitialised;                                         // COMMIT RESULT TO REGISTERS FLAG AND TO WHICH THREAD
     uint1   SMT = 0;                                                                                                            // SMT FLAG
     uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;                                    // PROGRAMS COUNTERS FOR MAIN AND SMT THREADS
+    uint1   DELAY = uninitialised;
+    uint1   DMAREQUESTED = 0;
 
     uint64  result <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.result :                                                                 // SELECT RESULT FROM UNIT
                       RV64CONTROL.IS_FAST ? RV64CONTROL.IS_ALU ? ( RV64CONTROL.opCode[1,1] & RV64CONTROL.IS_ALU32SIGNX ) ?
                                                                  { {32{ALU.result[31,1]}}, ALU.result[0,32] } : ALU.result :    // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
                                             EXECUTEFAST.result :
                                             EXECUTESLOW.result;
-    uint1   frd <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.frd : ( RV64CONTROL.IS_LOAD & RV64CONTROL.opCode[0,1] );                    // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
+    uint1   frd <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.frd : RV64CONTROL.writeRegisterF;                                           // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
     uint1   write <:: COMMIT & RV64CONTROL.writeRegister;                                                                       // WRITE TO REGISTERS FLAG
 
     control RV64CONTROL <@clock_CPUdecoder> (                                                                                   // RISC-V   INSTRUCTION DECODER
+        cacheselect <: cacheselect,                                                                                             //          ADDRESS GENERATOR
         SMT <:: SMT,                                                                                                            //          INTEGER REGISTERS
         COMMIT_SMT <: COMMIT_SMT,
         frd <: frd,
@@ -107,6 +111,7 @@ unit PAWSCPU(
         sourceReg1 <: RV64CONTROL.sourceReg1, S1_abs32 <: RV64CONTROL.S1_abs32, S1_abs64 <: RV64CONTROL.S1_abs64,
         sourceReg2 <: RV64CONTROL.sourceReg2, S2_abs32 <: RV64CONTROL.S2_abs32, S2_abs64 <: RV64CONTROL.S2_abs64,
         memoryinput <: MEMORY.memoryinput,
+        incCSRinstret <: COMMIT,
         isALU <: RV64CONTROL.IS_ALU,
         isCSR <: RV64CONTROL.IS_CSR,
         isATOMIC <: RV64CONTROL.IS_ATOMIC,
@@ -149,25 +154,23 @@ unit PAWSCPU(
     simple_dualport_bram uint$L00Ipartaddresswidth$ L00tags <@clock_cache,@clock> [$L00Iblocks$] = uninitialized;
     simple_dualport_bram uint32 L01cache <@clock_cache,@clock> [$L01Iblocks$] = uninitialized;
     simple_dualport_bram uint$L01Ipartaddresswidth$ L01tags <@clock_cache,@clock> [$L01Iblocks$] = uninitialized;
+    uint1   ICACHEUPDATE = uninitialised;                                                                                       // CPU L0 CACHE UPDATE FLAG
+    uint1   CACHEL0CLEAR = uninitialised;                                                                                       // CPU L0 CACHE CLEAR FLAG, USED AFTER RESET
+    uint1   invalidate <:: CACHEL0CLEAR | EXECUTEFAST.fenceACTIVE[0,1];                                                         // CPU L0 CACHE INVALIDATE FLAG, USED AFTER PROGRAM LOAD
     il00cache_read ICACHE_0 <@clock_cache> ( L0cache <:> L00cache, L0tags <:> L00tags, CLS <: ICACHE_0W.CLS, address <: pc );
     il01cache_read ICACHE_1 <@clock_cache> ( L0cache <:> L01cache, L0tags <:> L01tags, CLS <: ICACHE_1W.CLS, address <: pcSMT );
-    il00cache_write ICACHE_0W( L0cache <:> L00cache, address <: pc, newinstruction <: MEMORY.instruction[2,30], newcompressed <: MEMORY.compressed );
-    il01cache_write ICACHE_1W( L0cache <:> L01cache, address <: pcSMT, newinstruction <: MEMORY.instruction[2,30], newcompressed <: MEMORY.compressed );
+    il00cache_write ICACHE_0W( L0cache <:> L00cache, address <: pc, newinstruction <: MEMORY.instruction[2,30], newcompressed <: MEMORY.compressed, invalidate <: invalidate );
+    il01cache_write ICACHE_1W( L0cache <:> L01cache, address <: pcSMT, newinstruction <: MEMORY.instruction[2,30], newcompressed <: MEMORY.compressed, invalidate <: invalidate );
     il00tags_write ITAGS_0W( L0tags <:> L00tags, address <: pc );
     il01tags_write ITAGS_1W( L0tags <:> L01tags, address <: pcSMT );
 
     RV64CONTROL.PC := SMT ? pcSMT : pc;                                                                                         // SELECT PROGRAM COUNTER FOR THIS CYCLE
 
-    ICACHE_0W.update := ~SMT & STATE[3,1] & ~MEMORY.busy; ICACHE_1W.update := SMT & STATE[3,1] & ~MEMORY.busy;                  // UPDATE CPU l0 CACHE FOR MAIN/SMT THREAD FLAG
-    ITAGS_0W.update := ~SMT & STATE[3,1] & ~MEMORY.busy; ITAGS_1W.update := SMT & STATE[3,1] & ~MEMORY.busy;                    // UPDATE CPU l0 TAGS FOR MAIN/SMT THREAD FLAG
-    ICACHE_0W.invalidate := reset | EXECUTEFAST.fenceACTIVE[0,1];                                                         // CPU L0 CACHE INVALIDATE FLAG, USED AFTER PROGRAM LOAD
-    ICACHE_1W.invalidate := reset | EXECUTEFAST.fenceACTIVE[0,1];                                                         // CPU L0 CACHE INVALIDATE FLAG, USED AFTER PROGRAM LOAD
+    ICACHE_0W.update := ~SMT & ICACHEUPDATE; ICACHE_1W.update := SMT & ICACHEUPDATE;                                            // UPDATE CPU l0 CACHE FOR MAIN/SMT THREAD FLAG
+    ITAGS_0W.update := ~SMT & ICACHEUPDATE; ITAGS_1W.update := SMT & ICACHEUPDATE;                                              // UPDATE CPU l0 TAGS FOR MAIN/SMT THREAD FLAG
+    CACHEL0CLEAR := 0;
 
-    MEMORY.start := {                                                                                                           // MEMORY CONTROLLER FLAGS
-        RV64CONTROL.IS_STORE & ( ( STATE[4,1] & RV64CONTROL.IS_FAST ) | ( STATE[6,1] & ~( EXECUTESLOW.busy | EXECUTEFPU.busy ) ) ),
-        STATE[3,1] & RV64CONTROL.IS_LOAD & ~MEMORY.busy,
-        STATE[8,1] & ~( DMAREQ | DMA_AUDIO_REQ )
-    };
+    MEMORY.start := 0;                                                                                                          // MEMORY CONTROLLER FLAGS
     MEMORY.L0match := ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );                                               //  CPU L0 CACHE MATCH FOR PC
     MEMORY.L0instruction := SMT ? ICACHE_1.instruction : ICACHE_0.instruction;                                                  //  L0 instruction
     MEMORY.L0compressed := SMT ? ICACHE_1.compressed : ICACHE_0.compressed;                                                     //  L0 compressed flag
@@ -175,71 +178,84 @@ unit PAWSCPU(
                                                                         RV64CONTROL.sourceReg2 :                                //                          FAST INTEGER REGISTER
                                               EXECUTESLOW.memoryoutput;                                                         //                          SLOW ATOMIC MEMORY OPERATION
 
-    DMASTART := STATE[1,1] & DMAREQ; DMA_AUDIO_START := STATE[1,1] &  ~DMAREQ & DMA_AUDIO_REQ;                                  // DMA CONTROLLER START FLAGS
-    EXECUTESLOW.start := ( STATE[4,1] & ~RV64CONTROL.IS_FAST & ~RV64CONTROL.IS_FPU ) | ( STATE[5,1] & ~MEMORY.busy );           // CPU CSR, ATOMIC, INTEGER DIVIDE START FLAG
-    EXECUTEFPU.start := STATE[4,1] & RV64CONTROL.IS_FPU & ~DELAY;                                                               // CPU FPU START FLAG
+    DMASTART := 0; DMA_AUDIO_START := 0;                                                                                        // DMA CONTROLLER START FLAG
+    EXECUTESLOW.start := 0;                                                                                                     // CPU CSR, ATOMIC, INTEGER DIVIDE START FLAG
+    EXECUTEFPU.start := 0;                                                                                                      // CPU FPU START FLAG
+    ICACHEUPDATE := 0;                                                                                                          // UPDATE CPU L0 CACHE FLAG
+    COMMIT := 0;                                                                                                                // COMMIT TO REGISTERS FLAG
 
-    COMMIT := STATE[7,1] & ( ~MEMORY.busy & ~EXECUTESLOW.busy );                                                                // COMMIT TO REGISTERS FLAG
-    EXECUTESLOW.incCSRinstret := STATE[7,1] & ( ~MEMORY.busy & ~EXECUTESLOW.busy );                                             //  INCREMENT INSTRUCTION COUNT
-
-    always_after {
-        { onehot( STATE ) {
+    algorithm <autorun> { CACHEL0CLEAR = 1; while(1) {
+        onehot( STATE ) {
             case 0: {                                                                                                           //  STATE_RESET
                 if( |resetCounter ) {
-                    resetCounter = resetCounter - ~( memorybusy | DMAACTIVE | EXECUTESLOW.busy | EXECUTEFPU.busy |              // -1 WHEN ALL UNITS ARE NO LONGER BUSY
-                                                     ICACHE_0W.CLS | ICACHE_1W.CLS | MEMORY.busy );
+                    resetCounter = resetNEXT;
                 } else {
                     STATE = $STATE_NEXT$;
                 }
             }
             case 1: {                                                                                                           //  STATE_DMA
-                if( DMAREQ | DMA_AUDIO_REQ ) { DMAREQUESTED = 1; STATE = $STATE_DMA_WAIT$; }
+                if( DMAREQ | DMA_AUDIO_REQ ) {
+                    { DMASTART = DMAREQ; } { DMA_AUDIO_START = ~DMAREQ & DMA_AUDIO_REQ; }
+                    { DMAREQUESTED = 1; } { STATE = $STATE_DMA_WAIT$; }
+                }
             }
-            case 2: {                                                                                                           // STATE_DMA_WAIT
+            case 2: {                                                                                                           //  STATE_DMA_WAIT
                 if( DMAREQUESTED ) {
                     DMAREQUESTED = 0;
                 } else {
-                    if( ~( DMAREQ | DMAACTIVE | DMA_AUDIO_ACTIVE ) ) { STATE = $STATE_NEXT$; }
-                }
-            }
-            case 3: {                                                                                                       //  STATE_FETCH
-                if( ~MEMORY.busy ) {
-                    RV64CONTROL.cacheselect = 1; COMMIT_SMT = SMT;                                                          //      LATCH THREAD MAIN/SMT, DATA CACHE
-                    DELAY = RV64CONTROL.IS_FPU;                                                                             //      DELAY FOR FPU REGISTER PROPAGATION
-                    STATE = RV64CONTROL.IS_LOAD ? RV64CONTROL.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$ : $STATE_EXEC$;       //      LOAD? COMMIT OR MULTI ELSE EXEC
-                }
-            }
-            case 4: {                                                                                                       // STATE_EXEC
-                if( RV64CONTROL.IS_FAST ) {                                                                                 //      FAST OR START STORE?
-                    STATE = $STATE_COMMIT$;                                                                                 //      FAST -> COMMIT ELSE -> MULTI FOR ATOMIC
-                } else {
-                    if( RV64CONTROL.IS_FPU ) {                                                                              //      START FPU ( after propogation delay )
-                        STATE = DELAY ? $STATE_EXEC$ : $STATE_MULTI$; DELAY = 0;                                            //      FPU
-                    } else {
-                        STATE = ( RV64CONTROL.IS_CSR | RV64CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ :                            //      MULTICYCLE CSR ATOMIC -> MULTI
-                                                                                 $STATE_COMMIT$;                            //      DIVISION -> COMMIT
+                    if( ~( DMAREQ | DMAACTIVE | DMA_AUDIO_ACTIVE ) ) {
+                        STATE = $STATE_NEXT$;
                     }
                 }
             }
-            case 5: { if( ~MEMORY.busy ) { STATE = $STATE_MULTI$; } }                                                       // STATE LOAD WAIT FOR ATOMIC MEMORY OPERATIONS
-            case 6: {                                                                                                       // STATE_MULTI
+            case 3: {                                                                                                           //  STATE_FETCH
+                if( ~MEMORY.busy ) {
+                    { COMMIT_SMT = SMT; } { cacheselect = 1; } { ICACHEUPDATE = 1; }                                            //      LATCH THREAD MAIN/SMT, DATA CACHE, UPDATE ICACHE
+                    { DELAY = RV64CONTROL.IS_FPU; }                                                                             //      DELAY FOR FPU REGISTER PROPAGATION
+                    { MEMORY.start = { 1b0, RV64CONTROL.IS_LOAD, 1b0 }; }                                                       //      START LOAD?
+                    { STATE = RV64CONTROL.IS_LOAD ? RV64CONTROL.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$ :                       //      LOAD? COMMIT OR MULTI
+                                                                          $STATE_EXEC$; }                                       //       ELSE EXEC
+                }
+            }
+            case 4: {                                                                                                           // STATE_EXEC
+                if( RV64CONTROL.IS_FAST ) {                                                                                     //      FAST OR START STORE?
+                    { MEMORY.start = { RV64CONTROL.IS_STORE, 2b00 }; }                                                          //      START MEMORY CONTROLLER IF STORE
+                    { STATE = $STATE_COMMIT$; }                                                                                 //      FAST -> COMMIT ELSE -> MULTI FOR ATOMIC
+                } else {
+                    if( RV64CONTROL.IS_FPU ) {                                                                                  //      START FPU ( after propogation delay )
+                        { EXECUTEFPU.start = ~DELAY; } { STATE = DELAY ? $STATE_EXEC$ : $STATE_MULTI$; } { DELAY = 0; }         //      FPU
+                    } else {
+                        { EXECUTESLOW.start = 1; }                                                                              //      START CSR, ATOMIC OR DIVISION
+                        { STATE = ( RV64CONTROL.IS_CSR | RV64CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ :                              //      MULTICYCLE CSR ATOMIC -> MULTI
+                                                                                   $STATE_COMMIT$; }                            //      DIVISION -> COMMIT
+                    }
+                }
+            }
+            case 5: { if( ~MEMORY.busy ) { { EXECUTESLOW.start = 1; } { STATE = $STATE_MULTI$; } } }                            // STATE LOAD WAIT FOR ATOMIC MEMORY OPERATIONS
+            case 6: {                                                                                                           // STATE_MULTI
                 if( ~( EXECUTESLOW.busy | EXECUTEFPU.busy ) ) {
-                    STATE = $STATE_COMMIT$;                                                                                 //  WAIT FOR CSR, ATOMIC, DIVISION, FLOATING-POINT TO FINISH
+                    { MEMORY.start = { RV64CONTROL.IS_STORE, 2b00 }; }                                                          //  START STORE IF ATOMIC MEMORY STOTRE
+                    { STATE = $STATE_COMMIT$; }
                 }
             }
-            case 7: {                                                                                                       //  STATE_COMMIT
-                if( ~MEMORY.busy & ~EXECUTESLOW.busy ) {                                                                    //      WAIT FOR LOAD/STORE/DIVIDE TO FINISH
-                    pc = SMT ? pc : RV64CONTROL.newPC; pcSMT = SMT ? RV64CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;   //      MOVE TO NEXT INSTRUCTION
-                    if( ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; }                                        //      SWITCH THREADS IF ACTIVE AND NOT FENCED
-                    STATE = $STATE_NEXT$;
+            case 7: {                                                                                                           //  STATE_COMMIT
+                if( ~MEMORY.busy & ~EXECUTESLOW.busy ) {                                                                        //      WAIT FOR LOAD/STORE/DIVIDE TO FINISH
+                    { COMMIT = 1; }                                                                                             //      COMMIT REGISTERS
+                    { pc = SMT ? pc : RV64CONTROL.newPC; }                                                                      //      MOVE TO NEXT INSTRUCTION ( main )
+                    { pcSMT = SMT ? RV64CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC; }                                      //      MOVE TO NEXT INSTRUCTION ( smt )
+                    { if( ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; } }                                        //      SWITCH THREADS IF ACTIVE AND NOT FENCED
+                    { STATE = $STATE_NEXT$; }
                 }
             }
-            case 8: {                                                                                                       //  STATE_NEXT
-                { RV64CONTROL.cacheselect = ( DMAREQ | DMA_AUDIO_REQ ); }                                                   // SELECT DATA CACHE FOR DMA, INSTRUCTION CACHE FOR FETCH
-                { STATE = ( DMAREQ | DMA_AUDIO_REQ ) ? $STATE_DMA_START$ : $STATE_FETCH$; }
+            case 8: {                                                                                                           //  STATE_NEXT
+                if( DMAREQ | DMA_AUDIO_REQ ) {                                                                                  //      CHECK FOR DMA REQUEST
+                    STATE = $STATE_DMA_START$;
+                } else {
+                    { cacheselect = 0; } { MEMORY.start = 3b001; } { STATE = $STATE_FETCH$; }                                   //      START FETCH OF NEXT INSTRUCTION
+                }
             }
-        } }
-    }
+        }
+    } }
 }
 
 unit cpuexecuteFASTPATH(
@@ -298,7 +314,10 @@ unit cpuexecuteSLOWPATH(
     uint3   operation <:: { isALU, isATOMIC, isCSR };                                                                           // DETERMINE OPERATION, DIVIDE, AMO, CSR
 
     aluA ALUA(                                                                                                                  // ATOMIC MEMORY OPERATIONS
-        function7 <: function7[2,5], memoryinput <: memoryinput, sourceReg2 <: sourceReg2
+        function7 <: function7[2,5],
+        function3 <: function3[0,2],
+        memoryinput <: memoryinput,
+        sourceReg2 <: sourceReg2
     );
 
     CSRblock CSR(                                                                                                               // RISC-V CSR REGISTERS
@@ -318,28 +337,28 @@ unit cpuexecuteSLOWPATH(
         sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
     );
 
+    CSR.csrRegister := { function7, rs2 };                                                                                      // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
     CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                      // START FLAGS
-    busy := ( STATE[0,1] & start ) | ( STATE[2,1] & ALUMD.busy );
 
-    always_after {
-        { CSR.csrRegister = { function7, rs2 }; }                                                                                      // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
-
-        { onehot( STATE ) {
+    algorithm <autorun> { while(1) {
+        onehot( STATE ) {
             case 0: {                                                                                                           // WAIT FOR START
-                { if( start ) {
+                { busy = start; } if( start ) {
                     onehot( operation ) {
                         default: { STATE = $STATE_CPUSLOW_CSR_ATOMIC$; }                                                        //  CSR OR ATOMIC-MEMORY-OPERATION
                         case 2: { STATE = $STATE_CPUSLOW_DIVISION$; }                                                           //  DIVISION
                     }
-                } }
+                }
             }
-            case 1: { STATE = $STATE_CPUSLOW_IDLE$; }                                                         // CSR OR AMO
-            case 2: { if( ~ALUMD.busy ) { STATE = $STATE_CPUSLOW_IDLE$; } }                                   // DIVISION
-        } }
+            case 1: { { busy = 0; } { STATE = $STATE_CPUSLOW_IDLE$; } }                                                         // CSR OR AMO
+            case 2: { if( ~ALUMD.busy ) { { busy = 0; } { STATE = $STATE_CPUSLOW_IDLE$; } } }                                   // DIVISION
+        }
+    } }
 
-        { result = isCSR ? |function3 ? CSR.result : 0 :                                                               //  CSR
-                   isATOMIC ? function7[3,1] ? memoryinput : function7[2,1] ? 0 : memoryinput :                           //  ATOMIC LOAD - MODIFY - STORE
-                                    size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; } //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
+    always_after {
+        { result = operation[0,1] ? |function3 ? CSR.result : 0 :                                                               //  CSR
+                   operation[1,1] ? function7[3,1] ? memoryinput : function7[2,1] ? 0 : memoryinput :                           //  ATOMIC LOAD - MODIFY - STORE
+                                    size32 & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; }  //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
 
         { memoryoutput = function7[3,1] ? ALUA.result : sourceReg2; }                                                           //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORYOUTPUT
     }
@@ -347,7 +366,7 @@ unit cpuexecuteSLOWPATH(
 
 unit cpuexecuteFPU(
     input   uint1   start,
-    output  uint1   busy,
+    output  uint1   busy(0),
     input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
@@ -389,7 +408,15 @@ unit cpuexecuteFPU(
         $$ STATE_FPU_CALC_FINISH    = 4
 
     uint10  BIAS <:: function7[0,1] ? $BIAS64$ : function7[1,1] ? $BIAS16$ : $BIAS32$;                                          // SELECT BIAS
-    uint3   operation <:: { ~( isFASTFPU | isFPUCONVERT ), isFPUCONVERT, isFASTFPU & ~isFPUCONVERT };                           // PRESENT INSTRUCTION ROUTE
+
+    uint3   converttype <:: {
+                                ( function7[2,5] == 5b11000 ),                                                                  // FD2IL
+                                ( function7[2,5] == 5b11010 ),                                                                  // IL2FD
+                                ( function7[2,5] == 5b01000 )                                                                   // CHANGE PRECISION HSD <-> HSD, FROUND IF RS2[2,1]
+                            };
+    uint1   fpufast <:: isFASTFPU | isFPUCONVERT;                                                                               // SINGLE CYCLE OR CONVERSION DETECTION
+    uint1   fpucalc <:: ~fpufast;                                                                                               // CALCULATION DETECTION
+    uint3   operation <:: { fpucalc, isFPUCONVERT, fpufast & ~isFPUCONVERT };                                                   // PRESENT INSTRUCTION ROUTE
 
     fpuSINGLECYCLE FPUFAST(                                                                                                     // FLOATING POINT SINGLE CYCLE OPERATIONS
         dsh <: function7[0,2],
@@ -403,8 +430,9 @@ unit cpuexecuteFPU(
         FLT <: FLT, FEQ <: FEQ
     );
 
+    uint2   rm <:: &FPUflags[5,3] ? function3[0,2] : FPUflags[5,2];                                                             // SET ROUNDING FLAG, FCSR UNLESS 111
     floatcalc FPUCALC(                                                                                                          // FLOATING POINT CALCULATIONS CONTROLLER
-        dsh <: function7[0,2],                                                                                                  //  RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
+        rm <: rm, dsh <: function7[0,2],                                                                                        //  RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
         BIAS <: BIAS,
         opCode <: opCode, function3 <: function3, function7 <: function7[2,5],
         sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx, sourceReg3Fx <: sourceReg3Fx,
@@ -432,46 +460,44 @@ unit cpuexecuteFPU(
     );
 
     FPUF_CP.SBIAS := rs2[0,1] ? $BIAS64$ : rs2[1,1] ? $BIAS16$ : $BIAS32$;                                                      // SELECT BIAS ( SOURCE FOR CHANGE PRECISION )
-    FPUCALC.start := ~( isFASTFPU | isFPUCONVERT ) & start;                                                                     // FPU CALCULATIONS START FLAG
-    FPUCALC.rm := &FPUflags[5,3] ? function3[0,2] : FPUflags[5,2];                                                             // SET ROUNDING FLAG, FCSR UNLESS 111
-    CSRupdateFPUflags := ( STATE[0,1] & ( isFASTFPU | isFPUCONVERT ) ) | STATE[2,1];                                                         // UPDATE CSR FPU FLAGS
-    busy := ( STATE[0,1] & start & ~( isFASTFPU | isFPUCONVERT ) ) | STATE[1,1];
+    FPUCALC.start := fpucalc & start; CSRupdateFPUflags := 0;                                                                   // START FLAGS AND UPDATE CSR
 
-    always_after {
-        { onehot( STATE ) {
+    algorithm <autorun> { while(1) {
+        onehot( STATE ) {
             case 0: {
                 if( start ) {                                                                                                   // START FPU OPERATION
                     onehot( operation ) {
-                        default: {}                                                                                             //  CONVERSION/ROUNDING OR SINGLE-CYCLE OPERATION
-                        case 2: { STATE = $STATE_FPU_CALC$; }                                                                   //  CALCULATION
+                        default: { CSRupdateFPUflags = 1; }                                                                     //  CONVERSION/ROUNDING OR SINGLE-CYCLE OPERATION
+                        case 2: { { busy = 1; } { STATE = $STATE_FPU_CALC$; } }                                                         //  CALCULATION
                     }
                 }
             }
             case 1: { if( ~FPUCALC.busy ) { STATE = $STATE_FPU_CALC_FINISH$; } }                                                // WAIT FOR FPU CALCULATION TO FINISH
-            case 2: { STATE = $STATE_FPU_IDLE$; }                                                                               // CALCULATION FINISHED
-        } }
+            case 2: { { busy = 0; } { CSRupdateFPUflags = 1; } { STATE = $STATE_FPU_IDLE$; } }                      //  UPDATE FLAGS AND SIGNAL FINISHED
+        }
+    } }
 
-        { result = ( isFASTFPU & ~isFPUCONVERT ) ? FPUFAST.result :                                                             // COLLECT THE APPROPRIATE RESULT
-                   isFPUCONVERT ? ( function7[2,5] == 5b11000 ) ? FPUF2IL.result :                                              //  FD2IL
-                                    ( function7[2,5] == 5b11010 ) ? FPUIL2F.result :                                            //  IL2FD
-                                                       rs2[2,1] ? FPUROUND.result : FPUF_CP.result :                            //  ROUND OR CHANGE PRECISION
-                                    CALCRESULT.repack; }
-        { frd = isFPUCONVERT ? ( function7[2,5] != 5b11000 ) : ( isFASTFPU | isFPUCONVERT ) ? FPUFAST.frd : 1; }                // WRITE TO F REGISTERS FLAG ( NOT FD2IL )
-        { FPUnewflags = FPUflags | (                                                                                            // MERGE OLD AND NEW FLAGS
-                                    isFPUCONVERT ? ( function7[2,5] == 5b11000 ) ? FPUF2IL.FPUflags :                           //  FD2IL
-                                                   ( function7[2,5] == 5b11010 ) ? FPUIL2F.FPUflags :                           //  IL2FD
-                                                                      rs2[2,1] ? FPUROUND.FPUflags : FPUF_CP.FPUflags :         //  ROUND OR CHANGE PRECISION
-                                      ~( isFASTFPU | isFPUCONVERT ) ? FPUCALC.FPUnewflags :
-                                                                      FPUFAST.FPUnewflags
-                                ); }
-
+    always_after {
+        { result = operation[0,1] ? FPUFAST.result :                                                                              // COLLECT THE APPROPRIATE RESULT
+                 operation[1,1] ? converttype[2,1] ? FPUF2IL.result :
+                                  converttype[1,1] ? FPUIL2F.result :
+                                                     rs2[2,1] ? FPUROUND.result : FPUF_CP.result :
+                                  CALCRESULT.repack; }
+        { frd = isFPUCONVERT ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd; }                                                 // WRITE TO F REGISTERS FLAG
+        { FPUnewflags = FPUflags | (                                                                                              // MERGE OLD AND NEW FLAGS
+                                    isFPUCONVERT ? converttype[2,1] ? FPUF2IL.FPUflags :
+                                                   converttype[1,1] ? FPUIL2F.FPUflags :
+                                                                      rs2[2,1] ? FPUROUND.FPUflags : FPUF_CP.FPUflags :
+                                         fpucalc ? FPUCALC.FPUnewflags :
+                                                   FPUFAST.FPUnewflags
+                                   ); }
     }
 }
 
 unit memory_controller(
     input   uint1   clock_CPUdecoder,
     input   uint3   start,                                                                                                      // { STORE, LOAD, FETCH }
-    output  uint1   busy,
+    output  uint1   busy(0),
 
     input   uint2   accesssize,
     input   uint1   IS_MA,
@@ -528,66 +554,60 @@ unit memory_controller(
 
     readmemory := 0; writememory := 0;
 
-    always_after {
-        { if( STATE[4,1] & ~memorybusy & ACTION[1,1] ) {                                                                        //  IF LOAD, PACK READDATA INTO MEMORY INPUT
-            if( IS_MA ) {
-                LOAD.memoryinput[ { count, 3b000 }, 8 ] = readdata[ { address[0,1], 3b000 }, 8 ];                               //  SINGLE BYTE FOR MISALIGNED LOADS
-            } else {
-                LOAD.memoryinput[ { count[0,1], 5b00000 }, 32 ] = readdata;                                                     //  8/16/32 BITS FOR ALIGNED LOADS
-            }
-        } }
+    algorithm <autorun> { while(1) {
+        onehot( STATE ) {
+            case 0: {                                                                                                           // STATE_FSL_WAIT
+                { writedata = storedata; }
+                { address = start[0,1] ? SMT ? pcSMT : pc : start[1,1] ? loadAddress : storeAddress; }                          //  SET FIRST ADDRESS
 
-        { onehot( STATE ) {
-            case 0: {
                 { if( |start ) {                                                                                                // WAIT FOR START
-                    { count = 0; } { LOAD.memoryinput = 0; }                                                                    //  0 COUNT AND MEMORY INPUT
-                    { address = start[0,1] ? SMT ? pcSMT : pc : start[1,1] ? loadAddress : storeAddress; }                      //  SET FIRST ADDRESS
-                    { ACTION = start; }
-
-                    { onehot( start ) {                                                                                         // SEND TO { STORE, LOAD, FETCH }
+                    { count = 0; } { LOAD.memoryinput = 0; } { ACTION = start; }                                                //  0 COUNT AND MEMORY INPUT
+                    { busy = ~( start[0,1] & L0match ); onehot( start ) {                                                       // SEND TO { STORE, LOAD, FETCH }
                         case 0: {
                             if( L0match ) {
                                 { instruction = { L0instruction, 2b11 }; } { compressed = L0compressed; }                       //  FETCH FROM L0 CACHE
                             } else {
-                                STATE = $STATE_FETCH_READ$;                                                                     //  FETCH FROM MEMORY
+                                { readmemory = 1; } { STATE = $STATE_FETCH_READ$; }                                             //  FETCH FROM MEMORY
                             }
                         }
-                        case 1: { STATE = $STATE_LOAD_MEMBUSY$; }                                                               //  LOAD FROM MEMORY
-                        case 2: { STATE = $STATE_LS_NEXT$; }                                                                    //  STORE TO MEMORY
+                        case 1: { { readmemory = 1; } { STATE = $STATE_LOAD_MEMBUSY$; } }                                       //  LOAD FROM MEMORY
+                        case 2: { { writememory = 1; } { STATE = $STATE_LS_NEXT$; } }                                           //  STORE TO MEMORY
                     } }
                 } }
-
-                { busy = |start[1,2] | ( start[0,1] & ~L0match ); }
-                { readmemory = start[1,1] | ( start[0,1] & ~L0match ); }
-                { writedata = storedata; }
-                { writememory = start[2,1]; }
             }
 
-            case 1: { if( ~memorybusy ) { STATE = $STATE_FETCH_COMPLETE$; } }                                                   // WAIT FOR MEMORYREAD TO COMPLETE
-            case 2: {                                                                                                           // PACK FETCHED INSTRUCTION
+            case 1: { if( ~memorybusy ) { STATE = $STATE_FETCH_COMPLETE$; } }                                                   // STATE_FETCH_READ - WAIT FOR MEMORYREAD TO COMPLETE
+            case 2: {                                                                                                           // STATE_FETCH_COMPLETE
                 { compressed = ~&readdata[0,2]; }                                                                               //  SET COMPRESSED FLAGS
                 { instruction = { &readdata[0,2] ? readdata[2,30] :                                                             //  32 BIT INSTRUCTION READ
-                                 ~|readdata[0,2] ? COMPRESSED00.i32 :                                                           //  16 BIT INSTRUCTION READ block 00
-                                   readdata[0,1] ? COMPRESSED01.i32 :                                                           //                          block 01
-                                                   COMPRESSED10.i32, 2b11 }; }                                                  //                          block 10, plus trailing 11
+                                ~|readdata[0,2] ? COMPRESSED00.i32 :                                                            //  16 BIT INSTRUCTION READ block 00
+                                    readdata[0,1] ? COMPRESSED01.i32 :                                                          //                          block 01
+                                                    COMPRESSED10.i32, 2b11 }; }                                                 //                          block 10, plus trailing 11
                 { busy = 0; } { STATE = $STATE_FSL_WAIT$; }                                                                     // FINISHED FETCH
             }
 
-            case 3: { if( ~memorybusy ) { STATE = $STATE_LS_NEXT$; } }                                                          // WAIT FOR MEMORYREAD TO COMPLETE
+            case 3: { if( ~memorybusy ) { STATE = $STATE_LS_NEXT$; } }                                                          // STATE_LOAD_MEMBUSY
             case 4: {
-                if( ~memorybusy ) {                                                                                             // WAIT FOR MEMORYWRITE TO COMPLETE
-                    if( ( count + 1 ) == ( IS_MA ? ( 1 << accesssize ) : IS_64 ? 2 : 1 ) ) {
+                if( ~memorybusy ) {                                                                                             // STATE_LS_NEXT WAIT FOR MEMORYWRITE TO COMPLETE
+                    { if( ACTION[1,1] ) {                                                                                       //  IF LOAD, PACK READDATA INTO MEMORY INPUT
+                        if( IS_MA ) {
+                            LOAD.memoryinput[ { count, 3b000 }, 8 ] = readdata[ { address[0,1], 3b000 }, 8 ];                   //  SINGLE BYTE FOR MISALIGNED LOADS
+                        } else {
+                            LOAD.memoryinput[ { count[0,1], 5b00000 }, 32 ] = readdata;                                         //  8/16/32 BITS FOR ALIGNED LOADS
+                        }
+                    } }
+                    { if( ( count + 1 ) == ( IS_MA ? ( 1 << accesssize ) : IS_64 ? 2 : 1 ) ) {
                         { busy = 0; } { STATE = $STATE_FSL_WAIT$; }                                                             //  FINISHED LOAD/STORE
                     } else {
-                        { writedata = IS_MA ? storedata[ { count + 4d1, 3b000 }, 8 ] : storedata[ 32, 32 ]; }                   // SET MEMORY OUTPUT TO PRESENT STORE PART
-                        { count = count + 1; } { address = address + ( IS_MA ? 1 : 4 ); }                                       //  MOVE TO NEXT PART, 8 bit MA or NEXT 32 BITS FOR 64 BITS
+                        { writedata = IS_MA ? storedata[ { count + 1d4, 3b000 }, 8 ] : storedata[32,32]; }
+                        { count = count + 1; } { address = address + ( IS_MA ? 1 : 4 ); }                                        //  MOVE TO NEXT PART
                         { writememory = ACTION[2,1]; } { readmemory = ACTION[1,1]; }
                         { STATE = ACTION[2,1] ? $STATE_LS_NEXT$ : $STATE_LOAD_MEMBUSY$; }
-                    }
+                    } }
                 }
             }
-        } }
-    }
+        }
+    } }
 }
 
 unit signnanbox(                                                                                                                // SIGN EXTEND/NAN BOX MEMORYINPUT

@@ -188,9 +188,9 @@ unit dma_setcopy_write_data(
     input   uint2   ACCESSSIZE,
     output  uint32  writedata
 ) <reginputs> {
-    always_after {
-        uint32  memoryinput = uninitialised;
+    uint32  memoryinput = uninitialised;
 
+    always_after {
         { memoryinput = latch ? readdata : memoryinput; }
         { writedata = |ACCESSSIZE ? memoryinput : memoryinput[ { dmasrc, 3b000 }, 8 ]; }
     }
@@ -226,6 +226,8 @@ unit dma_setcopy(
     uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA SOURCE ADDRESS
     uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA DESTINATION ADDRESS
     uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
+    uint1   COUNT_NE0 <:: |dmacount;                                                                                            //  DMACOUNT != 0
+    uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                                // NUMBER OF BYTES PER CYCLE
 
     dma_setcopy_flags FLAGS(
         mode_set <: DMAMODE_SET,
@@ -242,9 +244,9 @@ unit dma_setcopy(
     );
 
     address := DMAMODE_SET | |STATE[3,2] ? dmadest : dmasrc;
-    writememory := ( STATE[1,1] & |dmacount & DMAMODE_SET ) | STATE[3,1];
-    readmemory := STATE[1,1] & |dmacount & ~DMAMODE_SET;
-    WRITE.latch := ( STATE[1,1] & |dmacount & DMAMODE_SET ) | STATE[3,1];
+    writememory := ( STATE[1,1] & COUNT_NE0 & DMAMODE_SET ) | STATE[3,1];
+    readmemory := STATE[1,1] & COUNT_NE0 & ~DMAMODE_SET;
+    WRITE.latch := ( STATE[1,1] & COUNT_NE0 & DMAMODE_SET ) | STATE[3,1];
 
     algorithm <autorun> { while(1) {
         onehot( STATE ) {
@@ -253,7 +255,7 @@ unit dma_setcopy(
                 { dmasrc = DMASOURCE; } { dmadest = DMADEST; } { dmacount = DMACOUNT; } { dmamode = DMAMODE; }                  //  SET VALUES TO I/O REGISTERS
             }
             case 1: {                                                                                                           // STATE_DMA_SETCPY_SET_OR_READ
-                STATE = |dmacount ? DMAMODE_SET ? $STATE_DMA_SETCPY_NEXT$ :
+                STATE = COUNT_NE0 ? DMAMODE_SET ? $STATE_DMA_SETCPY_NEXT$ :
                                                     $STATE_DMA_SETCPY_WAIT_READ$ :
                                                     $STATE_DMA_SETCPY_WAIT$;
             }
@@ -261,9 +263,9 @@ unit dma_setcopy(
             case 3: { STATE = $STATE_DMA_SETCPY_NEXT$; }                                                                        // STATE_DMA_SETCPY_CPY_WRITE
             case 4: {                                                                                                           // STATE_DMA_SETCPY_NEXT
                 if( ~memorybusy ) {                                                                                             //  WAIT FOR WRITE TO COMPLETE
-                    { dmasrc = dmamode[0,1] ? ( dmasrc + ( dmamode[2,1] ? DMASOURCEADD : ( 1 << FLAGS.ACCESSSIZE ) ) ) : dmasrc; }                  //  UPDATE ADDRESSES AND COUNT
-                    { dmadest = dmamode[1,1] ? ( dmadest + ( dmamode[2,1] ? DMADESTADD : ( 1 << FLAGS.ACCESSSIZE ) ) ) : dmadest; }
-                    { dmacount = dmacount - ( 1 << FLAGS.ACCESSSIZE ); }
+                    { dmasrc = dmamode[0,1] ? ( dmasrc + ( dmamode[2,1] ? DMASOURCEADD : BYTES ) ) : dmasrc; }                  //  UPDATE ADDRESSES AND COUNT
+                    { dmadest = dmamode[1,1] ? ( dmadest + ( dmamode[2,1] ? DMADESTADD : BYTES ) ) : dmadest; }
+                    { dmacount = dmacount - BYTES; }
                     { STATE = $STATE_DMA_SETCPY_SET_OR_READ$; }                                                                 //  RETURN TO STATE_DMA_SETCPY_SET_OR_READ
                 }
             }
@@ -317,7 +319,10 @@ unit dma_setcopy_rectangle(
     uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA SOURCE ADDRESS
     uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
     uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
+    uint1   dmacount_NE0 <:: |dmacount;                                                                                         //  COUNT != 0
+    uint1   dmacycles_NE0 <:: |dmacycles;                                                                                       //  CYCLE != 0
     uint8   dmacycles = uninitialised;                                                                                          // DMA CYCLES ( LINE OF RECTANGLE )
+    uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                                // NUMBER OF BYTES PER CYCLE
 
     dma_setcopy_rectangle_flags FLAGS(
         mode_set <: DMAMODE_SET,
@@ -333,9 +338,9 @@ unit dma_setcopy_rectangle(
     );
 
     address := DMAMODE_SET | |STATE[3,2] ? dmadest : dmasrc;
-    writememory := STATE[3,1] | ( STATE[1,1] & |dmacycles & |dmacount & DMAMODE_SET );
-    readmemory := STATE[1,1] & |dmacycles & |dmacount & ~DMAMODE_SET;
-    WRITE.latch := STATE[3,1] | ( STATE[1,1] & |dmacycles & |dmacount & DMAMODE_SET );
+    writememory := STATE[3,1] | ( STATE[1,1] & dmacycles_NE0 & dmacount_NE0 & DMAMODE_SET );
+    readmemory := STATE[1,1] & dmacycles_NE0 & dmacount_NE0 & ~DMAMODE_SET;
+    WRITE.latch := STATE[3,1] | ( STATE[1,1] & dmacycles_NE0 & dmacount_NE0 & DMAMODE_SET );
 
     algorithm <autorun> { while(1) {
         onehot( STATE ) {
@@ -344,7 +349,7 @@ unit dma_setcopy_rectangle(
                 { ACTIVE = start; } { if( start ) { STATE = $STATE_DMA_SETCPYRECT_SET_OR_READ$; } }                             //  MOVE TO ACTIVE STATE
             }
             case 1: {                                                                                                           // STATE_DMA_SETCPYRECT_SET_OR_READ
-                STATE = |dmacycles ? |dmacount ? DMAMODE_SET ? $STATE_DMA_SETCPYRECT_NEXT$ :
+                STATE = dmacycles_NE0 ? dmacount_NE0 ? DMAMODE_SET ? $STATE_DMA_SETCPYRECT_NEXT$ :
                                                                      $STATE_DMA_SETCPYRECT_WAIT_READ$ :
                                                                      $STATE_DMA_SETCPYRECT_NEXT_CYCLE$ :
                                                                      $STATE_DMA_SETCPYRECT_WAIT$;
@@ -353,9 +358,9 @@ unit dma_setcopy_rectangle(
             case 3: { STATE = $STATE_DMA_SETCPYRECT_NEXT$; }                                                                    // STATE_DMA_SETCPYRECT_CPY_WRITE
             case 4: {
                 if( ~memorybusy ) {                                                                                             // STATE_DMA_SETCPYRECT_NEXT
-                    { dmasrc = dmasrc + ( 1 << FLAGS.ACCESSSIZE ); }
-                    { dmadest = dmadest + ( 1 << FLAGS.ACCESSSIZE ); }
-                    { dmacount = dmacount - ( 1 << FLAGS.ACCESSSIZE ); }
+                    { dmasrc = dmasrc + BYTES; }
+                    { dmadest = dmadest + BYTES; }
+                    { dmacount = dmacount - BYTES; }
                     { STATE = $STATE_DMA_SETCPYRECT_SET_OR_READ$; }
                 }
             }
@@ -406,6 +411,7 @@ unit dma_pb_rgb(
     uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
     uint2 dmadest = uninitialised;                                                                                              // DMA PRESENT DESTINATION ADDRRESS
     uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
+    uint1   dmacount_NE0 <:: |dmacount;
 
     dma_pb_rgb_write_data WRITE(
         dmasrc <: dmasrc[0,1],
@@ -416,7 +422,7 @@ unit dma_pb_rgb(
 
     address := |STATE[1,2] ? dmasrc : { 12hd67, 1b0, dmadest, 1b0 };                                                            // CYCLE BETWEEN THE PIXELBLOCK R, G AND B REGISTERS
     writememory := STATE[3,1];
-    readmemory := STATE[1,1] & |dmacount;
+    readmemory := STATE[1,1] & dmacount_NE0;
 
     algorithm <autorun> { while(1) {
         onehot( STATE ) {
@@ -424,7 +430,7 @@ unit dma_pb_rgb(
                 { dmasrc = DMASOURCE; } { dmadest = 1; } { dmacount = DMACOUNT; }
                 { ACTIVE = start; } { if( start ) { STATE = $STATE_DMA_PB_READ$; } }                                            //  IF START, GO TO READ THE FIRST BYTE
             }
-            case 1: { STATE = |dmacount ? $STATE_DMA_PB_WAITREAD$ : $STATE_DMA_PB_WAIT$; }                                   // STATE_DMA_PB_READ, MORE TO DO?
+            case 1: { STATE = dmacount_NE0 ? $STATE_DMA_PB_WAITREAD$ : $STATE_DMA_PB_WAIT$; }                                   // STATE_DMA_PB_READ, MORE TO DO?
             case 2: { if( ~memorybusy ) { STATE = $STATE_DMA_PB_WRITE$; } }                                                     // STATE_DMA_PB_WAITREAD
             case 3: { STATE = $STATE_DMA_PB_WAITWRITE$; }                                                                       // STATE_DMA_PB_WRITE
             case 4: {                                                                                                           // STATE_DMA_PB_WAITWRITE
@@ -501,15 +507,20 @@ unit dma_bytes_io(
     uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
 
     uint3   BYTE = uninitialised;
-    uint1   BYTE_NE_BYTES <:: BYTE != ( 1 << FLAGS.ACCESSSIZE );
+    uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                                // NUMBER OF BYTES PER CYCLE
+    uint1   BYTE_NE_BYTES <:: BYTE != BYTES;
     uint1   NEXTBLOCK <:: ( STATE[4,1] & ~BYTE_NE_BYTES ) | ( STATE[9,1] & ~memorybusy );
 
     dma_bytes_io_flags FLAGS( DMAFLAGS <: DMAFLAGS, DIRECTION <: DIRECTION, ACCESSSIZE :> ACCESSSIZE );
-    dma_bytes_to_io_write_data WRITE( BYTE <: BYTE[0,2], readdata <: readdata, latch <:: STATE[3,1] );
+    dma_bytes_to_io_write_data WRITE( BYTE <: BYTE[0,2], readdata <: readdata );
 
-    address := DIRECTION ? ( ( STATE[1,1] | |STATE[6,2] ) & BYTE_NE_BYTES ) ? dmasrc : dmadest : |STATE[1,2] ? dmasrc : dmadest;
-    writememory := DIRECTION ? ( STATE[6,1] & ~BYTE_NE_BYTES ) : ( STATE[4,1] & BYTE_NE_BYTES );
-    readmemory := DIRECTION ? ( STATE[6,1] & BYTE_NE_BYTES ) : ( STATE[1,1] & |dmacount );
+    address := DIRECTION ? ( ( STATE[1,1] | |STATE[6,2] ) & BYTE_NE_BYTES ) ? dmasrc : dmadest :
+                           |STATE[1,2] ? dmasrc : dmadest;
+    writememory := DIRECTION ? ( STATE[6,1] & ~BYTE_NE_BYTES ) :
+                               ( STATE[4,1] & BYTE_NE_BYTES );
+    readmemory := DIRECTION ? ( STATE[6,1] & BYTE_NE_BYTES ) :
+                              ( STATE[1,1] & |dmacount );
+    WRITE.latch := STATE[3,1];
 
     always_after {
         { onehot( STATE ) {
@@ -546,9 +557,9 @@ unit dma_bytes_io(
         } }
 
         { if( NEXTBLOCK ) {                                                                                                     // NUMBER OF BYTES FOR THIS BLOCK REACHED?
-            { dmasrc = DIRECTION ? dmasrc : ( dmasrc + ( 1 << FLAGS.ACCESSSIZE ) ); }                                                               //  UPDATE SOURCE IF TO I/O
-            { dmadest = DIRECTION ? ( dmadest + ( 1 << FLAGS.ACCESSSIZE ) ) : dmadest; }                                                            //  UPDATE DESTINATION IF FROM I/O
-            { dmacount = dmacount - ( 1 << FLAGS.ACCESSSIZE ); }                                                                                    //  UPDATE COUNT AND
+            { dmasrc = DIRECTION ? dmasrc : ( dmasrc + BYTES ); }                                                               //  UPDATE SOURCE IF TO I/O
+            { dmadest = DIRECTION ? ( dmadest + BYTES ) : dmadest; }                                                            //  UPDATE DESTINATION IF FROM I/O
+            { dmacount = dmacount - BYTES; }                                                                                    //  UPDATE COUNT AND
             { STATE = $STATE_DMA_NEW_BYTES$; }                                                                                  //  START A NEW BLOCK OF BYTES
         } else {
             if( ~ACTIVE ) { { dmadest = DMADEST; } { dmasrc = DMASOURCE; } { dmacount = DMACOUNT; } }                           // IF NOT ACTIVE SET VALUES TO I/O REGISTERS
@@ -568,15 +579,16 @@ unit pulse11025(
         $$ STATE_PULSE_INACTIVE = 1
         $$ STATE_PULSE_ACTIVE   = 2
 
-    uint13  counter50mhz = uninitialised;
-    UPDATE := STATE[1,1] & ~|counter50mhz;
+    UPDATE := 0;
 
     always_after {
+        uint13  counter50mhz = uninitialised;
+
         { onehot( STATE ) {
             case 0: { if( START ) { { counter50mhz = RATE ? 2267 : 4535; } { STATE = $STATE_PULSE_ACTIVE$; } } }                // STATE_PULSE_INACTIVE
             case 1: {                                                                                                           // STATE_PULSE_ACTIVE
                 if( ~|counter50mhz ) {                                                                                          //  START NEW TIMER OR CONTINUE COUNTING DOWN?
-                    counter50mhz = RATE ? 2267 : 4535;
+                    { UPDATE = 1; } { counter50mhz = RATE ? 2267 : 4535; }
                 } else {
                     counter50mhz = counter50mhz - 1;
                 }
@@ -675,27 +687,6 @@ unit dma_digital_audio(
     }
 }
 
-unit dma_digital_audiosamples_latch(
-    input   uint1   START,
-    input   uint1   STOP,
-    input   uint32  READDATA,
-    input   uint1   LATCH,
-    input   uint1   UPDATE,
-
-    output  uint1   REQ_NEWSAMPLES,
-    input   uint1   ACK_REQ_NEWSAMPLES,
-    output  uint8   SAMPLE,
-    output  uint2   BYTE
-) <reginputs> {
-    uint32  samples = uninitialised;
-
-    always_after {
-        { if( UPDATE ) { { SAMPLE = samples[ { BYTE, 3b000 }, 8 ]; } { REQ_NEWSAMPLES = &BYTE; } { BYTE = BYTE + 1; } } }
-        { if( START | STOP | ACK_REQ_NEWSAMPLES ) { REQ_NEWSAMPLES = 0; } { if( START ) { BYTE = 0; } } }
-        { if( LATCH ) { { samples = READDATA; } { SAMPLE = READDATA[0,8]; } } }
-    }
-}
-
 unit dma_digital_audio_channel(
     input   uint$addr_width$    BASE,
     input   uint$addr_width$    LENGTH,
@@ -724,22 +715,25 @@ unit dma_digital_audio_channel(
         $$ STATE_ADMA_CHANNEL_WAIT_LOADNEW  = 32
         $$ STATE_ADMA_CHANNEL_WAIT_FINISH   = 64
 
-    dma_digital_audiosamples_latch SAMPLES( START <: START, STOP <: STOP, UPDATE <: UPDATE, LATCH <: STATE[3,1], READDATA <: READDATA, SAMPLE :> SAMPLE );
-    SAMPLES.ACK_REQ_NEWSAMPLES := STATE[0,1] | ( STATE[5,1] & SAMPLES.REQ_NEWSAMPLES );
+    uint1   LOAD_SAMPLE = uninitialised;
 
     DMAACTIVE := DMASTART | STATE[2,1];
-    DMAREQ := ( START & STATE[0,1] ) | ( SAMPLES.REQ_NEWSAMPLES & STATE[5,1] ) | ( STATE[1,1] & ~DMASTART );
+    DMAREQ := ( START & STATE[0,1] ) | ( LOAD_SAMPLE & STATE[5,1] ) | ( STATE[1,1] & ~DMASTART );
     READFLAG := DMASTART & STATE[1,1];
     ADMA_ACTIVE := ~STATE[0,1];
 
     always_after {
+        uint32  samples = uninitialised;
+        uint2   BYTE = uninitialised;
+
         { onehot( STATE ) {
             case 0: {                                                                                                           // STATE_ADMA_CHANNEL_IDLE
+                { LOAD_SAMPLE = 0; }
                 { if( START ) { { ADDRESS = BASE; } { STATE = $STATE_ADMA_CHANNEL_WAIT_START$; } } }
             }
             case 1: { if( DMASTART ) { STATE = $STATE_ADMA_CHANNEL_WAIT_MEMORY$; } }                                            // STATE_ADMA_CHANNEL_WAIT_START
             case 2: { if( ~MEMORYBUSY ) { STATE = $STATE_ADMA_CHANNEL_LATCH_SAMPLE$; } }                                        // STATE_ADMA_CHANNEL_WAIT_MEMORY
-            case 3: { STATE = $STATE_ADMA_CHANNEL_NEXT_ADDR$; }                                                                 // STATE_ADMA_CHANNEL_LATCH_SAMPLE
+            case 3: { { samples = READDATA; } { STATE = $STATE_ADMA_CHANNEL_NEXT_ADDR$; } }                                     // STATE_ADMA_CHANNEL_LATCH_SAMPLE
             case 4: {                                                                                                           // STATE_ADMA_CHANNEL_NEXT_ADDR
                 if( ADDRESS >= ( BASE + LENGTH ) ) {                                                                            //  AT LAST ADDRESS?
                     if( REPEAT ) { ADDRESS = BASE; } else { STATE = $STATE_ADMA_CHANNEL_WAIT_FINISH$; }                         //      REPEAT ? RETURN TO START : WAIT FOR LAST SAMPLE TO PLAY
@@ -747,12 +741,20 @@ unit dma_digital_audio_channel(
                     { ADDRESS = ADDRESS + 4; } { STATE = $STATE_ADMA_CHANNEL_WAIT_LOADNEW$; }                                   //      MOVE TO NEXT ADDRESS AND WAIT FOR LOAD SIGNAL
                 }
             }
-            case 5: {                                                                                                           // STATE_ADMA_CHANNEL_WAIT_LOADNEW
-                if( SAMPLES.REQ_NEWSAMPLES ) { STATE = $STATE_ADMA_CHANNEL_WAIT_START$; }
-            }
-            case 6: { STATE = ( ( ADDRESS + SAMPLES.BYTE - BASE ) < LENGTH ) ? STATE : $STATE_ADMA_CHANNEL_IDLE$; }             // STATE_ADMA_CHANNEL_WAIT_FINISH
+            case 5: { if( LOAD_SAMPLE ) { { LOAD_SAMPLE = 0; } { STATE = $STATE_ADMA_CHANNEL_WAIT_START$; } } }                 // STATE_ADMA_CHANNEL_WAIT_LOADNEW
+            case 6: { STATE = ( ( ADDRESS + BYTE  - BASE ) < LENGTH ) ? STATE : $STATE_ADMA_CHANNEL_IDLE$; }                    // STATE_ADMA_CHANNEL_WAIT_FINISH
         } }
 
-        { if( STOP ) { STATE = $STATE_ADMA_CHANNEL_IDLE$; } }                                                                   // STOP, RETURN TO IDLE AND CANCEL ANY LOAD
+        { if( STOP ) { { STATE = $STATE_ADMA_CHANNEL_IDLE$; } { LOAD_SAMPLE = 0; } } }                                          // STTOP, RETURN TO IDLE AND CANCEL ANY LOAD
+
+        { if( START ) {
+            BYTE = 0;
+        } else {
+            if( UPDATE & ~STATE[0,1] ) {                                                                                        // TIMER UPDATE SIGNALLED
+                { SAMPLE = samples[ { BYTE, 3b000 }, 8 ]; }                                                                     //  OUTPUT SAMPLE
+                { LOAD_SAMPLE = &BYTE; }                                                                                        //  USED ALL 4 LOADED SAMPLES?
+                { BYTE = BYTE + 1; }                                                                                            //  MOVE TO NEXT BYTE IN THE SAMPLE
+            }
+        } }
     }
 }

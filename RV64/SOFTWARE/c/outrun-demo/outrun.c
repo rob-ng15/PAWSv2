@@ -698,17 +698,14 @@ int main( int argc, char **argv ) {
     // PREPARE ROAD
     init();
 
+    tpu_print_centre( 2, TRANSPARENT, WHITE,  TPU_BOLD + TPU_Y2 + TPU_BLINK, "Based upon https://www.lexaloffle.com/bbs/?tid=35767" );
+    tpu_print_centre( 4, TRANSPARENT, WHITE,  TPU_BOLD + TPU_X2 + TPU_BLINK, "Written by @tommulgrew" );
+
     unsigned char framebuffer = 1;
     while( !( get_buttons() & 4 ) ) {
         bitmap_draw( 3 - framebuffer );
         draw();
         update(); move_sprites();
-        if( !(systemclock()&15) ) {
-            tpu_set( 14, 1, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( 1, "Based upon https://www.lexaloffle.com/bbs/?tid=35767" );
-            tpu_set( 28, 2, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( 1, "Written by @tommulgrew" );
-        } else {
-            if( systemclock()&3 ) tpu_cs();
-        }
         framebuffer = 3 - framebuffer;
         bitmap_display( framebuffer );
         if( dimmerlevel ) {

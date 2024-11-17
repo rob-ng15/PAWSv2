@@ -13,17 +13,19 @@ unit bramcontroller(
     $$if not SIMULATION then
         dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/BIOS.bin"), pad(uninitialized)};              // BIOS WITH I/O
     $$else
-        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/VBIOS.bin"), pad(uninitialized)};             // BIOS FOR VERILATOR
-//        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/RBIOS.bin"), pad(uninitialized)};           // BIOS FOR VERILATOR
+//        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/VBIOS.bin"), pad(uninitialized)};             // BIOS FOR VERILATOR
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/RBIOS.bin"), pad(uninitialized)};           // BIOS FOR VERILATOR
 //        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/MBIOS.bin"), pad(uninitialized)};           // BIOS FOR VERILATOR
     $$end
 
-    ram.wenable0 := writeflag ? |accesssize ? 2b11 : { address[0,1], ~address[0,1] } : 0;                                       // LOW WRITE FOR 8 OR 16/32 BIT
-    ram.wenable1 := writeflag ? {2{accesssize[1,1]}} : 0;                                                                       // HIGH WRITE FOR 32 BIT
-    ram.addr0 := address[1,12]; ram.addr1 := address2[1,12];                                                                    // SET LOW AND HIGH ADDRESSES
-    ram.wdata0 := ~|accesssize ? { {2{writedata[0,8]}} } : writedata[0,16];                                                     // ram0 LOW, 8 bit duplicate, else lower 16 bits
-    ram.wdata1 := writedata[16,16];                                                                                             // ram1 HIGH 16 bits
-    readdata := { ram.rdata1, ram.rdata0 };                                                                                     // READ 32 BITS, COMBINE ram1 HIGH AND ram0 LOW
+    always_after {
+        { ram.wenable0 = writeflag ? |accesssize ? 2b11 : { address[0,1], ~address[0,1] } : 0; }                                       // LOW WRITE FOR 8 OR 16/32 BIT
+        { ram.wenable1 = writeflag ? {2{accesssize[1,1]}} : 0; }                                                                      // HIGH WRITE FOR 32 BIT
+        { ram.addr0 = address[1,12]; } { ram.addr1 = address2[1,12]; }                                                                    // SET LOW AND HIGH ADDRESSES
+        { ram.wdata0 = ~|accesssize ? { {2{writedata[0,8]}} } : writedata[0,16]; }                                                    // ram0 LOW, 8 bit duplicate, else lower 16 bits
+        { ram.wdata1 = writedata[16,16]; }                                                                                             // ram1 HIGH 16 bits
+        { readdata = { ram.rdata1, ram.rdata0 }; }                                                                                    // READ 32 BITS, COMBINE ram1 HIGH AND ram0 LOW
+    }
 }
 
 // HART ID 0 L0 CACHE
@@ -36,10 +38,12 @@ unit il00cache_read(
     output  uint1   compressed,
     output  uint1   tagmatch
 ) <reginputs> {
-    L0cache.addr0 := address[1,$L00Icount$]; L0tags.addr0 := address[1,$L00Icount$];                                            // FOR EACH CACHE BLOCK, SET ADDRESS FROM CPU
-    tagmatch := ~CLS & ( L0tags.rdata0 == address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$] ) & L00cacheI( L0cache.rdata0 ).valid;
-    instruction := L00cacheI( L0cache.rdata0 ).instruction;
-    compressed := L00cacheI( L0cache.rdata0 ).compressed;
+    always_after {
+        { L0cache.addr0 = address[1,$L00Icount$]; } { L0tags.addr0 = address[1,$L00Icount$]; }                                           // FOR EACH CACHE BLOCK, SET ADDRESS FROM CPU
+        { tagmatch = ~CLS & ( L0tags.rdata0 == address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$] ) & L00cacheI( L0cache.rdata0 ).valid; }
+        { instruction = L00cacheI( L0cache.rdata0 ).instruction; }
+        { compressed = L00cacheI( L0cache.rdata0 ).compressed; }
+    }
 }
 
 unit il00cache_write(
@@ -52,14 +56,15 @@ unit il00cache_write(
     output  uint1   CLS
 ) <reginputs> {
     uint$L00Icount+1$ count = 0;
-    uint$L00Icount+1$ countNEXT <:: count + 1;
 
-    CLS := invalidate | ( count != $L00Iblocks$ );
-    count := invalidate ? 0 : CLS ? countNEXT : count;
+    always_after {
+        { L0cache.addr1 = CLS ? count : address[1,$L00Icount$]; }
+        { L0cache.wdata1 = CLS ? 0 : { newinstruction, newcompressed, 1b1 }; }
+        { L0cache.wenable1 = CLS | update; }
 
-    L0cache.addr1 := CLS ? count : address[1,$L00Icount$];
-    L0cache.wdata1 := CLS ? 0 : { newinstruction, newcompressed, 1b1 };
-    L0cache.wenable1 := CLS | update;
+        { CLS = invalidate | ( count != $L00Iblocks$ ); }
+        { count = invalidate ? 0 :  count + CLS; }
+    }
 }
 
 unit il00tags_write(
@@ -67,9 +72,11 @@ unit il00tags_write(
     input   uint$addr_width$  address,
     input   uint1   update
 ) <reginputs> {
-    L0tags.addr1 := address[1,$L00Icount$];
-    L0tags.wdata1 := address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$];
-    L0tags.wenable1 := update;
+    always_after {
+        { L0tags.addr1 = address[1,$L00Icount$]; }
+        { L0tags.wdata1 = address[$L00Ipartaddressstart$,$L00Ipartaddresswidth$]; }
+        { L0tags.wenable1 = update; }
+    }
 }
 
 // HART ID 1 L0 CACHE
@@ -82,10 +89,12 @@ unit il01cache_read(
     output  uint1   compressed,
     output  uint1   tagmatch
 ) <reginputs> {
-    L0cache.addr0 := address[1,$L01Icount$]; L0tags.addr0 := address[1,$L01Icount$];                                            // FOR EACH CACHE BLOCK, SET ADDRESS FROM CPU ADDRESS
-    tagmatch := ~CLS & ( L0tags.rdata0 == address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$] ) & L01cacheI( L0cache.rdata0 ).valid;
-    instruction := L01cacheI( L0cache.rdata0 ).instruction;
-    compressed := L01cacheI( L0cache.rdata0 ).compressed;
+    always_after {
+        { L0cache.addr0 = address[1,$L01Icount$]; } { L0tags.addr0 = address[1,$L01Icount$]; }                                           // FOR EACH CACHE BLOCK, SET ADDRESS FROM CPU ADDRESS
+        { tagmatch = ~CLS & ( L0tags.rdata0 == address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$] ) & L01cacheI( L0cache.rdata0 ).valid; }
+        { instruction = L01cacheI( L0cache.rdata0 ).instruction; }
+        { compressed = L01cacheI( L0cache.rdata0 ).compressed; }
+    }
 }
 
 unit il01cache_write(
@@ -98,14 +107,15 @@ unit il01cache_write(
     output  uint1   CLS
 ) <reginputs> {
     uint$L01Icount+1$ count = 0;
-    uint$L01Icount+1$ countNEXT <:: count + 1;
 
-    CLS := invalidate | ( count != $L01Iblocks$ );
-    count := invalidate ? 0 : CLS ? countNEXT : count;
+    always_after {
+        { L0cache.addr1 = CLS ? count : address[1,$L01Icount$]; }
+        { L0cache.wdata1 = CLS ? 0 : { newinstruction, newcompressed, 1b1 }; }
+        { L0cache.wenable1 = CLS | update; }
 
-    L0cache.addr1 := CLS ? count : address[1,$L01Icount$];
-    L0cache.wdata1 := CLS ? 0 : { newinstruction, newcompressed, 1b1 };
-    L0cache.wenable1 := CLS | update;
+        { CLS = invalidate | ( count != $L01Iblocks$ ); }
+        { count = invalidate ? 0 :  count + CLS; }
+    }
 }
 
 unit il01tags_write(
@@ -113,9 +123,11 @@ unit il01tags_write(
     input   uint$addr_width$  address,
     input   uint1   update,
 ) <reginputs> {
-    L0tags.addr1 := address[1,$L01Icount$];
-    L0tags.wdata1 := address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$];
-    L0tags.wenable1 := update;
+    always_after {
+        { L0tags.addr1 = address[1,$L01Icount$]; }
+        { L0tags.wdata1 = address[$L01Ipartaddressstart$,$L01Ipartaddresswidth$]; }
+        { L0tags.wenable1 = update; }
+    }
 }
 
 
@@ -175,69 +187,67 @@ unit cachecontroller(
     uint2   Dread <:: { accesssize[1,1], 1b1 } & ~DTAGS.tagmatch;                                                               // CACHE READ REQUIRED FLAG ( HIGH, LOW )
     uint1   doreadsdram <:: ( doread | ( dowrite & ~|accesssize ) );                                                            // SDRAM READ FLAG FOR CACHE MISS, READ OR 8 BIT WRITE
 
-    sio.in_valid := 0; DCACHEW.update := 0; DTAGSW.update := 0; UPDATE := 0; LATCH := 0; SDRAM_READ := 0; SDRAM_WRITE := 0;     // SDRAM ACCESS AND CACHE/TAGS UPDATE FLAGS
+    DCACHEW.update := 0; DTAGSW.update := 0; UPDATE := 0; LATCH := 0; SDRAM_READ := 0; SDRAM_WRITE := 0;     // SDRAM ACCESS AND CACHE/TAGS UPDATE FLAGS
 
-    algorithm <autorun> {
-        while(1) {
-            onehot( STATE ) {
-                case 0:{                                                                                                        // STATE_CACHE_WAIT
-                    doread = readflag; dowrite = writeflag;                                                                     //  LATCH READ/WRITE FLAGS
-                    if( readflag | writeflag ) {
-                        busy = ~Dmatch; STATE = ( Dmatch & ~writeflag ) ? $STATE_CACHE_WAIT$ : $STATE_CACHE_CHECK$;             //   IF NOT MATCH AND READ MOVE TO NEXT STAGE
-                    }
+    algorithm <autorun> { while(1) {
+        onehot( STATE ) {
+            case 0:{                                                                                                        // STATE_CACHE_WAIT
+                doread = readflag; dowrite = writeflag;                                                                     //  LATCH READ/WRITE FLAGS
+                if( readflag | writeflag ) {
+                    busy = ~Dmatch; STATE = ( Dmatch & ~writeflag ) ? $STATE_CACHE_WAIT$ : $STATE_CACHE_CHECK$;             //   IF NOT MATCH AND READ MOVE TO NEXT STAGE
                 }
-                case 1: {                                                                                                       // STATE_CACHE_CHECK
-                    if( Dmatch ) {
-                        UPDATE = 1; STATE = $STATE_CACHE_WAIT$; busy = 0;                                                       //  UPDATE CACHE/TAGS IF WRITE
+            }
+            case 1: {                                                                                                       // STATE_CACHE_CHECK
+                if( Dmatch ) {
+                    UPDATE = 1; STATE = $STATE_CACHE_WAIT$; busy = 0;                                                       //  UPDATE CACHE/TAGS IF WRITE
+                } else {
+                    if( |Devict ) {
+                        SDRAM_WRITE = 1;                                                                                    //      EVICT FIRST ( possibly only ) 16 BITS
+                        STATE =                  &Devict ? $STATE_CACHE_EVICT2$ :                                           //      MORE TO EVICT? NEED TO READ?
+                                ( doreadsdram & |Dread ) ? $STATE_CACHE_READSDRAM$ :                                        //      NEED TO READ SDRAM?
+                                                            $STATE_CACHE_UPDATE_WAIT$;                                       //      FINISHED?
                     } else {
-                        if( |Devict ) {
-                            SDRAM_WRITE = 1;                                                                                    //      EVICT FIRST ( possibly only ) 16 BITS
-                            STATE =                  &Devict ? $STATE_CACHE_EVICT2$ :                                           //      MORE TO EVICT? NEED TO READ?
-                                    ( doreadsdram & |Dread ) ? $STATE_CACHE_READSDRAM$ :                                        //      NEED TO READ SDRAM?
-                                                               $STATE_CACHE_UPDATE_WAIT$;                                       //      FINISHED?
+                        if( doreadsdram & |Dread ) {
+                            SDRAM_READ = 1;                                                                                 //      READ FIRST ( possibly only ) 16 BITS
+                            STATE = &Dread ? $STATE_CACHE_READSDRAM2$ : $STATE_CACHE_UPDATE_WAIT$;                          //      MORE TO READ SDRAM OR FINISHED?
                         } else {
-                            if( doreadsdram & |Dread ) {
-                                SDRAM_READ = 1;                                                                                 //      READ FIRST ( possibly only ) 16 BITS
-                                STATE = &Dread ? $STATE_CACHE_READSDRAM2$ : $STATE_CACHE_UPDATE_WAIT$;                          //      MORE TO READ SDRAM OR FINISHED?
-                            } else {
-                                UPDATE = 1; STATE = $STATE_CACHE_WAIT$; busy = 0;                                               //      UPDATE TAGS READ AND 8 BIT WRITE : 32/16 WRITE
-                            }
+                            UPDATE = 1; STATE = $STATE_CACHE_WAIT$; busy = 0;                                               //      UPDATE TAGS READ AND 8 BIT WRITE : 32/16 WRITE
                         }
                     }
                 }
-                case 2: {                                                                                                       // STATE_CACHE_EVICT2
-                    if( sio.done ) {                                                                                            //  WAIT FOR SDDRAM OPERATION TO FINISH
-                        SDRAM_WRITE = 2;                                                                                        //      EVICT SECOND 16 BITS
-                        STATE = ( doreadsdram & |Dread ) ? $STATE_CACHE_READSDRAM$ : $STATE_CACHE_UPDATE_WAIT$;                 //      NEED TO READ SDRAM OR FINISHED?
-                    }
-                }
-                case 3: {                                                                                                       // STATE_CACHE_READSDRAM
-                    if( sio.done | ~|Devict ) {                                                                                 //  WAIT FOR SDDRAM OPERATION TO FINISH
-                        SDRAM_READ = 1; STATE = &Dread ? $STATE_CACHE_READSDRAM2$ : $STATE_CACHE_UPDATE_WAIT$;                  //      READ FIRST ( only ) 16 BITS, MORE TO READ OR FINISHED?
-                    }
-                }
-                case 4: {                                                                                                       // STATE_CACHE_READSDRAM2
-                    if( sio.done ) { LATCH = 1; SDRAM_READ = 2; STATE = $STATE_CACHE_UPDATE_WAIT$; }                            //      LATCH LOWER 16 BITS, READ UPPER 16 BITS
-                }
-                case 5: {                                                                                                       // STATE_CACHE_UPDATE_WAIT
-                    if( sio.done ) {                                                                                            //  WAIT FOR SDDRAM OPERATION TO FINISH
-                        if( doreadsdram & |Dread ) { LATCH = &Dread ? 2 : 1; }                                                  //      IF READ, LATCH THE SDRAM READ RESULT
-                        UPDATE = 1; STATE = $STATE_CACHE_WAIT$; busy = 0;                                                       //      UPDATE CACHE AND TAGS
-                    }
+            }
+            case 2: {                                                                                                       // STATE_CACHE_EVICT2
+                if( sio.done ) {                                                                                            //  WAIT FOR SDDRAM OPERATION TO FINISH
+                    SDRAM_WRITE = 2;                                                                                        //      EVICT SECOND 16 BITS
+                    STATE = ( doreadsdram & |Dread ) ? $STATE_CACHE_READSDRAM$ : $STATE_CACHE_UPDATE_WAIT$;                 //      NEED TO READ SDRAM OR FINISHED?
                 }
             }
-        }
+            case 3: {                                                                                                       // STATE_CACHE_READSDRAM
+                if( sio.done | ~|Devict ) {                                                                                 //  WAIT FOR SDDRAM OPERATION TO FINISH
+                    SDRAM_READ = 1; STATE = &Dread ? $STATE_CACHE_READSDRAM2$ : $STATE_CACHE_UPDATE_WAIT$;                  //      READ FIRST ( only ) 16 BITS, MORE TO READ OR FINISHED?
+                }
+            }
+            case 4: {                                                                                                       // STATE_CACHE_READSDRAM2
+                if( sio.done ) { LATCH = 1; SDRAM_READ = 2; STATE = $STATE_CACHE_UPDATE_WAIT$; }                            //      LATCH LOWER 16 BITS, READ UPPER 16 BITS
+            }
+            case 5: {                                                                                                       // STATE_CACHE_UPDATE_WAIT
+                if( sio.done ) {                                                                                            //  WAIT FOR SDDRAM OPERATION TO FINISH
+                    if( doreadsdram & |Dread ) { LATCH = &Dread ? 2 : 1; }                                                  //      IF READ, LATCH THE SDRAM READ RESULT
+                    UPDATE = 1; STATE = $STATE_CACHE_WAIT$; busy = 0;                                                       //      UPDATE CACHE AND TAGS
+                }
+            }
+        } }
     }
 
     always_after {
-        if( |LATCH ) {                                                                                                          // LATCH THE SDRAM READ RESULT INTO LOWER/UPPER BITS
+        { if( |LATCH ) {                                                                                                          // LATCH THE SDRAM READ RESULT INTO LOWER/UPPER BITS
             onehot( LATCH ) {
                 case 0: { sdramreaddata = { {2{sio.data_out}} }; }
                 case 1: { sdramreaddata[16,16] = sio.data_out; }
             }
-        }
+        } }
 
-        if( |SDRAM_WRITE ) {                                                                                                    // WRITE TO SDRAM ( EVICT ONLY )
+        { if( |SDRAM_WRITE ) {                                                                                                    // WRITE TO SDRAM ( EVICT ONLY )
             onehot( SDRAM_WRITE ) {
                 case 0: {
                     ( sio.addr ) = sdram_map( Devict[0,1] ? DTAGS.cacheaddressL : DTAGS.cacheaddressH );                        //      EVICT FIRST ( possibly only ) 16 BITS
@@ -247,27 +257,28 @@ unit cachecontroller(
                     ( sio.addr ) = sdram_map( DTAGS.cacheaddressH ); sio.data_in = DCACHE.rdata[16,16];                         //      EVICT SECOND 16 BITS ( 32 BIT EVICT )
                 }
             }
-            sio.rw = 1; sio.in_valid = 1;                                                                                       //  START THE SDRAM WRITE
-        }
-        if( |SDRAM_READ ) {                                                                                                     // READ FROM SDRAM
+        } }
+        { if( |SDRAM_READ ) {                                                                                                     // READ FROM SDRAM
             onehot( SDRAM_READ ) {
                 case 0: { ( sio.addr ) = sdram_map( Dread[0,1] ? address : address2 ); }                                        //      READ FIRST ( possibly only ) 16 BITS
                 case 1: { ( sio.addr ) = sdram_map( address2 ); }                                                               //      READ UPPER 16 BITS ( £" BIT READ )")
             }
-            sio.rw = 0; sio.in_valid = 1;                                                                                       //  START THE SDRAM READ
-        }
-        if( UPDATE ) {                                                                                                          // UPDATE CACHE AND TAGS
+        } }
+
+        { sio.rw = |SDRAM_WRITE; } { sio.in_valid = |SDRAM_WRITE | |SDRAM_READ; }
+
+        { if( UPDATE ) {                                                                                                          // UPDATE CACHE AND TAGS
             DCACHEW.update = Dmatch ? accessmask : doreadsdram ? Dread : accessmask;
             DTAGSW.update = Dmatch ? accessmask : doreadsdram ? Dread : accessmask;
-        }
+        } }
 
-        readdata = { DTAGS.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16],                                          // GENERATE THE 32 BIT READ RESULT
-                     DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] };
+        { readdata = { DTAGS.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16],                                          // GENERATE THE 32 BIT READ RESULT
+                     DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] }; }
 
-        DCACHEW.writedata = dowrite ? |accesssize ? writedata :                                                                 // GENERATE THE CACHE DATA
+        { DCACHEW.writedata = dowrite ? |accesssize ? writedata :                                                                 // GENERATE THE CACHE DATA
                                      address[0,1] ? { writedata[0,8], DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,8] : sdramreaddata[0,8] } :
                                                     { DTAGS.tagmatch[0,1] ? DCACHE.rdata[8,8] : sdramreaddata[8,8], writedata[0,8] } :
-                            { DTAGS.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16], DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] };
+                            { DTAGS.tagmatch[1,1] ? DCACHE.rdata[16,16] : sdramreaddata[16,16], DTAGS.tagmatch[0,1] ? DCACHE.rdata[0,16] : sdramreaddata[0,16] }; }
     }
 }
 
@@ -283,8 +294,11 @@ unit cache_read(
     input   uint$sdram_addr_width$  address0,
     output! uint32  rdata,
 ) <reginputs> {
-    cache0.addr0 := address0[2,$L1cacheaddrwidth$]; cache1.addr0 := address[2,$L1cacheaddrwidth$];
-    rdata := address[1,1] ? { cache0.rdata0, cache1.rdata0 } : { cache1.rdata0, cache0.rdata0 };
+    always_after {
+        { cache0.addr0 = address0[2,$L1cacheaddrwidth$]; }
+        { cache1.addr0 = address[2,$L1cacheaddrwidth$]; }
+        { rdata = address[1,1] ? { cache0.rdata0, cache1.rdata0 } : { cache1.rdata0, cache0.rdata0 }; }
+    }
 }
 
 unit tags_read(
@@ -297,19 +311,23 @@ unit tags_read(
     output! uint2   tagmatch,
     output! uint2   needswrite
 ) <reginputs> {
-    uint$sdram_addr_width$ cacheaddress_address0 <:: { L1cachetag(tags0.rdata0).partaddress, address0[2,$L1cacheaddrwidth$], 2b00 };
-    uint$sdram_addr_width$ cacheaddress_address1 <:: { L1cachetag(tags1.rdata0).partaddress, address[2,$L1cacheaddrwidth$], 2b10 };
+    always_after {
+        { tags0.addr0 = address0[2,$L1cacheaddrwidth$]; }
+        { tags1.addr0 = address[2,$L1cacheaddrwidth$]; }
 
-    uint1   cache_match0 <:: { L1cachetag(tags0.rdata0).valid, L1cachetag(tags0.rdata0).partaddress } == { 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
-    uint1   cache_match1 <:: { L1cachetag(tags1.rdata0).valid, L1cachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
+        { tagmatch = address[1,1] ? { { L1cachetag(tags0.rdata0).valid, L1cachetag(tags0.rdata0).partaddress } == { 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] },
+                                    { L1cachetag(tags1.rdata0).valid, L1cachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] } } :
+                                  { { L1cachetag(tags1.rdata0).valid, L1cachetag(tags1.rdata0).partaddress } == { 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] },
+                                    { L1cachetag(tags0.rdata0).valid, L1cachetag(tags0.rdata0).partaddress } == { 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] } }; }
 
-    tags0.addr0 := address0[2,$L1cacheaddrwidth$]; tags1.addr0 := address[2,$L1cacheaddrwidth$];
+        { needswrite = address[1,1] ? { L1cachetag(tags0.rdata0).needswrite, L1cachetag(tags1.rdata0).needswrite } :
+                                    { L1cachetag(tags1.rdata0).needswrite, L1cachetag(tags0.rdata0).needswrite }; }
 
-    tagmatch := address[1,1] ? { cache_match0, cache_match1 } : { cache_match1, cache_match0 };
-    needswrite := address[1,1] ? { L1cachetag(tags0.rdata0).needswrite, L1cachetag(tags1.rdata0).needswrite } : { L1cachetag(tags1.rdata0).needswrite, L1cachetag(tags0.rdata0).needswrite };
-
-    cacheaddressL := address[1,1] ? cacheaddress_address1 : cacheaddress_address0;
-    cacheaddressH := address[1,1] ? cacheaddress_address0 : cacheaddress_address1;
+        { cacheaddressL = address[1,1] ? { L1cachetag(tags1.rdata0).partaddress, address[2,$L1cacheaddrwidth$], 2b10 } :
+                                       { L1cachetag(tags0.rdata0).partaddress, address0[2,$L1cacheaddrwidth$], 2b00 }; }
+        { cacheaddressH = address[1,1] ? { L1cachetag(tags0.rdata0).partaddress, address0[2,$L1cacheaddrwidth$], 2b00 } :
+                                       { L1cachetag(tags1.rdata0).partaddress, address[2,$L1cacheaddrwidth$], 2b10 }; }
+    }
 }
 
 unit cache_write(
@@ -320,8 +338,15 @@ unit cache_write(
     input   uint32  writedata,
     input   uint2   update
 ) <reginputs> {
-    cache0.addr1 := address0[2,$L1cacheaddrwidth$]; cache0.wdata1 := address[1,1] ? writedata[16,16] : writedata[0,16]; cache0.wenable1 := address[1,1] ? update[1,1] : update[0,1];
-    cache1.addr1 := address[2,$L1cacheaddrwidth$]; cache1.wdata1 := address[1,1] ? writedata[0,16] : writedata[16,16]; cache1.wenable1 := address[1,1] ? update[0,1] : update[1,1];
+    always_after {
+        { cache0.addr1 = address0[2,$L1cacheaddrwidth$]; }
+        { cache0.wdata1 = address[1,1] ? writedata[16,16] : writedata[0,16]; }
+        { cache0.wenable1 = address[1,1] ? update[1,1] : update[0,1]; }
+
+        { cache1.addr1 = address[2,$L1cacheaddrwidth$]; }
+        { cache1.wdata1 = address[1,1] ? writedata[0,16] : writedata[16,16]; }
+        { cache1.wenable1 = address[1,1] ? update[0,1] : update[1,1]; }
+    }
 }
 
 unit tags_write(
@@ -332,9 +357,13 @@ unit tags_write(
     input   uint1   needwritetosdram,
     input   uint2   update
 ) <reginputs> {
-    tags0.addr1 := address0[2,$L1cacheaddrwidth$]; tags0.wenable1 := address[1,1] ? update[1,1] : update[0,1];
-    tags0.wdata1 := { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] };
+    always_after {
+        { tags0.addr1 = address0[2,$L1cacheaddrwidth$]; }
+        { tags0.wenable1 = address[1,1] ? update[1,1] : update[0,1]; }
+        { tags0.wdata1 = { needwritetosdram, 1b1, address0[$L1partaddressstart$,$L1partaddresswidth$] }; }
 
-    tags1.addr1 := address[2,$L1cacheaddrwidth$]; tags1.wenable1 := address[1,1] ? update[0,1] : update[1,1];
-    tags1.wdata1 := { needwritetosdram, 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] };
+        { tags1.addr1 = address[2,$L1cacheaddrwidth$]; }
+        { tags1.wenable1 = address[1,1] ? update[0,1] : update[1,1]; }
+        { tags1.wdata1 = { needwritetosdram, 1b1, address[$L1partaddressstart$,$L1partaddresswidth$] }; }
+    }
 }

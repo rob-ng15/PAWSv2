@@ -33,8 +33,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 qboolean isDedicated;
 
 unsigned char PAWSKEYlookup[] = {
-    0x00, K_F9, 0x00, K_F5, K_F3, K_F1, K_F2, K_F12, 0x00, K_F10, K_F8, K_F6, K_F4, K_TAB, 0x00, 0x00,     						// 0x00 - 0x0f
-    0x00, K_ALT, 0x00, 0x00, 'q', 0x00, '1', 0x00, 0x00, 0x00, 'z', 's', 'a', 'w', '2', 0x00,                                	// 0x10 - 0x1f
+    0x00, K_F9, 0x00, K_F5, K_F3, K_F1, K_F2, K_F12, 0x00, K_F10, K_F8, K_F6, K_F4, K_TAB, 0x60, 0x00,     						// 0x00 - 0x0f
+    0x00, K_ALT, 0x00, 0x00, 0x00, 'q', '1', 0x00, 0x00, 0x00, 'z', 's', 'a', 'w', '2', 0x00,                                	// 0x10 - 0x1f
     0x00, 'c', 'x', 'd', 'e', '4', '3', 0x00, 0x00, ' ', 'v', 'f', 't', 'r', '5', 0x00,                                         // 0x20 - 0x2f
     0x00, 'n', 'b', 'h', 'g', 'y', '6', 0x00, 0x00, 0x00, 'm', 'j', 'u', '7', '8', 0x00,                                        // 0x30 - 0x3f
     0x00, ',', 'k', 'i', 'o', '0', '9', 0x00, 0x00, '.', '/', 'l', ';', 'p', '-', 0x00,                              		// 0x40 - 0x4f
