@@ -10,10 +10,10 @@ unit aluaddsub(
     input   int64   operand2,                                                                                                   // SECOND REGISTER / IMMEDIATE
     output  int64   addsub                                                                                                      // RESULT
 ) <reginputs> {
-    uint64  op1 <:: ( size32 ? sourceReg1[0,32] : sourceReg1 ) << function3;                                                    // FIRST OPERAND, SHIFTED FOR SHxADD
-    uint64  op2 <:: ( size32 & ~doadduw ? operand2[0,32] : operand2 );                                                          // SECOND OPERAND, 64 BIT FOR ADD.UW
-
-    always_after { addsub = dosub ? ( op1 - op2 ) : ( op1 + op2 ); }                                                            // PERFORM ADD/SUB
+    always_after {
+        addsub = dosub ? ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) -  ( size32 & ~doadduw ? operand2[0,32] : operand2 ) ) :
+                         ( ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) << function3 ) +  ( size32 & ~doadduw ? operand2[0,32] : operand2 ) );
+    }                                                            // PERFORM ADD/SUB
 }
 // CALCULATES BCLR BCLRI BEXT BEXTI BIN BINI BSET BSETI ( SINGLE BIT OPERATIONS )
 unit alubits(
@@ -27,9 +27,9 @@ unit alubits(
     uint64  bit <:: ( 1 << shiftcount );                                                                                        // BIT MASK
 
     always_after {
-        { CLR = sourceReg1 & ~bit; }                                                                                            // CLEAR BIT
-        { INV = sourceReg1 ^ bit; }                                                                                             // INVERT BIT
-        { SET = sourceReg1 | bit; }                                                                                             // SET BIT
+        { CLR = sourceReg1 & ~( 1 << shiftcount ); }                                                                                            // CLEAR BIT
+        { INV = sourceReg1 ^ ( 1 << shiftcount ); }                                                                                             // INVERT BIT
+        { SET = sourceReg1 | ( 1 << shiftcount ); }                                                                                             // SET BIT
         { EXT = sourceReg1[ shiftcount, 1 ]; }                                                                                  // EXTRACT BIT
     }
 }
@@ -43,8 +43,8 @@ unit alucount(
     always_after {
         if( ( ~size32 & |sourceReg1 ) | ( size32 & |sourceReg1[0,32] ) ) {                                                      // CHECK FOR 1's IN 64 OR 32 BITS
             switch( counttype ) {
-                case 2b00: { if( size32 ) { ( result ) = clz_silice_32( sourceReg1[0,32] ); } else { ( result ) = clz_silice_64( sourceReg1 ); } }
-                case 2b01: { if( size32 ) { ( result ) = ctz_silice_32( sourceReg1[0,32] ); } else { ( result ) = ctz_silice_64( sourceReg1 ); } }
+                case 2b00: { ( result ) = clz_silice_64( size32 ? { sourceReg1[0,32], 32hffffffff } : sourceReg1 ); }
+                case 2b01: { ( result ) = ctz_silice_64( size32 ? { 32hffffffff, sourceReg1[0,32] } : sourceReg1 ); }
                 default: { ( result ) = cpop_silice_64( size32 ? sourceReg1[0,32] : sourceReg1 ); }
             }
         } else {
@@ -69,9 +69,11 @@ unit alulogic(
     output  uint64  OR,
     output  uint64  XOR
 ) <reginputs> {
-    uint64  op2 <:: ( doinv ? ~operand2 : operand2 );                                                                           // INVERT SECOND OPERATION IF REQUIRED
-
-    always_after { { AND = sourceReg1 & op2; } { OR = sourceReg1 | op2; } { XOR = sourceReg1 ^ op2; } }
+    always_after {
+        { AND = sourceReg1 & ( doinv ? ~operand2 : operand2 ); }
+        { OR = sourceReg1 | ( doinv ? ~operand2 : operand2 ); }
+        { XOR = sourceReg1 ^ ( doinv ? ~operand2 : operand2 ); }
+    }
 }
 // UNSIGNED / SIGNED 65 by 65 bit multiplication giving 130 bit product using DSP blocks
 unit alumultiply(
@@ -88,21 +90,18 @@ unit alumultiply(
     always_after { mult = size32 ? product[ 0, 32 ] : product[ { |function3, 6b0 }, 64 ]; }
 }
 // CALCULATES ORC.B
-unit orc8(
-    input   uint8   bits,
-    output  uint8   orc
-) <reginputs> {
-    always_after { orc = { {8{|bits}} }; }
-}
 unit aluorc(
     input   uint64  sourceReg1,
     output  uint64  ORC
 ) <reginputs> {
-    $$for i=0,7 do
-        orc8 ORC8_$i$( bits <: sourceReg1[$i*8$,8] );
-    $$end
-
-    always_after { ORC = { ORC8_7.orc, ORC8_6.orc, ORC8_5.orc, ORC8_4.orc, ORC8_3.orc, ORC8_2.orc, ORC8_1.orc, ORC8_0.orc }; }
+    always_after {
+        ORC = {
+            $$for i=0,6 do
+            {8{|sourceReg1[$(7-i)*8$,8]}},
+            $$end
+            {8{|sourceReg1[0,8]}}
+        };
+    }
 }
 // CALCULATES PACK PACKH PACKW ( ZEXT.H when rs2 == 0 )
 unit alupack(
@@ -119,28 +118,23 @@ unit alupack(
 }
 
 // CALCULATES REV.B ( reverse the bits in each byte ) REV8 ( reverse the bytes )
-unit revb(
-    input   uint8   bits,
-    output  uint8   brev
-) <reginputs> {
-    always_after { brev = {
-                        $$for i=0,6 do
-                            bits[$i$,1],
-                        $$end
-                        bits[7,1]
-    }; }
-}
 unit alurev(
     input   uint64  sourceReg1,
     output  uint64  REV8,
     output  uint64  REVB
 ) <reginputs> {
-    $$for i=0,7 do
-        revb REVB_$i$( bits <: sourceReg1[$i*8$,8] );
-    $$end
-
     always_after {
-        { REVB = { REVB_7.brev, REVB_6.brev, REVB_5.brev, REVB_4.brev, REVB_3.brev, REVB_2.brev, REVB_1.brev, REVB_0.brev }; }
+        { REVB = {
+            $$for i=0,6 do
+                $$for j=0,7 do
+                    sourceReg1[$(7-i)*8+j$,1],
+                $$end
+            $$end
+                $$for j=0,6 do
+                    sourceReg1[$j$,1],
+                $$end
+                sourceReg1[7,1]
+        }; }
         { REV8 = { sourceReg1[0,8], sourceReg1[8,8], sourceReg1[16,8], sourceReg1[24,8], sourceReg1[32,8], sourceReg1[40,8], sourceReg1[48,8], sourceReg1[56,8] }; }
     }
 }
@@ -156,15 +150,13 @@ unit alushift(
     output  uint64  SRA,
     output  uint64  ROTATE
 ) <reginputs> {
-    uint7   revshiftcount <:: ( { ~size32, size32, 5b00000 } - shiftcount );                                                    // REVERSED SHIFTCOUNT FOR ROTATION OPERATIONS
-
     always_after {
         { SLL = ( size32 ? sourceReg1[0,32] : sourceReg1 ) << shiftcount; }
         { SRL = ( size32 ? sourceReg1[0,32] : sourceReg1 ) >> shiftcount; }
         { SRA = __signed( { size32 ? {32{sourceReg1[31,1]}} : sourceReg1[32,32], sourceReg1[0,32] } ) >>> shiftcount; }
 
-        { ROTATE = ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) << ( reverse ? revshiftcount : shiftcount ) ) |
-                   ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) >> ( reverse ? shiftcount : revshiftcount ) ); }
+        { ROTATE = ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) << ( reverse ? ( { ~size32, size32, 5b00000 } - shiftcount ) : shiftcount ) ) |
+                   ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) >> ( reverse ? shiftcount : ( { ~size32, size32, 5b00000 } - shiftcount ) ) ); }
     }
 }
 
