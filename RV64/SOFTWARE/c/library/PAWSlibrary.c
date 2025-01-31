@@ -168,33 +168,37 @@ unsigned short rng( unsigned short range ) {
 }
 
 // SLEEP FOR counter milliseconds
-void sleep1khz( unsigned short counter, unsigned char timer ) {
-    TIMER_REGS[ 0x0c + timer ] = counter; while( TIMER_REGS[ 0x0c + timer ] );
+void sleep1khz( unsigned short counter ) {
+    unsigned long target = CSRtime() + ( counter * 50000 );
+    while( CSRtime() < target );
 }
 
 // SET THE 1khz COUNTDOWN TIMER
+unsigned long __timer_targets_1khz[8];
 void set_timer1khz( unsigned short counter, unsigned char timer ) {
-    TIMER_REGS[ 0x0a + timer ] = counter;
+    __timer_targets_1khz[ timer & 7 ] = CSRtime() + ( counter * 50000 );
 }
 
 // READ THE 1khz COUNTDOWN TIMER
 unsigned short get_timer1khz( unsigned char timer  ) {
-    return( TIMER_REGS[ 0x0a + timer ] );
+    unsigned long cpu_time = CSRtime();
+    return ( cpu_time > __timer_targets_1khz[ timer & 7 ] ) ? 0 : ( ( __timer_targets_1khz[ timer & 7 ] - cpu_time ) / 50000 );
 }
 
 // WAIT FOR THE 1khz COUNTDOWN TIMER
 void wait_timer1khz( unsigned char timer  ) {
-    while( TIMER_REGS[ 0x0a + timer ] );
+    if( __timer_targets_1khz[ timer & 7] ) while( ( CSRtime() < __timer_targets_1khz[ timer & 7] ) );
 }
 
 // READ THE 1hz TIMER
+unsigned long __timer_base_1hz[8];
 unsigned short get_timer1hz( unsigned char timer  ) {
-    return( TIMER_REGS[ 0x08 + timer ] );
+    return ( __timer_base_1hz[ timer & 7 ] - CSRtime() ) / 5000000;
 }
 
 // RESET THE 1hz TIMER
-void reset_timer1hz( unsigned char timer  ) {
-    TIMER_REGS[ 0x08 + timer ] = 0;
+void reset_timer1hz( unsigned char timer ) {
+    __timer_base_1hz[ timer & 7 ] = CSRtime();
 }
 
 // SYSTEM CLOCK, SECONDS SINCE RESET
@@ -285,7 +289,7 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
-    DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, DMA_FROM_IO );
+    DMASTART( (const void *restrict)SDCARD_IN_DATA, copyAddress, 512, DMA_FROM_IO );
 }
 // WRITE A SECTOR TO THE SDCARD COPIED FROM MEMORY
 void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress ) {
@@ -294,7 +298,7 @@ void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 1 COPIES FROM MULTIPLE-ADDRESSES TO SINGLE ADDRESS
     // EACH WRITE OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
     *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
-    DMASTART( copyAddress, (void *restrict)SDCARD_DATA, 512, DMA_TO_IO );
+    DMASTART( copyAddress, (void *restrict)SDCARD_OUT_DATA, 512, DMA_TO_IO );
 
     *SDCARD_SECTOR = sectorAddress;
     *SDCARD_WRITESTART = 1;
@@ -1374,7 +1378,7 @@ void update_sprite_compat( unsigned char sprite_layer, unsigned char sprite_numb
 }
 
 // CHARACTER MAP FUNCTIONS
-// The character map is an 80 x 30 character window with a 512 character 8 x 8 pixel character generator ROM ) normal/bold/underline/flash/2x/2y
+// The character map is an 80 x 60 character window with a 512 character 8 x 8 pixel character generator ROM ) normal/bold/underline/flash/2x/2y
 // NO SCROLLING, CURSOR WRAPS TO THE TOP OF THE SCREEN
 // CURSES LIBRARY PROVIDES MORE CAPABILITIES, SEE BELOW
 unsigned char __tpu_x = 0, __tpu_y = 0, __tpu_background = TRANSPARENT, __tpu_foreground = WHITE, __tpu_attributes = TPU_NORMAL;
@@ -1616,6 +1620,7 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
         // MOVE TO NEXT SECTOR
         sector++; buffer += FAT_SECTOR_SIZE;
     }
+
     return(1);
 }
 
@@ -2053,9 +2058,8 @@ int paws_rmdir (const char *__path) {
 
 // PAWS SLEEP FOR sys/unistd.h
 unsigned int paws_sleep( unsigned int seconds ) {
-    // WAIT FOR A FREE TIMER
-    while( *SLEEPTIMER0 && *SLEEPTIMER1 );
-    sleep1khz( 1000 * seconds, ( !*SLEEPTIMER0 ) ? 0 : 1 );
+    unsigned long target = CSRtime() + seconds * 50000000;
+    while( CSRtime() < target );
     return(0);
 }
 
@@ -2304,7 +2308,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
             gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
             gpu_outputstringcentre( RED, 192, 1, "IN THIS DIRECTORY", 1 );
             beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
-            sleep1khz( 1000, 0 );
+            sleep1khz( 1000 );
             return(0);
         } else {
             sortdirectoryentries( entries );
@@ -2319,7 +2323,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
 
             unsigned short buttons = get_buttons();
             while( buttons == 1 ) { buttons = get_buttons(); }
-            while( get_buttons() != 1 ) {} sleep1khz( 100, 0 );
+            while( get_buttons() != 1 ) {} sleep1khz( 100 );
             if( buttons & 64 ) {
                 // MOVE RIGHT
                 if( present_entry == entries ) { present_entry = 0; } else { present_entry++; }

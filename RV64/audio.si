@@ -110,16 +110,16 @@ unit audio_memmap(
     always_after {
         if( memoryWrite ) {
             switch( memoryAddress ) {
-                case 5h0: { { apu_processor_L.waveform = writeData; } { apu_processor_R.waveform = writeData; } }               // SET APU FROM CPU
-                case 5h1: { { apu_processor_L.frequency = writeData; } { apu_processor_R.frequency = writeData; } }
-                case 5h2: { { apu_processor_L.duration = writeData; } { apu_processor_R.duration = writeData; } }
-                case 5h3: { { apu_processor_L.apu_write = writeData[0,1]; } { apu_processor_R.apu_write = writeData[1,1]; } }
-                case 5h4: { { DSL.newsample = writeData[0,1]; } { DSR.newsample = writeData[1,1]; } }                           // RESET SAMPLES
+                case 5h0: { apu_processor_L.waveform = writeData; apu_processor_R.waveform = writeData; }                       // SET APU FROM CPU
+                case 5h1: { apu_processor_L.frequency = writeData; apu_processor_R.frequency = writeData; }
+                case 5h2: { apu_processor_L.duration = writeData;  apu_processor_R.duration = writeData; }
+                case 5h3: { apu_processor_L.apu_write = writeData[0,1]; apu_processor_R.apu_write = writeData[1,1]; }
+                case 5h4: { DSL.newsample = writeData[0,1]; DSR.newsample = writeData[1,1]; }                                   // RESET SAMPLES
                 case 5h5: { DSL.load = 1; }                                                                                     // WRITE TO LEFT DOOM SAMPLE MEMORY
                 case 5h6: { DSR.load = 1; }                                                                                     // WRITE TO RIGHT DOOM SAMPLE MEMORY
                 case 5h8: { apu_processor_L.volume = writeData; }                                                               // SET VOLUME LEFT
                 case 5h9: { apu_processor_R.volume = writeData; }                                                               // SET VOLUME RIGHT
-                case 5ha: { { BSL.newsample = writeData[0,1]; } { BSR.newsample = writeData[1,1]; } }                           // RESET BIT SAMPLES
+                case 5ha: { BSL.newsample = writeData[0,1]; BSR.newsample = writeData[1,1]; }                                   // RESET BIT SAMPLES
                 case 5hb: { BSL.load = 1; }                                                                                     // WRITE TO LEFT BIT SAMPLE MEMORY
                 case 5hc: { BSR.load = 1;  }                                                                                    // WRITE TO RIGHT BIT SAMPLE MEMORY
                 case 5h10: { L_AUDIO_DMA_BASE = writeData; }                                                                    // LEFT DMA AUDIO BASE ADDRESS
@@ -166,10 +166,9 @@ unit audio_$i$(
     uint13  CPUfrequency <:: frequency_table[ CPUINPUT.basefrequency ] >> CPUINPUT.shift;                                       // COUNTER FOR CPU INPUT
     uint13  Sfrequency <:: frequency_table[ SINPUT.basefrequency ] >> SINPUT.shift;                                             // COUNTER FOR SAMPLE INPUT
     uint7   SAMP0P1 <:: samples.addr0 + 1;                                                                                      // NEXT ADDRESS IN DOOM PC SPEAKER MODE
-    uint1   SAMPLEMODE = uninitialised;                                                                                     // IS CHANNEL IN DOOM PC SPEAKER SAMPLE MODE?
-    uint1   REPEAT = uninitialised;                                                                                         // IS REPEAT FOR DOOM PC SPEAKER MODE RQQUIRED?
-    uint1   newS = uninitialised;                                                                                           // IS A NEW NOTE REQUIRED WHEN AUDIO STOPS?
-
+    uint1   SAMPLEMODE = uninitialised;                                                                                         // IS CHANNEL IN DOOM PC SPEAKER SAMPLE MODE?
+    uint1   REPEAT = uninitialised;                                                                                             // IS REPEAT FOR DOOM PC SPEAKER MODE RQQUIRED?
+    uint1   newS = uninitialised;                                                                                               // IS A NEW NOTE REQUIRED WHEN AUDIO STOPS?
 
     apu_$i$ apu_processor(                                                                                                      // AUDIO CHANNEL
         bit_samples <:> bit_samples, sine <:> sine, harmonic <:> harmonic,                                                      // 8 bit output from audio channel goes through PWM modulator
@@ -182,35 +181,32 @@ unit audio_$i$(
 
     apu_processor.apu_write := 0;
 
-    algorithm <autorun> { while(1) {
-        if( SAMPLEMODE ) {                                                                                                    // DOOM PC SPEAKER MODE?
+    always_after {
+        if( SAMPLEMODE ) {                                                                                                      // DOOM PC SPEAKER MODE?
             if( ~apu_processor.audio_active ) {                                                                                 //  PREVIOUS SAMPLE FINISHED?
                 if( newS ) {                                                                                                    //  NEW SAMPLE NEEDED?
-                    { apu_processor.frequency = Sfrequency; } { apu_processor.apu_write = 1; } { newS = 0; }                    //  SEND NEW NOTE
-                    { if( SAMP0P1 == samples_MAX ) {                                                                            // AT END OF NOTES?
-                        { samples.addr0 = 0; } { SAMPLEMODE = REPEAT; }                                                         //  RESTART IF REPEAT
+                    apu_processor.frequency = Sfrequency; apu_processor.apu_write = 1; newS = 0;                                //  SEND NEW NOTE
+                    if( SAMP0P1 == samples_MAX ) {                                                                              // AT END OF NOTES?
+                        samples.addr0 = 0; SAMPLEMODE = REPEAT;                                                                 //  RESTART IF REPEAT
                     } else {
                         samples.addr0 = SAMP0P1;                                                                                // MOVE TO NEXT NOTE
-                    } }
+                    }
                 }
             } else {
                 newS = 1;                                                                                                       // DEFAULT TO NEW NOTE REQUIRED
             }
         } else {
-            { samples.addr0 = 0; } { newS = 1; }                                                                                // DEFAULT TO START AND NEW NOTE REQUIRED
+            samples.addr0 = 0; newS = 1;                                                                                        // DEFAULT TO START AND NEW NOTE REQUIRED
         }
-    } }
 
-    always_after {
-        if( apu_write ) {                                                                                                     // CPU AUDIO REQUEST
-            { apu_processor.duration = duration; } { apu_processor.waveform = waveform[0,3]; }                                  // SET BASE DURATION AND WAVEFORM
-            { SAMPLEMODE = waveform[3,1]; } { REPEAT = waveform[4,1]; }                                                         // SET DOOM PC SPEAKER SAMPLE MODE AND REPEAT FLAGS
-            { if( waveform[3,1] ) {
-                { samples.addr0 = 0; } { newS = 1; }                                                                            // IF DOOM PC SPEAKER SAMPLE MODE, MOVE TO START
+        if( apu_write ) {                                                                                                       // CPU AUDIO REQUEST
+            apu_processor.duration = duration; apu_processor.waveform = waveform[0,3];                                          // SET BASE DURATION AND WAVEFORM
+            SAMPLEMODE = waveform[3,1]; REPEAT = waveform[4,1];                                                                 // SET DOOM PC SPEAKER SAMPLE MODE AND REPEAT FLAGS
+            if( waveform[3,1] ) {
+                samples.addr0 = 0; newS = 1;                                                                                    // IF DOOM PC SPEAKER SAMPLE MODE, MOVE TO START
             } else {
-                { apu_processor.frequency = CPUfrequency; } { apu_processor.apu_write = 1; }                                    // NORMAL WAVEFORM MODE, SET FREQUENCY
-
-            } }
+                apu_processor.frequency = CPUfrequency; apu_processor.apu_write = 1;                                            // NORMAL WAVEFORM MODE, SET FREQUENCY
+            }
         }
     }
 }
@@ -257,12 +253,13 @@ unit waveform_$i$(
     input   uint8   pcm_sample
 ) <reginputs> {
     uint8   point = uninitialised;
+    uint8   point_NEXT <:: point + update;
 
     sine.addr$i$ := point[0,8]; harmonic.addr$i$ := point[0,8];                                                                 // POINTER INTO HARMONIC AND SINE TABLES
     bit_samples.addr0 := point[3,4];                                                                                            // POINTERS INTO BITSAMPLES
 
                                                                                                                                 // ALLOWS BIT SAMPLES TO REPEAT
-    algorithm <autorun> { while(1) {
+    always_after {
         switch( selected_waveform ) {
             case 0: { audio_output = { point[7,1], 7b1111111 }; }                                                               // SQUARE
             case 1: { audio_output = point[0,8]; }                                                                              // SAWTOOTH
@@ -273,9 +270,9 @@ unit waveform_$i$(
             case 6: { audio_output = ( sine.rdata$i$ + ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } ) ) >> 1; }    // HARMONIC TRIANGLE + SINE ( replaces old sample waveform )
             case 7: { audio_output = {8{bit_samples.rdata0[ point[0,3], 1]}}; }                                                 // 1 BIT SAMPLES, TRANSLATE TO SQUARE WAVE
         }
-    } }
 
-    always_after { point = ~active ? 0 : point + update; }                                                                             // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE
+        point = ~active ? 0 : point_NEXT;                                                                              // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE
+    }
 }
 $$ end
 
@@ -286,20 +283,23 @@ unit audiocounter(
     output  uint1   updatepoint,
     output  uint1   active(0)
 ) <reginputs> {
+    uint13  counter50mhz = uninitialised;
+    uint13  counter50mhz_NEXT <:: counter50mhz - 1;
+    uint16  duration = uninitialised;
+    uint16  duration_NEXT <:: duration - 1;
+    uint16  counter1khz = uninitialised;
+    uint16  counter1khz_NEXT <:: counter1khz - 1;
+
     always_after {
-        uint13  counter50mhz = uninitialised;
-        uint16  duration = uninitialised;
-        uint16  counter1khz = uninitialised;
+        active = ( |duration );
+        updatepoint = |duration & ( ~|counter50mhz );
 
-        { active = ( |duration ); }
-        { updatepoint = |duration & ( ~|counter50mhz ); }
-
-        { if( start ) {
-            { counter50mhz = 0; } { counter1khz = 50000; } { duration = selected_duration; }
+        if( start ) {
+            counter50mhz = 0; counter1khz = 50000; duration = selected_duration;
         } else {
-            { if( updatepoint ) { counter50mhz = selected_frequency; } else { counter50mhz = counter50mhz - 1; } }
-            { if( |duration & ( ~|counter1khz ) ) { { counter1khz = 50000; } { duration = duration - 1; } } else { counter1khz = counter1khz - 1; } }
-        } }
+            if( updatepoint ) { counter50mhz = selected_frequency; } else { counter50mhz = counter50mhz_NEXT; }
+            if( |duration & ( ~|counter1khz ) ) { counter1khz = 50000; duration = duration_NEXT; } else { counter1khz = counter1khz_NEXT; }
+        }
     }
 }
 
@@ -311,8 +311,8 @@ unit octave(
     output  uint3   shift
 ) <reginputs> {
     always_after {
-        { shift = ( frequency > 120 ) ? 5 : ( frequency > 96 ) ? 4 : ( frequency > 72 ) ? 3 : ( frequency > 48 ) ? 2 : ( frequency > 24 ) ? 1 : 0; }
-        { basefrequency = frequency - ( ( ( frequency > 120 ) ? 5 : ( frequency > 96 ) ? 4 : ( frequency > 72 ) ? 3 : ( frequency > 48 ) ? 2 : ( frequency > 24 ) ? 1 : 0 ) * 24 ); }
+        shift = ( frequency > 120 ) ? 5 : ( frequency > 96 ) ? 4 : ( frequency > 72 ) ? 3 : ( frequency > 48 ) ? 2 : ( frequency > 24 ) ? 1 : 0;
+        basefrequency = frequency - ( shift * 24 );
     }
 }
 
@@ -325,15 +325,7 @@ unit doom_samples_writer(
     output  uint8   max
 ) <reginputs> {
     uint8   NEXT <:: doom_samples.addr1 + 1;
-    doom_samples.wenable1 := load; doom_samples.wdata1 := samples; max := NEXT;
-
-    always_after {
-        if( newsample ) {
-            doom_samples.addr1 = -1;
-        } else {
-            if( load ) { { doom_samples.addr1 = NEXT; } }
-        }
-    }
+    doom_samples.wenable1 := load; doom_samples.wdata1 := samples; max := NEXT; doom_samples.addr1 := newsample ? (-1) : load ? NEXT : doom_samples.addr1;
 }
 
 // HANDLE WRITING TO THE CHIP8 1 BIT SAMPLES MEMORY
@@ -343,15 +335,8 @@ unit bitsample_writer(
     input   uint1   load,
     input   uint1   newsample
 ) <reginputs> {
-    bit_samples.wenable1 := load; bit_samples.wdata1 := samples;
-
-    always_after {
-        if( newsample ) {
-            bit_samples.addr1 = -1;
-        } else {
-            if( load ) { bit_samples.addr1 = bit_samples.addr1 + 1; }
-        }
-    }
+    uint7   NEXT <:: bit_samples.addr1 + load;
+    bit_samples.wenable1 := load; bit_samples.wdata1 := samples; bit_samples.addr1 := newsample ? (-1) : NEXT;
 }
 
 // SL 12-2020
@@ -371,10 +356,11 @@ unit audio_pwm(
     input   uint8   pcm_sample,
     output  uint4   audio,
 ) <reginputs> {
-    uint9   combined <:: ( ( active ? wave : 0 ) + ( pcm_active ? pcm_sample : 0 ) ); // >> ( active & pcm_active );
+    uint9   combined <:: ( ( active ? wave : 0 ) + ( pcm_active ? pcm_sample : 0 ) );
     uint4   counter = 0;
+    uint4   counter_NEXT <:: counter + 1;
 
     always_after {
-        if( active | pcm_active ) { { audio = combined[{2b10,combined[8,1]},4] + ( counter < combined[combined[8,1],4] ); } { counter = counter + 1; } } else { counter = 0; }
+        if( active | pcm_active ) { audio = combined[ {2b10,combined[8,1]} , 4 ] + ( counter < combined[ combined[8,1], 4 ] ); counter = counter_NEXT; } else { counter = 0; }
     }
 }

@@ -323,7 +323,7 @@ int main ()
     printf ("\n");
   }
 #endif
-    sleep1khz( 4000, 0 );
+    sleep1khz( 4000 );
   return 0;
 }
 

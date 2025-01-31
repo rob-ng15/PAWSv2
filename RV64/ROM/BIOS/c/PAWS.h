@@ -24,7 +24,8 @@ unsigned char volatile *SDCARD_READSTART = (unsigned char volatile *) 0xf400;
 unsigned char volatile *SDCARD_WRITESTART = (unsigned char volatile *) 0xf402;
 unsigned int volatile *SDCARD_SECTOR = (unsigned int *) 0xf404;
 unsigned char volatile *SDCARD_RESET_BUFFERADDRESS = (unsigned char volatile *) 0xf500;
-unsigned char volatile *SDCARD_DATA = (unsigned char volatile *) 0xf502;
+unsigned int volatile *SDCARD_IN_DATA = (unsigned int volatile *) 0xf504;
+unsigned int volatile *SDCARD_OUT_DATA = (unsigned int volatile *) 0xf504;
 
 // DISPLAY UNITS
 unsigned char volatile *VBLANK = (unsigned char volatile *) 0xdf00;
@@ -176,13 +177,6 @@ unsigned char volatile *AUDIO_ACTIVE = (unsigned char volatile *) 0xe000;
 unsigned short volatile *RNG = (unsigned short volatile *) 0xc000;
 unsigned short volatile *ALT_RNG = (unsigned short volatile *) 0xc002;
 float volatile *FRNG = (float volatile *) 0xc004;
-unsigned short volatile *TIMER_REGS = (unsigned short volatile *) 0xc000;
-unsigned short volatile *TIMER1HZ0 = (unsigned short volatile *) 0xc010;
-unsigned short volatile *TIMER1HZ1 = (unsigned short volatile *) 0xc012;
-unsigned short volatile *TIMER1KHZ0 = (unsigned short volatile *) 0xc014;
-unsigned short volatile *TIMER1KHZ1 = (unsigned short volatile *) 0xc016;
-unsigned short volatile *SLEEPTIMER0 = (unsigned short volatile *) 0xc018;
-unsigned short volatile *SLEEPTIMER1 = (unsigned short volatile *) 0xc01a;
 unsigned long volatile *SET_RTC_TIME = (unsigned long volatile *) 0xc020;
 unsigned long volatile *SYSTEMSECONDS = (unsigned long volatile *) 0xc020;
 unsigned int volatile *SYSTEMMILLISECONDS = (unsigned int volatile *)0xc028;

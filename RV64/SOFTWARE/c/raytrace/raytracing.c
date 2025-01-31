@@ -237,6 +237,6 @@ int main( int argc, char **argv ) {
         gpu_pixelblock_start( 0, 0, 320 );
         render(spheres, NB_SPHERES, lights, NB_LIGHTS);
         gpu_pixelblock_stop();
-        sleep1khz( 4000, 0 );
+        sleep1khz( 4000 );
     }
 }

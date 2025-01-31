@@ -39,7 +39,7 @@ extern void reset_mouse( void );
 // TIMERS AND PSEUDO RANDOM NUMBER GENERATOR
 extern float frng( void );
 extern unsigned short rng( unsigned short );
-extern void sleep1khz( unsigned short, unsigned char );
+extern void sleep1khz( unsigned short );
 extern void set_timer1khz( unsigned short, unsigned char );
 extern unsigned short get_timer1khz( unsigned char );
 extern void wait_timer1khz( unsigned char );

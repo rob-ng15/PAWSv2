@@ -171,7 +171,7 @@ int main( void ) {
     displayreset();
     display_village();
 
-    sleep1khz( 4000, 0 );
+    sleep1khz( 4000 );
 }
 
 // EXIT WILL RETURN TO BIOS

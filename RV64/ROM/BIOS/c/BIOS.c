@@ -1,6 +1,6 @@
-#include "PAWS.h"
 #include <stdint.h>
-
+#include <stdint.h>
+#include "PAWS.h"
 #include "PAWS_BIOS_LIBRARY.h"
 
 void draw_paws_logo( void ) {
@@ -61,8 +61,7 @@ void sdcard_wait( void ) {
     while( !*SDCARD_READY );
 }
 
-// READ A SECTOR FROM THE SDCARD AND COPY TO MEMORY
-void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress ) {
+void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress ) {                                              // READ A SINGLE SECTOR FROM THE SDCARD AND COPY TO MEMORY
     sdcard_wait();
     *SDCARD_SECTOR = sectorAddress;
     *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
@@ -71,7 +70,7 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
-    DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, DMA_FROM_IO );
+    DMASTART( (const void *restrict)SDCARD_IN_DATA, copyAddress, 512, DMA_FROM_IO );
 }
 
 void sdcard_readcluster( unsigned int cluster, unsigned char *buffer ) {

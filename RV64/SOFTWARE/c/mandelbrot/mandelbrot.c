@@ -96,7 +96,7 @@ void mandelbrot( void ) {
 int main( int argc, char **argv ) {
     screen_mode( 0, MODE_RGBM, 0 );
 
-    mandelbrot(); sleep1khz( 4000, 0 );
+    mandelbrot(); sleep1khz( 4000 );
 
     complex c; c.x = -0.7; c.y = 0.27015;
     int bitmap = 2;
@@ -108,6 +108,6 @@ int main( int argc, char **argv ) {
         bitmap = 3 - bitmap;
     }
 
-    sleep1khz( 4000, 0 );
+    sleep1khz( 4000 );
 
 }

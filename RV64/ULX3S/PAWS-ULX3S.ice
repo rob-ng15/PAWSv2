@@ -1,9 +1,9 @@
 // DEFINE I/O CLOCKS
 $$ uart_in_clock_freq_mhz = 50
 
-// ADDRESS WIDTH OF THE SDRAM ( 26 bits is 32Mb )
+// ADDRESS WIDTH OF THE SDRAM ( 25 bits is 32Mb )
 // CHIP SELECT is done by readflag/writeflag
-$$ sdram_addr_width = 25
+$$ sdram_width = 25
 
 // REGISTER AND MEMORY BUS DEFINITIONS
 $$ reg_width = 64
@@ -49,7 +49,7 @@ $$else
 $$ L1size = 4096
 $$end
 $$ L1cacheaddrwidth = clog2(L1size)
-$$ L1partaddresswidth = sdram_addr_width - 2 - L1cacheaddrwidth
+$$ L1partaddresswidth = sdram_width - 2 - L1cacheaddrwidth
 $$ L1partaddressstart = 2 + L1cacheaddrwidth
 bitfield L1cachetag{ uint1 needswrite, uint1 valid, uint$L1partaddresswidth$ partaddress }
 

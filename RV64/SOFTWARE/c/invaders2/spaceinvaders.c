@@ -661,7 +661,7 @@ void play( void ) {
     UFO.lastufo = 1000;
 
     tpu_print_centre( 30, TRANSPARENT, WHITE, TPU_BOLD | TPU_X2 | TPU_Y2, "READY!" );
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
     tpu_cs();
 
     while( Ship.life > 0 ) {
@@ -690,7 +690,7 @@ void play( void ) {
 
     tpu_cs();
     tpu_print_centre( 30, TRANSPARENT, WHITE, TPU_BOLD | TPU_X2 | TPU_Y2, "GAME OVER" );
-    sleep1khz( 4000, 0 );
+    sleep1khz( 4000 );
     tpu_cs();
 }
 

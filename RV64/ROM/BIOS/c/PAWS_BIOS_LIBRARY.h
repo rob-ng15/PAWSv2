@@ -1,5 +1,5 @@
-static inline long _rv64_rol(long rs1, long rs2) { long rd; if (__builtin_constant_p(rs2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(rs1), "i"(63 & -rs2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(rs1), "r"(rs2)); return rd; }
-static inline long _rv64_rev8(long rs1) { long rd; __asm__ ("rev8     %0, %1" : "=r"(rd) : "r"(rs1)); return rd; }
+static inline long _rv64_rol(long RS1, long RS2) { long rd; if (__builtin_constant_p(RS2)) __asm__ ("rori    %0, %1, %2" : "=r"(rd) : "r"(RS1), "i"(63 & -RS2)); else __asm__ ("rol     %0, %1, %2" : "=r"(rd) : "r"(RS1), "r"(RS2)); return rd; }
+static inline long _rv64_rev8(long RS1) { long rd; __asm__ ("rev8     %0, %1" : "=r"(rd) : "r"(RS1)); return rd; }
 
 // BIOS MALLOC - ALLLOCATE FROM TOP OF MEMORY DOWN
 void *HEAPEND;
@@ -42,13 +42,22 @@ short strlen( char *s ) {
 
 // TIMER AND PSEUDO RANDOM NUMBER GENERATOR
 // SLEEP FOR counter milliseconds
+unsigned long CSRtime() {
+    unsigned long timer;
+    asm volatile(
+        "rdtime %0\n"
+        : "=r"(timer));
+    return timer;
+}
+
 void sleep( unsigned short counter ) {
-    *SLEEPTIMER0 = counter;
-    while( *SLEEPTIMER0 );
+    unsigned long target = CSRtime() + ( counter * 50000 );
+    while( CSRtime() < target );
 }
 // SLEEP FOR counter milliseconds
 void sleep1khz( unsigned short counter, unsigned char timer ) {
-    *( timer ? SLEEPTIMER1 : SLEEPTIMER0 ) = counter; while( timer ? *SLEEPTIMER1 : *SLEEPTIMER0 );
+    unsigned long target = CSRtime() + ( counter * 50000 );
+    while( CSRtime() < target );
 }
 
 // I/O FUNCTIONS

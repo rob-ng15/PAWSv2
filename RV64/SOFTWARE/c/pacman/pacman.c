@@ -2317,12 +2317,12 @@ static void paws_snd( int action ) {
         case SND_START_NORMAL:
             set_volume( 6, 7 );
             tune_upload( CHANNEL_LEFT, 22, &alert_normal[0] );
-            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16 );
+            beep( CHANNEL_LEFT, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16 );
             break;
         case SND_START_FRIGHTENDED:
             set_volume( 6, 7 );
             tune_upload( CHANNEL_LEFT, 8, &alert_frightended[0] );
-            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16 );
+            beep( CHANNEL_LEFT, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16 );
             break;
         case SND_STOP_ALL:
             set_volume( 7, 7 );
@@ -2344,7 +2344,7 @@ int main( int argc, char **argv ) {
     tpu_set( 0, 27, TRANSPARENT, WHITE, TPU_BOLD ); tpu_outputstring( TRUE, "Ported from" );
     tpu_set( 0, 28, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( FALSE, "https://github.com/floooh/pacman.c" );
     tpu_set( 0, 29, TRANSPARENT, WHITE, TPU_BOLD ); tpu_outputstring( TRUE, "by Andre Weissflog" );
-    sleep1khz( 4000, 0 );
+    sleep1khz( 4000 );
     tpu_cs(); gpu_cs();
 
     while(1) {

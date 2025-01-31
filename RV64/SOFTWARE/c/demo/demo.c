@@ -852,7 +852,7 @@ void colourtable( void ) {
     // CYCLE THROUGH COLOUR MODES
     for( short i = 0; i < 2; i++ ) {
         screen_mode( 0, i, 0 );
-        sleep1khz( 2000, 0 );
+        sleep1khz( 2000 );
     }
 }
 
@@ -864,7 +864,7 @@ void backgrounddemo( void ) {
     for( unsigned char bkg = 0; bkg < 16; bkg++ ) {
         set_background( PURPLE, ORANGE, bkg );
         tpu_print_centre( 59, TRANSPARENT, WHITE, 0, backgroundnames[bkg] );
-        sleep1khz( 1000, 0 );
+        sleep1khz( 1000 );
     }
 
     displayreset();
@@ -901,7 +901,7 @@ void backgrounddemo( void ) {
     copper_program( 11, CU_AND, CU_R0, CU_RL, 7 );          tpu_set( 0, 17, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "11 AND R0 <- (R0) & 7     // AND R0 BY 7" );
     copper_program( 12, CU_JPL, 4 );                        tpu_set( 0, 18, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "12 JPL 4                  // JUMP TO 4" );
 
-    copper_startstop( 1 ); sleep1khz( 2000, 0 );
+    copper_startstop( 1 ); sleep1khz( 2000 );
 
     displayreset(); copper_startstop( 0 );
 
@@ -914,7 +914,7 @@ void backgrounddemo( void ) {
     copper_program( 3, CU_RND, CU_BC, CU_RL, 255 );         tpu_set( 0, 5 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "03 SET BC <- RANDOM & 255 // SET COLOUR TO RANDOM & 255" );
     copper_program( 4, CU_JPL, 3 );                         tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 JPL 3                  // JUMP TO 3" );
 
-    copper_startstop( 1 ); sleep1khz( 2000, 0 );
+    copper_startstop( 1 ); sleep1khz( 2000 );
 
     displayreset(); copper_startstop( 0 );
 
@@ -928,7 +928,7 @@ void backgrounddemo( void ) {
     copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );       tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
     copper_program( 5, CU_JPL, 3 );                         tpu_set( 0, 7 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "05 JPL 3                  // JUMP TO 3" );
 
-    copper_startstop( 1 ); sleep1khz( 2000, 0 );
+    copper_startstop( 1 ); sleep1khz( 2000 );
 
     displayreset(); copper_startstop( 0 );
 
@@ -942,7 +942,7 @@ void backgrounddemo( void ) {
     copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );       tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
     copper_program( 5, CU_JPL, 3 );                         tpu_set( 0, 7 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "05 JPL 3                  // JUMP TO 3" );
 
-    copper_startstop( 1 ); sleep1khz( 2000, 0 );
+    copper_startstop( 1 ); sleep1khz( 2000 );
 }
 
 // CHARACTER MAP DISPLAY
@@ -990,7 +990,7 @@ void charactermapdemo( void ) {
         if( x == 80 ) { x = 0; y++; }
     }
 
-    sleep1khz( 2000, 0 );
+    sleep1khz( 2000 );
 }
 
 // PUT SOME OBJECTS ON THE TILEMAP AND WRAP LOWER LAYER UP AND LEFT , UPPER LAYER DOWN AND RIGHT
@@ -1047,7 +1047,7 @@ void gpudemo( void ) {
     for( i = 0; i < 2048; i++ ) {
         gpu_pixel( rng( 256 ), rng( 320 ), rng( 240 ) );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // LINES
     gpu_cs();
@@ -1055,7 +1055,7 @@ void gpudemo( void ) {
     for( i = 0; i < 1024; i++ ) {
         gpu_line( rng( 256 ), rng( 320 ), rng( 240 ), rng( 320 ), rng( 240 ) );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // WIDE LINES
     gpu_cs();
@@ -1063,7 +1063,7 @@ void gpudemo( void ) {
     for( i = 0; i < 1024; i++ ) {
         gpu_wideline( rng( 256 ), rng( 320 ), rng( 240 ), rng( 320 ), rng( 240 ), rng(8) + 1 );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // RECTANGLES
     gpu_cs();
@@ -1073,7 +1073,7 @@ void gpudemo( void ) {
         gpu_rectangle( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 352 ) - 16, rng( 256 ) - 8 );
     }
     gpu_dither( DITHEROFF );
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // CIRCLES
     gpu_cs();
@@ -1083,7 +1083,7 @@ void gpudemo( void ) {
         gpu_circle( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 32 ), 255, rng( 1 ) );
     }
     gpu_dither( DITHEROFF );
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // TRIANGLES
     gpu_cs();
@@ -1096,7 +1096,7 @@ void gpudemo( void ) {
         gpu_triangle( rng( 256 ), x1, y1, x2, y2, x3, y3 );
     }
     gpu_dither( DITHEROFF );
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // BLITTER
     // SET BLITTER OBJECTS - ALIENS
@@ -1108,7 +1108,7 @@ void gpudemo( void ) {
     for( i = 0; i < 128; i++ ) {
         gpu_blit( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 6 ), rng( 4 ), rng(8) );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // CHARACTER BLITTER
     gpu_cs();
@@ -1116,7 +1116,7 @@ void gpudemo( void ) {
     for( i = 0; i < 128; i++ ) {
         gpu_character_blit( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 256 ), rng( 4 ), rng(8) );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // COLOUR BLITTER
     // SET COLOUR BLITTER OBJECTS - ALIENS FROM GALAXIAN
@@ -1161,7 +1161,7 @@ void gpudemo( void ) {
     for( i = 0; i < 128; i++ ) {
         gpu_colourblit( rng( 352 ) - 16, rng( 256 ) - 8, rng( 9 ), rng( 4 ), rng(8) );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 }
 
 void ditherdemo( void ) {
@@ -1179,7 +1179,7 @@ void ditherdemo( void ) {
         }
     }
     gpu_dither( DITHEROFF );
-    sleep1khz( 2000, 0 );
+    sleep1khz( 2000 );
 }
 
 unsigned char tune_treble[] = {  24, 36, 31, 28, 36, 30, 24, 27,  0,
@@ -1412,7 +1412,7 @@ void floatdemo() {
         colour = ( colour == 0 ) ? 255 : colour - 1;
         scale = scale - 0.005;
     }
-    sleep1khz( 2000, 0 );
+    sleep1khz( 2000 );
 }
 
 int main( int argc, char **argv ) {

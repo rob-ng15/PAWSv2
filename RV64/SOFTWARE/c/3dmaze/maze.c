@@ -345,6 +345,8 @@ void generate_maze( unsigned short width, unsigned short height ) {
         lastx = 1;
         count = 1;
 
+        tpu_set( 0, 59, TRANSPARENT, BLUE, TPU_NORMAL ); tpu_printf( TPU_NORMAL, "%2d", y );
+
         for( x = 1; x < width - 1; x += 2 ) {
             setat( x, y, ' ', 0 );
             if( y > 1 ) {
@@ -394,7 +396,9 @@ void generate_maze( unsigned short width, unsigned short height ) {
     unsigned short potentialx, potentialy;
 
     for( unsigned short ghost = 0; ghost < 4; ghost++ ) {
-     // POSITION GHOSTS AT CENTRE - with slight offset
+        tpu_set( 0, 59, TRANSPARENT, RED, TPU_NORMAL ); tpu_printf( TPU_NORMAL, "%2d", ghost );
+
+        // POSITION GHOSTS AT CENTRE - with slight offset
         potentialx = width / 2; potentialy= height / 2;
         if( ghost == 0 ) {
            ghostx[ ghost ] = width - 3;
@@ -673,7 +677,7 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
     unsigned char ghostdrawn;
 
     // SET move timers - timer 0 100th second for player, timer 1 1 second for ghosts
-    set_timer1khz( 100, 0 ); set_timer1khz( 1000, 0 );
+    set_timer1khz( 100, 0 ); set_timer1khz( 1000, 1 );
 
     tpu_cs();
     // LOOP UNTIL REACHED THE EXIT OR DEAD
@@ -773,7 +777,7 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
             }
 
             // BACKWARD
-            if( get_buttons() & DOWN ) {
+            if( get_buttons() & JOY_DOWN ) {
                 switch( whatisbehind( currentx, currenty, direction, 1 ) ) {
                     case ' ':
                     case 'X':
@@ -843,8 +847,8 @@ int main( int argc, char **argv ) {
 
         levelselected = 0;
         do {
-            tpu_print_centre( 57, TRANSPARENT, YELLOW, 1, "Select Level" );
-            tpu_print_centre( 58, TRANSPARENT, YELLOW, 0, "Increase/Decrease by LEFT/RIGHT - Select by FIRE" );
+            tpu_print_centre( 57, TRANSPARENT, YELLOW, TPU_BOLD, "Select Level" );
+            tpu_print_centre( 58, TRANSPARENT, YELLOW, TPU_NORMAL, "Increase/Decrease by LEFT/RIGHT - Select by FIRE" );
             tpu_set( 0, 59, TRANSPARENT, BLACK, TPU_BOLD ); tpu_printf( 1, "Level: %3d", level );
             tpu_set( 60, 59, TRANSPARENT, BLACK, TPU_BOLD ); tpu_printf( 1, "Size: %5d x %5d", levelwidths[level], levelheights[level] );
 
@@ -864,6 +868,9 @@ int main( int argc, char **argv ) {
             }
         } while( levelselected == 0 );
 
+        tpu_print_centre( 57, TRANSPARENT, YELLOW, TPU_BOLD, "Level Selected" );
+        tpu_print_centre( 58, TRANSPARENT, YELLOW, TPU_BOLD | TPU_X2 | TPU_Y2, "Please Wait - Generating Maze" );
+
         // GENERATE THE MAZE
         generate_maze( levelwidths[level], levelheights[level] );
 
@@ -880,7 +887,7 @@ int main( int argc, char **argv ) {
                 gpu_circle( YELLOW, 160, 120, 80, drawsector[i], 1 );
                 framebuffer = 3 - framebuffer;
                 bitmap_display( framebuffer );
-                sleep1khz( 250, 0 );
+                sleep1khz( 250 );
             }
             // DISPLAY TOMBSTONE BITMAP AND RESET TO BEGINNING
             bitmap_draw( 3 - framebuffer );
