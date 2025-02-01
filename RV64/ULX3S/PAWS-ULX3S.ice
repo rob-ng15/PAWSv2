@@ -24,37 +24,34 @@ $$ PCM = 65535
 
 // ON CPU INSTRUCTION CACHE DEFINITIONS
 
-// L0 CACHE SIZES FOR HART ID 0 AND 1
+// L1 CACHE SIZES FOR HART ID 0 AND 1
 // blocks must be a power of 2
 // HART 0 - MAIN
-$$ L00Iblocks = 4096
-$$ L00Icount = clog2(L00Iblocks)
-$$ L00Ipartaddresswidth = addr_width - 1 - L00Icount
-$$ L00Ipartaddressstart = 1 + L00Icount
-bitfield L00cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
+$$ L10Iblocks = 4096
+$$ L10Icount = clog2(L10Iblocks)
+$$ L10Ipartaddresswidth = addr_width - 1 - L10Icount
+$$ L10Ipartaddressstart = 1 + L10Icount
+bitfield L10cacheI{ uint30 instruction, uint1 compressed, uint1 valid, uint$L10Ipartaddresswidth$ partaddress }
 
 // HART 1 - SMT
-$$ L01Iblocks = 512
-$$ L01Icount = clog2(L01Iblocks)
-$$ L01Ipartaddresswidth = addr_width - 1 - L01Icount
-$$ L01Ipartaddressstart = 1 + L01Icount
-bitfield L01cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
+$$ L11Iblocks = 512
+$$ L11Icount = clog2(L11Iblocks)
+$$ L11Ipartaddresswidth = addr_width - 1 - L11Icount
+$$ L11Ipartaddressstart = 1 + L11Icount
+bitfield L11cacheI{ uint30 instruction, uint1 compressed, uint1 valid, uint$L11Ipartaddresswidth$ partaddress }
 
 // SDRAM CACHE DEFINITIONS
 
-// CACHES SIZES - L1 2 x L1size for SDRAM CACHE
-$$if VERILATOR then
-$$ L1size = 128
-$$else
-$$ L1size = 4096
-$$end
-$$ L1cacheaddrwidth = clog2(L1size)
-$$ L1partaddresswidth = sdram_width - 2 - L1cacheaddrwidth
-$$ L1partaddressstart = 2 + L1cacheaddrwidth
-bitfield L1cachetag{ uint1 needswrite, uint1 valid, uint$L1partaddresswidth$ partaddress }
+// CACHES SIZES - L2 2 x L2size for SDRAM CACHE
+$$ L2size = 4096
+$$ L2cacheaddrwidth = clog2(L2size)
+$$ L2partaddresswidth = sdram_width - 2 - L2cacheaddrwidth
+$$ L2partaddressstart = 2 + L2cacheaddrwidth
+bitfield L1cache{ uint16 contents, uint1 needswrite, uint1 valid, uint$L2partaddresswidth$ partaddress }
 
 $$ print('CACHE BLOCK CONFIGURATION')
-$$ print("BLOCKS: "..L1size.." WIDTH: "..L1cacheaddrwidth.." TAG SIZE: "..L1partaddresswidth.." AT: "..L1partaddressstart)
+$$ print("L1 BLOCKS: "..L10Iblocks.." WIDTH: "..L10Icount.." TAG SIZE: "..L10Ipartaddresswidth.." AT: "..L10Ipartaddressstart)
+$$ print("L2 BLOCKS: "..L2size.." WIDTH: "..L2cacheaddrwidth.." TAG SIZE: "..L2partaddresswidth.." AT: "..L2partaddressstart)
 
 // BIT WIDTH FOR CSR COUNTERS ( spec is 64 bit )
 $$ CWIDTH = 40
