@@ -16,7 +16,7 @@ unit control(
     output  uint7   function7,
     output  uint5   rs1,
     output  uint5   rs2,
-    output  uint64  immediateValue,
+    output  int64   immediateValue,
     output  uint1   IS_AUIPCLUI,
     output  uint1   IS_JAL,
     output  uint1   IS_BRANCH,
@@ -36,17 +36,36 @@ unit control(
     // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
     input   uint1   frd,
     input   uint1   write,
-    input   uint64  result,
-    output  uint64  sourceReg1,
+    input   int64   result,
+    output  int64   sourceReg1,
     output  uint32  S1_abs32,
     output  uint64  S1_abs64,
-    output  uint64  sourceReg2,
+    output  int64   sourceReg2,
     output  uint32  S2_abs32,
     output  uint64  S2_abs64,
     output  uint1   writeRegister,
 
-    // REGISTER COMPARISONS
-    output  uint4   COMPARISONS,
+    output  uint64  sourceReg1F,                                                                                                // ACTUAL FLOATING POINT REGISTERS
+    output  uint64  sourceReg2F,
+    output  uint64  sourceReg3F,
+    output  uint64  sourceReg1Fx,                                                                                               // REPACKED FLOATING POINT REGISTERS INTO DOUBLE BITFIELDS
+    output  uint64  sourceReg2Fx,
+    output  uint64  sourceReg3Fx,
+    output  uint64  sourceReg1Fxopp,                                                                                            // REPACKED FLOATING POINT REGISTER FOR CHANGE PRECISION
+    output  uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1
+    output  uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 2
+    output  uint4   typeCF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 3
+    output  uint4   typeAopp,                                                                                                   // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1 CHANGE PRECISION
+
+    output  uint4   type_aOb,
+    output  uint4   type_aAb,
+    output  uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
+    output  uint1   aZEROFRACTION,                                                                                              // A FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
+    output  uint1   bZEROFRACTION,                                                                                              // B FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
+
+    output  uint4   COMPARISONS,                                                                                                // INTEGER/IMMEDIATE REGISTER COMPARISONS { LTU LT - EQ }
+    output  uint1   FLT,                                                                                                        // FLOAT REGISTER COMPARISONS   LESS THAN
+    output  uint1   FEQ,                                                                                                        //                              EQUAL
 
     // ADDRESS GENERATION
     output  uint64  AUIPCLUI,
@@ -59,24 +78,82 @@ unit control(
     uint1   Iwrite <:: write & ~frd & |Rtype(instruction).destReg;                                                              // INTEGER REGISTER WRITE SWITCH
     $$for i=1,2 do
         simple_dualport_bram int64 I$i$[64] = { 0, pad(uninitialized) };                                                        // 32 MAIN, 32 SMT INTEGER REGISTERS
-        regIR I$i$R(                                                                                                            // INTEGER REGISTERS READ
+        regR I$i$R(                                                                                                             // INTEGER REGISTERS READ
             SMT <: SMT,
             regfile <:> I$i$,
             addr0 <: Rtype(instruction).sourceReg$i$,
             rdata0 :> sourceReg$i$,
-            abs32 :> S$i$_abs32,
-            abs64 :> S$i$_abs64
         );
-    regW I$i$W(                                                                                                                 // INTEGER REGISTERS WRITE
-        SMT <: COMMIT_SMT,
-        regfile <:> I$i$,
-        addr1 <: Rtype(instruction).destReg,
-        wdata1 <: result,
-        wenable1 <: Iwrite
-    );
+        regW I$i$W(                                                                                                             // INTEGER REGISTERS WRITE
+            SMT <: COMMIT_SMT,
+            regfile <:> I$i$,
+            addr1 <: Rtype(instruction).destReg,
+            wdata1 <: result,
+            wenable1 <: Iwrite
+        );
+        abs_3264 I$i$ABS(                                                                                                       // INTEGER REGISTER ABSOLUTE VALUES
+            I <: I$i$R.rdata0,
+            ABS_32 :> S$i$_abs32,
+            ABS_64 :> S$i$_abs64
+        );
     $$end
+    i_compare I1I2_COMPARE(                                                                                                     // INTEGER REGISTER COMPARISON FLAGS
+        I_1 <: I1R.rdata0,
+        I_2 <: I2R.rdata0,
+        IMMEDIATE <: DECODE.IMMEDIATE,
+        REG_IMM <: instruction[5,1],
+        FLAGS :> COMPARISONS
+    );
 
-    // INSTRUCTION CLASSIFICATION AND CPU CONTROL FLAGS
+    uint1   Fwrite <:: write & frd;                                                                                             // FLOAATING POINT REGISTER WRITE SWITCH
+     $$for i=1,3 do
+        simple_dualport_bram int64 F$i$[64] = uninitialized;                                                                    // 32 MAIN, 32 SMT FLOAT REGISTERS
+        regR F$i$R(
+            SMT <: SMT,
+            regfile <:> F$i$,
+            addr0 <: R4type(instruction).sourceReg$i$,
+            rdata0 :> sourceReg$i$F
+        );
+        regW F$i$W(
+            SMT <: COMMIT_SMT,
+            regfile <:> F$i$,
+            addr1 <: Rtype(instruction).destReg,
+            wdata1 <: result,
+            wenable1 <: Fwrite
+        );
+     $$end
+
+     // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
+     typeF class1F( dsh <: Rtype(instruction).function7[0,2], a <: F1R.rdata0, zeroFRACTION :> aZEROFRACTION, type :> typeAF ); // CLASSIFY A FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
+     typeF class2F( dsh <: Rtype(instruction).function7[0,2], a <: F2R.rdata0, zeroFRACTION :> bZEROFRACTION, type :> typeBF ); // CLASSIFY B FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
+     typeF class3F( dsh <: Rtype(instruction).function7[0,2], a <: F3R.rdata0, type :> typeCF );                                // CLASSIFY C FOR { INF, sNAN, qNAN, ZERO }
+
+     typeF class1Fopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, type :> typeAopp );                          // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
+     repackage_wide Aopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, repack :> sourceReg1Fxopp );              // changeprecision SIGN, EXPONENT (with bias), FRACTION
+
+     repackage_wide A( dsh <: Rtype(instruction).function7[0,2], a <: F1.rdata0, repack :> sourceReg1Fx );                      // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
+     repackage_wide B( dsh <: Rtype(instruction).function7[0,2], a <: F2.rdata0, repack :> sourceReg2Fx );                      // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
+     repackage_wide C( dsh <: Rtype(instruction).function7[0,2], a <: F3.rdata0, repack :> sourceReg3Fx );                      // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
+
+     floatcompare FPUcompare(                                                                                                   // FLOATING POINT COMPARISONS
+        a <: A.repack, b <: B.repack,                                                                                           // PASS REPACKED VALUES TO COMPARE
+        aObNAN <: aObNAN,                                                                                                       // A OR B NAN?
+        a_ZERO <: class1F.type[0,1], aZEROFRACTION <: class1F.zeroFRACTION,                                                     // A == 0, A FRACTION 0?
+        b_ZERO <: class2F.type[0,1], bZEROFRACTION <: class2F.zeroFRACTION,                                                     // B == 0, B FRACTION 0?
+        less :> FLT, equal :> FEQ                                                                                               // A < B? A == B?
+     );
+
+    // INSTRUCTION DECODER AND CPU CONTROL FLAGS
+    decoder DECODE(
+        INSTRUCTION <: instruction,
+        OPCODE :> opCode,
+        FUNCTION3 :> function3,
+        FUNCTION7 :> function7,
+        RS1 :> rs1,
+        RS2 :> rs2,
+        IMMEDIATE :> immediateValue,
+        ALUOP :> ALUOP
+    );
     controlflags FLAGS(
         opCode <: Rtype(instruction).opCode[2,5],
         function3 <: Rtype(instruction).function3,
@@ -98,149 +175,67 @@ unit control(
         IS_FPUCONVERT :> IS_FPUCONVERT
     );
 
-     // DETERMINE MEMORY ACCESS FLAGS
-     memsize MEMACCESSFLAGS(
-         cacheselect <: cacheselect,
-         function3 <: Rtype(instruction).function3[0,2],
-         I1R <: I1.rdata0[0,1],
-         I20 <: instruction[20,1],
-         I7 <: instruction[7,1],
-         IS_ATOMIC <: FLAGS.IS_ATOMIC,
-         IS_LOAD <: FLAGS.IS_LOAD,
-         IS_STORE <: FLAGS.IS_STORE,
-         IS_MA :> IS_MA,
-         IS_MEM64 :> IS_MEM64,
-         accesssize :> accesssize
-     );
+    // DETERMINE MEMORY ACCESS FLAGS
+    memsize MEMACCESSFLAGS(
+        cacheselect <: cacheselect,
+        function3 <: Rtype(instruction).function3[0,2],
+        I1R <: I1.rdata0[0,1],
+        I20 <: instruction[20,1],
+        I7 <: instruction[7,1],
+        IS_ATOMIC <: FLAGS.IS_ATOMIC,
+        IS_LOAD <: FLAGS.IS_LOAD,
+        IS_STORE <: FLAGS.IS_STORE,
+        IS_MA :> IS_MA,
+        IS_MEM64 :> IS_MEM64,
+        accesssize :> accesssize
+    );
 
-    always_after {
-        uint$addr_width$  jumpAddress = uninitialized;
+    // ADDRESS GENERATOR
+    agu AGU(
+        INSTRUCTION <: instruction,
+        PC <: PC,
+        I_1 <: I1.rdata0,
+        COMPRESSED <: compressed,
+        LOAD_ADDRESS :> loadAddress,
+        STORE_ADDRESS :> storeAddress,
+        AUIPCLUI :> AUIPCLUI,
+        PC_INC :> nextPC
+    );
 
-        { opCode = instruction[2,5]; }                                                                                          // EXTRACT BITFIELDS FROM INSTRUCTION
-        { function3 = Rtype(instruction).function3; }
-        { function7 = Rtype(instruction).function7; }
-        { rs1 = Rtype(instruction).sourceReg1; } { rs2 = Rtype(instruction).sourceReg2; }                                       // EXTRACT REGISTER NUMBERS FROM INSTRUCTION
-        { immediateValue = { {52{instruction[31,1]}}, Itype(instruction).immediate }; }                                         // EXTRACT AND SIGN EXTEND IMMEDIATE VALUE FROM INSTRUCTION
+     always_after {
+        newPC = FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).function3[0,1] ^ COMPARISONS[ Rtype(instruction).function3[1,2], 1 ] ) ? AGU.BRANCH_ADDRESS : AGU.PC_INC ) :
+                              ( instruction[3,1] ? AGU.JUMP_ADDRESS : AGU.LOAD_ADDRESS );
 
-        { newPC = FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).function3[0,1] ^ COMPARISONS[ Rtype(instruction).function3[1,2], 1 ] ) ? jumpAddress : nextPC ) :
-                                ( instruction[3,1] ? jumpAddress : loadAddress ); }
-
-        { loadAddress = ( FLAGS.IS_ATOMIC ? 0 : { {52{instruction[31,1]}}, Itype(instruction).immediate } ) + I1.rdata0; }
-        { storeAddress = ( FLAGS.IS_ATOMIC ? 0 : { {52{instruction[31,1]}}, Stype(instruction).immediate_bits_11_5, Stype(instruction).immediate_bits_4_0 } ) + I1R.rdata0; }
-        { AUIPCLUI = { {32{instruction[31,1]}}, Utype(instruction).immediate_bits_31_12, 12b0 } + ( instruction[5,1] ? 0 : PC ); }
-        { nextPC = PC + ( compressed ? 2 : 4 ); }
-        { jumpAddress = ( FLAGS.IS_BRANCH ?
-                        { {51{Btype(instruction).immediate_bits_12}}, Btype(instruction).immediate_bits_11, Btype(instruction).immediate_bits_10_5, Btype(instruction).immediate_bits_4_1, 1b0 } :
-                        { {43{Jtype(instruction).immediate_bits_20}}, Jtype(instruction).immediate_bits_19_12, Jtype(instruction).immediate_bits_11, Jtype(instruction).immediate_bits_10_1, 1b0 }
-                        ) + PC; }
-
-        { COMPARISONS = {                                                                                                       // INTEREGER COMPARISONS
-            ( __unsigned( I1R.rdata0 ) <                                                                                        //  LTU
-              __unsigned( instruction[5,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate } ) ),
-            ( __signed( I1R.rdata0 ) <                                                                                          //  LT
-              __signed( instruction[5,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate } ) ),
-            1b0,
-            ( I1R.rdata0 == ( instruction[5,1] ? I2R.rdata0 : { {52{instruction[31,1]}}, Itype(instruction).immediate } ) )     //  EQ
-        }; }
-
-        $$ doadduw =        "OP[13,1]"
-        $$ doalt =          "OP[12,1]"
-        $$ dobclrext =      "OP[11,1]"
-        $$ dobinvrev =      "OP[10,1]"
-        $$ dobset =         "OP[ 9,1]"
-        $$ docond =         "OP[ 8,1]"
-        $$ docountsignx =   "OP[ 7,1]"
-        $$ dominmax =       "OP[ 6,1]"
-        $$ domul =          "OP[ 5,1]"
-        $$ doorcxperm =     "OP[ 4,1]"
-        $$ dopack =         "OP[ 3,1]"
-        $$ dorotate =       "OP[ 2,1]"
-        $$ doshxadd =       "OP[ 1,1]"
-        $$ dosra =          "OP[ 0,1]"
-
-        { ALUOP = {                                                                                                             // DECODE ALU INSTRUCTIONS
-            instruction[3,1] & instruction[5,1] & ( ( Rtype(instruction).function7 == 7b0000100 ) |                             // 32-BIT ( register - register )   ADD.UW
-                                                    ( Rtype(instruction).function7 == 7b0010000 ) ),                            //                                  SHxADD.UW
-            instruction[5,1] & ( Rtype(instruction).function7 == 7b0100000 ),                                                   // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
-            ( Rtype(instruction).function7[1,6] == 6b010010 ),                                                                  // BCLR BCLRI BEXT BEXTI
-            ( Rtype(instruction).function7[1,6] == 6b011010 ),                                                                  // BINV BINVI REV8 BREV8
-            ( Rtype(instruction).function7[1,6] == 6b001010 ),                                                                  // ( F3 == 001 ) BSET BSETI
-            ( Rtype(instruction).function7 == 7b0000111 ),                                                                      // ZICOND czero.eq or czero.nez
-            ( Rtype(instruction).function7 == 7b0110000 ),                                                                      // CLZ CPOP CTZ SEXT.B SEXT.H ( immediate only )
-            ( Rtype(instruction).function7 == 7b0000101 ),                                                                      // MAX MAXU MIN MINU ( register - register only )
-            ( Rtype(instruction).function7 == 7b0000001 ),                                                                      // MULTIPLICATION
-            ( Rtype(instruction).function7 == 7b0010100 ),                                                                      // ( F3 := 101 ) ORC.B, XPERM.B XPERM.N
-            ( Rtype(instruction).function7 == 7b0000100 ),                                                                      // ZEXT.H PACK PACKH PACKW ( ZEXT.H when rs2 == 0 )
-            ( Rtype(instruction).function7[1,6] == 6b011000 ),                                                                  // ROL ROR RORI
-            ( Rtype(instruction).function7 == 7b0010000 ),                                                                      // SH1ADD SH2ADD SH3ADD ( register - register only )
-            ( Rtype(instruction).function7[1,6] == 6b010000 )                                                                   // SRA SRAI
-        }; }
+        aObNAN = |( class1F.type[1,2] | class2F.type[1,2] );                                                                    // A OR B NAN?
+        type_aAb = class1F.type & class2F.type;                                                                                 // AND the TYPE FLAGS  A & B
+        type_aOb = class1F.type | class2F.type;                                                                                 //  OR THE TYPE FLAGS  A | B
     }
 }
 
-unit float_control(
-    input   uint32  instruction,                                                                                                // INSTRUCTION AND THREAD
-    input   uint1   SMT,
-    input   uint1   COMMIT_SMT,
+// ADDRESS GENERATOR
+unit agu(
+    input   uint32              INSTRUCTION,
+    input   uint$addr_width$    PC,
+    input   int64               I_1,
+    input   uint1               COMPRESSED,
 
-    input   uint1   frd,                                                                                                        // REGISTER OUTPUT, RESULT INPUT AND RESULT TYPE (I/F)
-    input   uint1   write,
-    input   uint64  result,
-
-    output  uint64  sourceReg1F,                                                                                                // ACTUAL FLOATING POINT REGISTERS
-    output  uint64  sourceReg2F,
-    output  uint64  sourceReg3F,
-    output  uint64  sourceReg1Fx,                                                                                               // REPACKED FLOATING POINT REGISTERS INTO DOUBLE BITFIELDS
-    output  uint64  sourceReg2Fx,
-    output  uint64  sourceReg3Fx,
-    output  uint64  sourceReg1Fxopp,                                                                                            // REPACKED FLOATING POINT REGISTER FOR CHANGE PRECISION
-    output  uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1
-    output  uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 2
-    output  uint4   typeCF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 3
-    output  uint4   typeAopp,                                                                                                   // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1 FOR CHANGE PRECISION
-    output  uint1   aObINF,                                                                                                     // EITHER A OR B INF?
-    output  uint1   aAbINF,                                                                                                     // BOTH A AND B INF?
-    output  uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
-    output  uint1   aObZERO,                                                                                                    // EITHER A OR B ZERO?
-    output  uint1   aAbZERO,                                                                                                    // BOTH A AND B ZERO?
-    output  uint1   aZEROFRACTION,                                                                                              // A FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
-    output  uint1   bZEROFRACTION,                                                                                              // B FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
-
-    output  uint1   FLT,                                                                                                        // FLOAT REGISTER COMPARISONS   LESS THAN
-    output  uint1   FEQ                                                                                                         //                              EQUAL
+    output! uint$addr_width$    LOAD_ADDRESS,
+    output  uint$addr_width$    STORE_ADDRESS,
+    output  uint$addr_width$    BRANCH_ADDRESS,
+    output  uint$addr_width$    JUMP_ADDRESS,
+    output  uint64              AUIPCLUI,
+    output  uint$addr_width$    PC_INC
 ) <reginputs> {
-    uint1   Fwrite <:: write & frd;                                                                                             // REGISTER WRITE SWITCHES
-    $$for i=1,3 do
-        simple_dualport_bram int64 F$i$[64] = uninitialized;                                                                          // 32 MAIN, 32 SMT FLOAT REGISTERS
-        regR F$i$R( SMT <: SMT, regfile <:> F$i$, addr0 <: R4type(instruction).sourceReg$i$, rdata0 :> sourceReg$i$F );                     //  READ REGISTERS
-        regW F$i$W( SMT <: COMMIT_SMT, regfile <:> F$i$, addr1 <: Rtype(instruction).destReg, wdata1 <: result, wenable1 <: Fwrite );   //  WRITE REGISTERS  sourceReg1
-    $$end
-
-    // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
-    typeF class1F( dsh <: Rtype(instruction).function7[0,2], a <: F1R.rdata0, zeroFRACTION :> aZEROFRACTION, type :> typeAF );  // CLASSIFY A FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
-    typeF class2F( dsh <: Rtype(instruction).function7[0,2], a <: F2R.rdata0, zeroFRACTION :> bZEROFRACTION, type :> typeBF );  // CLASSIFY B FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
-    typeF class3F( dsh <: Rtype(instruction).function7[0,2], a <: F3R.rdata0, type :> typeCF );                                 // CLASSIFY C FOR { INF, sNAN, qNAN, ZERO }
-
-    typeF class1Fopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, type :> typeAopp );                           // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
-    repackage_wide Aopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, repack :> sourceReg1Fxopp );               // changeprecision SIGN, EXPONENT (with bias), FRACTION
-
-    repackage_wide A( dsh <: Rtype(instruction).function7[0,2], a <: F1.rdata0, repack :> sourceReg1Fx );                       // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
-    repackage_wide B( dsh <: Rtype(instruction).function7[0,2], a <: F2.rdata0, repack :> sourceReg2Fx );                       // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
-    repackage_wide C( dsh <: Rtype(instruction).function7[0,2], a <: F3.rdata0, repack :> sourceReg3Fx );                       // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
-
-    floatcompare FPUcompare(                                                                                                    // FLOATING POINT COMPARISONS
-        a <: A.repack, b <: B.repack,                                                                                           // PASS REPACKED VALUES TO COMPARE
-        aObNAN <: aObNAN,                                                                                                       // A OR B NAN?
-        aAbZERO <: aAbZERO,                                                                                                     // A == 0 AND B == 0
-        aZEROFRACTION <: class1F.zeroFRACTION,                                                                                  // A FRACTION 0?
-        bZEROFRACTION <: class2F.zeroFRACTION,                                                                                  // B FRACTION 0?
-        less :> FLT, equal :> FEQ                                                                                               // A < B? A == B?
-    );
-
     always_after {
-        { aObINF = class1F.type[3,1] | class2F.type[3,1]; } { aAbINF = class1F.type[3,1] & class1F.type[3,1]; }                 // A AND/OR B INF?
-        { aObNAN = |( class1F.type[1,2] | class2F.type[1,2] ); }                                                                // A OR B NAN?
-        { aObZERO = class1F.type[0,1] | class2F.type[0,1]; } { aAbZERO = class1F.type[0,1] & class2F.type[0,1]; }               // A AND/OR B ZERO
+        LOAD_ADDRESS =  ( ( Rtype( INSTRUCTION ).opCode[2,5] == 5b01011 ) ? 0 : { {52{INSTRUCTION[31,1]}}, Itype( INSTRUCTION ).immediate } ) + I_1;
+        STORE_ADDRESS = ( ( Rtype( INSTRUCTION ).opCode[2,5] == 5b01011 ) ? 0 : { {52{INSTRUCTION[31,1]}}, Stype( INSTRUCTION ).imm_b_11_5, Stype( INSTRUCTION ).imm_b_4_0 } ) + I_1;
+
+        BRANCH_ADDRESS = { {51{Btype( INSTRUCTION ).imm_b_12}}, Btype( INSTRUCTION ).imm_b_11, Btype( INSTRUCTION ).imm_b_10_5, Btype( INSTRUCTION ).imm_b_4_1, 1b0 } + PC;
+        JUMP_ADDRESS = { {43{Jtype(INSTRUCTION).imm_b_20}}, Jtype( INSTRUCTION ).imm_b_19_12, Jtype(INSTRUCTION).imm_b_11, Jtype(INSTRUCTION).imm_b_10_1, 1b0 } + PC;
+
+        AUIPCLUI = { {32{INSTRUCTION[31,1]}}, Utype(INSTRUCTION).imm_b_31_12, 12b0 } + ( INSTRUCTION[5,1] ? 0 : PC );
+
+        PC_INC = PC + ( COMPRESSED ? 2 : 4 );
     }
 }
 
@@ -259,30 +254,16 @@ unit memsize(
     output  uint2   accesssize
 ) <reginputs> {
     always_after {
-        { accesssize = cacheselect ? IS_MA ? 2b00 : function3 : 2b10; }                                                         // DETERMINE MEMORY ACCESS SIZE - FETCH (cacheselect == 0) 32
+        accesssize = cacheselect ? IS_MA ? 2b00 : function3 : 2b10;                                                             // DETERMINE MEMORY ACCESS SIZE - FETCH (cacheselect == 0) 32
                                                                                                                                 //  ELSE BY function3 ( IS_MA AS BYTES )
-        { IS_MA = ~IS_ATOMIC & |function3 & (                                                                                   // ATOMIC OPERATIONS CANNOT BE MISALIGNED
+        IS_MA = ~IS_ATOMIC & |function3 & (                                                                                     // ATOMIC OPERATIONS CANNOT BE MISALIGNED
                   ( IS_LOAD & ( I20 ^ I1R ) ) |                                                                                 // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
-                  ( IS_STORE & ( I7 ^ I1R ) ) );  }                                                                             // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
-        { IS_MEM64 = &function3; }                                                                                              // DETECT 64 BIT MEMORY ACCESSES
+                  ( IS_STORE & ( I7 ^ I1R ) ) );                                                                                // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
+        IS_MEM64 = &function3;                                                                                                  // DETECT 64 BIT MEMORY ACCESSES
     }
 }
 
 // REGISTER READ AND WRITE BLOCKS
-unit regIR(
-    input   uint1   SMT,
-    simple_dualport_bram_port0 regfile,
-    input   uint5   addr0,
-    output  uint64  rdata0,
-    output  uint32  abs32,
-    output  uint64  abs64
-) <reginputs> {
-    always_after {
-        { regfile.addr0 = { SMT, addr0 }; } { rdata0 = regfile.rdata0; }
-        { abs32 = regfile.rdata0[31,1] ? -regfile.rdata0[0,32] : regfile.rdata0[0,32]; }
-        { abs64 = regfile.rdata0[63,1] ?       -regfile.rdata0 : regfile.rdata0;       }
-    }
-}
 unit regR(
     input   uint1   SMT,
     simple_dualport_bram_port0 regfile,
@@ -290,7 +271,7 @@ unit regR(
     output  uint64  rdata0
 ) <reginputs> {
     always_after {
-        { regfile.addr0 = { SMT, addr0 }; } { rdata0 = regfile.rdata0; }
+        regfile.addr0 = { SMT, addr0 }; rdata0 = regfile.rdata0;
     }
 }
 unit regW(
@@ -301,10 +282,39 @@ unit regW(
     input   uint64  wdata1
 ) <reginputs> {
     always_after {
-        { regfile.addr1 = { SMT, addr1 }; } { regfile.wdata1 = wdata1; } { regfile.wenable1 = wenable1; }
+        regfile.addr1 = { SMT, addr1 }; regfile.wdata1 = wdata1; regfile.wenable1 = wenable1;
     }
 }
 
+// INTEGER COMPARISONS, REG-REG FOR ALU/BRANCH AND REG-IMMEDIATE FOR ALU
+unit i_compare(
+    input   int64               I_1,
+    input   int64               I_2,
+    input   int64               IMMEDIATE,
+    input   uint1               REG_IMM,
+    output  uint4               FLAGS
+) <reginputs> {
+    always_after {
+        FLAGS = {
+            ( __unsigned( I_1 ) < __unsigned( REG_IMM ? I_2: IMMEDIATE ) ),                                                     //  LTU
+            ( __signed( I_1 ) < __signed( REG_IMM ? I_2: IMMEDIATE ) ),                                                         //  LT,
+            1b0,                                                                                                                //  UNUSED
+            ( I_1 == ( REG_IMM ? I_2: IMMEDIATE ) )                                                                             //  EQ
+        };
+    }
+}
+
+// ABSOLUTE VALUES FOR 32 AND 64 BIT REGISTER CONTENTS
+unit abs_3264(
+    input   uint64  I,
+    output  uint32  ABS_32,
+    output  uint64  ABS_64
+) <reginputs> {
+    always_after {
+        ABS_32 = I[31,1] ? -I[0,32] : I[0,32];
+        ABS_64 = I[63,1] ? -I       : I;
+    }
+}
 // CLASSIFY INSTRUCTION TYPE AND DETIMINE CPU CONTROL FLAGS
 unit controlflags(
     input   uint5   opCode,
@@ -328,21 +338,21 @@ unit controlflags(
     output  uint1   incPC
 ) <reginputs> {
     always_after {
-        { writeRegister = 1; } { incPC = 1; }                                                                                           // DEFAULT TO SINGLE-CYCLE, WRITE INT REGISTER AND INCREMENT PC
-        { IS_FAST = 1; }                                                                                                            // DEFAULT TO BASE INTEGER ( FAST OPERATIONS )
-        { IS_ALU = 0; } { IS_ALU32SIGNX = 1; }                                                                                          // ALU DETECTED FLAGS, DEFAULT TO 32-BIT SIGN EXTENSION
-        { IS_FPU = 0; } { IS_FASTFPU = 0; } { IS_FPUCONVERT = 0; }                                                                          // FLOATING-POINT UNIT DETECTION FLAGS
+        writeRegister = 1; incPC = 1;                                                                                           // DEFAULT TO SINGLE-CYCLE, WRITE INT REGISTER AND INCREMENT PC
+        IS_FAST = 1;                                                                                                            // DEFAULT TO BASE INTEGER ( FAST OPERATIONS )
+        IS_ALU = 0; IS_ALU32SIGNX = 1;                                                                                          // ALU DETECTED FLAGS, DEFAULT TO 32-BIT SIGN EXTENSION
+        IS_FPU = 0; IS_FASTFPU = 0; IS_FPUCONVERT = 0;                                                                          // FLOATING-POINT UNIT DETECTION FLAGS
 
-        { IS_ATOMIC = ( opCode == 5b01011 ); }
-        { IS_AUIPCLUI = ( opCode == 5b00101 ) | ( opCode == 5b01101 ); }
-        { IS_BRANCH = ( opCode == 5b11000 ); }
-        { IS_CSR = ( opCode == 5b11100 ); }
-        { IS_FENCE = ( opCode == 5b00011 ); }
-        { IS_JAL = ( opCode == 5b11001 ) | ( opCode == 5b11011 ); }
-        { IS_LOAD = ~|opCode[1,4]; }
-        { IS_STORE = ( opCode[1,4] == 4b0100 ); }
+        IS_ATOMIC = ( opCode == 5b01011 );
+        IS_AUIPCLUI = ( opCode == 5b00101 ) | ( opCode == 5b01101 );
+        IS_BRANCH = ( opCode == 5b11000 );
+        IS_CSR = ( opCode == 5b11100 );
+        IS_FENCE = ( opCode == 5b00011 );
+        IS_JAL = ( opCode == 5b11001 ) | ( opCode == 5b11011 );
+        IS_LOAD = ~|opCode[1,4];
+        IS_STORE = ( opCode[1,4] == 4b0100 );
 
-        { switch( opCode ) {                                                                                                      // DETERMINE CPU CONTROL FLAGS BY OPCODE
+        switch( opCode ) {                                                                                                      // DETERMINE CPU CONTROL FLAGS BY OPCODE
             case 5b00000: {}                                                                                                    // LOAD
             case 5b00001: {}                                                                                                    // FLOAT LOAD
             case 5b00011: { writeRegister = 0; }                                                                                // FENCE[I]
@@ -357,33 +367,90 @@ unit controlflags(
             case 5b11100: { IS_FAST = 0; }                                                                                      // CSR ECALL EBBREAK
             case 5b00100: { IS_ALU = 1; }                                                                                       // REGISTER-IMMEDIATE ALU
             case 5b00110: {                                                                                                     // REGISTER-IMMEDIATE ALU 32BIT
-                { IS_ALU = 1; } { if( function3 == 3b001 ) { IS_ALU32SIGNX = ( function7[1,6] != 6b000010 ); } }                //  DETECT SLLI.UW
+                IS_ALU = 1; if( function3 == 3b001 ) { IS_ALU32SIGNX = ( function7[1,6] != 6b000010 ); }                        //  DETECT SLLI.UW
             }
             case 5b01100: {                                                                                                     // REGISTER-REGISTER ALU
-                { IS_ALU = 1; } { IS_FAST = ~( ( function7 == 7b0000001 ) & function3[2,1] ); }                                 //  FAST NOT DIVIDE
+                IS_ALU = 1; IS_FAST = ~( ( function7 == 7b0000001 ) & function3[2,1] );                                         //  FAST NOT DIVIDE
             }
             case 5b01110: {                                                                                                     // REGISTER-REGISTER ALU 32BIT
-                { IS_ALU = 1; } { IS_FAST = ~( ( function7 == 7b0000001 ) & function3[2,1] ); }                                 //  FAST NOT DIVIDE
-                { if( ~function3[0,1] ) {
+                IS_ALU = 1; IS_FAST = ~( ( function7 == 7b0000001 ) & function3[2,1] );                                         //  FAST NOT DIVIDE
+                if( ~function3[0,1] ) {
                     if( |function3[1,2] ) {
                         IS_ALU32SIGNX = ( function7 != 7b0010000 );                                                             // DETECT SHxADD.UW ( f3 == 010 100 110 )
                     } else {
                         IS_ALU32SIGNX = ( function7 != 7b0000100 );                                                             // DETECT ADD.UW ( f3 == 000 )
                     }
-                } }
+                }
             }
             case 5b10100: {                                                                                                     // NON-FUSED FPU
-                { IS_FPU = 1; } { IS_FAST = 0; }
-                { IS_FASTFPU = ( function7[4,1] | &function7[5,2] ); }                                                          //  ( FAST NOT ADD SUB MUL DIV SQRT )
-                { IS_FPUCONVERT = ( ( function7[2,5] == 5b11000 ) |                                                             //  CONVERSION INT <-> FLOAT, CHNAGE PRECISION
+                IS_FPU = 1; IS_FAST = 0;
+                IS_FASTFPU = ( function7[4,1] | &function7[5,2] );                                                              //  ( FAST NOT ADD SUB MUL DIV SQRT )
+                IS_FPUCONVERT = ( ( function7[2,5] == 5b11000 ) |                                                               //  CONVERSION INT <-> FLOAT, CHNAGE PRECISION
                                     ( function7[2,5] == 5b11010 ) |
-                                    ( function7[2,5] == 5b01000 ) ); }
+                                    ( function7[2,5] == 5b01000 ) );
             }
-            default: { { IS_FPU = 1; } { IS_FAST = 0; } }                                                                       // FUSED-FPU
-        } }
+            default: { IS_FPU = 1; IS_FAST = 0; }                                                                               // FUSED-FPU
+        }
     }
 }
 
+// CPU INSTRUCTION DECODER + ALU OPERATION FLAGS
+unit decoder(
+    input   uint32              INSTRUCTION,
+    output  uint5               OPCODE,
+    output  uint3               FUNCTION3,
+    output  uint7               FUNCTION7,
+    output  uint5               RS1,
+    output  uint5               RS2,
+    output  uint5               RS3,
+    output  uint5               RD,
+    output  int64               IMMEDIATE,
+    output  uint14              ALUOP,
+) <reginputs> {
+    always_after {
+        OPCODE = Rtype(INSTRUCTION).opCode[2,5];
+        FUNCTION3 = Rtype(INSTRUCTION).function3;
+        FUNCTION7 = Rtype(INSTRUCTION).function7;
+        RS1 = Rtype(INSTRUCTION).sourceReg1;
+        RS2 = Rtype(INSTRUCTION).sourceReg2;
+        RS3 = R4type(INSTRUCTION).sourceReg3;
+        RD = Rtype(INSTRUCTION).destReg;
+        IMMEDIATE = { {52{INSTRUCTION[31,1]}}, Itype(INSTRUCTION).immediate };
+
+        $$ doadduw =        "OP[13,1]"
+        $$ doalt =          "OP[12,1]"
+        $$ dobclrext =      "OP[11,1]"
+        $$ dobinvrev =      "OP[10,1]"
+        $$ dobset =         "OP[ 9,1]"
+        $$ docond =         "OP[ 8,1]"
+        $$ docountsignx =   "OP[ 7,1]"
+        $$ dominmax =       "OP[ 6,1]"
+        $$ domul =          "OP[ 5,1]"
+        $$ doorcxperm =     "OP[ 4,1]"
+        $$ dopack =         "OP[ 3,1]"
+        $$ dorotate =       "OP[ 2,1]"
+        $$ doshxadd =       "OP[ 1,1]"
+        $$ dosra =          "OP[ 0,1]"
+
+        ALUOP = {                                                                                                               // DECODE ALU INSTRUCTIONS
+            INSTRUCTION[3,1] & INSTRUCTION[5,1] & ( ( Rtype(INSTRUCTION).function7 == 7b0000100 ) |                             // 32-BIT ( register - register )   ADD.UW
+            ( Rtype(INSTRUCTION).function7 == 7b0010000 ) ),                                                                    //                                  SHxADD.UW
+            INSTRUCTION[5,1] & ( Rtype(INSTRUCTION).function7 == 7b0100000 ),                                                   // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
+            ( Rtype(INSTRUCTION).function7[1,6] == 6b010010 ),                                                                  // BCLR BCLRI BEXT BEXTI
+            ( Rtype(INSTRUCTION).function7[1,6] == 6b011010 ),                                                                  // BINV BINVI REV8 BREV8
+            ( Rtype(INSTRUCTION).function7[1,6] == 6b001010 ),                                                                  // ( F3 == 001 ) BSET BSETI
+            ( Rtype(INSTRUCTION).function7 == 7b0000111 ),                                                                      // ZICOND czero.eq or czero.nez
+            ( Rtype(INSTRUCTION).function7 == 7b0110000 ),                                                                      // CLZ CPOP CTZ SEXT.B SEXT.H ( immediate only )
+            ( Rtype(INSTRUCTION).function7 == 7b0000101 ),                                                                      // MAX MAXU MIN MINU ( register - register only )
+            ( Rtype(INSTRUCTION).function7 == 7b0000001 ),                                                                      // MULTIPLICATION
+            ( Rtype(INSTRUCTION).function7 == 7b0010100 ),                                                                      // ( F3 := 101 ) ORC.B, XPERM.B XPERM.N
+            ( Rtype(INSTRUCTION).function7 == 7b0000100 ),                                                                      // ZEXT.H PACK PACKH PACKW ( ZEXT.H when rs2 == 0 )
+            ( Rtype(INSTRUCTION).function7[1,6] == 6b011000 ),                                                                  // ROL ROR RORI
+            ( Rtype(INSTRUCTION).function7 == 7b0010000 ),                                                                      // SH1ADD SH2ADD SH3ADD ( register - register only )
+            ( Rtype(INSTRUCTION).function7[1,6] == 6b010000 )                                                                   // SRA SRAI
+        };
+    }
+}
 // COMPRESSED INSTRUCTION EXPANSION
 unit compressed00(
     input   uint14  i16,
@@ -715,8 +782,8 @@ unit csr_smt_timer(
     output  uint$CWIDTH$  counter1(0)
 ) <reginputs> {
     always_after {
-        { counter0 = counter0 + ~SMT; }
-        { counter1 = counter1 + SMT; }
+        counter0 = counter0 + ~SMT;
+        counter1 = counter1 + SMT;
     }
 }
 unit csr_smt_counter(
@@ -726,8 +793,8 @@ unit csr_smt_counter(
     output  uint$CWIDTH$  counter1(0)
 ) <reginputs> {
     always_after {
-        { counter0 = counter0 + ( ~SMT & trigger ); }
-        { counter1 = counter1 + ( SMT & trigger ); }
+        counter0 = counter0 + ( ~SMT & trigger );
+        counter1 = counter1 + ( SMT & trigger );
     }
 }
 
@@ -763,11 +830,11 @@ unit CSRblock(
     FPUflags := SMT ? CSRF1.CSRf : CSRF0.CSRf;                                                                                  // PASS FPU FLAGS PER THREAD BACK TO FPU
 
     always_after {
-        { if( start & ~|csrRegister[4,8] ) {
+        if( start & ~|csrRegister[4,8] ) {
             switch( function3[0,2] ) {
-                case 2b00: {}                                                                                               // ECALL / EBBREAK
+                case 2b00: {}                                                                                                   // ECALL / EBBREAK
                 case 2b01: {
-                    switch( { ~|rs1, function3[2,1] } ) {                                                                   // CSRRW / CSRRWI
+                    switch( { ~|rs1, function3[2,1] } ) {                                                                       // CSRRW / CSRRWI
                         case 2b10: {}
                         default: { if( SMT ) { CSRF1.writetype = 1; } else { CSRF0.writetype = 1; } }
                     }
@@ -776,14 +843,14 @@ unit CSRblock(
                     if( |rs1 ) { if( SMT ) { CSRF1.writetype = function3[0,2]; } else { CSRF0.writetype = function3[0,2]; } }
                 }
             }
-        } }
+        }
 
-        { switch( csrRegister[8,4] ) {
+        switch( csrRegister[8,4] ) {
             case 4h0: {
                 switch( csrRegister[0,2] ) {
-                    case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                                        // frflags
-                    case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                                         // frrm
-                    case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                                   // frcsr
+                    case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                                            // frflags
+                    case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                                             // frrm
+                    case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                                       // frcsr
                     default: {}
                 }
             }
@@ -796,8 +863,8 @@ unit CSRblock(
                     default: {}
                 }
                 }
-            case 4hf: { result = SMT; }                                                                                     // HART ID
+            case 4hf: { result = SMT; }                                                                                         // HART ID
             default: {}
-        } }
+        }
     }
 }

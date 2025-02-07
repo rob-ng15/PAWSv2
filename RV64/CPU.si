@@ -56,7 +56,7 @@ unit PAWSCPU(
     uint1   write <:: COMMIT & RV64CONTROL.writeRegister;                                                                       // WRITE TO REGISTERS FLAG
 
     control RV64CONTROL <@clock_CPUdecoder> (                                                                                   // RISC-V   INSTRUCTION DECODER
-        SMT <:: SMT,                                                                                                            //          INTEGER REGISTERS
+        SMT <:: SMT,
         COMMIT_SMT <: COMMIT_SMT,
         frd <: frd,
         write <: write,
@@ -64,15 +64,6 @@ unit PAWSCPU(
         instruction <: MEMORY.instruction,
         compressed <: MEMORY.compressed,
         accesssize :> accesssize
-    );
-
-    float_control RV64CONTROLF <@clock_CPUdecoder> (                                                                            // RISC-V   FLOATING POINT REGISTERS
-        SMT <:: SMT,                                                                                                            //          FLOATING POINT REGISTER CLASSIFIERS
-        COMMIT_SMT <: COMMIT_SMT,
-        frd <: frd,
-        write <: write,
-        result <: result,
-        instruction <: MEMORY.instruction
     );
 
     cpuexecuteFASTPATH EXECUTEFAST(                                                                                             // RISC-V SINGLE CYCLE OPERATIONS
@@ -120,24 +111,23 @@ unit PAWSCPU(
         function7 <: RV64CONTROL.function7,
         rs1 <: RV64CONTROL.rs1, rs2 <: RV64CONTROL.rs2,
         sourceReg1 <: RV64CONTROL.sourceReg1, S1_abs32 <: RV64CONTROL.S1_abs32, S1_abs64 <: RV64CONTROL.S1_abs64,
-        sourceReg1F <: RV64CONTROLF.sourceReg1F, sourceReg1Fx <: RV64CONTROLF.sourceReg1Fx, sourceReg1Fxopp <: RV64CONTROLF.sourceReg1Fxopp, typeAF <: RV64CONTROLF.typeAF, typeAopp <: RV64CONTROLF.typeAopp,
-        sourceReg2F <: RV64CONTROLF.sourceReg2F, sourceReg2Fx <: RV64CONTROLF.sourceReg2Fx, typeBF <: RV64CONTROLF.typeBF,
-        sourceReg3Fx <: RV64CONTROLF.sourceReg3Fx, typeCF <: RV64CONTROLF.typeCF,
-        aObINF <: RV64CONTROLF.aObINF, aAbINF <: RV64CONTROLF.aAbINF, aObNAN <: RV64CONTROLF.aObNAN, aObZERO <: RV64CONTROLF.aObZERO, aAbZERO <: RV64CONTROLF.aAbZERO,
-        aZEROFRACTION <: RV64CONTROLF.aZEROFRACTION, bZEROFRACTION <: RV64CONTROLF.bZEROFRACTION,
-        FLT <: RV64CONTROLF.FLT,
-        FEQ <: RV64CONTROLF.FEQ,
+        sourceReg1F <: RV64CONTROL.sourceReg1F, sourceReg1Fx <: RV64CONTROL.sourceReg1Fx, sourceReg1Fxopp <: RV64CONTROL.sourceReg1Fxopp, typeAF <: RV64CONTROL.typeAF, typeAopp <: RV64CONTROL.typeAopp,
+        sourceReg2F <: RV64CONTROL.sourceReg2F, sourceReg2Fx <: RV64CONTROL.sourceReg2Fx, typeBF <: RV64CONTROL.typeBF,
+        sourceReg3Fx <: RV64CONTROL.sourceReg3Fx, typeCF <: RV64CONTROL.typeCF,
+        aObNAN <: RV64CONTROL.aObNAN, type_aAb <: RV64CONTROL.type_aAb, type_aOb <: RV64CONTROL.type_aOb,
+        aZEROFRACTION <: RV64CONTROL.aZEROFRACTION, bZEROFRACTION <: RV64CONTROL.bZEROFRACTION,
+        FLT <: RV64CONTROL.FLT, FEQ <: RV64CONTROL.FEQ,
         isFASTFPU <: RV64CONTROL.IS_FASTFPU,
         isFPUCONVERT <: RV64CONTROL.IS_FPUCONVERT,
         FPUflags <: EXECUTESLOW.FPUflags
     );
 
     memory_controller MEMORY(
-        clock_CPUdecoder <: clock_CPUdecoder,
+        clock_CPUdecoder <: clock_CPUdecoder, clock_cache <: clock_cache,
         accesssize <: RV64CONTROL.accesssize, IS_MA <: RV64CONTROL.IS_MA, IS_64 <: RV64CONTROL.IS_MEM64,
         IS_FLOAT <:RV64CONTROL.opCode[0,1], IS_UNSIGNED <: RV64CONTROL.function3[2,1],
         loadAddress <: RV64CONTROL.loadAddress, storeAddress <: RV64CONTROL.storeAddress,
-        SMT <: SMT, pc <: pc, pcSMT <: pcSMT,
+        SMT <: SMT, pc <: pc, pcSMT <: pcSMT, fenceACTIVE <: EXECUTEFAST.fenceACTIVE,
         readdata <: readdata, memorybusy <: memorybusy,
         address :> address,
         writedata :> writedata,
@@ -145,28 +135,14 @@ unit PAWSCPU(
         readmemory :> readmemory
     );
 
-    simple_dualport_bram uint$32+L10Ipartaddresswidth$ L10cache <@clock_cache,@clock> [$L10Iblocks$] = uninitialized;           // SMALL ON CPU L1 CACHE - 1 per HART - RESET FENCE MEM IS 1
-    simple_dualport_bram uint$32+L11Ipartaddresswidth$ L11cache <@clock_cache,@clock> [$L11Iblocks$] = uninitialized;
-    iL10cache_read ICACHE_0 <@clock_cache> ( L1cache <:> L10cache, CLS <: ICACHE_0W.CLS, address <: pc );
-    iL11cache_read ICACHE_1 <@clock_cache> ( L1cache <:> L11cache, CLS <: ICACHE_1W.CLS, address <: pcSMT );
-    iL10cache_write ICACHE_0W( L1cache <:> L10cache, address <: pc, newinstruction <: MEMORY.instruction[2,30], newcompressed <: MEMORY.compressed );
-    iL11cache_write ICACHE_1W( L1cache <:> L11cache, address <: pcSMT, newinstruction <: MEMORY.instruction[2,30], newcompressed <: MEMORY.compressed );
-
     RV64CONTROL.PC := SMT ? pcSMT : pc;                                                                                         // SELECT PROGRAM COUNTER FOR THIS CYCLE
-
-    ICACHE_0W.update := ~SMT & STATE[3,1] & ~MEMORY.busy; ICACHE_1W.update := SMT & STATE[3,1] & ~MEMORY.busy;                  // UPDATE CPU L1 CACHE FOR MAIN/SMT THREAD FLAG
-    ICACHE_0W.invalidate := reset | EXECUTEFAST.fenceACTIVE[0,1];                                                               // CPU L1 CACHE INVALIDATE FLAG, USED AFTER PROGRAM LOAD
-    ICACHE_1W.invalidate := reset | EXECUTEFAST.fenceACTIVE[0,1];                                                               // CPU L1 CACHE INVALIDATE FLAG, USED AFTER PROGRAM LOAD
 
     MEMORY.start := {                                                                                                           // MEMORY CONTROLLER FLAGS
         RV64CONTROL.IS_STORE & ( ( STATE[4,1] & RV64CONTROL.IS_FAST ) | ( STATE[6,1] & ~( EXECUTESLOW.busy | EXECUTEFPU.busy ) ) ),
         STATE[3,1] & RV64CONTROL.IS_LOAD & ~MEMORY.busy,
         STATE[8,1] & ~( DMAREQ | DMA_AUDIO_REQ )
     };
-    MEMORY.L1match := ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );                                               //  CPU L1 CACHE MATCH FOR PC
-    MEMORY.L1instruction := SMT ? ICACHE_1.instruction : ICACHE_0.instruction;                                                  //  L1 instruction
-    MEMORY.L1compressed := SMT ? ICACHE_1.compressed : ICACHE_0.compressed;                                                     //  L1 compressed flag
-    MEMORY.storedata := RV64CONTROL.IS_FAST ? RV64CONTROL.opCode[0,1] ? RV64CONTROLF.sourceReg2F :                              //  SELECT RESULT TO STORE  FAST FLOATING-POINT REGISTER
+    MEMORY.storedata := RV64CONTROL.IS_FAST ? RV64CONTROL.opCode[0,1] ? RV64CONTROL.sourceReg2F :                              //  SELECT RESULT TO STORE  FAST FLOATING-POINT REGISTER
                                                                         RV64CONTROL.sourceReg2 :                                //                          FAST INTEGER REGISTER
                                               EXECUTESLOW.memoryoutput;                                                         //                          SLOW ATOMIC MEMORY OPERATION
 
@@ -182,7 +158,7 @@ unit PAWSCPU(
             case 0: {                                                                                                           //  STATE_RESET
                 if( |resetCounter ) {
                     resetCounter = resetCounter - ~( memorybusy | DMAACTIVE | EXECUTESLOW.busy | EXECUTEFPU.busy |              // -1 WHEN ALL UNITS ARE NO LONGER BUSY
-                                                     ICACHE_0W.CLS | ICACHE_1W.CLS | MEMORY.busy );
+                                                     MEMORY.busy );
                 } else {
                     STATE = $STATE_NEXT$;
                 }
@@ -230,8 +206,8 @@ unit PAWSCPU(
                 }
             }
             case 8: {                                                                                                           //  STATE_NEXT
-                { RV64CONTROL.cacheselect = ( DMAREQ | DMA_AUDIO_REQ ); }                                                       // SELECT DATA CACHE FOR DMA, INSTRUCTION CACHE FOR FETCH
-                { STATE = ( DMAREQ | DMA_AUDIO_REQ ) ? $STATE_DMA_START$ : $STATE_FETCH$; }
+                RV64CONTROL.cacheselect = ( DMAREQ | DMA_AUDIO_REQ );                                                           // SELECT DATA CACHE FOR DMA, INSTRUCTION CACHE FOR FETCH
+                STATE = ( DMAREQ | DMA_AUDIO_REQ ) ? $STATE_DMA_START$ : $STATE_FETCH$;
             }
         }
     }
@@ -250,11 +226,11 @@ unit cpuexecuteFASTPATH(
     output  uint2   fenceACTIVE(0)
 ) <reginputs> {
     always_after {
-        { result = isAUIPCLUI ? AUIPCLUI :                                                                                      // LUI AUIPC
-                        isJAL ? nextPC :                                                                                        // JAL[R]
-                                memoryinput; }                                                                                  // INTEGER/FLOAT LOAD SIGN EXTENDED/NAN BOIXED BY LOAD UNIT
+        result = isAUIPCLUI ? AUIPCLUI :                                                                                        // LUI AUIPC
+                      isJAL ? nextPC :                                                                                          // JAL[R]
+                              memoryinput;                                                                                      // INTEGER/FLOAT LOAD SIGN EXTENDED/NAN BOIXED BY LOAD UNIT
 
-        { fenceACTIVE = isFENCE ? { |function7[1,2], ~function3[0,1] } : fenceACTIVE; }                                         // SET FENCE ACTIVE { IO, MEM }
+        fenceACTIVE = isFENCE ? { |function7[1,2], ~function3[0,1] } : fenceACTIVE;                                             // SET FENCE ACTIVE { IO, MEM }
     }
 }
 
@@ -317,26 +293,26 @@ unit cpuexecuteSLOWPATH(
     busy := ( STATE[0,1] & start ) | ( STATE[2,1] & ALUMD.busy );
 
     always_after {
-        { CSR.csrRegister = { function7, rs2 }; }                                                                               // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
+        CSR.csrRegister = { function7, rs2 };                                                                                   // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
 
-        { onehot( STATE ) {
+        onehot( STATE ) {
             case 0: {                                                                                                           // WAIT FOR START
-                { if( start ) {
+                if( start ) {
                     onehot( operation ) {
                         default: { STATE = $STATE_CPUSLOW_CSR_ATOMIC$; }                                                        //  CSR OR ATOMIC-MEMORY-OPERATION
                         case 2: { STATE = $STATE_CPUSLOW_DIVISION$; }                                                           //  DIVISION
                     }
-                } }
+                }
             }
             case 1: { STATE = $STATE_CPUSLOW_IDLE$; }                                                                           // CSR OR AMO
             case 2: { if( ~ALUMD.busy ) { STATE = $STATE_CPUSLOW_IDLE$; } }                                                     // DIVISION
-        } }
+        }
 
-        { result = isCSR ? |function3 ? CSR.result : 0 :                                                                        //  CSR
-                   isATOMIC ? function7[3,1] ? memoryinput : function7[2,1] ? 0 : memoryinput :                                 //  ATOMIC LOAD - MODIFY - STORE
-                                    size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result; } //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
+        result =    isCSR ? |function3 ? CSR.result : 0 :                                                                       //  CSR
+                 isATOMIC ? function7[3,1] ? memoryinput : function7[2,1] ? 0 : memoryinput :                                   //  ATOMIC LOAD - MODIFY - STORE
+                            size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result;           //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
 
-        { memoryoutput = function7[3,1] ? ALUA.result : sourceReg2; }                                                           //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORYOUTPUT
+        memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                                               //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORYOUTPUT
     }
 }
 
@@ -354,18 +330,16 @@ unit cpuexecuteFPU(
     input   uint64  sourceReg1F,
     input   uint64  sourceReg1Fx,
     input   uint64  sourceReg1Fxopp,
-    input   uint4   typeAF,
+    input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO }
     input   uint4   typeAopp,
     input   uint64  sourceReg2F,
     input   uint64  sourceReg2Fx,
     input   uint4   typeBF,
     input   uint64  sourceReg3Fx,
     input   uint4   typeCF,
-    input   uint1   aObINF,                                                                                                     // EITHER A OR B INF?
-    input   uint1   aAbINF,                                                                                                     // BOTH A AND B INF?
     input   uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
-    input   uint1   aObZERO,                                                                                                    // EITHER A OR B ZERO?
-    input   uint1   aAbZERO,                                                                                                    // BOTH A AND B ZERO?
+    input   uint4   type_aAb,
+    input   uint4   type_aOb,                                                                                                    // BOTH A AND B ZERO?
     input   uint1   aZEROFRACTION,                                                                                              // A FRACTION PART 0, POWER OF 2 OR TRUE ZERO DETECTION
     input   uint1   bZEROFRACTION,                                                                                              // B FRACTION PART 0, POWER OF 2 OR TRUE ZERO DETECTION
     input   uint1   FLT,
@@ -392,19 +366,16 @@ unit cpuexecuteFPU(
         rs1 <: rs1, rs2 <: rs2,
         sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
         sign1F <: fp64( sourceReg1Fx ).sign, sign2F <: fp64( sourceReg2Fx ).sign,
-        typeAF <: typeAF, typeBF <: typeBF,
-        aObNAN <: aObNAN,
-        aZEROFRACTION <: aZEROFRACTION,
+        typeAF <: typeAF, aZEROFRACTION <: aZEROFRACTION, typeBF <: typeBF, aObNAN <: aObNAN,
         FLT <: FLT, FEQ <: FEQ
     );
-
     floatcalc FPUCALC(                                                                                                          // FLOATING POINT CALCULATIONS CONTROLLER
         dsh <: function7[0,2],                                                                                                  //  RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
         BIAS <: BIAS,
         opCode <: opCode, function3 <: function3, function7 <: function7[2,5],
         sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx, sourceReg3Fx <: sourceReg3Fx,
         typeAF <: typeAF, typeBF <: typeBF, typeCF <: typeCF,
-        aObINF <: aObINF, aAbINF <: aAbINF, aObNAN <: aObNAN, aObZERO <: aObZERO, aAbZERO <: aAbZERO,
+        aObINF <: type_aOb[3,1], aAbINF <: type_aAb[3,1], aObNAN <: aObNAN, aObZERO <: type_aOb[0,1], aAbZERO <: type_aAb[0,1],
         aZEROFRACTION <: aZEROFRACTION, bZEROFRACTION <: bZEROFRACTION
     );
     repackage_actual CALCRESULT( dsh <: function7[0,2], a <: FPUCALC.result );                                                  // REPACKAGE CALCULATION RESULT INTO CORRECT BITFIELDS
@@ -433,7 +404,7 @@ unit cpuexecuteFPU(
     busy := ( STATE[0,1] & start & ~( isFASTFPU | isFPUCONVERT ) ) | STATE[1,1];
 
     always_after {
-        { onehot( STATE ) {
+        onehot( STATE ) {
             case 0: {
                 if( start ) {                                                                                                   // START FPU OPERATION
                     onehot( operation ) {
@@ -444,27 +415,28 @@ unit cpuexecuteFPU(
             }
             case 1: { if( ~FPUCALC.busy ) { STATE = $STATE_FPU_CALC_FINISH$; } }                                                // WAIT FOR FPU CALCULATION TO FINISH
             case 2: { STATE = $STATE_FPU_IDLE$; }                                                                               // CALCULATION FINISHED
-        } }
+        }
 
-        { result = ( isFASTFPU & ~isFPUCONVERT ) ? FPUFAST.result :                                                             // COLLECT THE APPROPRIATE RESULT
+        result = ( isFASTFPU & ~isFPUCONVERT ) ? FPUFAST.result :                                                               // COLLECT THE APPROPRIATE RESULT
                    isFPUCONVERT ? ( function7[2,5] == 5b11000 ) ? FPUF2IL.result :                                              //  FD2IL
                                     ( function7[2,5] == 5b11010 ) ? FPUIL2F.result :                                            //  IL2FD
                                                        rs2[2,1] ? FPUROUND.result : FPUF_CP.result :                            //  ROUND OR CHANGE PRECISION
-                                    CALCRESULT.repack; }
-        { frd = isFPUCONVERT ? ( function7[2,5] != 5b11000 ) : ( isFASTFPU | isFPUCONVERT ) ? FPUFAST.frd : 1; }                // WRITE TO F REGISTERS FLAG ( NOT FD2IL )
-        { FPUnewflags = FPUflags | (                                                                                            // MERGE OLD AND NEW FLAGS
+                                    CALCRESULT.repack;
+        frd = isFPUCONVERT ? ( function7[2,5] != 5b11000 ) : ( isFASTFPU | isFPUCONVERT ) ? FPUFAST.frd : 1;                    // WRITE TO F REGISTERS FLAG ( NOT FD2IL )
+         FPUnewflags = FPUflags | (                                                                                             // MERGE OLD AND NEW FLAGS
                                     isFPUCONVERT ? ( function7[2,5] == 5b11000 ) ? FPUF2IL.FPUflags :                           //  FD2IL
                                                    ( function7[2,5] == 5b11010 ) ? FPUIL2F.FPUflags :                           //  IL2FD
                                                                       rs2[2,1] ? FPUROUND.FPUflags : FPUF_CP.FPUflags :         //  ROUND OR CHANGE PRECISION
                                       ~( isFASTFPU | isFPUCONVERT ) ? FPUCALC.FPUnewflags :
                                                                       FPUFAST.FPUnewflags
-                                ); }
+                                );
 
     }
 }
 
 unit memory_controller(
     input   uint1   clock_CPUdecoder,
+    input   uint1   clock_cache,
     input   uint3   start,                                                                                                      // { STORE, LOAD, FETCH }
     output  uint1   busy,
 
@@ -482,6 +454,7 @@ unit memory_controller(
     input   uint32  readdata,
 
     input   uint1   SMT,
+    input   uint2   fenceACTIVE,
     input   uint$addr_width$ pc,
     input   uint$addr_width$ pcSMT,
     input   uint$addr_width$ loadAddress,
@@ -489,10 +462,6 @@ unit memory_controller(
 
     output  uint32  instruction,
     output  uint1   compressed,
-
-    input   uint1   L1match,
-    input   uint30  L1instruction,
-    input   uint1   L1compressed,
 
     output  uint64  memoryinput,
     input   uint64  storedata
@@ -508,6 +477,16 @@ unit memory_controller(
 
     uint3   ACTION = uninitialised;
     uint4   count = uninitialised;                                                                                              // NUMBER OF MEMORY OPERATION
+    uint4   count_NEXT <:: count + 1;
+    uint$addr_width$ address_NEXT <:: address + ( IS_MA ? 1 : 4 );
+
+    uint1   L1match <: ( SMT & ICACHE_1.tagmatch ) | ( ~SMT & ICACHE_0.tagmatch );
+    simple_dualport_bram uint$32+L10Ipartaddresswidth$ L10cache <@clock_cache,@clock> [$L10Iblocks$] = uninitialized;           // SMALL ON CPU L1 CACHE - 1 per HART - RESET FENCE MEM IS 1
+    simple_dualport_bram uint$32+L11Ipartaddresswidth$ L11cache <@clock_cache,@clock> [$L11Iblocks$] = uninitialized;
+    iL10cache_read ICACHE_0 <@clock_cache> ( L1cache <:> L10cache, CLS <: ICACHE_0W.CLS, address <: pc );
+    iL11cache_read ICACHE_1 <@clock_cache> ( L1cache <:> L11cache, CLS <: ICACHE_1W.CLS, address <: pcSMT );
+    iL10cache_write ICACHE_0W( L1cache <:> L10cache, address <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed );
+    iL11cache_write ICACHE_1W( L1cache <:> L11cache, address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed );
 
     compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );                                                    // COMPRESSED INSTRUCTION EXPANDERS
     compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );
@@ -522,66 +501,69 @@ unit memory_controller(
     );
 
     readmemory := 0; writememory := 0;
+    ICACHE_0W.update := ~SMT & STATE[2,1]; ICACHE_1W.update := SMT & STATE[2,1];                                                // UPDATE CPU L1 CACHE FOR MAIN/SMT THREAD FLAG
+    ICACHE_0W.invalidate := reset | fenceACTIVE[0,1]; ICACHE_1W.invalidate := reset | fenceACTIVE[0,1];                         // CPU L1 CACHE INVALIDATE FLAG, USED AFTER PROGRAM LOAD
 
     always_after {
-        { if( STATE[4,1] & ~memorybusy & ACTION[1,1] ) {                                                                        //  IF LOAD, PACK READDATA INTO MEMORY INPUT
+        if( STATE[4,1] & ~memorybusy & ACTION[1,1] ) {                                                                          //  IF LOAD, PACK READDATA INTO MEMORY INPUT
             if( IS_MA ) {
                 LOAD.memoryinput[ { count, 3b000 }, 8 ] = readdata[ { address[0,1], 3b000 }, 8 ];                               //  SINGLE BYTE FOR MISALIGNED LOADS
             } else {
                 LOAD.memoryinput[ { count[0,1], 5b00000 }, 32 ] = readdata;                                                     //  8/16/32 BITS FOR ALIGNED LOADS
             }
-        } }
+        }
 
-        { onehot( STATE ) {
+        onehot( STATE ) {
             case 0: {
-                { if( |start ) {                                                                                                // WAIT FOR START
-                    { count = 0; } { LOAD.memoryinput = 0; }                                                                    //  0 COUNT AND MEMORY INPUT
-                    { address = start[0,1] ? SMT ? pcSMT : pc : start[1,1] ? loadAddress : storeAddress; }                      //  SET FIRST ADDRESS
-                    { ACTION = start; }
+                 if( |start ) {                                                                                                 // WAIT FOR START
+                    count = 0; LOAD.memoryinput = 0;                                                                            //  0 COUNT AND MEMORY INPUT
+                    address = start[0,1] ? SMT ? pcSMT : pc : start[1,1] ? loadAddress : storeAddress;                          //  SET FIRST ADDRESS
+                    ACTION = start;
 
-                    { onehot( start ) {                                                                                         // SEND TO { STORE, LOAD, FETCH }
+                    onehot( start ) {                                                                                           // SEND TO { STORE, LOAD, FETCH }
                         case 0: {
                             if( L1match ) {
-                                { instruction = { L1instruction, 2b11 }; } { compressed = L1compressed; }                       //  FETCH FROM L1 CACHE
+                                instruction = { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };                      //  FETCH FROM L1 CACHE
+                                compressed = SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
                             } else {
                                 STATE = $STATE_FETCH_READ$;                                                                     //  FETCH FROM MEMORY
                             }
                         }
                         case 1: { STATE = $STATE_LOAD_MEMBUSY$; }                                                               //  LOAD FROM MEMORY
                         case 2: { STATE = $STATE_LS_NEXT$; }                                                                    //  STORE TO MEMORY
-                    } }
-                } }
+                    }
+                }
 
-                { busy = |start[1,2] | ( start[0,1] & ~L1match ); }
-                { readmemory = start[1,1] | ( start[0,1] & ~L1match ); }
-                { writedata = storedata; }
-                { writememory = start[2,1]; }
+                busy = |start[1,2] | ( start[0,1] & ~L1match );
+                readmemory = start[1,1] | ( start[0,1] & ~L1match );
+                writedata = storedata;
+                writememory = start[2,1];
             }
 
             case 1: { if( ~memorybusy ) { STATE = $STATE_FETCH_COMPLETE$; } }                                                   // WAIT FOR MEMORYREAD TO COMPLETE
             case 2: {                                                                                                           // PACK FETCHED INSTRUCTION
-                { compressed = ~&readdata[0,2]; }                                                                               //  SET COMPRESSED FLAGS
-                { instruction = { &readdata[0,2] ? readdata[2,30] :                                                             //  32 BIT INSTRUCTION READ
-                                 ~|readdata[0,2] ? COMPRESSED00.i32 :                                                           //  16 BIT INSTRUCTION READ block 00
-                                   readdata[0,1] ? COMPRESSED01.i32 :                                                           //                          block 01
-                                                   COMPRESSED10.i32, 2b11 }; }                                                  //                          block 10, plus trailing 11
-                { busy = 0; } { STATE = $STATE_FSL_WAIT$; }                                                                     // FINISHED FETCH
+                compressed = ~&readdata[0,2];                                                                                   //  SET COMPRESSED FLAGS
+                instruction = { &readdata[0,2] ? readdata[2,30] :                                                               //  32 BIT INSTRUCTION READ
+                               ~|readdata[0,2] ? COMPRESSED00.i32 :                                                             //  16 BIT INSTRUCTION READ block 00
+                                 readdata[0,1] ? COMPRESSED01.i32 :                                                             //                          block 01
+                                                 COMPRESSED10.i32, 2b11 };                                                      //                          block 10, plus trailing 11
+                busy = 0; STATE = $STATE_FSL_WAIT$;                                                                             // FINISHED FETCH
             }
 
             case 3: { if( ~memorybusy ) { STATE = $STATE_LS_NEXT$; } }                                                          // WAIT FOR MEMORYREAD TO COMPLETE
             case 4: {
                 if( ~memorybusy ) {                                                                                             // WAIT FOR MEMORYWRITE TO COMPLETE
-                    if( ( count + 1 ) == ( IS_MA ? ( 1 << accesssize ) : IS_64 ? 2 : 1 ) ) {
-                        { busy = 0; } { STATE = $STATE_FSL_WAIT$; }                                                             //  FINISHED LOAD/STORE
+                    if( count_NEXT == ( IS_MA ? ( 1 << accesssize ) : IS_64 ? 2 : 1 ) ) {
+                        busy = 0; STATE = $STATE_FSL_WAIT$;                                                                     //  FINISHED LOAD/STORE
                     } else {
-                        { writedata = IS_MA ? storedata[ { count + 4d1, 3b000 }, 8 ] : storedata[ 32, 32 ]; }                   // SET MEMORY OUTPUT TO PRESENT STORE PART
-                        { count = count + 1; } { address = address + ( IS_MA ? 1 : 4 ); }                                       //  MOVE TO NEXT PART, 8 bit MA or NEXT 32 BITS FOR 64 BITS
-                        { writememory = ACTION[2,1]; } { readmemory = ACTION[1,1]; }
-                        { STATE = ACTION[2,1] ? $STATE_LS_NEXT$ : $STATE_LOAD_MEMBUSY$; }
+                        writedata = IS_MA ? storedata[ { count_NEXT, 3b000 }, 8 ] : storedata[ 32, 32 ];                        // SET MEMORY OUTPUT TO PRESENT STORE PART
+                        count = count_NEXT; address = address_NEXT;                                                             //  MOVE TO NEXT PART, 8 bit MA or NEXT 32 BITS FOR 64 BITS
+                        writememory = ACTION[2,1]; readmemory = ACTION[1,1];
+                        STATE = ACTION[2,1] ? $STATE_LS_NEXT$ : $STATE_LOAD_MEMBUSY$;
                     }
                 }
             }
-        } }
+        }
     }
 }
 

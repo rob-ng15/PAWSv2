@@ -70,15 +70,15 @@ unit floateqltle(                                                               
     input   uint3   function3,                                                                                                  // COMPARISON TYPE SWITCH
     input   uint1   EQUAL,                                                                                                      // IS EQUAL FLAG A == B
     input   uint1   LESS,                                                                                                       // IS LESS FLAG A < B
-    input   uint1   sNANa,                                                                                                      // A is sNAN?
-    input   uint1   sNANb,                                                                                                      // B is sNAN?
+    input   uint1   a_sNAN,                                                                                                     // A is sNAN?
+    input   uint1   b_sNAN,                                                                                                     // B is sNAN?
     input   uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
     output  uint1   COMPARE,                                                                                                    // RESULT OF COMPARISON
     output  uint5   flags                                                                                                       // FLOATING POINT FLAGS FOR COMPARISON
 ) <reginputs> {
     always_after {
-        { COMPARE = ~aObNAN & |( { EQUAL, LESS, LESS | EQUAL } & ( 1 << function3 ) ); }                                        // 0 IF NAN ELSE COMPARISON FLAG
-        { flags = { function3[2,1] ? 1b0 : function3[1,1] ? ( sNANa | sNANb ) : aObNAN, 4b0000 }; }                             // RETURN NV FLAG IF FLT OR FLE AND NAN IS AN INPUT
+        COMPARE = ~aObNAN & |( { EQUAL, LESS, LESS | EQUAL } & ( 1 << function3 ) );                                            // 0 IF NAN ELSE COMPARISON FLAG
+        flags = { function3[2,1] ? 1b0 : function3[1,1] ? ( a_sNAN | b_sNAN ) : aObNAN, 4b0000 };                               // RETURN NV FLAG IF FLT OR FLE AND NAN IS AN INPUT
     }
 }
 
@@ -87,8 +87,8 @@ unit floatminmax(                                                               
     input   uint2   function3,                                                                                                  // MIN == 0, MAX == 1
     input   uint64  sourceReg1F,                                                                                                // REGISTER INPUT A
     input   uint64  sourceReg2F,                                                                                                // REGISTER INPUT B
-    input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1
-    input   uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 2
+    input   uint2   a_NAN_sq,                                                                                                   // { sNAN qNAN } OF INPUT FLOAT REGISTER 1
+    input   uint2   b_NAN_sq,                                                                                                   // { sNAN qNAN } OF INPUT FLOAT REGISTER 2
     input   uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
     input   uint1   LESS,                                                                                                       // IS LESS FLAG A < B
     output  uint64  MINMAX,                                                                                                     // RESULT OF MIN/MAX(a,b)
@@ -97,12 +97,12 @@ unit floatminmax(                                                               
     actual_qNAN qNAN( dsh <: dsh );                                                                                             // GENERATE qNAN FOR USE IF ERROR
 
     always_after {
-        { MINMAX = aObNAN ? function3[1,1] ? qNAN.value :                                                                            // FMINM FMAXM ANY NAN -> NAN
-                                            ( typeAF[2,1] | typeBF[2,1] ) | ( typeAF[1,1] & typeBF[1,1] ) ? qNAN.value :            // FMIN FMAX sNAN or BOTH qNAN -> NAN
-                                            typeAF[1,1] ? sourceReg2F : sourceReg1F :                                               //  A == NAN -> B, B == NAN -> A
-                        ( function3[0,1] ^ LESS ) ? sourceReg1F : sourceReg2F; }                                                   //  ELSE MIN/MAX AND SELECT REGISTER
+        MINMAX = aObNAN ? function3[1,1] ? qNAN.value :                                                                         // FMINM FMAXM ANY NAN -> NAN
+                                           ( a_NAN_sq[1,1] | b_NAN_sq[1,1] ) | ( a_NAN_sq[0,1] & b_NAN_sq[0,1] ) ? qNAN.value : // FMIN FMAX sNAN or BOTH qNAN -> NAN
+                                           a_NAN_sq[0,1] ? sourceReg2F : sourceReg1F :                                          //  A == NAN -> B, B == NAN -> A
+                          ( function3[0,1] ^ LESS ) ? sourceReg1F : sourceReg2F;                                                //  ELSE MIN/MAX AND SELECT REGISTER
 
-        { flags = { aObNAN, 4b0000 }; }                                                                                               // FLAGS SIGNALLING NAN INPUT
+        flags = { aObNAN, 4b0000 };                                                                                             // FLAGS SIGNALLING NAN INPUT
     }
 }
 
@@ -162,28 +162,28 @@ unit floatimmediate(
     };
 
     always_after {
-        { immediate_table.addr0 = rs1; }                                                                                        // SELECT IMMEDIATE VALUE
+        immediate_table.addr0 = rs1;                                                                                            // SELECT IMMEDIATE VALUE
 
-        { immediate = dsh[0,1] ? {                                                                                              // EXTRACT DOUBLE IMMEDIATE
+        immediate = dsh[0,1] ? {                                                                                                // EXTRACT DOUBLE IMMEDIATE
                                     immediate_table.rdata0[13,1],
                                     immediate_table.rdata0[2,11],
                                     immediate_table.rdata0[0,2],
                                     50h0
-                                 } :
-                      dsh[1,1] ? {                                                                                              // EXTRACT HALF PRECISION IMMEDIATE
+                               } :
+                    dsh[1,1] ? {                                                                                                // EXTRACT HALF PRECISION IMMEDIATE
                                     48hffffffffffff,                                                                            //  NAN BOXED
                                     immediate_table.rdata0[13,1],
                                     ( rs1 == 30 ) ? 5b11111: { immediate_table.rdata0[12,1], immediate_table.rdata0[2,4] },     //  2^16 -> +INF
                                     immediate_table.rdata0[0,2],
                                     8h0
-                                 } :
-                                 {                                                                                              // EXTRACT SINGLE PRECISION IMMEDIATE
+                               } :
+                               {                                                                                                // EXTRACT SINGLE PRECISION IMMEDIATE
                                     32hffffffff,                                                                                //  NAN BOXED
                                     immediate_table.rdata0[13,1],
                                     { immediate_table.rdata0[12,1], immediate_table.rdata0[2,7] },
                                     immediate_table.rdata0[0,2],
                                     21h0
-                                 }; }
+                               };
     }
 }
 
@@ -215,15 +215,15 @@ unit fpuSINGLECYCLE(
     floateqltle FPUeqltle(                                                                                                      // GENERATE FEQ FLT FLE
         function3 <: function3,                                                                                                 // COMPARISON SWITCH
         EQUAL <: FEQ, LESS <: FLT,                                                                                              // COMPARISON FLAGS
-        sNANa <: typeAF[2,1], sNANb <: typeBF[2,1],                                                                             // sNAN? A B
+        a_sNAN <: typeAF[2,1], b_sNAN <: typeBF[2,1],                                                                           // sNAN? A B
         aObNAN <: aObNAN                                                                                                        // A OR B NAN?
     );
     floatminmax FPUminmax(                                                                                                      // GENERATE FMIN FMAX
         dsh <: dsh,                                                                                                             // DOUBLE/SINGLE/HALF FLAG
         function3 <: function3,                                                                                                 // MIN/MAX AND M SWITCHES
         LESS <: FLT,                                                                                                            // COMPARISON FLAGS
-        sourceReg1F <: sourceReg1F, typeAF <: typeAF,                                                                                             // INPUT FLOAT REGISTER 1
-        sourceReg2F <: sourceReg2F, typeBF <: typeBF,                                                                                             // INPUT FLOAT REGISTER 2
+        sourceReg1F <: sourceReg1F, a_NAN_sq <: typeAF[1,2],                                                                    // INPUT FLOAT REGISTER 1 { sNAN qNAN }
+        sourceReg2F <: sourceReg2F, b_NAN_sq <: typeBF[1,2],                                                                    // INPUT FLOAT REGISTER 2 { sNAN qNAN }
         aObNAN <: aObNAN                                                                                                        // A OR B NAN?
     );
     floatsign FPUsign(                                                                                                          // GENERATE FSGNJ FSGNJN FSGNJX
@@ -239,22 +239,22 @@ unit fpuSINGLECYCLE(
     );
 
     always_after {
-    { frd = function7[3,1] ? function7[1,1] : ~|function7[3,2]; }                                                                          // FRD for FMIN FMAX FSGNJ FSGNJN FSGNJX AND FMV.W.X
+        frd = function7[3,1] ? function7[1,1] : ~|function7[3,2];                                                               // FRD for FMIN FMAX FSGNJ FSGNJN FSGNJX AND FMV.W.X
 
-    { FPUnewflags = ~|function7[3,2] ? function7[0,1] ? FPUminmax.flags : 0 :
-                   ( function7[3,2] == 2b10 ) ? FPUeqltle.flags :
-                            0; }
+        FPUnewflags =           ~|function7[3,2] ? function7[0,1] ? FPUminmax.flags : 0 :
+                      ( function7[3,2] == 2b10 ) ? FPUeqltle.flags :
+                                                   0;
 
-    { result =      ~|function7[3,2] ? function7[0,1] ? FPUminmax.MINMAX : FPUsign.SIGN :                                                // FMIN FMAX FSGNJ FSGNJN FSGNJX
-                   ( function7[3,2] == 2b10 ) ? FPUeqltle.COMPARE :                                                                               // FEQ FLT FLE
-             function7[1,1] ? rs2[0,1] ? FPUimmediate.immediate :                                                               // FLI
-                              dsh[0,1] ? sourceReg1 :                                                                           // FMV.W.D
-                              dsh[1,1] ? { 48hffffffffffff, sourceReg1[0,16] } :                                                // FMV.W.H
-                                         { 32hffffffff, sourceReg1[0,32] } :                                                    // FMV.W.S
-             function3[0,1] ? FPUclass.FCLASS :                                                                                 // FCLASS
-                              dsh[0,1] ? sourceReg1F :                                                                          // FMV.D.W
-                              dsh[1,1] ? { {48{sourceReg1F[15,1]}}, sourceReg1F[0,16] } :                                       // FMV.H.W
-                                         { {32{sourceReg1F[31,1]}}, sourceReg1F[0,32] }; }                                        // FMV.S.W
+        result =           ~|function7[3,2] ? function7[0,1] ? FPUminmax.MINMAX : FPUsign.SIGN :                                 // FMIN FMAX FSGNJ FSGNJN FSGNJX
+                 ( function7[3,2] == 2b10 ) ? FPUeqltle.COMPARE :                                                                // FEQ FLT FLE
+                             function7[1,1] ? rs2[0,1] ? FPUimmediate.immediate :                                                // FLI
+                                              dsh[0,1] ? sourceReg1 :                                                            // FMV.W.D
+                                              dsh[1,1] ? { 48hffffffffffff, sourceReg1[0,16] } :                                 // FMV.W.H
+                                                         { 32hffffffff, sourceReg1[0,32] } :                                     // FMV.W.S
+                             function3[0,1] ? FPUclass.FCLASS :                                                                  // FCLASS
+                                              dsh[0,1] ? sourceReg1F :                                                           // FMV.D.W
+                                              dsh[1,1] ? { {48{sourceReg1F[15,1]}}, sourceReg1F[0,16] } :                        // FMV.H.W
+                                                         { {32{sourceReg1F[31,1]}}, sourceReg1F[0,32] };                         // FMV.S.W
     }
 }
 
@@ -268,9 +268,9 @@ unit do_float_multiply(
     output  int13   exp                                                                                                         // EXPONENT sourceReg1F x sourceReg2F
 ) <reginputs> {
     always_after {
-        { fraction = { 1b1, fp64( sourceReg1Fx ).fraction } * { 1b1, fp64( sourceReg2Fx ).fraction }; }
-        { exp = fp64( sourceReg1Fx ).exponent + fp64( sourceReg2Fx ).exponent - ( { BIAS, 1b0 } ) + fraction[105,1]; }          // NEW EXP BY + INPUT EXP, - BIAS(2*) AND ( +1 if overflow )
-        { sign = fp64( sourceReg1Fx ).sign ^ fp64( sourceReg2Fx ).sign; }                                                       // SIGN FOR PRODUCT (USED FOR QUOTIENT TOO)
+        fraction = { 1b1, fp64( sourceReg1Fx ).fraction } * { 1b1, fp64( sourceReg2Fx ).fraction };                             // MULTIPLY THE FRACTION PARTS AFTER INSERTING LEADING 1
+        exp = fp64( sourceReg1Fx ).exponent + fp64( sourceReg2Fx ).exponent - ( { BIAS, 1b0 } ) + fraction[105,1];              // NEW EXP BY + INPUT EXP, - BIAS(2*) AND ( +1 if overflow )
+        sign = fp64( sourceReg1Fx ).sign ^ fp64( sourceReg2Fx ).sign;                                                           // SIGN FOR PRODUCT (USED FOR QUOTIENT TOO)
     }
 }
 unit floatcalc(
@@ -353,15 +353,15 @@ unit floatcalc(
     //      SUBTRACTION     A*1.0-B
     //      MULTIPLICATION  A*B+0.0
     //      FUSED           A*B+C ( with sign swaps as needed )
-    MULT.sourceReg2Fx := action[0,1] ? { 2b0, BIAS, 52b0 } : sourceReg2Fx;                                                      // HANDLE ADDITION AS A*1.0, A*B
+    MULT.sourceReg2Fx := action[0,1] ? { 2b0, BIAS, 52b0 } : sourceReg2Fx;                                                      // HANDLE ADDITION AS A*1.0, M̀ULTIPLICATION AS A*B
     FPUfused.productsign := action[1,1] ? MULT.sign :                                                                           // SELECTION MULTIPLICATION SIGN, MULTIPLICATION
-                                          opCode[1,1] ^ MULT.sign;                                                              // SWITCH PRODUCT SIGN IF NEGATE FLAG, FUSED
+                                          opCode[1,1] ^ MULT.sign;                                                              //  SWITCH PRODUCT SIGN IF NEGATE FLAG, FUSED
     FPUfused.c := action[0,1] ? { function7[0,1] ^ fp64( sourceReg2Fx ).sign, sourceReg2Fx[0,63] } :                            // ADD/SUB SWITCH SIGN OF B INPUT IF SUBTRACTION
-                  action[1,1] ? 0 :                                                                                             // SET C INPUT TO 0 IF A*B+0.0
-                                { opCode[0,1] ^ fp64( sourceReg3Fx ).sign, sourceReg3Fx[0,63] };                                // SWITCH SIGN OF C INPUT IF SUBTRACTION REQUIRED, FUSED
+                  action[1,1] ? 0 :                                                                                             //  SET C INPUT TO 0 IF A*B+0.0
+                                { opCode[0,1] ^ fp64( sourceReg3Fx ).sign, sourceReg3Fx[0,63] };                                //  SWITCH SIGN OF C INPUT IF SUBTRACTION REQUIRED, FUSED
     FPUfused.typeCF := action[0,1] ? typeBF :                                                                                   // SET TYPE OF C TO TYPE OF B FOR ADDITION/SUBTRACTION
-                       action[1,1] ? 4b0001 :                                                                                   // SET TYPE OF C TO 0 FOR MULTIPLICATION
-                                     typeCF;                                                                                    // SELECT TYPE OF C, FUSED
+                       action[1,1] ? 4b0001 :                                                                                   //  SET TYPE OF C TO 0 FOR MULTIPLICATION
+                                     typeCF;                                                                                    //  SELECT TYPE OF C, FUSED
 
     FPUfused.aObINF := action[0,1] ? typeAF[3,1] : aObINF;                                                                      // SET INF NAN AND ZERO FLAGS FOR   ADDITION
     FPUfused.aAbINF := action[0,1] ? typeAF[3,1] : aAbINF;                                                                      //                                  SUBTRACTION
@@ -376,7 +376,7 @@ unit floatcalc(
     busy := start | FPUfused.busy | FPUsqrt.busy | FPUdivide.busy;                                                              // BUSY IF START OR A UNIT IS BUSY
 
     always_after {
-        { onehot( action ) {
+        onehot( action ) {
             case 2: {                                                                                                           // FDIV
                 result = FPUdivide.special[3,1] ? { MULT.sign, 63h7FF0000000000000 } :                                          // RETURN INF
                          FPUdivide.special[1,1] ? 64h7FF8000000000000 :                                                         // RETURN qNAN
@@ -395,12 +395,12 @@ unit floatcalc(
                          FPUfused.special[3,1] ? { FPUfused.productsign, 63h7FF0000000000000 } :                                // RETURN INF, * == INF
                                                  FPUfused.typeCF[0,1] ? MAKERESULT.combined : FPUfused.result;                  // RETURN MULTIPLY IF C == 0 OR RETURN FULL RESULT
             }
-        } }
+        }
 
-        { FPUnewflags = action[3,1] ? FPUsqrt.flags :                                                                           // SQRT             { NV, --, UF, OF, -- }
+        FPUnewflags = action[3,1] ? FPUsqrt.flags :                                                                             // SQRT             { NV, --, UF, OF, -- }
                         action[2,1] ? FPUdivide.flags :                                                                         // DIVIDE           { --, DZ, UF, OF, -- }
                                       FPUfused.flags & ( action[4,1] ? 5b10110 :                                                // FUSED MULT-ADD   { NV, --, UF, OF, -- }
-                                                                       5b00110 ); }                                             // ADD/SUB/MULT     { --, --, UF, OF, -- }
+                                                                       5b00110 );                                               // ADD/SUB/MULT     { --, --, UF, OF, -- }
     }
 }
 
@@ -1134,16 +1134,17 @@ unit floatcompare(
     input   uint64  a,                                                                                                          // A INPUT FOR A<B OR A==B ( repacked into double bitfields )
     input   uint64  b,                                                                                                          // B INPUT FOR A<B OR A==B ( repacked into double bitfields )
     input   uint1   aObNAN,                                                                                                     // { INF sNAN qNAN ZERO } FOR A
-    input   uint1   aAbZERO,                                                                                                    // A == 0 AND B == 0?
+    input   uint1   a_ZERO,                                                                                                     // A == 0
+    input   uint1   b_ZERO,                                                                                                     // B == 0
     input   uint1   aZEROFRACTION,                                                                                              // A FRACTION == 0?
     input   uint1   bZEROFRACTION,                                                                                              // B FRACTION == 0?
     output  uint1   less,                                                                                                       // A < B FLAG
     output  uint1   equal                                                                                                       // A == B FLAG
 ) <reginputs> {
     always_after {
-        { less = ~aObNAN & ( ( fp64( a ).sign ^ fp64( b ).sign ) ? fp64( a ).sign & ~( aAbZERO & aZEROFRACTION & bZEROFRACTION ) :
+        { less = ~aObNAN & ( ( fp64( a ).sign ^ fp64( b ).sign ) ? fp64( a ).sign & ~( a_ZERO & b_ZERO & aZEROFRACTION & bZEROFRACTION ) :
                                                                    ( a != b ) & ( fp64( a ).sign ^ ( __unsigned( a ) < __unsigned( b ) ) ) ); }
-        { equal = ~aObNAN & ( ( a == b ) | ( aAbZERO & aZEROFRACTION & bZEROFRACTION ) ); }
+        { equal = ~aObNAN & ( ( a == b ) | ( a_ZERO & b_ZERO & aZEROFRACTION & bZEROFRACTION ) ); }
     }
 }
 
