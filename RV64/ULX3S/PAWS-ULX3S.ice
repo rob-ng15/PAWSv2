@@ -47,7 +47,7 @@ $$ L2size = 4096
 $$ L2cacheaddrwidth = clog2(L2size)
 $$ L2partaddresswidth = sdram_width - 2 - L2cacheaddrwidth
 $$ L2partaddressstart = 2 + L2cacheaddrwidth
-bitfield L1cache{ uint16 contents, uint1 needswrite, uint1 valid, uint$L2partaddresswidth$ partaddress }
+bitfield L2cache{ uint16 contents, uint1 needswrite, uint1 valid, uint$L2partaddresswidth$ partaddress }
 
 $$ print('CACHE BLOCK CONFIGURATION')
 $$ print("L1 BLOCKS: "..L10Iblocks.." WIDTH: "..L10Icount.." TAG SIZE: "..L10Ipartaddresswidth.." AT: "..L10Ipartaddressstart)

@@ -40,19 +40,18 @@ unit PAWSCPU(
         $$ STATE_NEXT       = 256
 
     uint8   resetCounter = -1;                                                                                                  // RESET COUNTER
-    uint1   DELAY = uninitialised;
     uint1   DMAREQUESTED = 0;
 
     uint1   COMMIT = uninitialized;                 uint1   COMMIT_SMT = uninitialised;                                         // COMMIT RESULT TO REGISTERS FLAG AND TO WHICH THREAD
     uint1   SMT = 0;                                                                                                            // SMT FLAG
     uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;                                    // PROGRAMS COUNTERS FOR MAIN AND SMT THREADS
 
-    uint64  result <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.result :                                                                 // SELECT RESULT FROM UNIT
-                      RV64CONTROL.IS_FAST ? RV64CONTROL.IS_ALU ? ( RV64CONTROL.opCode[1,1] & RV64CONTROL.IS_ALU32SIGNX ) ?
-                                                                 { {32{ALU.result[31,1]}}, ALU.result[0,32] } : ALU.result :    // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
+    uint64  result <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.RESULT :                                                                 // SELECT RESULT FROM UNIT
+                      RV64CONTROL.IS_FAST ? RV64CONTROL.IS_ALU ? { ( RV64CONTROL.opCode[1,1] & RV64CONTROL.IS_ALU32SIGNX ) ? {32{ALU.result[31,1]}} : ALU.result[32,32],
+                                                                   ALU.result[0,32] } :                                         // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
                                             EXECUTEFAST.result :
                                             EXECUTESLOW.result;
-    uint1   frd <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.frd : ( RV64CONTROL.IS_LOAD & RV64CONTROL.opCode[0,1] );                    // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
+    uint1   frd <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.F_RD : ( RV64CONTROL.IS_LOAD & RV64CONTROL.opCode[0,1] );                   // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
     uint1   write <:: COMMIT & RV64CONTROL.writeRegister;                                                                       // WRITE TO REGISTERS FLAG
 
     control RV64CONTROL <@clock_CPUdecoder> (                                                                                   // RISC-V   INSTRUCTION DECODER
@@ -101,25 +100,31 @@ unit PAWSCPU(
         isALU <: RV64CONTROL.IS_ALU,
         isCSR <: RV64CONTROL.IS_CSR,
         isATOMIC <: RV64CONTROL.IS_ATOMIC,
-        FPUnewflags <: EXECUTEFPU.FPUnewflags,
-        CSRupdateFPUflags <: EXECUTEFPU.CSRupdateFPUflags
+        FPUnewflags <: EXECUTEFPU.OUT_FPUFLAGS,
+        CSRupdateFPUflags <: EXECUTEFPU.CSR_UPDATE_FPUFLAGS,
+        incCSRinstret <: STATE[8,1]
     );
 
-    cpuexecuteFPU EXECUTEFPU(                                                                                                   // RISC-V FLOATING POINT OPERATIONS
-        opCode <: RV64CONTROL.opCode,
-        function3 <: RV64CONTROL.function3,
-        function7 <: RV64CONTROL.function7,
-        rs1 <: RV64CONTROL.rs1, rs2 <: RV64CONTROL.rs2,
-        sourceReg1 <: RV64CONTROL.sourceReg1, S1_abs32 <: RV64CONTROL.S1_abs32, S1_abs64 <: RV64CONTROL.S1_abs64,
-        sourceReg1F <: RV64CONTROL.sourceReg1F, sourceReg1Fx <: RV64CONTROL.sourceReg1Fx, sourceReg1Fxopp <: RV64CONTROL.sourceReg1Fxopp, typeAF <: RV64CONTROL.typeAF, typeAopp <: RV64CONTROL.typeAopp,
-        sourceReg2F <: RV64CONTROL.sourceReg2F, sourceReg2Fx <: RV64CONTROL.sourceReg2Fx, typeBF <: RV64CONTROL.typeBF,
-        sourceReg3Fx <: RV64CONTROL.sourceReg3Fx, typeCF <: RV64CONTROL.typeCF,
-        aObNAN <: RV64CONTROL.aObNAN, type_aAb <: RV64CONTROL.type_aAb, type_aOb <: RV64CONTROL.type_aOb,
-        aZEROFRACTION <: RV64CONTROL.aZEROFRACTION, bZEROFRACTION <: RV64CONTROL.bZEROFRACTION,
+    fpu_execute EXECUTEFPU(                                                                                                     // RISC-V FLOATING POINT OPERATIONS
+        OPCODE <: RV64CONTROL.opCode,
+        FUNCTION3 <: RV64CONTROL.function3,
+        FUNCTION7 <: RV64CONTROL.function7,
+        RS1 <: RV64CONTROL.rs1, RS2 <: RV64CONTROL.rs2,
+        I_1 <: RV64CONTROL.sourceReg1, I_1_ABS32 <: RV64CONTROL.S1_abs32, I_1_ABS64 <: RV64CONTROL.S1_abs64,
+        F_1 <: RV64CONTROL.sourceReg1F, F_1_X <: RV64CONTROL.sourceReg1Fx, F_1_CP <: RV64CONTROL.sourceReg1Fxopp, F_1_TYPE <: RV64CONTROL.typeAF, F_1_TYPE_CP <: RV64CONTROL.typeAopp,
+        F_2 <: RV64CONTROL.sourceReg2F, F_2_X <: RV64CONTROL.sourceReg2Fx, F_2_TYPE <: RV64CONTROL.typeBF,
+        F_3_X <: RV64CONTROL.sourceReg3Fx, F_3_TYPE <: RV64CONTROL.typeCF,
+        F1_OR_F2_INF <: RV64CONTROL.F1_OR_F2_INF,
+        F1_AND_F2_INF <: RV64CONTROL.F1_AND_F2_INF,
+        F1_OR_F2_NAN <: RV64CONTROL.F1_OR_F2_NAN,
+        F1_OR_F2_ZERO <: RV64CONTROL.F1_OR_F2_ZERO,
+        F1_AND_F2_ZERO <: RV64CONTROL.F1_AND_F2_ZERO,
+        F1_ZERO_FRACTION <: RV64CONTROL.F1_ZERO_FRACTION,
+        F2_ZERO_FRACTION <: RV64CONTROL.F2_ZERO_FRACTION,
         FLT <: RV64CONTROL.FLT, FEQ <: RV64CONTROL.FEQ,
-        isFASTFPU <: RV64CONTROL.IS_FASTFPU,
-        isFPUCONVERT <: RV64CONTROL.IS_FPUCONVERT,
-        FPUflags <: EXECUTESLOW.FPUflags
+        IS_FASTFPU <: RV64CONTROL.IS_FASTFPU,
+        IS_FPUCONVERT <: RV64CONTROL.IS_FPUCONVERT,
+        IN_FPUFLAGS <: EXECUTESLOW.FPUflags
     );
 
     memory_controller MEMORY(
@@ -138,32 +143,31 @@ unit PAWSCPU(
     RV64CONTROL.PC := SMT ? pcSMT : pc;                                                                                         // SELECT PROGRAM COUNTER FOR THIS CYCLE
 
     MEMORY.start := {                                                                                                           // MEMORY CONTROLLER FLAGS
-        RV64CONTROL.IS_STORE & ( ( STATE[4,1] & RV64CONTROL.IS_FAST ) | ( STATE[6,1] & ~( EXECUTESLOW.busy | EXECUTEFPU.busy ) ) ),
+        RV64CONTROL.IS_STORE & ( ( STATE[4,1] & RV64CONTROL.IS_FAST ) | ( STATE[6,1] & ~( EXECUTESLOW.busy | EXECUTEFPU.BUSY ) ) ),
         STATE[3,1] & RV64CONTROL.IS_LOAD & ~MEMORY.busy,
         STATE[8,1] & ~( DMAREQ | DMA_AUDIO_REQ )
     };
-    MEMORY.storedata := RV64CONTROL.IS_FAST ? RV64CONTROL.opCode[0,1] ? RV64CONTROL.sourceReg2F :                              //  SELECT RESULT TO STORE  FAST FLOATING-POINT REGISTER
+    MEMORY.storedata := RV64CONTROL.IS_FAST ? RV64CONTROL.opCode[0,1] ? RV64CONTROL.sourceReg2F :                               //  SELECT RESULT TO STORE  FAST FLOATING-POINT REGISTER
                                                                         RV64CONTROL.sourceReg2 :                                //                          FAST INTEGER REGISTER
                                               EXECUTESLOW.memoryoutput;                                                         //                          SLOW ATOMIC MEMORY OPERATION
 
     DMASTART := STATE[1,1] & DMAREQ; DMA_AUDIO_START := STATE[1,1] &  ~DMAREQ & DMA_AUDIO_REQ;                                  // DMA CONTROLLER START FLAGS
     EXECUTESLOW.start := ( STATE[4,1] & ~RV64CONTROL.IS_FAST & ~RV64CONTROL.IS_FPU ) | ( STATE[5,1] & ~MEMORY.busy );           // CPU CSR, ATOMIC, INTEGER DIVIDE START FLAG
-    EXECUTEFPU.start := STATE[4,1] & RV64CONTROL.IS_FPU & ~DELAY;                                                               // CPU FPU START FLAG
+    EXECUTEFPU.START := STATE[4,1] & RV64CONTROL.IS_FPU;                                                                        // CPU FPU START FLAG
 
     COMMIT := STATE[7,1] & ( ~MEMORY.busy & ~EXECUTESLOW.busy );                                                                // COMMIT TO REGISTERS FLAG
-    EXECUTESLOW.incCSRinstret := STATE[7,1] & ( ~MEMORY.busy & ~EXECUTESLOW.busy );                                             //  INCREMENT INSTRUCTION COUNT
 
     always_after {
         onehot( STATE ) {
-            case 0: {                                                                                                           //  STATE_RESET
+            case 0: {                                                                                                           // STATE_RESET
                 if( |resetCounter ) {
-                    resetCounter = resetCounter - ~( memorybusy | DMAACTIVE | EXECUTESLOW.busy | EXECUTEFPU.busy |              // -1 WHEN ALL UNITS ARE NO LONGER BUSY
+                    resetCounter = resetCounter - ~( memorybusy | DMAACTIVE | EXECUTESLOW.busy | EXECUTEFPU.BUSY |              // -1 WHEN ALL UNITS ARE NO LONGER BUSY
                                                      MEMORY.busy );
                 } else {
                     STATE = $STATE_NEXT$;
                 }
             }
-            case 1: {                                                                                                           //  STATE_DMA
+            case 1: {                                                                                                           // STATE_DMA
                 if( DMAREQ | DMA_AUDIO_REQ ) { DMAREQUESTED = 1; STATE = $STATE_DMA_WAIT$; }
             }
             case 2: {                                                                                                           // STATE_DMA_WAIT
@@ -173,32 +177,19 @@ unit PAWSCPU(
                     if( ~( DMAREQ | DMAACTIVE | DMA_AUDIO_ACTIVE ) ) { STATE = $STATE_NEXT$; }
                 }
             }
-            case 3: {                                                                                                           //  STATE_FETCH
+            case 3: {                                                                                                           // STATE_FETCH
                 if( ~MEMORY.busy ) {
                     RV64CONTROL.cacheselect = 1; COMMIT_SMT = SMT;                                                              //      LATCH THREAD MAIN/SMT, DATA CACHE
-                    DELAY = RV64CONTROL.IS_FPU;                                                                                 //      DELAY FOR FPU REGISTER PROPAGATION
                     STATE = RV64CONTROL.IS_LOAD ? RV64CONTROL.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$ : $STATE_EXEC$;           //      LOAD? COMMIT OR MULTI ELSE EXEC
                 }
             }
             case 4: {                                                                                                           // STATE_EXEC
-                if( RV64CONTROL.IS_FAST ) {                                                                                     //      FAST OR START STORE?
-                    STATE = $STATE_COMMIT$;                                                                                     //      FAST -> COMMIT ELSE -> MULTI FOR ATOMIC
-                } else {
-                    if( RV64CONTROL.IS_FPU ) {                                                                                  //      START FPU ( after propogation delay )
-                        STATE = DELAY ? $STATE_EXEC$ : $STATE_MULTI$; DELAY = 0;                                                //      FPU
-                    } else {
-                        STATE = ( RV64CONTROL.IS_CSR | RV64CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ :                                //      MULTICYCLE CSR ATOMIC -> MULTI
-                                                                                 $STATE_COMMIT$;                                //      DIVISION -> COMMIT
-                    }
-                }
+                STATE = ( RV64CONTROL.IS_FPU | RV64CONTROL.IS_CSR | RV64CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ :                   //      MULTICYCLE FPU CSR ATOMIC -> MULTI
+                                                                                              $STATE_COMMIT$;                   //      ALU DIVISION FAST -> COMMIT
             }
             case 5: { if( ~MEMORY.busy ) { STATE = $STATE_MULTI$; } }                                                           // STATE LOAD WAIT FOR ATOMIC MEMORY OPERATIONS
-            case 6: {                                                                                                           // STATE_MULTI
-                if( ~( EXECUTESLOW.busy | EXECUTEFPU.busy ) ) {
-                    STATE = $STATE_COMMIT$;                                                                                     //  WAIT FOR CSR, ATOMIC, DIVISION, FLOATING-POINT TO FINISH
-                }
-            }
-            case 7: {                                                                                                           //  STATE_COMMIT
+            case 6: { if( ~( EXECUTESLOW.busy | EXECUTEFPU.BUSY ) ) { STATE = $STATE_COMMIT$; } }                               // STATE_MULTI, WAIT FOR CSR, ATOMIC FLOATING-POINT TO FINISH
+            case 7: {                                                                                                           // STATE_COMMIT
                 if( ~MEMORY.busy & ~EXECUTESLOW.busy ) {                                                                        //      WAIT FOR LOAD/STORE/DIVIDE TO FINISH
                     pc = SMT ? pc : RV64CONTROL.newPC; pcSMT = SMT ? RV64CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;       //      MOVE TO NEXT INSTRUCTION
                     if( ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; }                                            //      SWITCH THREADS IF ACTIVE AND NOT FENCED
@@ -313,124 +304,6 @@ unit cpuexecuteSLOWPATH(
                             size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result;           //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
 
         memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                                               //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORYOUTPUT
-    }
-}
-
-unit cpuexecuteFPU(
-    input   uint1   start,
-    output  uint1   busy,
-    input   uint5   opCode,
-    input   uint3   function3,
-    input   uint7   function7,
-    input   uint5   rs1,
-    input   uint5   rs2,
-    input   int64   sourceReg1,
-    input   uint32  S1_abs32,
-    input   uint64  S1_abs64,
-    input   uint64  sourceReg1F,
-    input   uint64  sourceReg1Fx,
-    input   uint64  sourceReg1Fxopp,
-    input   uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO }
-    input   uint4   typeAopp,
-    input   uint64  sourceReg2F,
-    input   uint64  sourceReg2Fx,
-    input   uint4   typeBF,
-    input   uint64  sourceReg3Fx,
-    input   uint4   typeCF,
-    input   uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
-    input   uint4   type_aAb,
-    input   uint4   type_aOb,                                                                                                    // BOTH A AND B ZERO?
-    input   uint1   aZEROFRACTION,                                                                                              // A FRACTION PART 0, POWER OF 2 OR TRUE ZERO DETECTION
-    input   uint1   bZEROFRACTION,                                                                                              // B FRACTION PART 0, POWER OF 2 OR TRUE ZERO DETECTION
-    input   uint1   FLT,
-    input   uint1   FEQ,
-    output  uint1   frd,
-    output  int64   result,
-    input   uint1   isFASTFPU,
-    input   uint1   isFPUCONVERT,
-    input   uint8   FPUflags,
-    output  uint5   FPUnewflags,
-    output  uint1   CSRupdateFPUflags
-) <reginputs> {
-    uint3   STATE = 1;
-        $$ STATE_FPU_IDLE           = 1
-        $$ STATE_FPU_CALC           = 2
-        $$ STATE_FPU_CALC_FINISH    = 4
-
-    uint10  BIAS <:: function7[0,1] ? $BIAS64$ : function7[1,1] ? $BIAS16$ : $BIAS32$;                                          // SELECT BIAS
-    uint3   operation <:: { ~( isFASTFPU | isFPUCONVERT ), isFPUCONVERT, isFASTFPU & ~isFPUCONVERT };                           // PRESENT INSTRUCTION ROUTE
-
-    fpuSINGLECYCLE FPUFAST(                                                                                                     // FLOATING POINT SINGLE CYCLE OPERATIONS
-        dsh <: function7[0,2],
-        function3 <: function3[0,2], function7 <: function7[2,5],
-        rs1 <: rs1, rs2 <: rs2,
-        sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
-        sign1F <: fp64( sourceReg1Fx ).sign, sign2F <: fp64( sourceReg2Fx ).sign,
-        typeAF <: typeAF, aZEROFRACTION <: aZEROFRACTION, typeBF <: typeBF, aObNAN <: aObNAN,
-        FLT <: FLT, FEQ <: FEQ
-    );
-    floatcalc FPUCALC(                                                                                                          // FLOATING POINT CALCULATIONS CONTROLLER
-        dsh <: function7[0,2],                                                                                                  //  RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
-        BIAS <: BIAS,
-        opCode <: opCode, function3 <: function3, function7 <: function7[2,5],
-        sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx, sourceReg3Fx <: sourceReg3Fx,
-        typeAF <: typeAF, typeBF <: typeBF, typeCF <: typeCF,
-        aObINF <: type_aOb[3,1], aAbINF <: type_aAb[3,1], aObNAN <: aObNAN, aObZERO <: type_aOb[0,1], aAbZERO <: type_aAb[0,1],
-        aZEROFRACTION <: aZEROFRACTION, bZEROFRACTION <: bZEROFRACTION
-    );
-    repackage_actual CALCRESULT( dsh <: function7[0,2], a <: FPUCALC.result );                                                  // REPACKAGE CALCULATION RESULT INTO CORRECT BITFIELDS
-
-    intlong2float FPUIL2F(                                                                                                      // INTEGER TO FLOATING-POINT CONVERSION
-        rm <: function3[0,2], dounsigned <: rs2[0,1], il <: rs2[1,1], dsh <: function7[0,2], BIAS <: BIAS,                      //  FLAGS ROUNDING, UNSIGNED, 32/64-BIT, HALF/SINGLE/DOUBLE
-        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64
-    );
-    float2intlong FPUF2IL(                                                                                                      // FLOTING-POINT TO INTEGER CONVERSION
-        rm <: function3[0,2], dounsigned <: rs2[0,1], domod <: rs2[3,1], il <: rs2[1,1], BIAS <: BIAS,                          //  FLAGS ROUNDING, UNSIGNED, MODULAR CONVERTR, 32/64-BIT
-        sourceReg1Fx <: sourceReg1Fx, typeAF <: typeAF
-    );
-    floatchangeprecision FPUF_CP(                                                                                               // FLOATING-POINT CHANGE PRECISION
-        rm <: function3[0,2], dest <: function7[0,2], DBIAS <: BIAS, source <: rs2[0,2],                                        //  FLAGS ROUNDING, DESTINATION PRECISION, SOUCRE PRECISION
-        sourceReg1Fx <: sourceReg1Fxopp, typeAF <: typeAopp
-    );
-    floatround FPUROUND(                                                                                                        // FLOATING-POINT ROUND ROUNDNX
-        rm <: function3[0,2], dsh <: function7[0,2], nx <: rs2[0,1], BIAS <: BIAS,                                              //  FLAGS ROUNDING, HALF/SINGLE/DOUBLE, NX
-        sourceReg1F <:sourceReg1F, sourceReg1Fx <:sourceReg1Fx, typeAF <: typeAF
-    );
-
-    FPUF_CP.SBIAS := rs2[0,1] ? $BIAS64$ : rs2[1,1] ? $BIAS16$ : $BIAS32$;                                                      // SELECT BIAS ( SOURCE FOR CHANGE PRECISION )
-    FPUCALC.start := ~( isFASTFPU | isFPUCONVERT ) & start;                                                                     // FPU CALCULATIONS START FLAG
-    FPUCALC.rm := &FPUflags[5,3] ? function3[0,2] : FPUflags[5,2];                                                              // SET ROUNDING FLAG, FCSR UNLESS 111
-    CSRupdateFPUflags := ( STATE[0,1] & ( isFASTFPU | isFPUCONVERT ) ) | STATE[2,1];                                            // UPDATE CSR FPU FLAGS
-    busy := ( STATE[0,1] & start & ~( isFASTFPU | isFPUCONVERT ) ) | STATE[1,1];
-
-    always_after {
-        onehot( STATE ) {
-            case 0: {
-                if( start ) {                                                                                                   // START FPU OPERATION
-                    onehot( operation ) {
-                        default: {}                                                                                             //  CONVERSION/ROUNDING OR SINGLE-CYCLE OPERATION
-                        case 2: { STATE = $STATE_FPU_CALC$; }                                                                   //  CALCULATION
-                    }
-                }
-            }
-            case 1: { if( ~FPUCALC.busy ) { STATE = $STATE_FPU_CALC_FINISH$; } }                                                // WAIT FOR FPU CALCULATION TO FINISH
-            case 2: { STATE = $STATE_FPU_IDLE$; }                                                                               // CALCULATION FINISHED
-        }
-
-        result = ( isFASTFPU & ~isFPUCONVERT ) ? FPUFAST.result :                                                               // COLLECT THE APPROPRIATE RESULT
-                   isFPUCONVERT ? ( function7[2,5] == 5b11000 ) ? FPUF2IL.result :                                              //  FD2IL
-                                    ( function7[2,5] == 5b11010 ) ? FPUIL2F.result :                                            //  IL2FD
-                                                       rs2[2,1] ? FPUROUND.result : FPUF_CP.result :                            //  ROUND OR CHANGE PRECISION
-                                    CALCRESULT.repack;
-        frd = isFPUCONVERT ? ( function7[2,5] != 5b11000 ) : ( isFASTFPU | isFPUCONVERT ) ? FPUFAST.frd : 1;                    // WRITE TO F REGISTERS FLAG ( NOT FD2IL )
-         FPUnewflags = FPUflags | (                                                                                             // MERGE OLD AND NEW FLAGS
-                                    isFPUCONVERT ? ( function7[2,5] == 5b11000 ) ? FPUF2IL.FPUflags :                           //  FD2IL
-                                                   ( function7[2,5] == 5b11010 ) ? FPUIL2F.FPUflags :                           //  IL2FD
-                                                                      rs2[2,1] ? FPUROUND.FPUflags : FPUF_CP.FPUflags :         //  ROUND OR CHANGE PRECISION
-                                      ~( isFASTFPU | isFPUCONVERT ) ? FPUCALC.FPUnewflags :
-                                                                      FPUFAST.FPUnewflags
-                                );
-
     }
 }
 

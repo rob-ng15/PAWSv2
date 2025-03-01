@@ -57,11 +57,14 @@ unit control(
     output  uint4   typeCF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 3
     output  uint4   typeAopp,                                                                                                   // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1 CHANGE PRECISION
 
-    output  uint4   type_aOb,
-    output  uint4   type_aAb,
-    output  uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
-    output  uint1   aZEROFRACTION,                                                                                              // A FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
-    output  uint1   bZEROFRACTION,                                                                                              // B FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
+    output  uint1               F1_OR_F2_INF,                                                                                   // EITHER A OR B INF?
+    output  uint1               F1_AND_F2_INF,                                                                                  // BOTH A AND B INF?
+    output  uint1               F1_OR_F2_NAN,                                                                                   // EITHER A OR B NAN?
+    output  uint1               F1_OR_F2_ZERO,                                                                                  // EITHER A OR B ZERO?
+    output  uint1               F1_AND_F2_ZERO,                                                                                 // BOTH A AND B ZERO?
+    output  uint1               F1_ZERO_FRACTION,                                                                               // A FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
+    output  uint1               F2_ZERO_FRACTION,                                                                               // B FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
+
 
     output  uint4   COMPARISONS,                                                                                                // INTEGER/IMMEDIATE REGISTER COMPARISONS { LTU LT - EQ }
     output  uint1   FLT,                                                                                                        // FLOAT REGISTER COMPARISONS   LESS THAN
@@ -75,31 +78,31 @@ unit control(
     output  uint$addr_width$  nextPC,
     output  uint$addr_width$  newPC
 ) <reginputs> {
-    uint1   Iwrite <:: write & ~frd & |Rtype(instruction).destReg;                                                              // INTEGER REGISTER WRITE SWITCH
+    uint1   Iwrite <:: write & ~frd & |Rtype(instruction).rd;                                                                   // INTEGER REGISTER WRITE SWITCH
     $$for i=1,2 do
         simple_dualport_bram int64 I$i$[64] = { 0, pad(uninitialized) };                                                        // 32 MAIN, 32 SMT INTEGER REGISTERS
         regR I$i$R(                                                                                                             // INTEGER REGISTERS READ
             SMT <: SMT,
             regfile <:> I$i$,
-            addr0 <: Rtype(instruction).sourceReg$i$,
+            addr0 <: Rtype(instruction).sr$i$,
             rdata0 :> sourceReg$i$,
         );
         regW I$i$W(                                                                                                             // INTEGER REGISTERS WRITE
             SMT <: COMMIT_SMT,
             regfile <:> I$i$,
-            addr1 <: Rtype(instruction).destReg,
+            addr1 <: Rtype(instruction).rd,
             wdata1 <: result,
             wenable1 <: Iwrite
         );
         abs_3264 I$i$ABS(                                                                                                       // INTEGER REGISTER ABSOLUTE VALUES
-            I <: I$i$R.rdata0,
+            I <: I$i$.rdata0,
             ABS_32 :> S$i$_abs32,
             ABS_64 :> S$i$_abs64
         );
     $$end
     i_compare I1I2_COMPARE(                                                                                                     // INTEGER REGISTER COMPARISON FLAGS
-        I_1 <: I1R.rdata0,
-        I_2 <: I2R.rdata0,
+        I_1 <: I1.rdata0,
+        I_2 <: I2.rdata0,
         IMMEDIATE <: DECODE.IMMEDIATE,
         REG_IMM <: instruction[5,1],
         FLAGS :> COMPARISONS
@@ -111,37 +114,38 @@ unit control(
         regR F$i$R(
             SMT <: SMT,
             regfile <:> F$i$,
-            addr0 <: R4type(instruction).sourceReg$i$,
+            addr0 <: R4type(instruction).sr$i$,
             rdata0 :> sourceReg$i$F
         );
         regW F$i$W(
             SMT <: COMMIT_SMT,
             regfile <:> F$i$,
-            addr1 <: Rtype(instruction).destReg,
+            addr1 <: Rtype(instruction).rd,
             wdata1 <: result,
             wenable1 <: Fwrite
         );
      $$end
 
      // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
-     typeF class1F( dsh <: Rtype(instruction).function7[0,2], a <: F1R.rdata0, zeroFRACTION :> aZEROFRACTION, type :> typeAF ); // CLASSIFY A FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
-     typeF class2F( dsh <: Rtype(instruction).function7[0,2], a <: F2R.rdata0, zeroFRACTION :> bZEROFRACTION, type :> typeBF ); // CLASSIFY B FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
-     typeF class3F( dsh <: Rtype(instruction).function7[0,2], a <: F3R.rdata0, type :> typeCF );                                // CLASSIFY C FOR { INF, sNAN, qNAN, ZERO }
+     typeF class1F( dsh <: Rtype(instruction).f7[0,2], a <: F1R.rdata0, zeroFRACTION :> F1_ZERO_FRACTION, type :> typeAF );     // CLASSIFY A FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
+     typeF class2F( dsh <: Rtype(instruction).f7[0,2], a <: F2R.rdata0, zeroFRACTION :> F2_ZERO_FRACTION, type :> typeBF );     // CLASSIFY B FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
+     typeF class3F( dsh <: Rtype(instruction).f7[0,2], a <: F3R.rdata0, type :> typeCF );                                       // CLASSIFY C FOR { INF, sNAN, qNAN, ZERO }
 
-     typeF class1Fopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, type :> typeAopp );                          // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
-     repackage_wide Aopp( dsh <: Rtype(instruction).sourceReg2[0,2], a <: F1R.rdata0, repack :> sourceReg1Fxopp );              // changeprecision SIGN, EXPONENT (with bias), FRACTION
+     typeF class1Fopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1R.rdata0, type :> typeAopp );                                 // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
+     repackage_wide Aopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1.rdata0, repack :> sourceReg1Fxopp );                      // changeprecision SIGN, EXPONENT (with bias), FRACTION
 
-     repackage_wide A( dsh <: Rtype(instruction).function7[0,2], a <: F1.rdata0, repack :> sourceReg1Fx );                      // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
-     repackage_wide B( dsh <: Rtype(instruction).function7[0,2], a <: F2.rdata0, repack :> sourceReg2Fx );                      // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
-     repackage_wide C( dsh <: Rtype(instruction).function7[0,2], a <: F3.rdata0, repack :> sourceReg3Fx );                      // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
+     repackage_wide A( dsh <: Rtype(instruction).f7[0,2], a <: F1.rdata0, repack :> sourceReg1Fx );                             // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
+     repackage_wide B( dsh <: Rtype(instruction).f7[0,2], a <: F2.rdata0, repack :> sourceReg2Fx );                             // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
+     repackage_wide C( dsh <: Rtype(instruction).f7[0,2], a <: F3.rdata0, repack :> sourceReg3Fx );                             // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
 
-     floatcompare FPUcompare(                                                                                                   // FLOATING POINT COMPARISONS
+    floatcompare FPUcompare(                                                                                                    // FLOATING POINT COMPARISONS
         a <: A.repack, b <: B.repack,                                                                                           // PASS REPACKED VALUES TO COMPARE
-        aObNAN <: aObNAN,                                                                                                       // A OR B NAN?
-        a_ZERO <: class1F.type[0,1], aZEROFRACTION <: class1F.zeroFRACTION,                                                     // A == 0, A FRACTION 0?
-        b_ZERO <: class2F.type[0,1], bZEROFRACTION <: class2F.zeroFRACTION,                                                     // B == 0, B FRACTION 0?
+        F1_OR_F2_NAN <: F1_OR_F2_NAN,                                                                                           // A OR B NAN?
+        F1_AND_F2_ZERO <: F1_AND_F2_ZERO,                                                                                       // A == 0 AND B == 0
+        F1_ZERO_FRACTION <: class1F.zeroFRACTION,                                                                               // A FRACTION 0?
+        F2_ZERO_FRACTION <: class2F.zeroFRACTION,                                                                               // B FRACTION 0?
         less :> FLT, equal :> FEQ                                                                                               // A < B? A == B?
-     );
+    );
 
     // INSTRUCTION DECODER AND CPU CONTROL FLAGS
     decoder DECODE(
@@ -155,9 +159,9 @@ unit control(
         ALUOP :> ALUOP
     );
     controlflags FLAGS(
-        opCode <: Rtype(instruction).opCode[2,5],
-        function3 <: Rtype(instruction).function3,
-        function7 <: Rtype(instruction).function7,
+        opCode <: Rtype(instruction).opp[2,5],
+        function3 <: Rtype(instruction).f3,
+        function7 <: Rtype(instruction).f7,
         IS_AUIPCLUI :> IS_AUIPCLUI,
         IS_JAL :> IS_JAL,
         IS_BRANCH :> IS_BRANCH,
@@ -178,7 +182,7 @@ unit control(
     // DETERMINE MEMORY ACCESS FLAGS
     memsize MEMACCESSFLAGS(
         cacheselect <: cacheselect,
-        function3 <: Rtype(instruction).function3[0,2],
+        function3 <: Rtype(instruction).f3[0,2],
         I1R <: I1.rdata0[0,1],
         I20 <: instruction[20,1],
         I7 <: instruction[7,1],
@@ -203,12 +207,12 @@ unit control(
     );
 
      always_after {
-        newPC = FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).function3[0,1] ^ COMPARISONS[ Rtype(instruction).function3[1,2], 1 ] ) ? AGU.BRANCH_ADDRESS : AGU.PC_INC ) :
+        newPC = FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).f3[0,1] ^ COMPARISONS[ Rtype(instruction).f3[1,2], 1 ] ) ? AGU.BRANCH_ADDRESS : AGU.PC_INC ) :
                               ( instruction[3,1] ? AGU.JUMP_ADDRESS : AGU.LOAD_ADDRESS );
 
-        aObNAN = |( class1F.type[1,2] | class2F.type[1,2] );                                                                    // A OR B NAN?
-        type_aAb = class1F.type & class2F.type;                                                                                 // AND the TYPE FLAGS  A & B
-        type_aOb = class1F.type | class2F.type;                                                                                 //  OR THE TYPE FLAGS  A | B
+        F1_OR_F2_INF = class1F.type[3,1] | class2F.type[3,1]; F1_AND_F2_INF = class1F.type[3,1] & class1F.type[3,1];            // A AND/OR B INF?
+        F1_OR_F2_NAN = |( class1F.type[1,2] | class2F.type[1,2] );                                                              // A OR B NAN?
+        F1_OR_F2_ZERO = class1F.type[0,1] | class2F.type[0,1]; F1_AND_F2_ZERO = class1F.type[0,1] & class2F.type[0,1];          // A AND/OR B ZERO
     }
 }
 
@@ -227,8 +231,8 @@ unit agu(
     output  uint$addr_width$    PC_INC
 ) <reginputs> {
     always_after {
-        LOAD_ADDRESS =  ( ( Rtype( INSTRUCTION ).opCode[2,5] == 5b01011 ) ? 0 : { {52{INSTRUCTION[31,1]}}, Itype( INSTRUCTION ).immediate } ) + I_1;
-        STORE_ADDRESS = ( ( Rtype( INSTRUCTION ).opCode[2,5] == 5b01011 ) ? 0 : { {52{INSTRUCTION[31,1]}}, Stype( INSTRUCTION ).imm_b_11_5, Stype( INSTRUCTION ).imm_b_4_0 } ) + I_1;
+        LOAD_ADDRESS =  ( ( Rtype( INSTRUCTION ).opp[2,5] == 5b01011 ) ? 0 : { {52{INSTRUCTION[31,1]}}, Itype( INSTRUCTION ).imm } ) + I_1;
+        STORE_ADDRESS = ( ( Rtype( INSTRUCTION ).opp[2,5] == 5b01011 ) ? 0 : { {52{INSTRUCTION[31,1]}}, Stype( INSTRUCTION ).imm_b_11_5, Stype( INSTRUCTION ).imm_b_4_0 } ) + I_1;
 
         BRANCH_ADDRESS = { {51{Btype( INSTRUCTION ).imm_b_12}}, Btype( INSTRUCTION ).imm_b_11, Btype( INSTRUCTION ).imm_b_10_5, Btype( INSTRUCTION ).imm_b_4_1, 1b0 } + PC;
         JUMP_ADDRESS = { {43{Jtype(INSTRUCTION).imm_b_20}}, Jtype( INSTRUCTION ).imm_b_19_12, Jtype(INSTRUCTION).imm_b_11, Jtype(INSTRUCTION).imm_b_10_1, 1b0 } + PC;
@@ -408,14 +412,14 @@ unit decoder(
     output  uint14              ALUOP,
 ) <reginputs> {
     always_after {
-        OPCODE = Rtype(INSTRUCTION).opCode[2,5];
-        FUNCTION3 = Rtype(INSTRUCTION).function3;
-        FUNCTION7 = Rtype(INSTRUCTION).function7;
-        RS1 = Rtype(INSTRUCTION).sourceReg1;
-        RS2 = Rtype(INSTRUCTION).sourceReg2;
-        RS3 = R4type(INSTRUCTION).sourceReg3;
-        RD = Rtype(INSTRUCTION).destReg;
-        IMMEDIATE = { {52{INSTRUCTION[31,1]}}, Itype(INSTRUCTION).immediate };
+        OPCODE = Rtype(INSTRUCTION).opp[2,5];
+        FUNCTION3 = Rtype(INSTRUCTION).f3;
+        FUNCTION7 = Rtype(INSTRUCTION).f7;
+        RS1 = Rtype(INSTRUCTION).sr1;
+        RS2 = Rtype(INSTRUCTION).sr2;
+        RS3 = R4type(INSTRUCTION).sr3;
+        RD = Rtype(INSTRUCTION).rd;
+        IMMEDIATE = { {52{INSTRUCTION[31,1]}}, Itype(INSTRUCTION).imm };
 
         $$ doadduw =        "OP[13,1]"
         $$ doalt =          "OP[12,1]"
@@ -433,21 +437,21 @@ unit decoder(
         $$ dosra =          "OP[ 0,1]"
 
         ALUOP = {                                                                                                               // DECODE ALU INSTRUCTIONS
-            INSTRUCTION[3,1] & INSTRUCTION[5,1] & ( ( Rtype(INSTRUCTION).function7 == 7b0000100 ) |                             // 32-BIT ( register - register )   ADD.UW
-            ( Rtype(INSTRUCTION).function7 == 7b0010000 ) ),                                                                    //                                  SHxADD.UW
-            INSTRUCTION[5,1] & ( Rtype(INSTRUCTION).function7 == 7b0100000 ),                                                   // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
-            ( Rtype(INSTRUCTION).function7[1,6] == 6b010010 ),                                                                  // BCLR BCLRI BEXT BEXTI
-            ( Rtype(INSTRUCTION).function7[1,6] == 6b011010 ),                                                                  // BINV BINVI REV8 BREV8
-            ( Rtype(INSTRUCTION).function7[1,6] == 6b001010 ),                                                                  // ( F3 == 001 ) BSET BSETI
-            ( Rtype(INSTRUCTION).function7 == 7b0000111 ),                                                                      // ZICOND czero.eq or czero.nez
-            ( Rtype(INSTRUCTION).function7 == 7b0110000 ),                                                                      // CLZ CPOP CTZ SEXT.B SEXT.H ( immediate only )
-            ( Rtype(INSTRUCTION).function7 == 7b0000101 ),                                                                      // MAX MAXU MIN MINU ( register - register only )
-            ( Rtype(INSTRUCTION).function7 == 7b0000001 ),                                                                      // MULTIPLICATION
-            ( Rtype(INSTRUCTION).function7 == 7b0010100 ),                                                                      // ( F3 := 101 ) ORC.B, XPERM.B XPERM.N
-            ( Rtype(INSTRUCTION).function7 == 7b0000100 ),                                                                      // ZEXT.H PACK PACKH PACKW ( ZEXT.H when rs2 == 0 )
-            ( Rtype(INSTRUCTION).function7[1,6] == 6b011000 ),                                                                  // ROL ROR RORI
-            ( Rtype(INSTRUCTION).function7 == 7b0010000 ),                                                                      // SH1ADD SH2ADD SH3ADD ( register - register only )
-            ( Rtype(INSTRUCTION).function7[1,6] == 6b010000 )                                                                   // SRA SRAI
+            INSTRUCTION[3,1] & INSTRUCTION[5,1] & ( ( Rtype(INSTRUCTION).f7 == 7b0000100 ) |                                    // 32-BIT ( register - register )   ADD.UW
+            ( Rtype(INSTRUCTION).f7 == 7b0010000 ) ),                                                                           //                                  SHxADD.UW
+            INSTRUCTION[5,1] & ( Rtype(INSTRUCTION).f7 == 7b0100000 ),                                                          // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
+            ( Rtype(INSTRUCTION).f7[1,6] == 6b010010 ),                                                                         // BCLR BCLRI BEXT BEXTI
+            ( Rtype(INSTRUCTION).f7[1,6] == 6b011010 ),                                                                         // BINV BINVI REV8 BREV8
+            ( Rtype(INSTRUCTION).f7[1,6] == 6b001010 ),                                                                         // ( F3 == 001 ) BSET BSETI
+            ( Rtype(INSTRUCTION).f7 == 7b0000111 ),                                                                             // ZICOND czero.eq or czero.nez
+            ( Rtype(INSTRUCTION).f7 == 7b0110000 ),                                                                             // CLZ CPOP CTZ SEXT.B SEXT.H ( immediate only )
+            ( Rtype(INSTRUCTION).f7 == 7b0000101 ),                                                                             // MAX MAXU MIN MINU ( register - register only )
+            ( Rtype(INSTRUCTION).f7 == 7b0000001 ),                                                                             // MULTIPLICATION
+            ( Rtype(INSTRUCTION).f7 == 7b0010100 ),                                                                             // ( F3 := 101 ) ORC.B, XPERM.B XPERM.N
+            ( Rtype(INSTRUCTION).f7 == 7b0000100 ),                                                                             // ZEXT.H PACK PACKH PACKW ( ZEXT.H when rs2 == 0 )
+            ( Rtype(INSTRUCTION).f7[1,6] == 6b011000 ),                                                                         // ROL ROR RORI
+            ( Rtype(INSTRUCTION).f7 == 7b0010000 ),                                                                             // SH1ADD SH2ADD SH3ADD ( register - register only )
+            ( Rtype(INSTRUCTION).f7[1,6] == 6b010000 )                                                                          // SRA SRAI
         };
     }
 }
@@ -457,7 +461,7 @@ unit compressed00(
     output  uint28  i32                                                                                                         // { 00 xxxxxxxxxxxxxxxxxxxxxxxxxxxx 11 }
 ) <reginputs> {
     always_after {
-        switch( CBalu(i16).function3 ) {
+        switch( CBalu(i16).f3 ) {
             case 3b000: {
                 // ADDI4SPN -> addi rd', x2, nzuimm[9:2] { 000, nzuimm[5:4|9:6|2|3] rd' 00 } -> { imm[11:0] rs1 000 rd 0010011 }
                 i32 = {
@@ -493,27 +497,27 @@ unit compressed00(
                     };
             }
            default: {
-                i32 = CS(i16).function3[2,1] ?
+                i32 = CS(i16).f3[2,1] ?
                     // FSD -> fsd rs2', offset[7:3](rs1') { 101 uimm[5:3] rs1' uimm[7:6] rs2' 00 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
                     // SW -> sw rs2', offset[6:2](rs1')   { 110 uimm[5:3] rs1' uimm[2][6] rs2' 00 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
                     // SD -> sd rs2', offset[7:3](rs1')   { 111 uimm[5:3] rs1' uimm[7:6] rs2' 00 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100011 }
                     {
-                        2b00, CS(i16).function3[0,1] ? { CSD(i16).ib_7_6 } : { 1b0, CS(i16).ib_6 }, CS(i16).ib_5,
+                        2b00, CS(i16).f3[0,1] ? { CSD(i16).ib_7_6 } : { 1b0, CS(i16).ib_6 }, CS(i16).ib_5,
                         2b01, CS(i16).rs2_alt,
                         2b01, CS(i16).rs1_alt,
-                        2b01, CS(i16).function3[0,1],
-                        CS(i16).function3[0,1] ? { CSD(i16).ib_4_3, 1b0 } : { CS(i16).ib_4_3, CS(i16).ib_2 }, 2b00,
-                        4b0100, ~CS(i16).function3[1,1]
+                        2b01, CS(i16).f3[0,1],
+                        CS(i16).f3[0,1] ? { CSD(i16).ib_4_3, 1b0 } : { CS(i16).ib_4_3, CS(i16).ib_2 }, 2b00,
+                        4b0100, ~CS(i16).f3[1,1]
                     } :
                     // FLD -> flw rd', offset[7:3](rs1') { 001 uimm[5:3] rs1' uimm[7:6] rd' 00 } -> { imm[11:0] rs1 011 rd 0000111 }
                     // LW -> lw rd', offset[6:2](rs1')   { 010 uimm[5:3] rs1' uimm[2][6] rd' 00 } -> { imm[11:0] rs1 010 rd 0000011 }
                     // LD -> ld rd', offset[7:3](rs1')   { 011 uimm[5:3] rs1' uimm[7:6] rd' 00 } -> { imm[11:0] rs1 011 rd 0000011 }
                     {
-                        2b00, CL(i16).function3[0,1] ? { CLD(i16).ib_7_6, CLD(i16).ib_5_3, 1b0 } : { 1b0, CL(i16).ib_6, CL(i16).ib_5_3, CL(i16).ib_2 }, 2b00,
+                        2b00, CL(i16).f3[0,1] ? { CLD(i16).ib_7_6, CLD(i16).ib_5_3, 1b0 } : { 1b0, CL(i16).ib_6, CL(i16).ib_5_3, CL(i16).ib_2 }, 2b00,
                         2b01, CL(i16).rs1_alt,
-                        2b01, CL(i16).function3[0,1],
+                        2b01, CL(i16).f3[0,1],
                         2b01, CL(i16).rd_alt,
-                        4b0000, ~CL(i16).function3[1,1]
+                        4b0000, ~CL(i16).f3[1,1]
                     };
             }
         }
@@ -527,8 +531,8 @@ unit compressed01(
     uint3   rs2altf3[8] = { 3b111, 3b001, 3b100, 3b001, 3b000, 3b100, pad(0) };
 
     always_after {
-        if( CBalu(i16).function3[2,1] ) {
-            switch( CBalu(i16).function3[0,2] ) {
+        if( CBalu(i16).f3[2,1] ) {
+            switch( CBalu(i16).f3[0,2] ) {
                 case 2b00: {
                     // MISC-ALU
                     switch( CBalu(i16).function2 ) {
@@ -612,14 +616,14 @@ unit compressed01(
                         {4{CB(i16).offset_8}}, CB(i16).offset_7_6, CB(i16).offset_5,
                         5h0,
                         2b01, CB(i16).rs1_alt,
-                        2b00, CB(i16).function3[0,1],
+                        2b00, CB(i16).f3[0,1],
                         CB(i16).offset_4_3, CB(i16).offset_2_1, CB(i16).offset_8,
                         5b11000
                     };
                 }
             }
         } else {
-            switch( CI50(i16).function3[0,2] ) {
+            switch( CI50(i16).f3[0,2] ) {
                 default: {
                     // 3b000 -> ADDI -> addi rd, rd, nzimm[5:0] { 000 nzimm[5] rs1/rd!=0 nzimm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
                     //          NOP if rd == 0 and nzimm == 5b000000
@@ -627,9 +631,9 @@ unit compressed01(
                     // 3b010 -> LI -> addi rd, x0, imm[5:0]     { 010   imm[5]     rd!=0    mm[4:0] 01 } -> { imm[11:0] rs1 000 rd 0010011 }
                     i32 = {
                             {7{CI50(i16).ib_5}}, CI50(i16).ib_4_0,
-                            CI50(i16).function3[1,1] ? 5h0 : CI50(i16).rd,
+                            CI50(i16).f3[1,1] ? 5h0 : CI50(i16).rd,
                             3b000, CI50(i16).rd,
-                            3b001, CI50(i16).function3[0,1], 1b0
+                            3b001, CI50(i16).f3[0,1], 1b0
                     };
                 }
                 case 2b11: {
@@ -660,7 +664,7 @@ unit compressed10(
     output  uint27  i32                                                                                                         // { 000 xxxxxxxxxxxxxxxxxxxxxxxxxxx 11 }
 ) <reginputs> {
     always_after {
-        switch( CBalu(i16).function3 ) {
+        switch( CBalu(i16).f3 ) {
             case 3b000: {
                 // SLLI -> slli rd, rd, shamt[5:0] { 000, nzuimm[5], rs1/rd!=0 nzuimm[4:0] 10 } -> { 000000 shamt rs1 001 rd 0010011 }
                 i32 = {
@@ -698,27 +702,27 @@ unit compressed10(
                 }
             }
             default: {
-                i32 = CSS(i16).function3[2,1] ?
+                i32 = CSS(i16).f3[2,1] ?
                     // FSDSP -> fsd rs2, offset[8:3](x2) { 101 uimm[5:3][8:6] rs2 10 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
                     // SWSP -> sw rs2, offset[7:2](x2)   { 110 uimm[5][4:2][7:6] rs2 10 } -> { imm[11:5] rs2 rs1 010 imm[4:0] 0100011 }
                     // SDSP -> sd rs2, offset[8:3](x2)   { 111 uimm[5:3][8:6] rs2 10 } -> { imm[11:5] rs2 rs1 011 imm[4:0] 0100111 }
                     {
-                        CSS(i16).function3[0,1] ? { CSSD(i16).ib_8_6, CSSD(i16).ib_5 } : { 1b0, CSS(i16).ib_7_6, CSS(i16).ib_5 },
+                        CSS(i16).f3[0,1] ? { CSSD(i16).ib_8_6, CSSD(i16).ib_5 } : { 1b0, CSS(i16).ib_7_6, CSS(i16).ib_5 },
                         CSS(i16).rs2,
                         5h2,
-                        2b01, CSS(i16).function3[0,1],
-                        CSS(i16).function3[0,1] ? { CSSD(i16).ib_4_3, 1b0 } : { CSS(i16).ib_4_2 }, 2b00,
-                        4b0100, ~CSS(i16).function3[1,1]
+                        2b01, CSS(i16).f3[0,1],
+                        CSS(i16).f3[0,1] ? { CSSD(i16).ib_4_3, 1b0 } : { CSS(i16).ib_4_2 }, 2b00,
+                        4b0100, ~CSS(i16).f3[1,1]
                     } :
                     // FLDSP -> fld rd, offset[8:3](x2) { 001 uimm[5] rd uimm[4:3|8:6] 10 } -> { imm[11:0] rs1 011 rd 0000111 }
                     // LWSP -> lw rd, offset[7:2](x2) { 010 uimm[5] rd uimm[4:2|7:6] 10 } -> { imm[11:0] rs1 010 rd 0000011 }
                     // LDSP -> ld rd, offset[8:3](x2)   { 011 uimm[5] rd uimm[4:3|8:6] 10 } -> { imm[11:0] rs1 011 rd 0000011 }
                     {
-                        CLS(i16).function3[0,1] ? { CLSD(i16).ib_8_6, CLSD(i16).ib_5, CLSD(i16).ib_4_3, 1b0 } : { 1b0, CLS(i16).ib_7_6, CLS(i16).ib_5, CLS(i16).ib_4_2 }, 2b00,
+                        CLS(i16).f3[0,1] ? { CLSD(i16).ib_8_6, CLSD(i16).ib_5, CLSD(i16).ib_4_3, 1b0 } : { 1b0, CLS(i16).ib_7_6, CLS(i16).ib_5, CLS(i16).ib_4_2 }, 2b00,
                         5h2,
-                        2b01, CSS(i16).function3[0,1] ,
+                        2b01, CSS(i16).f3[0,1] ,
                         CI(i16).rd,
-                        4b0000, ~CSS(i16).function3[1,1]
+                        4b0000, ~CSS(i16).f3[1,1]
                     };
             }
         }
