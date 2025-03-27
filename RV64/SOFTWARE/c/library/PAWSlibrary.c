@@ -192,8 +192,8 @@ void wait_timer1khz( unsigned char timer  ) {
 
 // READ THE 1hz TIMER
 unsigned long __timer_base_1hz[8];
-unsigned short get_timer1hz( unsigned char timer  ) {
-    return ( __timer_base_1hz[ timer & 7 ] - CSRtime() ) / 5000000;
+unsigned long get_timer1hz( unsigned char timer  ) {
+    return ( CSRtime() - __timer_base_1hz[ timer & 7 ] ) / 50000000;
 }
 
 // RESET THE 1hz TIMER
@@ -901,7 +901,7 @@ void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, uns
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_COLOUR8R, 3*w*h, DMA_PB_RGB );
+    DMASTART( buffer, (void *)PB_COLOUR_RGB, 3*w*h, DMA_TO_IO );
 
     *PB_STOP = 0;
 }

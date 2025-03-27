@@ -31,7 +31,7 @@ unit statusdisplay(
     sdcard.addr := pix_y[0,4]; joystick.addr := pix_y[0,4]; capslock.addr := pix_y[0,4]; numlock.addr := pix_y[0,4];
     pixel := 8h40;
 
-    always_after {
+    always {
         if( |COUNTER & display & pix_x[8,1] & ~|pix_y[4,4] ) {                                                                  // CHECK IF IN RANGE
             switch( pix_x[4,2] ) {
                 // SELECT PIXEL COLOUR ACCORDING TO EACH STATUS LIGHT
@@ -54,26 +54,27 @@ unit statusdisplay(
 }
 
 unit video_memmap(
+    input   uint1   CS,
+    input   uint1   CS_BM,
+    input   uint1   CS_CM,
+    input   uint1   CS_TM,
+
     // CLOCKS
     input   uint1   palette_clock,                                                                                              // 50MHz (double) clock
     input   uint1   video_clock,                                                                                                // 25MHz VGA (640x480@60Hz) clock
     input   uint1   gpu_clock,                                                                                                  // 25MHz (video) clock
 
     // Memory access via normal I/O registers
-    input   uint12  memoryAddress,
+    input   uint18  memoryAddress,
+    input   uint18  memoryAddress0,
     input   uint2   accesssize,
     input   uint1   memoryWrite,
     input   uint32  writeData,
     output  uint32  readData,
 
     // Memory access direct to bitmap / character map / tilemaps
-    input   uint18  memoryAddressDirect,
-    input   uint18  memoryAddressDirect0,
-    input   uint1   BITMAPWriteDirect,
     output! uint32  BITMAPreadDataDirect,
-    input   uint1   CMAPWriteDirect,
     output  uint32  CMAPreadDataDirect,
-    input   uint1   TMAPWriteDirect,
     output  uint9   LTMAPreadDataDirect,
     output  uint9   UTMAPreadDataDirect,
 
@@ -170,10 +171,8 @@ $$end
         pix_active <: pix_active,
         pix_vblank <: vblank,
         memoryAddress <: memoryAddress,
+        memoryAddress <: memoryAddress0,
         writeData <: writeData,
-        memoryAddressDirect <: memoryAddressDirect,
-        memoryAddressDirect0 <: memoryAddressDirect0,
-        memoryWriteDirect <: BITMAPWriteDirect,
         readDataDirect :> BITMAPreadDataDirect,
         accesssize <: accesssize,
         static8bit <: staticGenerator[0,8]
@@ -193,8 +192,6 @@ $$end
         blink <: blink,
         memoryAddress <: memoryAddress,
         writeData <: writeData,
-        memoryAddressDirect <: memoryAddressDirect,
-        memoryWriteDirect <: CMAPWriteDirect,
         readDataDirect :> CMAPreadDataDirect
     );
 
@@ -245,7 +242,6 @@ $$end
         pix_vblank <: vblank,
         memoryAddress <: memoryAddress,
         writeData <: writeData,
-        memoryAddressDirect <: memoryAddressDirect[1,12],
         readDataDirect :> LTMAPreadDataDirect
     );
     tilemap_memmap UPPER_TILE(
@@ -260,7 +256,6 @@ $$end
         pix_vblank <: vblank,
         memoryAddress <: memoryAddress,
         writeData <: writeData,
-        memoryAddressDirect <: memoryAddressDirect[1,12],
         readDataDirect :> UTMAPreadDataDirect
     );
 
@@ -304,12 +299,12 @@ $$end
     uint32  framecount = 0;
 
     BACKGROUND.memoryWrite := 0;
-    BITMAP.memoryWrite := 0;
-    CHARACTER_MAP.memoryWrite := 0;
+    BITMAP.memoryWrite := 0; BITMAP.memoryWriteDirect := CS_BM & memoryWrite;
+    CHARACTER_MAP.memoryWrite := 0; CHARACTER_MAP.memoryWriteDirect := CS_CM & memoryWrite;
     LOWER_SPRITE.memoryWrite := 0; LOWER_SPRITE.bitmapwriter := 0;
     UPPER_SPRITE.memoryWrite := 0; UPPER_SPRITE.bitmapwriter := 0;
-    LOWER_TILE.memoryWrite := 0; LOWER_TILE.memoryWriteDirect := TMAPWriteDirect & ~memoryAddressDirect[15,1];
-    UPPER_TILE.memoryWrite := 0; UPPER_TILE.memoryWriteDirect := TMAPWriteDirect & memoryAddressDirect[15,1];
+    LOWER_TILE.memoryWrite := 0; LOWER_TILE.memoryWriteDirect := CS_TM & memoryWrite & ~memoryAddress[15,1];
+    UPPER_TILE.memoryWrite := 0; UPPER_TILE.memoryWriteDirect := CS_TM & memoryWrite & memoryAddress[15,1];
     palette.wenable1 := 0; palette.wdata1 := writeData;
 
     $$if VGA then
@@ -321,48 +316,41 @@ $$end
 
     framecount := framecount + pix_end;
 
-    algorithm <autorun> {
-        // SET DEFAULT DISPLAY ORDER, COLOUR MODE AND DIMMER
-        STATUS.display = 1; STATUS.background = 64; display.display_order = 0; display.colour = 0; display.usepalette = 0;hilorez = 0;
-
-        while(1) {
-            // WRITE IO Memory
-            if( memoryWrite ) {
-                switch( memoryAddress[8,4] ) {
-                    case 4h0: { BACKGROUND.memoryWrite = 1; }
-                    case 4h1: { LOWER_TILE.memoryWrite = 1; }
-                    case 4h2: { UPPER_TILE.memoryWrite = 1; }
-                    case 4h3: { LOWER_SPRITE.memoryWrite = 1; }
-                    case 4h4: { UPPER_SPRITE.memoryWrite = 1; }
-                    case 4h5: { CHARACTER_MAP.memoryWrite = 1; }
-                    case 4h6: { BITMAP.memoryWrite = 1; }
-                    case 4h8: { LOWER_SPRITE.memoryWrite = 1; LOWER_SPRITE.bitmapwriter = 1; }
-                    case 4h9: { UPPER_SPRITE.memoryWrite = 1; UPPER_SPRITE.bitmapwriter = 1; }
-                    case 4hf: {
-                        if( memoryAddress[4,1] ) {
-                            if( memoryAddress[2,1] ) {
-                                if( memoryAddress[0,1] ) { display.usepalette = writeData; } else { palette.addr1 = writeData; }
-                            } else {
-                                palette.wenable1 = 1;
-                            }
+    always {
+        // WRITE IO Memory
+        if( CS & memoryWrite ) {
+            switch( memoryAddress[8,4] ) {
+                case 4h0: { BACKGROUND.memoryWrite = 1; }
+                case 4h1: { LOWER_TILE.memoryWrite = 1; }
+                case 4h2: { UPPER_TILE.memoryWrite = 1; }
+                case 4h3: { LOWER_SPRITE.memoryWrite = 1; }
+                case 4h4: { UPPER_SPRITE.memoryWrite = 1; }
+                case 4h5: { CHARACTER_MAP.memoryWrite = 1; }
+                case 4h6: { BITMAP.memoryWrite = 1; }
+                case 4h8: { LOWER_SPRITE.memoryWrite = 1; LOWER_SPRITE.bitmapwriter = 1; }
+                case 4h9: { UPPER_SPRITE.memoryWrite = 1; UPPER_SPRITE.bitmapwriter = 1; }
+                case 4hf: {
+                    if( memoryAddress[4,1] ) {
+                        if( memoryAddress[2,1] ) {
+                            if( memoryAddress[0,1] ) { display.usepalette = writeData; } else { palette.addr1 = writeData; }
                         } else {
-                            switch( memoryAddress[0,3] ) {
-                                default: { display.display_order = writeData; }
-                                case 1: { display.colour = writeData; }
-                                case 2: { hilorez = writeData; }
-                                case 3: { dimmer = writeData; }
-                                case 4: { STATUS.display = writeData; }
-                                case 5: { STATUS.background = writeData; }
-                            }
+                            palette.wenable1 = 1;
+                        }
+                    } else {
+                        switch( memoryAddress[0,3] ) {
+                            default: { display.display_order = writeData; }
+                            case 1: { display.colour = writeData; }
+                            case 2: { hilorez = writeData; }
+                            case 3: { dimmer = writeData; }
+                            case 4: { STATUS.display = writeData; }
+                            case 5: { STATUS.background = writeData; }
                         }
                     }
-                    default: {}
                 }
+                default: {}
             }
         }
-    }
 
-    always_after {
         // READ IO Memory
         switch( memoryAddress[8,4] ) {
             case 4h0: { readData = BACKGROUND.readData; }
@@ -444,6 +432,11 @@ $$end
             case 4hf: { readData = memoryAddress[2,1] ? framecount : vblank; }
             default: {}
         }
+
+        if( reset ) {
+            // SET DEFAULT DISPLAY ORDER, COLOUR MODE AND DIMMER
+            STATUS.display = 1; STATUS.background = 64; display.display_order = 0; display.colour = 0; display.usepalette = 0;hilorez = 0;
+        }
     }
 }
 
@@ -499,44 +492,42 @@ unit background_memmap(
         OP <:> OP,
         OPD <:> OPD,
         OPF <:> OPF,
-        OPL <:> OPL
+        OPL <:> OPL,
+        copper_cpu_output :> readData
     );
     background_writer BACKGROUND_WRITER(
         OP <:> OP,
         OPD <:> OPD,
         OPF <:> OPF,
-        OPL <:> OPL
+        OPL <:> OPL,
+        WDATA <: writeData
     );
+
+    uint3   mempos = uninitialised;
+    uint3   mempos_NEXT <:: mempos + 1;
 
     BACKGROUND_WRITER.background_update := 0; BACKGROUND_WRITER.copper_program := 0;
 
-    algorithm <autorun> {
-        uint3   mempos = uninitialised;
-        uint3   mempos_NEXT <:: mempos + 1;
-
-        while(1) {
-            if( memoryWrite ) {
-                switch( memoryAddress[1,4] ) {
-                    case 4h0: { BACKGROUND_WRITER.backgroundcolour = writeData; BACKGROUND_WRITER.background_update = 1; }
-                    case 4h1: { BACKGROUND_WRITER.backgroundcolour_alt = writeData; BACKGROUND_WRITER.background_update = 2; }
-                    case 4h2: { BACKGROUND_WRITER.backgroundcolour_mode = writeData; BACKGROUND_WRITER.background_update = 3; }
-                    case 4h3: { BACKGROUND_COPPER.copper_status = writeData; }
-                    case 4h4: { BACKGROUND_COPPER.copper_cpu_input = writeData; }
-                    case 4h5: { BACKGROUND_WRITER.copper_program = 1; }
-                    case 4h6: { BACKGROUND_WRITER.copper_address = writeData; }
-                    case 4h7: { BACKGROUND_WRITER.copper_op = writeData; }
-                    case 4h8: { BACKGROUND_WRITER.copper_opd = writeData; }
-                    case 4h9: { BACKGROUND_WRITER.copper_opf = writeData; }
-                    case 4ha: { BACKGROUND_WRITER.copper_opl = writeData; }
-                    case 4hb: { mempos = 0; }
-                    case 4hc: { BACKGROUND_COPPER.memoryinit[ mempos * 10, 10 ] = writeData; mempos = mempos_NEXT; }
-                    default: {}
-                }
+    always {
+        if( memoryWrite ) {
+            switch( memoryAddress[1,4] ) {
+                case 4h0: { BACKGROUND_WRITER.background_update = 1; }
+                case 4h1: { BACKGROUND_WRITER.background_update = 2; }
+                case 4h2: { BACKGROUND_WRITER.background_update = 3; }
+                case 4h3: { BACKGROUND_COPPER.copper_status = writeData; }
+                case 4h4: { BACKGROUND_COPPER.copper_cpu_input = writeData; }
+                case 4h5: { BACKGROUND_WRITER.copper_program = 1; }
+                case 4h6: { BACKGROUND_WRITER.copper_address = writeData; }
+                case 4h7: { BACKGROUND_WRITER.copper_op = writeData; }
+                case 4h8: { BACKGROUND_WRITER.copper_opd = writeData; }
+                case 4h9: { BACKGROUND_WRITER.copper_opf = writeData; }
+                case 4ha: { BACKGROUND_WRITER.copper_opl = writeData; }
+                case 4hb: { mempos = 0; }
+                case 4hc: { BACKGROUND_COPPER.memoryinit[ mempos * 10, 10 ] = writeData; mempos = mempos_NEXT; }
+                default: {}
             }
         }
     }
-
-    always_after { readData = BACKGROUND_COPPER.copper_cpu_output; }
 }
 
 unit bitmap_memmap(
@@ -557,13 +548,12 @@ unit bitmap_memmap(
     output! uint1   pixel1_collision,
 
     // Memory access via I/O registers
-    input   uint8   memoryAddress,
+    input   uint18  memoryAddress,
+    input   uint18  memoryAddress0,
     input   uint1   memoryWrite,
     input   uint32  writeData,
 
     // Memory access direct to bitmap
-    input   uint18  memoryAddressDirect,
-    input   uint18  memoryAddressDirect0,
     input   uint2   accesssize,
     input   uint1   memoryWriteDirect,
     output! uint32  readDataDirect,
@@ -596,9 +586,8 @@ unit bitmap_memmap(
 
     framebuffer_write framebuffer <@gpu_clock,!video_reset> (                                                                   // GPU AND CPU ACCESS TO FRAMEBUFFERS
         dither_clock <: dither_clock,
-
-        memoryAddressDirect <: memoryAddressDirect,                                                                             // GPU HAS PRIORITY
-        addressL <: memoryAddressDirect0,
+        memoryAddressDirect <: memoryAddress,                                                                                   // GPU HAS PRIORITY
+        addressL <: memoryAddress0,
         accesssize <: accesssize,                                                                                               // HANDLES CPU READING AND WRITING
         memoryWriteDirect <: memoryWriteDirect,
         writeDataDirect <: writeData,
@@ -637,120 +626,129 @@ unit bitmap_memmap(
         gpu_active :> gpu_active
     );
 
+    int10   minmax <:: ( __signed( writeData ) < __signed( -512 ) ) ? -512 :                                                    // ADJUST FOR 10bit underflow/overflow for pixel coordinates
+                    ( __signed( writeData ) > __signed( 511 ) ) ? 511 : writeData;
+    uint8   RGBM <:: { writeData[22,2], writeData[13,3], writeData[6,2], writeData[21,1] & writeData[5,1] };                    // CONVERT RGB COLOUR TO RGBM COLOUR
+    uint3   pbcolour = uninitialised;
+
+    // BLITTER TILEBITMAP WRITERS - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT
+    uint4   BTWline_NEXT <:: blit1tilemap.addr1[0,4] + 1;
+    uint3   CTWline_NEXT <:: characterGenerator8x8.addr1[0,3] + 1;
+    uint8   CBTWpixel_NEXT <:: colourblittilemap.addr1[0,8] + 1;
+
     blit1tilemap.wdata1 := writeData; blit1tilemap.wenable1 := 0;
     characterGenerator8x8.wdata1 := writeData; characterGenerator8x8.wenable1 := 0;
     colourblittilemap.wdata1 := writeData; colourblittilemap.wenable1 := 0;
     pb_colourmap.wenable1 := 1;
+    pixel_writer.gpu_write := 0;  pixel_writer.pb_newpixel := 0;
 
-    algorithm <autorun> {
-        int10   minmax <:: ( __signed( writeData ) < __signed( -512 ) ) ? -512 :                                                // ADJUST FOR 10bit underflow/overflow for pixel coordinates
-                        ( __signed( writeData ) > __signed( 511 ) ) ? 511 : writeData;
-        uint8   RGBM <:: { writeData[22,2], writeData[13,3], writeData[6,2], writeData[21,1] & writeData[5,1] };                // CONVERT RGB COLOUR TO RGBM COLOUR
-
-        // BLITTER TILEBITMAP WRITERS - SETTING THE TILE RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT
-        uint4   BTWline_NEXT <:: blit1tilemap.addr1[0,4] + 1;
-        uint3   CTWline_NEXT <:: characterGenerator8x8.addr1[0,3] + 1;
-        uint8   CBTWpixel_NEXT <:: colourblittilemap.addr1[0,8] + 1;
-
-        // RESET THE CROPPING RECTANGLE AND DISPLAY256 FLAG
-        pixel_writer.pb_mode = 0; pixel_writer.crop_left = 0; pixel_writer.crop_right = 319; pixel_writer.crop_top = 0; pixel_writer.crop_bottom = 239; framebuffer_display.display256 = 0;
-        pixel_writer.gpu_write := 0;  pixel_writer.pb_newpixel := 0;
-
-        while(1) {
-            if( memoryWrite ) {
-                switch( memoryAddress[4,4] ) {
-                    case 4h0: {
-                        switch( memoryAddress[1,3] ) {                                                                      // SET GPU COORDINATES - ADJUST INTO RANGE
-                            case 3h0: { pixel_writer.gpu_x = minmax; }
-                            case 3h1: { pixel_writer.gpu_y = minmax; }
-                            case 3h2: { pixel_writer.gpu_param0 = minmax; }
-                            case 3h3: { pixel_writer.gpu_param1 = minmax; }
-                            case 3h4: { pixel_writer.gpu_param2 = minmax; }
-                            case 3h5: { pixel_writer.gpu_param3 = minmax; }
-                            case 3h6: { pixel_writer.gpu_param4 = minmax; }
-                            case 3h7: { pixel_writer.gpu_param5 = minmax; }
-                        }
+    always {
+        if( memoryWrite ) {
+            switch( memoryAddress[4,4] ) {
+                case 4h0: {
+                    switch( memoryAddress[1,3] ) {                                                                              // SET GPU COORDINATES - ADJUST INTO RANGE
+                        case 3h0: { pixel_writer.gpu_x = minmax; }
+                        case 3h1: { pixel_writer.gpu_y = minmax; }
+                        case 3h2: { pixel_writer.gpu_param0 = minmax; }
+                        case 3h3: { pixel_writer.gpu_param1 = minmax; }
+                        case 3h4: { pixel_writer.gpu_param2 = minmax; }
+                        case 3h5: { pixel_writer.gpu_param3 = minmax; }
+                        case 3h6: { pixel_writer.gpu_param4 = minmax; }
+                        case 3h7: { pixel_writer.gpu_param5 = minmax; }
                     }
-                    case 4h1: {
-                        switch( memoryAddress[1,2] ) {
-                            case 2h0: {                                                                                     // SET GPU COLOUR
-                                if( accesssize[1,1] ) {
-                                    pixel_writer.gpu_colour = RGBM;                                                         //  32 BIT RGB -> 8 BIT RGBM
-                                } else {
-                                    pixel_writer.gpu_colour = writeData;                                                    //  8 BIT RGBM
-                                }
-                            }
-                            case 2h1: { pixel_writer.gpu_colour_alt = writeData; }
-                            case 2h2: { pixel_writer.gpu_dithermode = writeData; }
-                            case 2h3: { pixel_writer.gpu_write = writeData; }
-                        }
-                    }
-                    case 4h4: {
-                        switch( memoryAddress[1,1] ) {
-                            case 0: { blit1tilemap.addr1 = { writeData[0,6], 4hf }; }
-                            case 1: { blit1tilemap.addr1[0,4] = BTWline_NEXT; blit1tilemap.wenable1 = 1; }
-                        }
-                    }
-                    case 4h5: {
-                        switch( memoryAddress[1,1] ) {
-                            case 0: { characterGenerator8x8.addr1 = { writeData[0,6], 3h7 }; }
-                            case 1: { characterGenerator8x8.addr1[0,3] = CTWline_NEXT; characterGenerator8x8.wenable1 = 1; }
-                        }
-                    }
-                    case 4h6: {
-                        switch( memoryAddress[1,1] ) {
-                            case 0: { colourblittilemap.addr1 = { writeData[0,6], 8hff }; }
-                            case 1: { colourblittilemap.addr1[0,8] = CBTWpixel_NEXT; colourblittilemap.wenable1 = 1; }
-                        }
-                    }
-                    case 4h7: {
-                        switch( memoryAddress[1,3] ) {
-                            case 3h0: { pixel_writer.pb_colour = writeData; pixel_writer.pb_newpixel = 1; }
-                            case 3h1: { pixel_writer.pb_colour8r = writeData; }
-                            case 3h2: { pixel_writer.pb_colour8g = writeData; }
-                            case 3h3: { pixel_writer.pb_colour8b = writeData; pixel_writer.pb_newpixel = 2; }
-                            case 3h4: { pixel_writer.pb_newpixel = 3; }
-                            case 3h5: { pixel_writer.pb_mode = writeData; }
-                            case 3h6: { pb_colourmap.addr1 = writeData; }
-                            case 3h7: { pb_colourmap.wdata1 = writeData; }
-                        }
-                    }
-                    case 4h8: {
-                        switch( memoryAddress[2,2] ) {                                                                                                                  // PIXELBLOCK ARGB RGBA ABGR BGRA modes
-                            case 2b00: {
-                                pixel_writer.pb_colour8r = writeData[16,8]; pixel_writer.pb_colour8g = writeData[8,8]; pixel_writer.pb_colour8b = writeData[0,8];       // ARGB
-                            }
-                            case 2b01: {
-                                pixel_writer.pb_colour8r = writeData[24,8]; pixel_writer.pb_colour8g = writeData[16,8]; pixel_writer.pb_colour8b = writeData[8,8];      // RGBA
-                            }
-                            case 2b10: {
-                                pixel_writer.pb_colour8r = writeData[0,8]; pixel_writer.pb_colour8g = writeData[8,8]; pixel_writer.pb_colour8b = writeData[16,8];       // ABGR
-                            }
-                            case 2b11: {
-                                pixel_writer.pb_colour8r = writeData[8,8]; pixel_writer.pb_colour8g = writeData[16,8]; pixel_writer.pb_colour8b = writeData[24,8];      // BGRA
-                            }
-                        }
-                        pixel_writer.pb_newpixel = 2;
-                    }
-                    case 4he: {
-                        switch( memoryAddress[1,2] ) {                                                                      // SET GPU CROP - ADJUST INTO RANGE
-                            case 2h0: { pixel_writer.crop_left = minmax; }
-                            case 2h1: { pixel_writer.crop_right = minmax; }
-                            case 2h2: { pixel_writer.crop_top = minmax; }
-                            case 2h3: { pixel_writer.crop_bottom = minmax; }
-                        }
-                    }
-                    case 4hf: {
-                        switch( memoryAddress[1,2] ) {
-                            default: { framebuffer_display.framebuffer = writeData; }
-                            case 2h1: { framebuffer.framebuffer = writeData; }
-                            case 2h2: { framebuffer_display.display256 = writeData; }
-                        }
-                    }
-                    default: {}
-
                 }
+                case 4h1: {
+                    switch( memoryAddress[1,2] ) {
+                        case 2h0: {                                                                                             // SET GPU COLOUR
+                            pixel_writer.gpu_colour = accesssize[1,1] ? RGBM : writeData;                                       //  32 BIT RGB -> 8 BIT RGBM, 8 BIT RGBM
+                        }
+                        case 2h1: { pixel_writer.gpu_colour_alt = writeData; }
+                        case 2h2: { pixel_writer.gpu_dithermode = writeData; }
+                        case 2h3: { pixel_writer.gpu_write = writeData; if( writeData == 10 ) { pbcolour=0; } }
+                    }
+                }
+                case 4h4: {
+                    switch( memoryAddress[1,1] ) {
+                        case 0: { blit1tilemap.addr1 = { writeData[0,6], 4hf }; }
+                        case 1: { blit1tilemap.addr1[0,4] = BTWline_NEXT; blit1tilemap.wenable1 = 1; }
+                    }
+                }
+                case 4h5: {
+                    switch( memoryAddress[1,1] ) {
+                        case 0: { characterGenerator8x8.addr1 = { writeData[0,6], 3h7 }; }
+                        case 1: { characterGenerator8x8.addr1[0,3] = CTWline_NEXT; characterGenerator8x8.wenable1 = 1; }
+                    }
+                }
+                case 4h6: {
+                    switch( memoryAddress[1,1] ) {
+                        case 0: { colourblittilemap.addr1 = { writeData[0,6], 8hff }; }
+                        case 1: { colourblittilemap.addr1[0,8] = CBTWpixel_NEXT; colourblittilemap.wenable1 = 1; }
+                    }
+                }
+                case 4h7: {
+                    switch( memoryAddress[1,3] ) {
+                        default: { pixel_writer.pb_colour = writeData; pixel_writer.pb_newpixel = 1; }
+                        case 3h1: {
+                            switch( pbcolour ) {
+                                case 0: { pixel_writer.pb_colour8r = writeData; pbcolour = 1; }
+                                case 1: { pixel_writer.pb_colour8g = writeData; pbcolour = 2; }
+                                default: {  pixel_writer.pb_colour8b = writeData; pbcolour = 0; pixel_writer.pb_newpixel = 2; }
+                            }
+                        }
+                        case 3h4: { pixel_writer.pb_newpixel = 3; }
+                        case 3h5: { pixel_writer.pb_mode = writeData; }
+                        case 3h6: { pb_colourmap.addr1 = writeData; }
+                        case 3h7: { pb_colourmap.wdata1 = writeData; }
+                    }
+                }
+                case 4h8: {
+                    switch( memoryAddress[2,2] ) {                                                                              // PIXELBLOCK ARGB RGBA ABGR BGRA modes
+                        case 2b00: {                                                                                            // ARGB
+                            pixel_writer.pb_colour8r = writeData[16,8];
+                            pixel_writer.pb_colour8g = writeData[8,8];
+                            pixel_writer.pb_colour8b = writeData[0,8];
+                        }
+                        case 2b01: {                                                                                            // RGBA
+                            pixel_writer.pb_colour8r = writeData[24,8];
+                            pixel_writer.pb_colour8g = writeData[16,8];
+                            pixel_writer.pb_colour8b = writeData[8,8];
+                        }
+                        case 2b10: {                                                                                            // ABGR
+                            pixel_writer.pb_colour8r = writeData[0,8];
+                            pixel_writer.pb_colour8g = writeData[8,8];
+                            pixel_writer.pb_colour8b = writeData[16,8];
+                        }
+                        case 2b11: {                                                                                            // BGRA
+                            pixel_writer.pb_colour8r = writeData[8,8];
+                            pixel_writer.pb_colour8g = writeData[16,8];
+                            pixel_writer.pb_colour8b = writeData[24,8];
+                        }
+                    }
+                    pixel_writer.pb_newpixel = 2;
+                }
+                case 4he: {
+                    switch( memoryAddress[1,2] ) {                                                                              // SET GPU CROP - ADJUST INTO RANGE
+                        case 2h0: { pixel_writer.crop_left = minmax; }
+                        case 2h1: { pixel_writer.crop_right = minmax; }
+                        case 2h2: { pixel_writer.crop_top = minmax; }
+                        case 2h3: { pixel_writer.crop_bottom = minmax; }
+                    }
+                }
+                case 4hf: {
+                    switch( memoryAddress[1,2] ) {
+                        default: { framebuffer_display.framebuffer = writeData; }
+                        case 2h1: { framebuffer.framebuffer = writeData; }
+                        case 2h2: { framebuffer_display.display256 = writeData; }
+                    }
+                }
+                default: {}
+
             }
+        }
+
+        if( reset ) {
+            // RESET THE CROPPING RECTANGLE AND DISPLAY256 FLAG
+            pixel_writer.pb_mode = 0; pixel_writer.crop_left = 0; pixel_writer.crop_right = 319; pixel_writer.crop_top = 0; pixel_writer.crop_bottom = 239; framebuffer_display.display256 = 0;
         }
     }
 }
@@ -773,12 +771,11 @@ unit charactermap_memmap(
     input   uint1   lorez,
 
     // Memory access
-    input   uint4   memoryAddress,
+    input   uint15  memoryAddress,
     input   uint1   memoryWrite,
     input   uint29  writeData,
 
     // Memory access direct to charactermap
-    input   uint15  memoryAddressDirect,
     input   uint1   memoryWriteDirect,
     output  uint29  readDataDirect
 ) <reginputs> {
@@ -796,13 +793,13 @@ unit charactermap_memmap(
         blink <: blink
     );
 
-    charactermap.addr1 := memoryAddressDirect[2,13]; charactermap.wdata1 := writeData; charactermap.wenable1 := memoryWriteDirect; readDataDirect := charactermap.rdata1;
+    charactermap.addr1 := memoryAddress[2,13]; charactermap.wdata1 := writeData; charactermap.wenable1 := memoryWriteDirect; readDataDirect := charactermap.rdata1;
 
     character_map_window.pix_x := lorez ? pix_x[1,9] : pix_x;
     character_map_window.pix_x1 := lorez ? pix_x1[1,9] : pix_x1;
     character_map_window.pix_y := lorez ? pix_y[1,8] : pix_y;
 
-    algorithm <autorun> { while(1) {
+    always {
         if( memoryWrite ) {
             switch( memoryAddress[1,3] ) {
                 case 3h0: { character_map_window.cursor_x = writeData; }
@@ -813,7 +810,7 @@ unit charactermap_memmap(
                 default: {}
             }
         }
-    } }
+    }
 }
 
 unit sprite_memmap(
@@ -852,6 +849,11 @@ unit sprite_memmap(
     output  uint$32*32$ sprite_collision,
     output  uint$32*6$  sprite_layer_collision
 ) <reginputs> {
+    uint1   latch = 0;
+    uint1   add = 0;
+    uint11  writerpixel_NEXT <:: sprites.writerpixel + 1;
+    uint4   writerspritenumber = uninitialised;
+
     sprite_layer sprites <@video_clock,!video_reset> (
         pix_x      <: pix_x,
         pix_x1     <: pix_x1,
@@ -890,34 +892,27 @@ unit sprite_memmap(
     );
     SLW.sprite_layer_write := 0;
 
-    algorithm <autorun> {
-        uint1   latch = 0;
-        uint1   add = 0;
-        uint11  writerpixel_NEXT <:: sprites.writerpixel + 1;
-        uint4   writerspritenumber = uninitialised;
+    always {
+        // SPRITE BITMAP WRITER - SETTING THE SPRITE NUMBER RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
+        if( latch ) { latch = 0; } else { sprites.wenable1 = 0; if( add ) { sprites.writerpixel = writerpixel_NEXT; add = 0; } }
 
-        while(1) {
-            // SPRITE BITMAP WRITER - SETTING THE SPRITE NUMBER RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
-            if( latch ) { latch = 0; } else { sprites.wenable1 = 0; if( add ) { sprites.writerpixel = writerpixel_NEXT; add = 0; } }
-
-            if( memoryWrite ) {                                                                                                 // WRITE TO SPRITE MEMORY?
-                if( bitmapwriter ) {                                                                                            //  WRITE TO BITMAP?
-                    switch( memoryAddress[1,1] ) {
-                        case 0: { writerspritenumber = writeData; sprites.writerpixel = 0; }
-                        case 1: { sprites.wenable1[ writerspritenumber, 1 ] = 1; latch = 1; add = 1; }
-                    }
-                } else {
-                    if( memoryAddress[7,1] ) {                                                                                  //  WRITE X OR Y COORDINATE?
-                        SLW.sprite_set_number = memoryAddress[1,5];
-                        SLW.sprite_layer_write = { 2b10, memoryAddress[6,1] };
-                } else {
-                        SLW.sprite_set_number = memoryAddress[0,5];
-                        switch( memoryAddress[5,2] ) {
-                            case 2h0: { SLW.sprite_layer_write = 1; }                                                           //  WRITE ACTIVE FLAG?
-                            case 2h1: { SLW.sprite_layer_write = 2; }                                                           //  WRITE ACTIONS?
-                            case 2h2: { SLW.sprite_layer_write = 6; }                                                           //  WRITE TILE NUMBER?
-                            default: {}
-                        }
+        if( memoryWrite ) {                                                                                                     // WRITE TO SPRITE MEMORY?
+            if( bitmapwriter ) {                                                                                                //  WRITE TO BITMAP?
+                switch( memoryAddress[1,1] ) {
+                    case 0: { writerspritenumber = writeData; sprites.writerpixel = 0; }
+                    case 1: { sprites.wenable1[ writerspritenumber, 1 ] = 1; latch = 1; add = 1; }
+                }
+            } else {
+                if( memoryAddress[7,1] ) {                                                                                      //  WRITE X OR Y COORDINATE?
+                    SLW.sprite_set_number = memoryAddress[1,5];
+                    SLW.sprite_layer_write = { 2b10, memoryAddress[6,1] };
+            } else {
+                    SLW.sprite_set_number = memoryAddress[0,5];
+                    switch( memoryAddress[5,2] ) {
+                        case 2h0: { SLW.sprite_layer_write = 1; }                                                               //  WRITE ACTIVE FLAG?
+                        case 2h1: { SLW.sprite_layer_write = 2; }                                                               //  WRITE ACTIONS?
+                        case 2h2: { SLW.sprite_layer_write = 6; }                                                               //  WRITE TILE NUMBER?
+                        default: {}
                     }
                 }
             }
@@ -942,12 +937,11 @@ unit tilemap_memmap(
     output! uint1   pixel_display,
 
     // Memory access
-    input   uint6   memoryAddress,
+    input   uint14  memoryAddress,
     input   uint1   memoryWrite,
     input   uint16  writeData,
 
     // Memory access direct to charactermap
-    input   uint13  memoryAddressDirect,
     input   uint1   memoryWriteDirect,
     output  uint9   readDataDirect,
 
@@ -1011,13 +1005,13 @@ unit tilemap_memmap(
 
     tiles.wdata1 := writeData;                                                                                                  // SET TILEMAP WRITE TO CPU INPUT
     tiles.wenable1 := memoryWriteDirect;                                                                                        // SET TILEMAP WRITE FLAG
-    tiles.addr1 := memoryAddressDirect;                                                                                         // SET TILEMAP ADDRESS
+    tiles.addr1 := memoryAddress[1,13];                                                                                         // SET TILEMAP ADDRESS
     readDataDirect := tiles.rdata1;                                                                                             // CPU OUTPUT DIRECT
 
     tiles16x16.wdata1 := writeData; tiles16x16.wenable1 := 0;                                                                   // SET TILE WRIOTER FLAGS
     TMW.tm_scrollwrap := 0;                                                                                                     // SCROLL FLAG
 
-    always_after {
+    always {
         if( memoryWrite ) {
             switch( memoryAddress[1,3] ) {
                 case 3h0: { TMW.tm_x = writeData; }                                                                             // SET X

@@ -10,45 +10,34 @@ unit background_display(
     input   uint8   b_alt,
     input   uint4   b_mode,
     input   uint1   colourmode
-) <reginputs> {
+) {
     uint1   tophalf <: ( pix_y < 240 );                                                                                         // TOP HALF OF SCREEN
     uint1   lefthalf <: ( pix_x < 320 );                                                                                        // LEFT HALF OF THE SCREEN
     uint2   checkmode <: b_mode - 7;                                                                                            // SIZE OF CHECKERBOARD
-    uint2   condition = uninitialised;                                                                                          // CONDITION , == 0 alt, == 1 colour, == 2 rainbow, == 3 static
 
     starfield STARS( pix_x <: pix_x, pix_y <: pix_y, pix_end <: pix_end );                                                      // STARFIELD GENERATOR
     brom uint8 rainbow[8] = { 8h80, 8hc1, 8he1, 8hf9, 8h38, 8h0f, 8h45, 8ha7 }; rainbow.addr := pix_y[6,3];                     // RAINBOW DKRED RED ORANGE YELLOW GREEN BLUE DKPURPLE VIOLET
 
-    algorithm <autorun> { while(1) {
-        switch( b_mode ) {                                                                                                    // DETERMINE BACKGROUND PATTERN
-            case 0: { condition = 1; }                                                                                          //  SOLID
-            case 1: { condition = tophalf; }                                                                                    //  50:50 HORIZONTAL SPLIT
-            case 2: { condition = ( lefthalf ); }                                                                               //  50:50 VERTICAL SPLIT
-            case 3: { condition = ( lefthalf ^ tophalf ); }                                                                     //  QUARTERS
-            case 5: { condition  = STARS.star; }                                                                                //  SNOW (from @sylefeb)
-            case 11: { condition = ( pix_x[0,1] | pix_y[0,1] ); }                                                               //  CROSSHATCH
-            case 12: { condition = ( pix_x[0,2] == pix_y[0,2] ); }                                                              //  LSLOPE
-            case 13: { condition = ( pix_x[0,2] == ~pix_y[0,2] ); }                                                             //  RSLOPE
-            case 14: { condition = pix_x[0,1]; }                                                                                //  VSTRIPES
-            case 15: { condition = pix_y[0,1]; }                                                                                //  HSTRIPES
-            case 4: { condition = 2; } case 6: { condition = 3; }                                                               //  STATIC AND RAINBOW
-            default: { condition = ( pix_x[checkmode,1] ^ pix_y[checkmode,1] ); }                                               //  CHECKERBOARDS (7,8,9,10)
-        }
-    } }
-
-    always_after {
-        switch( condition ) {                                                                                                 // SWITCH TO THE APPROPRIATE COLOUR
-            case 0: { pixel = b_alt; }                                                                                          //  ALT
-            case 1: { pixel = b_colour; }                                                                                       //  COLOUR
-            case 2: { pixel = rainbow.rdata; }                                                                                  //  RAINBOW
-            case 3: { pixel = {4{staticGenerator}}; }                                                                           //  STATIC
+    always {
+        switch( b_mode ) {                                                                                                      // DETERMINE BACKGROUND PATTERN
+            case 0: { pixel = b_colour; }                                                                                       //  SOLID
+            case 1: { pixel = tophalf ? b_colour : b_alt; }                                                                     //  50:50 HORIZONTAL SPLIT
+            case 2: { pixel = ( lefthalf ) ? b_colour : b_alt; }                                                                //  50:50 VERTICAL SPLIT
+            case 3: { pixel = ( lefthalf ^ tophalf ) ? b_colour : b_alt; }                                                      //  QUARTERS
+            case 4: { pixel = rainbow.rdata; }                                                                                  //  STATIC AND RAINBOW
+            case 5: { pixel  = STARS.star ? b_colour : b_alt; }                                                                 //  SNOW (from @sylefeb)
+            case 6: { pixel = {4{staticGenerator}}; }                                                                           //  STATIC AND RAINBOW
+            case 11: { pixel = ( pix_x[0,1] | pix_y[0,1] ) ? b_colour : b_alt; }                                                //  CROSSHATCH
+            case 12: { pixel = ( pix_x[0,2] == pix_y[0,2] ) ? b_colour : b_alt; }                                               //  LSLOPE
+            case 13: { pixel = ( pix_x[0,2] == ~pix_y[0,2] ) ? b_colour : b_alt; }                                              //  RSLOPE
+            case 14: { pixel = pix_x[0,1] ? b_colour : b_alt; }                                                                 //  VSTRIPES
+            case 15: { pixel = pix_y[0,1] ? b_colour : b_alt; }                                                                 //  HSTRIPES
+            default: { pixel = ( pix_x[checkmode,1] ^ pix_y[checkmode,1] ) ? b_colour : b_alt; }                                //  CHECKERBOARDS (7,8,9,10)
         }
     }
 }
 unit background_writer(
-    input   uint8   backgroundcolour,
-    input   uint8   backgroundcolour_alt,
-    input   uint4   backgroundcolour_mode,
+    input   uint8   WDATA,
     input   uint2   background_update,
 
     input   uint1   copper_program,
@@ -66,18 +55,18 @@ unit background_writer(
     simple_dualport_bram_port1  OPD,                                                                                            // DEST REG NUMBER
     simple_dualport_bram_port1  OPF,                                                                                            // LITERAL/REGISTER FLAG
     simple_dualport_bram_port1  OPL,                                                                                            // 2ND REG NUMBER OR LITERAL
-) <reginputs> {
+) {
     OP.wenable1 := copper_program; OP.addr1 := copper_address; OP.wdata1 := copper_op;
     OPD.wenable1 := copper_program; OPD.addr1 := copper_address; OPD.wdata1 := copper_opd;
     OPF.wenable1 := copper_program; OPF.addr1 := copper_address; OPF.wdata1 := copper_opf;
     OPL.wenable1 := copper_program; OPL.addr1 := copper_address; OPL.wdata1 := copper_opl;
 
-    always_after {
+    always {
         switch( background_update ) {
             case 2b00: {}
-            case 2b01: { BACKGROUNDcolour = backgroundcolour; }                                                                 // UPDATE THE BACKGROUND FROM RISC-V
-            case 2b10: { BACKGROUNDalt = backgroundcolour_alt; }
-            case 2b11: { BACKGROUNDmode = backgroundcolour_mode; }
+            case 2b01: { BACKGROUNDcolour = WDATA; }                                                                            // UPDATE THE BACKGROUND FROM RISC-V
+            case 2b10: { BACKGROUNDalt = WDATA; }
+            case 2b11: { BACKGROUNDmode = WDATA; }
         }
     }
 }
@@ -104,9 +93,10 @@ unit nucu(
     simple_dualport_bram_port0  OPF,                                                                                            // LITERAL/REGISTER FLAG
     simple_dualport_bram_port0  OPL,                                                                                            // 2ND REG NUMBER OR LITERAL
     input   uint$NUCUmem*10$  memoryinit                                                                                        // INITIAL SETTINGS OF THE MEMORY
-) <reginputs> {
+) {
     uint$NUCUaddr$   PC = 0;                                                                                                    // PROGRAM COUNTER
-    uint$NUCUaddr$   PCnext <:: PC + 1;                                                                                         // NEXT INSTRUCTION
+    uint$NUCUaddr$   PC_p1 <:: PC + 1;                                                                                          // NEXT INSTRUCTION
+    uint$NUCUaddr$   PC_p2 <:: PC + 2;                                                                                          // NEXT INSTRUCTION IF SKIP
 
     uint10  REGS[4] = uninitialised;                                                                                            // STORAGE FOR 4 REGISTERS
     uint10  reg1 <:: ( OPD.rdata0 == 0 ) ? pix_vblank :                                                                         // REG1 <-  VBLANK              OPERATION INPUT 1
@@ -125,9 +115,14 @@ unit nucu(
     bram uint10 dstack[$NUCUstack$] = uninitialised;                                                                            // DATA STACK
     bram uint$NUCUaddr$ rstack[$NUCUstack$] = uninitialised;                                                                    // RETURN STACK
 
-    dstack.wenable := 0; rstack.wenable := 0;
+    uint$NUCUstackaddr$ dstack_p1 <:: dstack.addr + 1;
+    uint$NUCUstackaddr$ dstack_m1 <:: dstack.addr - 1;
+    uint$NUCUstackaddr$ rstack_p1 <:: rstack.addr + 1;
+    uint$NUCUstackaddr$ rstack_m1 <:: rstack.addr - 1;
 
-    algorithm <autorun> { while(1) {
+    dstack.wenable := 0; rstack.wenable := 0; dstack.wdata := reg2; rstack.wdata := PC_p1;
+
+    always {
         uint2   PCinc = 0;                                                                                                      // PC ACTION FLAG == 0 PCnext, == 1 PCskip, == 2 REG2 value
         uint1   WR = 1;                                                                                                         // WRITE TO REGISTERS FLAG
         uint1   WM = 0;                                                                                                         // WRITE TO MEMORY FLAG
@@ -136,19 +131,19 @@ unit nucu(
         uint10  result = uninitialised;                                                                                         // RESULT OF OP
 
         if( copper_status ) {
-            { switch( OP.rdata0 ) {
+            switch( OP.rdata0 ) {
                 case 4h0: {                                                                                                     // JMP JSR RET SLI SRx LRx
-                    { WR = OPD.rdata0[2,1]; } { result = dstack.rdata; }                                                        // WRITE TO REGISTER IF LRx, RESULT IS TOP OF DSTACK
-                    { switch( OPD.rdata0 ) {                                                                                    // reg1 acts as switch
+                    WR = OPD.rdata0[2,1]; result = dstack.rdata;                                                                // WRITE TO REGISTER IF LRx, RESULT IS TOP OF DSTACK
+                    switch( OPD.rdata0 ) {                                                                                      // reg1 acts as switch
                         case 0: { PCinc = 2; }                                                                                  // Jump JP( L literal, R register value )
                         case 1: {                                                                                               // Jump subroutine JS( L literal, R register value )
-                            { rstack.addr = rstack.addr + 1; } { rstack.wdata = PCnext; } { rstack.wenable = 1; }               //  SAVE NEXT ADDRESS TO RSTACK
-                            { PCinc = 2; }
+                            rstack.addr = rstack_p1;  rstack.wenable = 1;                                                       //  SAVE NEXT ADDRESS TO RSTACK
+                            PCinc = 2;
                         }
-                        case 2: { { rstack.addr = rstack.addr - 1; } { PCinc = 2; } }                                           // RET ( pop address from rstack )
-                        case 3: { { dstack.addr = dstack.addr + 1; } { dstack.wdata = reg2; } { dstack.wenable = 1; } }         // SLI and SRx ( push literal or register value on dstack )
-                        default: { dstack.addr = dstack.addr - 1; }                                                             // LRx ( pop value from dstack, write to reg1 )
-                    } }
+                        case 2: { rstack.addr = rstack_m1; PCinc = 2; }                                                         // RET ( pop address from rstack )
+                        case 3: { dstack.addr = dstack_p1; dstack.wenable = 1; }                                                // SLI and SRx ( push literal or register value on dstack )
+                        default: { dstack.addr = dstack_m1; }                                                                   // LRx ( pop value from dstack, write to reg1 )
+                    }
                 }
                 case 4h1: { result = reg2; }                                                                                    // SET
                 case 4h2: { result = reg1 + reg2; }                                                                             // ADD
@@ -158,16 +153,16 @@ unit nucu(
                 case 4h6: { result = reg1 ^ reg2; }                                                                             // XOR
                 case 4h7: { result = reg1 << reg2; }                                                                            // SHL
                 case 4h8: { result = reg1 >> reg2; }                                                                            // SHR
-                case 4h9: { { WR = 0; } { PCinc = ( reg1 == reg2 ); } }                                                         // SKIP =
-                case 4ha: { { WR = 0; } { PCinc = ( reg1 != reg2 ); } }                                                         // SKIP !=
-                case 4hb: { { WR = 0; } { PCinc = ( reg1 < reg2 ); } }                                                          // SKIP <
-                case 4hc: { { WR = 0; } { PCinc = ( reg1 <= reg2 ); } }                                                         // SKIP <=
+                case 4h9: { WR = 0; PCinc = ( reg1 == reg2 ); }                                                                 // SKIP =
+                case 4ha: { WR = 0; PCinc = ( reg1 != reg2 ); }                                                                 // SKIP !=
+                case 4hb: { WR = 0; PCinc = ( reg1 < reg2 ); }                                                                  // SKIP <
+                case 4hc: { WR = 0; PCinc = ( reg1 <= reg2 ); }                                                                 // SKIP <=
                 case 4hd: { result = staticGenerator & reg2; }                                                                  // RANDOM
                 case 4he: { result = MEM[ reg2[0,$NUCUmemaddr$] * 10, 10 ]; }                                                   // LOAD FROM MEMORY
-                case 4hf: { { WR = 0; } { WM = 1; } }                                                                           // STORE TO MEMORY
-            } }
+                case 4hf: { WR = 0; WM = 1; }                                                                                   // STORE TO MEMORY
+            }
 
-            { if( WR ) {                                                                                                        // WRITE TO REGISTERS?
+            if( WR ) {                                                                                                          // WRITE TO REGISTERS?
                 switch( OPD.rdata0 ) {
                     case 0: { BACKGROUNDmode = result; }                                                                        // BACKGROUND MODE
                     case 1: { BACKGROUNDcolour = result; }                                                                      // BACKGROUND COLOUR
@@ -175,23 +170,23 @@ unit nucu(
                     case 3: { copper_cpu_output = result; }                                                                     // COPPER TO CPU
                     default: { REGS[ OPD.rdata0[0,2] ] = result; }                                                              // COPPER REGISTER
                 }
-            } }
+            }
 
-            { if( WM ) { MEM[ reg2[0,$NUCUmemaddr$] * 10, 10 ] = reg1[0,10]; } }                                                // WRITE TO MEMORY
+            if( WM ) { MEM[ reg2[0,$NUCUmemaddr$] * 10, 10 ] = reg1[0,10]; }                                                    // WRITE TO MEMORY
 
-            { PC = PCinc[1,1] ? reg2 : PCinc[0,1] ? ( PC + 2 ) : PCnext; }                                                      // UPDATE PC, PCinc == 2 JUMP,  ==1 SKIP, == 0 NEXT
+            PC = PCinc[1,1] ? reg2 : PCinc[0,1] ? PC_p2 : PC_p1;                                                                // UPDATE PC, PCinc == 2 JUMP,  ==1 SKIP, == 0 NEXT
         } else {
-            { PC = 0; }                                                                                                         // set PC to 0
-            { MEM = memoryinit; }                                                                                               // COPY CPU MEMORY INITIALISATION VALUES
-            { dstack.addr = -1; } { rstack.addr = -1; }                                                                         // SET DEFAULT STACK ADDRESSES
+            PC = 0;                                                                                                             // set PC to 0
+            MEM = memoryinit;                                                                                                   // COPY CPU MEMORY INITIALISATION VALUES
+            dstack.addr = -1; rstack.addr = -1;                                                                                 // SET DEFAULT STACK ADDRESSES
 
-            { BACKGROUNDmode = backgroundcolour_mode; }                                                                         // UPDATE THE BACKGROUND GENERATOR FROM THE CPU
-            { BACKGROUNDcolour = backgroundcolour; }
-            { BACKGROUNDalt = backgroundcolour_alt; }
+            BACKGROUNDmode = backgroundcolour_mode;                                                                             // UPDATE THE BACKGROUND GENERATOR FROM THE CPU
+            BACKGROUNDcolour = backgroundcolour;
+            BACKGROUNDalt = backgroundcolour_alt;
         }
-    } }
 
-    always_after { { OP.addr0 = PC; } { OPD.addr0 = PC; } { OPF.addr0 = PC; } { OPL.addr0 = PC; } }                                         // MOVE TO THE NEXT INSTRUCTION}
+        OP.addr0 = PC; OPD.addr0 = PC; OPF.addr0 = PC; OPL.addr0 = PC;                                                          // MOVE TO THE NEXT INSTRUCTION
+    }
 }
 
 // By @sylefeb
@@ -200,14 +195,12 @@ unit starfield(
     input   uint9   pix_y,
     input   uint1   pix_end,
     output  uint1   star
-) <reginputs> {
+) {
     uint32  frame = 0;                                                                                                          // FRAME COUNTER
     uint12  rand_x = 0;                                                                                                         // PSEUDO RANDOM NUMBER GENERATOR
     uint10  dotpos <:: ( frame >> rand_x[10,2] ) + rand_x;
 
-    always_after {
-        { frame = frame + pix_end; }                                                                                            // INCREMENT AT END OF FRAME
-        { rand_x = |pix_x ? rand_x * 31421 + 6927 : 1; }
-        { star = ( pix_y == dotpos ); }
-    }
+    frame := frame + pix_end;                                                                                                   // INCREMENT AT END OF FRAME
+    rand_x := |pix_x ? rand_x * 31421 + 6927 : 1;
+    star := ( pix_y == dotpos );
 }

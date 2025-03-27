@@ -381,7 +381,7 @@ int main( void ) {
     gpu_outputstringcentre( WHITE, 80, 1, "LAUNCHING", 0 );
     sleep(500);
 
-    // RESET THE DISPLAY AND TURN OFF LEDS
+    // RESET THE DISPLAY, TURN OFF LEDS
     reset_display();
     *LEDS = 0;
 

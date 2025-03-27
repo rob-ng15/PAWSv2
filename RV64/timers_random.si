@@ -1,67 +1,70 @@
 unit timers_memmap(
-    // Memory access
-    input   uint6   memoryAddress,
-    input   uint1   memoryWrite,
-    input   uint1   memoryRead,
-    input   uint32  writeData,
-    output  uint32  readData,
+    input   uint1               CS,
 
-    // RNG + CURSOR BLINK
-    output  uint16  static16bit,
-    output  uint1   cursor
-) <reginputs> {
+    input   uint6               ADDR,
+    input   uint1               WENABLE,
+    input   uint1               RENABLE,
+    input   uint32              WDATA,
+    output  uint32              RDATA,
+
+    output  uint16              static16bit,                                                                                    // RNG + CURSOR BLINK
+    output  uint1               cursor
+) {
     random RNG( g_noise_out :> static16bit );                                                                                   // RNG random number generator
 
     timesinceboot P1( counter1hz :> cursor );                                                                                   // 1hz  SYSTEMCLOCK
     P1.resettime := 0;
 
-    always_after {
+    always {
         uint$CWIDTH$  LATCHseconds = uninitialised; uint20  LATCHmilliseconds = uninitialised;                                  // LATCH TIME OF DAY SO READ RETURNS THE SAME TIME
 
-        { if( memoryWrite ) {                                                                                                   // WRITE IO Memory
-            switch( memoryAddress[2,2] ) {
-                case 2h0: { P1.newtime[0,32] = writeData; }                                                                 // SET CLOCK TIME
-                case 2h1: { P1.newtime[32,$CWIDTH-32$] = writeData; }
+        if( CS & WENABLE ) {                                                                                                    // WRITE IO Memory
+            switch( ADDR[2,2] ) {
+                case 2h0: { P1.newtime[0,32] = WDATA; }                                                                         // SET CLOCK TIME
+                case 2h1: { P1.newtime[32,$CWIDTH-32$] = WDATA; }
                 default: { P1.resettime = 1; }
             }
-        } }
+        }
 
-        { if( memoryRead ) {                                                                                                    // READ IO Memory
-            if( memoryAddress[5,1] ) {
-                switch( memoryAddress[2,2] ) {
-                    default: { LATCHseconds = P1.counter1hz; LATCHmilliseconds = P1.counter1mhz; readData = P1.counter1hz[0,32]; }
-                    case 2h1: { readData = LATCHseconds[32,$CWIDTH-32$]; }
-                    case 2h2: { readData = LATCHmilliseconds; }
+        if( CS & RENABLE ) {                                                                                                    // READ IO Memory
+            if( ADDR[5,1] ) {
+                switch( ADDR[2,2] ) {
+                    default: { LATCHseconds = P1.counter1hz; LATCHmilliseconds = P1.counter1mhz; RDATA = P1.counter1hz[0,32]; }
+                    case 2h1: { RDATA = LATCHseconds[32,$CWIDTH-32$]; }
+                    case 2h2: { RDATA = LATCHmilliseconds; }
                 }
             } else {
-                switch( memoryAddress[1,2] ) {
-                    default: { readData = RNG.g_noise_out; }                                                                    // RANDOM NUMBER GENERATOR 0
-                    case 4h1: { readData = RNG.u_noise_out; }                                                                   // RANDOM NUMBER GENERATOR 1
-                    case 4h2: { readData = { RNG.u_noise_out[0,7], RNG.g_noise_out, RNG.u_noise_out[7,7] }; }                   // COMBINE TO FLOATING POINT RNG
+                switch( ADDR[1,2] ) {
+                    default: { RDATA = RNG.g_noise_out; }                                                                       // RANDOM NUMBER GENERATOR 0
+                    case 4h1: { RDATA = RNG.u_noise_out; }                                                                      // RANDOM NUMBER GENERATOR 1
+                    case 4h2: { RDATA = { RNG.u_noise_out[0,7], RNG.g_noise_out, RNG.u_noise_out[7,7] }; }                      // COMBINE TO FLOATING POINT RNG
                 }
             }
-        } }
+        }
      }
 }
 
 // Create seconds and milliseconds since boot
 unit timesinceboot(
-    output  uint$CWIDTH$  counter1hz(0),
-    input   uint$CWIDTH$  newtime,
-    output  uint20  counter1mhz(0),
-    input   uint1   resettime
-) <reginputs> {
-    uint6   counter50mhz = uninitialised;
-    uint2   ACTION <:: { counter1mhz == 1000000, ~|counter50mhz };
+    output  uint$CWIDTH$        counter1hz(0),
+    input   uint$CWIDTH$        newtime,
+    output  uint20              counter1mhz(0),
+    input   uint1               resettime
+) {
+    uint6               counter50mhz = uninitialised;
+    uint6               counter50mhz_m1 <:: counter50mhz - 1;
+    uint20              counter1mhz_p1 <:: counter1mhz + 1;
+    uint$CWIDTH$        counter1hz_p1 <:: counter1hz + 1;
+    uint2               ACTION <:: { counter1mhz == 1000000, ~|counter50mhz };
 
-    always_after {
+    always {
         if( resettime ) {
-            { counter1hz = newtime; } { counter1mhz = 0; } { counter50mhz = 50; }
+            counter1hz = newtime; counter1mhz = 0; counter50mhz = 50;
         } else {
             switch( ACTION ) {
-                case 2b00: { counter50mhz = counter50mhz - 1; }
-                case 2b01: { { counter1mhz = counter1mhz + 1; } { counter50mhz = 50; } }
-                default: { { counter1hz = counter1hz + 1; } { counter1mhz = 0; } { counter50mhz = 50; } }
+                case 2b00: { counter50mhz = counter50mhz_m1; }
+                case 2b01: { counter1mhz = counter1mhz_p1; counter50mhz = 50; }
+                default: { counter1hz = counter1hz_p1; counter1mhz = 0; counter50mhz = 50; }
             }
         }
     }
@@ -70,23 +73,21 @@ unit timesinceboot(
 // 16 bit random number generator
 // Translation into Silice of LFSR_Plus.v
 unit random(
-    output  uint16  g_noise_out,
-    output  uint16  u_noise_out,
-) <reginputs> {
-    uint16  rand_ff = 24b011000110111011010011101;
-    uint18  rand_en_ff = 24b001100010011011101100101;
+    output  uint16              g_noise_out,
+    output  uint16              u_noise_out,
+) {
+    uint16              rand_ff = 24b011000110111011010011101;
+    uint18              rand_en_ff = 24b001100010011011101100101;
 
-    always_after {
-        uint16  temp_u_noise3 = uninitialised;
-        uint16  temp_u_noise2 = uninitialised;
-        uint16  temp_u_noise1 = uninitialised;
-        uint16  temp_u_noise0 = uninitialised;
+    uint16              temp_u_noise3 = uninitialised;
+    uint16              temp_u_noise2 = uninitialised;
+    uint16              temp_u_noise1 = uninitialised;
+    uint16              temp_u_noise0 = uninitialised;
 
-        { temp_u_noise0 = temp_u_noise1; } { temp_u_noise1 = temp_u_noise2; } { temp_u_noise2 = temp_u_noise3; } { temp_u_noise3 = { rand_ff[15,1], rand_ff[15,1], rand_ff[2,13] }; }
-        { g_noise_out = ( rand_en_ff[17,1] ) ? ( temp_u_noise3 + temp_u_noise2 + temp_u_noise1 + temp_u_noise0 + ( rand_en_ff[9,1] ? g_noise_out : 0 ) ) :
-                        ( rand_en_ff[10,1] ) ? rand_ff : g_noise_out; }
-        { u_noise_out = ( rand_en_ff[17,1] ) ? rand_ff : u_noise_out; }
-        { rand_en_ff = { ( rand_en_ff[7,1] ^ rand_en_ff[0,1] ), rand_en_ff[1,17] }; }
-        { rand_ff = { ( rand_ff[5,1] ^ rand_ff[3,1] ^ rand_ff[2,1] ^ rand_ff[0,1] ), rand_ff[1,15] }; }
-    }
+    temp_u_noise0 := temp_u_noise1; temp_u_noise1 := temp_u_noise2; temp_u_noise2 := temp_u_noise3; temp_u_noise3 := { rand_ff[15,1], rand_ff[15,1], rand_ff[2,13] };
+    g_noise_out := ( rand_en_ff[17,1] ) ? ( temp_u_noise3 + temp_u_noise2 + temp_u_noise1 + temp_u_noise0 + ( rand_en_ff[9,1] ? g_noise_out : 0 ) ) :
+                   ( rand_en_ff[10,1] ) ? rand_ff : g_noise_out;
+    u_noise_out := ( rand_en_ff[17,1] ) ? rand_ff : u_noise_out;
+    rand_en_ff := { ( rand_en_ff[7,1] ^ rand_en_ff[0,1] ), rand_en_ff[1,17] };
+    rand_ff := { ( rand_ff[5,1] ^ rand_ff[3,1] ^ rand_ff[2,1] ^ rand_ff[0,1] ), rand_ff[1,15] };
 }

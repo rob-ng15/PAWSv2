@@ -43,7 +43,7 @@ extern void sleep1khz( unsigned short );
 extern void set_timer1khz( unsigned short, unsigned char );
 extern unsigned short get_timer1khz( unsigned char );
 extern void wait_timer1khz( unsigned char );
-extern unsigned short get_timer1hz( unsigned char );
+extern unsigned long get_timer1hz( unsigned char );
 extern void reset_timer1hz( unsigned char );
 extern unsigned long systemclock( void );
 #ifdef __cplusplus

@@ -33,7 +33,7 @@ short last_fire;
 unsigned char asteroid_active[MAXASTEROIDS], asteroid_direction[MAXASTEROIDS], ufo_sprite_number = 0xff, ufo_leftright = 0, ufo_bullet_direction = 0, sample_change = 0;
 
 // BEEP / BOOP TIMER
-short last_timer = 0;
+unsigned long last_timer;
 
 // GLOBAL SPRITE UPDATE VALUES
 unsigned short bullet_directions[] = {
@@ -213,7 +213,7 @@ void setup_game() {
     shipx = 312; shipy = 232; shipdirection = 0; resetship = 0; shipexplode = 0; shipmove = 0; shipshield = 0; bulletdirection[0] = 0; bulletdirection[1] = 0;
     last_fire = 0;
 
-    counter = 0;
+    counter = 0; reset_timer1hz( 0 );
 }
 
 unsigned char find_asteroid_space( void ) {
@@ -458,9 +458,9 @@ void beepboop( void ) {
     }
 
     if( last_timer != get_timer1hz( 0 ) ) {
+        last_timer = get_timer1hz( 0 );
         draw_score();
 
-        last_timer = get_timer1hz( 0 );
         (void)tilemap_scroll( LOWER_LAYER, TM_LEFT, 1 );
         (void)tilemap_scroll( UPPER_LAYER, TM_RIGHT, 2 );
 

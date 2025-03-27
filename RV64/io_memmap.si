@@ -1,4 +1,11 @@
 unit io_memmap(
+    input   uint1   CS,
+    input   uint12  ADDR,
+    input   uint1   WENABLE,
+    input   uint1   RENABLE,
+    input   uint32  WDATA,
+    output  uint32  RDATA,
+
     // LEDS (8 of) + SDCARD JOYSTICK CAPSLOCK NUMLOCK STATUS LIGHTS
     output  uint8   leds,
     output  uint2   sdcardlightcolour,
@@ -35,12 +42,6 @@ $$end
     inout   uint1   gpdi_sda,
     inout   uint1   gpdi_scl,
 
-    // Memory access
-    input   uint12  memoryAddress,
-    input   uint1   memoryWrite,
-    input   uint1   memoryRead,
-    input   uint32  writeData,
-    output  uint32  readData,
 
     // SMT STATUS
     output  uint1   SMTRUNNING(0),
@@ -53,17 +54,17 @@ $$end
     output  uint$addr_width$  DMADESTADD,
     output  uint$addr_width$  DMACOUNT(0),
     output  uint8   DMACYCLES(0),
-    output  uint10  DMAMODE(0),
+    output  uint9   DMAMODE(0),
     output  uint32  DMASET,
-    input   uint1   DMAACTIVE,
+    input   uint1   DMAACTIVE
+) {
+    uint1   MAGICVALUE = 0;                                                                                                     // WRITE 32h50415357 'PAWS' } TO ALLOW WRITING TO SDCARD SECTOR 0
+    uint64  LATCHrtc = uninitialised;                                                                                           // LATCH RTC ON READ SO VALUE IS RETURNED FOR 64 BIT READ
 
-    // System Capabilities Flag
-    input   uint32  SOC
-) <reginputs> {
 $$if not SIMULATION then
     // UART CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
     uart_IN UART_IN( uart_rx <: uart_rx );
-    uart_OUT UART_OUT( uart_tx :> uart_tx, outchar <: writeData[0,8] );
+    uart_OUT UART_OUT( uart_tx :> uart_tx, outchar <: WDATA[0,8] );
 
     // PS2 CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
     ps2buffer PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn );
@@ -93,148 +94,141 @@ $$if not SIMULATION then
 
     // I/O FLAGS
     UART_IN.inread := 0; UART_OUT.outwrite := 0; PS2.inread := 0;
-    SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0; buffer_out.wdata1 := writeData;
+    SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0; buffer_out.wdata1 := WDATA;
 $$end
     RTC.wr := 0; RESETSTATUS := 0;
 
-    algorithm <autorun> {
-        uint1   MAGICVALUE = 0;                                                                                         // WRITE 32h50415357 'PAWS' } TO ALLOW WRITING TO SDCARD SECTOR 0
-
-        $$if not SIMULATION then
-            { PS2.outputkeycodes = 0; }
-        $$end
-        { RTC.addr = 7; } { SMTRUNNING = 0; }
-
-        // READ IO Memory
-        while(1) {
-            // WRITE IO Memory
-            if( memoryWrite ) {
-                switch( memoryAddress[8,4] ) {
-                    $$if not SIMULATION then
-                    case 4h0: { UART_OUT.outwrite = 1; }
-                    case 4h1: {
-                        { switch( memoryAddress[1,2] ) {
-                            default: { { PS2.outputkeycodes = writeData; } { JOYSTICK = ~writeData; } }
-                            case 2h1: { CAPSLOCK = writeData; }
-                            case 2h2: { NUMLOCK = writeData; }
-                        } }
-                        { RESETSTATUS = 1; }
+    always {
+        if( CS & WENABLE ) {
+            switch( ADDR[8,4] ) {
+                $$if not SIMULATION then
+                case 4h0: { UART_OUT.outwrite = 1; }
+                case 4h1: {
+                    switch( ADDR[1,2] ) {
+                        default: { PS2.outputkeycodes = WDATA; JOYSTICK = ~WDATA; }
+                        case 2h1: { CAPSLOCK = WDATA; }
+                        case 2h2: { NUMLOCK = WDATA; }
                     }
-                    case 4h2: { MOUSE.RESET = 1; }
-                    case 4h4: {
-                        { switch( memoryAddress[1,2] ) {
-                            case 2h0: { { SDCARD.readsector = 1; }  { sdcardlightcolour = 1; } }
-                            case 2h1: { { SDCARD.writesector = |SDCARD.sectoraddress | MAGICVALUE; } { sdcardlightcolour = 2; } }
-                            default: { SDCARD.sectoraddress = writeData; }
-                        } }
-                        { RESETSTATUS = 1; }
+                    RESETSTATUS = 1;
+                }
+                case 4h2: { MOUSE.RESET = 1; }
+                case 4h4: {
+                    switch( ADDR[1,2] ) {
+                        case 2h0: { SDCARD.readsector = 1; sdcardlightcolour = 1; }
+                        case 2h1: { SDCARD.writesector = |SDCARD.sectoraddress | MAGICVALUE; sdcardlightcolour = 2; }
+                        default: { SDCARD.sectoraddress = WDATA; }
                     }
-                    case 4h5: {
-                        switch( memoryAddress[2,1] ) {
-                            case 0: { { buffer_in.addr0 = 0; } { buffer_out.addr1 = -1; } }
-                            case 1: { { buffer_out.addr1 = buffer_out_NEXT; } { buffer_out.wenable1 = 1; } }
-                        }
+                    RESETSTATUS = 1;
+                }
+                case 4h5: {
+                    switch( ADDR[2,1] ) {
+                        case 0: { buffer_in.addr0 = 0; buffer_out.addr1 = -1; }
+                        case 1: { buffer_out.addr1 = buffer_out_NEXT; buffer_out.wenable1 = 1; }
                     }
-                    $$end
-                    case 4h3: { leds = writeData; }
-                    case 4h7: { MAGICVALUE = ( writeData == 32h50415357 ); }                                                    // SPECIAL VALUE TO ALLOW WRITING TO SDCARD SECTOR 0 'PAWS'
-                    case 4hd: {
-                        switch( memoryAddress[2,2] ) {
-                            case 2b00: { DMASOURCEADD = writeData; }
-                            case 2b01: { DMADESTADD = writeData; }
-                            case 2b10: { DMACYCLES = writeData; }
-                            case 2b11: { DMASET = writeData; }
-                        }
+                }
+                $$end
+                case 4h3: { leds = WDATA; }
+                case 4h7: { MAGICVALUE = ( WDATA == 32h50415357 ); }                                                            // SPECIAL VALUE TO ALLOW WRITING TO SDCARD SECTOR 0 'PAWS'
+                case 4hd: {
+                    switch( ADDR[2,2] ) {
+                        case 2b00: { DMASOURCEADD = WDATA; }
+                        case 2b01: { DMADESTADD = WDATA; }
+                        case 2b10: { DMACYCLES = WDATA; }
+                        case 2b11: { DMASET = WDATA; }
                     }
-                    case 4he: {
-                        switch( memoryAddress[2,2] ) {
-                            case 2b00: { DMASOURCE = writeData; }
-                            case 2b01: { DMADEST = writeData; }
-                            case 2b10: { DMACOUNT = writeData; }
-                            case 2b11: {
-                                if( memoryAddress[1,1] ) {
-                                    DMASET = {4{writeData[0,8]}};
-                                } else {
-                                    DMAMODE = writeData;
-                                }
+                }
+                case 4he: {
+                    switch( ADDR[2,2] ) {
+                        case 2b00: { DMASOURCE = WDATA; }
+                        case 2b01: { DMADEST = WDATA; }
+                        case 2b10: { DMACOUNT = WDATA; }
+                        case 2b11: {
+                            if( ADDR[1,1] ) {
+                                DMASET = {4{WDATA[0,8]}};
+                            } else {
+                                DMAMODE = WDATA;
                             }
                         }
                     }
-                    case 4hf: {
-                        switch( memoryAddress[2,1] ) {
-                            case 1b0: { SMTSTARTPC = writeData; }
-                            case 1b1: { SMTRUNNING = writeData; }
-                        }
-                    }
-                    default: {}
                 }
+                case 4hf: {
+                    switch( ADDR[2,1] ) {
+                        case 1b0: { SMTSTARTPC = WDATA; }
+                        case 1b1: { SMTRUNNING = WDATA; }
+                    }
+                }
+                default: {}
             }
         }
-    }
 
-    always_after {
-        uint64  LATCHrtc = uninitialised;                                                                                       // LATCH RTC ON READ SO VALUE IS RETURNED FOR 64 BIT READ
-
-        { if( memoryRead ) {
-            switch( memoryAddress[8,4] ) {
+        if( CS &  RENABLE ) {
+            switch( ADDR[8,4] ) {
                 $$if not SIMULATION then
                 case 4h0: {
-                    if( memoryAddress[1,1] ) {
-                        readData = { 14b0, UART_OUT.outfull, UART_IN.inavailable };
+                    if( ADDR[1,1] ) {
+                        RDATA = { 14b0, UART_OUT.outfull, UART_IN.inavailable };
                     } else {
-                        { readData = { 8b0, UART_IN.inchar }; } { UART_IN.inread = 1; }
+                        { RDATA = { 8b0, UART_IN.inchar }; } { UART_IN.inread = 1; }
                     }
                 }
                 case 4h1: {
-                    if( memoryAddress[1,1] ) {
+                    if( ADDR[1,1] ) {
                         if( PS2.inavailable ) {
-                            { readData = PS2.inkey; } { PS2.inread = 1; }
+                            RDATA = PS2.inkey; PS2.inread = 1;
                         } else {
-                            readData = 0;
+                            RDATA = 0;
                         }
                     } else {
-                        readData = PS2.inavailable;
+                        RDATA = PS2.inavailable;
                     }
                 }
                 case 4h2: {
-                    switch( memoryAddress[1,2] ) {
-                        case 2b00: { readData = PS2.outputkeycodes ? btns : btns | PS2.joystick; }
-                        case 2b01: { readData = MOUSE.x; }
-                        case 2b10: { readData = MOUSE.y; }
-                        case 2b11: { readData = btns[1,2]; }
+                    switch( ADDR[1,2] ) {
+                        case 2b00: { RDATA = PS2.outputkeycodes ? btns : btns | PS2.joystick; }
+                        case 2b01: { RDATA = MOUSE.x; }
+                        case 2b10: { RDATA = MOUSE.y; }
+                        case 2b11: { RDATA = btns[1,2]; }
                     }
                 }
                 case 4h4: {
-                    { switch( memoryAddress[0,1] ) {
-                        case 0: { { readData = SDCARD.ready; } { if( SDCARD.ready ) { sdcardlightcolour = 0; } } }
-                        case 1: { { readData = SDCARD.error; } { if( SDCARD.error ) { sdcardlightcolour = 3; } } }
-                    } }
-                    { RESETSTATUS = 1; }
+                    switch( ADDR[0,1] ) {
+                        case 0: { RDATA = SDCARD.ready; if( SDCARD.ready ) { sdcardlightcolour = 0; } }
+                        case 1: { RDATA = SDCARD.error; if( SDCARD.error ) { sdcardlightcolour = 3; } }
+                    }
+                    RESETSTATUS = 1;
                 }
-                case 4h5: { { readData = buffer_in.rdata0; } { buffer_in.addr0 = buffer_in_NEXT; } }
+                case 4h5: { RDATA = buffer_in.rdata0; buffer_in.addr0 = buffer_in_NEXT; }
                 $$end
-                case 4h3: { readData = leds; }
+                case 4h3: { RDATA = leds; }
                 case 4h6: {
-                    switch( memoryAddress[2,1] ) {
-                        case 0: { { LATCHrtc = RTC.datetime_o; } { readData = RTC.datetime_o[0,32]; } }
-                        case 1: { readData = LATCHrtc[32,32]; }
+                    switch( ADDR[2,1] ) {
+                        case 0: { LATCHrtc = RTC.datetime_o; RDATA = RTC.datetime_o[0,32]; }
+                        case 1: { RDATA = LATCHrtc[32,32]; }
                     }
                 }
                 case 4h7: {
-                    switch( memoryAddress[2,2] ) {
-                        case 2b00: { readData = 32b00000010000; }                                                               // PAWS SOC
-                        case 2b01: { readData = 32h4000000; }                                                                   // RAMBASE
-                        case 2b10: { readData = 32h4f00000; }                                                                   // RAMTOP
-                        case 2b11: { readData = 32h5000000; }                                                                   // MAIN STACK TOP
+                    switch( ADDR[2,2] ) {
+                        case 2b00: { RDATA = 32b00000010000; }                                                                  // PAWS SOC
+                        case 2b01: { RDATA = 32h4000000; }                                                                      // RAMBASE
+                        case 2b10: { RDATA = 32h4f00000; }                                                                      // RAMTOP
+                        case 2b11: { RDATA = 32h5000000; }                                                                      // MAIN STACK TOP
                     }
                 }
-                case 4he: { readData = DMASET; }
-                case 4hf: { readData = memoryAddress[3,1] ? 32h4f80000 : SMTRUNNING; }                                          // SMT STACK TOP / SMT STATUS
-                default: { readData = 0; }
+                case 4he: { RDATA = DMASET; }
+                case 4hf: { RDATA = ADDR[3,1] ? 32h4f80000 : SMTRUNNING; }                                                      // SMT STACK TOP / SMT STATUS
+                default: { RDATA = 0; }
             }
-        } }
+        }
 
-        { if( DMAACTIVE ) { DMAMODE = 0; } }                                                                                       // CANCEL DMA REQUEST ONCE DMA STARTS
+        if( DMAACTIVE ) { DMAMODE = 0; }                                                                                        // CANCEL DMA REQUEST ONCE DMA STARTS
+
+        if( reset) {
+            $$if not SIMULATION then
+            PS2.outputkeycodes = 0;
+            $$end
+            RTC.addr = 7; SMTRUNNING = 0;
+        }
+
     }
 }
 
@@ -247,7 +241,7 @@ unit fifo8(
     input   uint1   write,
     output  uint8   first,
     input   uint8   last
-) <reginputs> {
+) {
     simple_dualport_bram uint8 queue[128] = uninitialized;
     uint1   update = uninitialized;
     uint7   top = 0;
@@ -257,11 +251,11 @@ unit fifo8(
     available := ( top != next ); full := ( top + 1 == next );
     next := next + read;
 
-    always_after {
+    always {
         if( write ) {
-            { queue.addr1 = top; } { queue.wdata1 = last; } { update = 1; }
+            queue.addr1 = top; queue.wdata1 = last; update = 1;
         } else {
-            if( update ) { { top = top + 1; } { update = 0; } }
+            if( update ) { top = top + 1; update = 0; }
         }
     }
 }
@@ -271,7 +265,7 @@ unit uart_IN(
     output  uint1   inavailable,
     output  uint8   inchar,
     input   uint1   inread
-) <reginputs> {
+) {
     uart_in ui; uart_receiver urecv( io <:> ui, uart_rx <: uart_rx );
     fifo8 IN(
         available :> inavailable,
@@ -287,7 +281,7 @@ unit uart_OUT(
     output  uint1   outfull,
     input   uint8   outchar,
     input   uint1   outwrite
-) <reginputs> {
+) {
     uart_out uo; uart_sender usend( io <:> uo, uart_tx :> uart_tx );
     fifo8 OUT(
         full :> outfull,
@@ -307,7 +301,7 @@ unit fifo10(
     input   uint1   write,
     output  uint10  first,
     input   uint10  last
-) <reginputs> {
+) {
     uint7   top = 0;
     uint7   next = 0;
     simple_dualport_bram uint10 queue[128] = uninitialized;
@@ -315,8 +309,8 @@ unit fifo10(
     queue.wenable1 := 1; queue.addr0 := next; first := queue.rdata0;
     available := ( top != next ); next := next + read;
 
-    always_after {
-        if( write ) { { queue.addr1 = top; } { queue.wdata1 = last;  } { top = top + 1; } }
+    always {
+        if( write ) { queue.addr1 = top; queue.wdata1 = last; top = top + 1; }
     }
 }
 unit ps2buffer(
@@ -328,7 +322,7 @@ unit ps2buffer(
     input   uint1   inread,
     input   uint1   outputkeycodes,
     output  uint16  joystick
-) <reginputs> {
+) {
     // PS/2 input FIFO (128 character) - 10 bit to deal with special characters
     fifo10 FIFO( available :> inavailable, read <: inread, write <: PS2.keycodevalid, first :> inkey, last <: PS2.keycode );
 
@@ -340,17 +334,18 @@ unit ps2buffer(
 unit mousetimer(
     input   uint1   RESET,
     output  uint1   PAUSE
-) <reginputs> {
-    always_after {
-        uint20  timer = uninitialised;
+) {
+    uint20  timer = uninitialised;
+    uint20  timer_NEXT <:: timer - 1;
 
-        { PAUSE = |timer; }
+    PAUSE := |timer;
 
-        { if( RESET ) {
+    always {
+        if( RESET ) {
             timer = 20h80000;
         } else {
-            if( |timer ) { timer = timer - 1; }
-        } }
+            if( |timer ) { timer = timer_NEXT; }
+        }
     }
 }
 unit mousepointer(
@@ -358,25 +353,25 @@ unit mousepointer(
     input   uint4   buttons,
     output  uint10  x,
     output  uint10  y,
-) <reginputs> {
+) {
     mousetimer MOUSELATCH(); MOUSELATCH.RESET := 0;
 
-    always_after {
-        { if( ~MOUSELATCH.PAUSE ) {                                                                                           // HANDLE SIMULATED MOUSE USING ULX3S BUTTONS
-            { switch( buttons[0,2] ) {
-                case 2b01: { y = y - |y; }                                                                                  // MOUSE Y UP IF NOT AT TOP
-                case 2b10: { y = y + ( y != 479 ); }                                                                        // MOUSE Y DOWN IF NOT AT BOTTOM
+    always {
+        if( ~MOUSELATCH.PAUSE ) {                                                                                               // HANDLE SIMULATED MOUSE USING ULX3S BUTTONS
+            switch( buttons[0,2] ) {
+                case 2b01: { y = y - |y; }                                                                                      // MOUSE Y UP IF NOT AT TOP
+                case 2b10: { y = y + ( y != 479 ); }                                                                            // MOUSE Y DOWN IF NOT AT BOTTOM
                 default: {}
-            } }
-            { switch( buttons[2,2] ) {
-                case 2b01: { x = x - |x; }                                                                                  // MOUSE X LEFT IF NOT AT LEFT
-                case 2b10: { x = x + ( x != 639 ); }                                                                        // MOUSE X RIGHT IF NOT AT RIGHT
+            }
+            switch( buttons[2,2] ) {
+                case 2b01: { x = x - |x; }                                                                                      // MOUSE X LEFT IF NOT AT LEFT
+                case 2b10: { x = x + ( x != 639 ); }                                                                            // MOUSE X RIGHT IF NOT AT RIGHT
                 default: {}
-            } }
-            { MOUSELATCH.RESET = |buttons; }                                                                                    // LATCH SO AS NOT TO MOVE MOUSE AT 50MHz
-        } }
+            }
+            MOUSELATCH.RESET = |buttons;                                                                                        // LATCH SO AS NOT TO MOVE MOUSE AT 50MHz
+        }
 
-        { if( RESET ) { x = 320; y = 240; } }                                                                                       // RETURN TO CENTRE IF RESET SIGNAL
+        if( RESET ) { x = 320; y = 240; }                                                                                        // RETURN TO CENTRE IF RESET SIGNAL
     }
 }
 // SDCARD CONTROLLER - Code for the SDCARD from @sylefeb with write support added by self
@@ -395,7 +390,7 @@ unit sdcardcontroller(
 
   simple_dualport_bram_port0 buffer_out,
   simple_dualport_bram_port1 buffer_in
-) <reginputs> {
+) {
     sdcardio sdcio();
     sdcard sd(
         sd_clk :> sd_clk,                                                                                                       // SD CONTROLLER PINS
@@ -407,10 +402,8 @@ unit sdcardcontroller(
         buffer_write <:> buffer_out                                                                                             // TO SDCARD
     );
 
-    always_after {
-        { sdcio.addr_sector = sectoraddress; }                                                                                         // SECTOR TO READ/WRITE
-        { sdcio.read_sector = readsector; } { sdcio.write_sector = writesector; }                                                         // READ?WRITE START
-        { ready = sdcio.ready; }                                                                                                      // SDCARD IS READY FOR NEXT COMMAND
-        { error = sdcio.error; }
-    }
+    sdcio.addr_sector := sectoraddress;                                                                                         // SECTOR TO READ/WRITE
+    sdcio.read_sector := readsector; sdcio.write_sector := writesector;                                                         // READ?WRITE START
+    ready := sdcio.ready;                                                                                                       // SDCARD IS READY FOR NEXT COMMAND
+    error := sdcio.error;
 }

@@ -99,9 +99,7 @@ unsigned char volatile *COLOURBLIT_WRITER_TILE = (unsigned char volatile *) 0xd6
 unsigned char volatile *COLOURBLIT_WRITER_COLOUR = (unsigned char volatile *) 0xd662;
 
 unsigned char volatile *PB_COLOUR = (unsigned char volatile *) 0xd670;
-unsigned char volatile *PB_COLOUR8R = (unsigned char volatile *) 0xd672;
-unsigned char volatile *PB_COLOUR8G = (unsigned char volatile *) 0xd674;
-unsigned char volatile *PB_COLOUR8B = (unsigned char volatile *) 0xd676;
+unsigned char volatile *PB_COLOUR_RGB = (unsigned char volatile *) 0xd672;
 unsigned char volatile *PB_STOP = (unsigned char volatile *) 0xd678;
 unsigned char volatile *PB_MODE = (unsigned char volatile *) 0xd67a;
 unsigned char volatile *PB_CMNUMBER = (unsigned char volatile *) 0xd67c;

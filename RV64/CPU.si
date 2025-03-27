@@ -27,7 +27,7 @@ unit PAWSCPU(
     output  uint1   DMA_AUDIO_START,                                                                                            // DMA CONTROLLER FLAGS     CPU TO DMA START FLAG
     input   uint1   DMA_AUDIO_REQ,                                                                                              //                          DMA START REQUEST WHEN != 0
     input   uint1   DMA_AUDIO_ACTIVE                                                                                            //                          DMA ACTIVE
-) <reginputs> {
+) {
     uint9   STATE = 8b00000001;
         $$ STATE_RESET      = 1
         $$ STATE_DMA_START  = 2
@@ -157,7 +157,7 @@ unit PAWSCPU(
 
     COMMIT := STATE[7,1] & ( ~MEMORY.busy & ~EXECUTESLOW.busy );                                                                // COMMIT TO REGISTERS FLAG
 
-    always_after {
+    always {
         onehot( STATE ) {
             case 0: {                                                                                                           // STATE_RESET
                 if( |resetCounter ) {
@@ -215,14 +215,12 @@ unit cpuexecuteFASTPATH(
     input   uint1   isFENCE,
     output  int64   result,
     output  uint2   fenceACTIVE(0)
-) <reginputs> {
-    always_after {
-        result = isAUIPCLUI ? AUIPCLUI :                                                                                        // LUI AUIPC
-                      isJAL ? nextPC :                                                                                          // JAL[R]
-                              memoryinput;                                                                                      // INTEGER/FLOAT LOAD SIGN EXTENDED/NAN BOIXED BY LOAD UNIT
+) {
+    result := isAUIPCLUI ? AUIPCLUI :                                                                                           // LUI AUIPC
+                   isJAL ? nextPC :                                                                                             // JAL[R]
+                           memoryinput;                                                                                         // INTEGER/FLOAT LOAD SIGN EXTENDED/NAN BOIXED BY LOAD UNIT
 
-        fenceACTIVE = isFENCE ? { |function7[1,2], ~function3[0,1] } : fenceACTIVE;                                             // SET FENCE ACTIVE { IO, MEM }
-    }
+    fenceACTIVE := isFENCE ? { |function7[1,2], ~function3[0,1] } : fenceACTIVE;                                                // SET FENCE ACTIVE { IO, MEM }
 }
 
 unit cpuexecuteSLOWPATH(
@@ -251,7 +249,7 @@ unit cpuexecuteSLOWPATH(
     output  uint8   FPUflags,
     input   uint5   FPUnewflags,
     input   uint1   CSRupdateFPUflags
-) <reginputs> {
+) {
     uint3   STATE = 1;
         $$ STATE_CPUSLOW_IDLE       = 1
         $$ STATE_CPUSLOW_CSR_ATOMIC = 2
@@ -281,11 +279,17 @@ unit cpuexecuteSLOWPATH(
     );
 
     CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                      // START FLAGS
+    CSR.csrRegister := { function7, rs2 };                                                                                      // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
+
+    result :=    isCSR ? |function3 ? CSR.result : 0 :                                                                          //  CSR
+          isATOMIC ? function7[3,1] ? memoryinput : function7[2,1] ? 0 : memoryinput :                                          //  ATOMIC LOAD - MODIFY - STORE
+             size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result;                          //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
+
+    memoryoutput := function7[3,1] ? ALUA.result : sourceReg2;                                                                  //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORYOUTPUT
+
     busy := ( STATE[0,1] & start ) | ( STATE[2,1] & ALUMD.busy );
 
-    always_after {
-        CSR.csrRegister = { function7, rs2 };                                                                                   // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
-
+    always {
         onehot( STATE ) {
             case 0: {                                                                                                           // WAIT FOR START
                 if( start ) {
@@ -298,12 +302,6 @@ unit cpuexecuteSLOWPATH(
             case 1: { STATE = $STATE_CPUSLOW_IDLE$; }                                                                           // CSR OR AMO
             case 2: { if( ~ALUMD.busy ) { STATE = $STATE_CPUSLOW_IDLE$; } }                                                     // DIVISION
         }
-
-        result =    isCSR ? |function3 ? CSR.result : 0 :                                                                       //  CSR
-                 isATOMIC ? function7[3,1] ? memoryinput : function7[2,1] ? 0 : memoryinput :                                   //  ATOMIC LOAD - MODIFY - STORE
-                            size32  & size32extend ? { {32{ALUMD.result[31,1]}}, ALUMD.result[0,32] } : ALUMD.result;           //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
-
-        memoryoutput = function7[3,1] ? ALUA.result : sourceReg2;                                                               //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORYOUTPUT
     }
 }
 
@@ -338,7 +336,7 @@ unit memory_controller(
 
     output  uint64  memoryinput,
     input   uint64  storedata
-) <reginputs> {
+) {
     uint5   STATE = 1;
         $$ STATE_FSL_WAIT       = 1
 
@@ -356,10 +354,10 @@ unit memory_controller(
     uint1   L1match <: ( SMT & ICACHE_1.tagmatch ) | ( ~SMT & ICACHE_0.tagmatch );
     simple_dualport_bram uint$32+L10Ipartaddresswidth$ L10cache <@clock_cache,@clock> [$L10Iblocks$] = uninitialized;           // SMALL ON CPU L1 CACHE - 1 per HART - RESET FENCE MEM IS 1
     simple_dualport_bram uint$32+L11Ipartaddresswidth$ L11cache <@clock_cache,@clock> [$L11Iblocks$] = uninitialized;
-    iL10cache_read ICACHE_0 <@clock_cache> ( L1cache <:> L10cache, CLS <: ICACHE_0W.CLS, address <: pc );
-    iL11cache_read ICACHE_1 <@clock_cache> ( L1cache <:> L11cache, CLS <: ICACHE_1W.CLS, address <: pcSMT );
-    iL10cache_write ICACHE_0W( L1cache <:> L10cache, address <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed );
-    iL11cache_write ICACHE_1W( L1cache <:> L11cache, address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed );
+    iL10cache_read ICACHE_0 <@clock_cache> ( L1cache <:> L10cache, CLS <: ICACHE_0W.CLS, ADDR <: pc );
+    iL11cache_read ICACHE_1 <@clock_cache> ( L1cache <:> L11cache, CLS <: ICACHE_1W.CLS, ADDR <: pcSMT );
+    iL10cache_write ICACHE_0W( L1cache <:> L10cache, ADDR <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed );
+    iL11cache_write ICACHE_1W( L1cache <:> L11cache, ADDR <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed );
 
     compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );                                                    // COMPRESSED INSTRUCTION EXPANDERS
     compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );
@@ -377,7 +375,7 @@ unit memory_controller(
     ICACHE_0W.update := ~SMT & STATE[2,1]; ICACHE_1W.update := SMT & STATE[2,1];                                                // UPDATE CPU L1 CACHE FOR MAIN/SMT THREAD FLAG
     ICACHE_0W.invalidate := reset | fenceACTIVE[0,1]; ICACHE_1W.invalidate := reset | fenceACTIVE[0,1];                         // CPU L1 CACHE INVALIDATE FLAG, USED AFTER PROGRAM LOAD
 
-    always_after {
+    always {
         if( STATE[4,1] & ~memorybusy & ACTION[1,1] ) {                                                                          //  IF LOAD, PACK READDATA INTO MEMORY INPUT
             if( IS_MA ) {
                 LOAD.memoryinput[ { count, 3b000 }, 8 ] = readdata[ { address[0,1], 3b000 }, 8 ];                               //  SINGLE BYTE FOR MISALIGNED LOADS
@@ -409,8 +407,7 @@ unit memory_controller(
 
                 busy = |start[1,2] | ( start[0,1] & ~L1match );
                 readmemory = start[1,1] | ( start[0,1] & ~L1match );
-                writedata = storedata;
-                writememory = start[2,1];
+                writedata = storedata; writememory = start[2,1];
             }
 
             case 1: { if( ~memorybusy ) { STATE = $STATE_FETCH_COMPLETE$; } }                                                   // WAIT FOR MEMORYREAD TO COMPLETE
@@ -447,8 +444,8 @@ unit signnanbox(                                                                
     input   uint1   byteaccess,
     input   uint64  memoryinput,
     output  uint64  readdata
-) <reginputs> {
-    always_after {
+) {
+    always {
         switch( accesssize ) {
             case 2b00: {                                                                                                        // SIGN EXTEND 8 BIT LOAD ( not for floats )
                 readdata = { {56{~dounsigned & memoryinput[ { byteaccess, 3b111 }, 1 ]}}, memoryinput[ { byteaccess, 3b000 }, 8 ] };
