@@ -136,10 +136,23 @@ unit fpu_execute(
     );
 
     FPUCALC.START := STATE[1,1] & operation[2,1]; CSR_UPDATE_FPUFLAGS := STATE[3,1];                                            // START FLAG AND UPDATE CSR
+    FPUF_CP.SBIAS := RS2[0,1] ? $BIAS64$ : RS2[1,1] ? $BIAS16$ : $BIAS32$;                                                      // SELECT BIAS ( SOURCE FOR CHANGE PRECISION )
+    OUT_FPUFLAGS := IN_FPUFLAGS | (                                                                                             // MERGE OLD AND NEW FLAGS
+        IS_FPUCONVERT ? converttype[2,1] ? FPUF2IL.OP_FPUFLAGS :
+        converttype[1,1] ? FPUIL2F.OP_FPUFLAGS :
+        RS2[2,1] ? FPUROUND.OP_FPUFLAGS : FPUF_CP.OP_FPUFLAGS :
+        IS_FASTFPU ? FPUFAST.OUT_FPUFLAGS :
+        FPUCALC.OUT_FPUFLAGS
+    );
+
+    F_RD := IS_FPUCONVERT ? ( |converttype[0,2] ) : IS_FASTFPU ? FPUFAST.F_RD : 1;
+    RESULT := operation[0,1] ? FPUFAST.RESULT :                                                                                 // COLLECT THE APPROPRIATE RESULT
+              operation[1,1] ? converttype[2,1] ? FPUF2IL.RESULT :
+                               converttype[1,1] ? FPUIL2F.RESULT :
+                    RS2[2,1] ? FPUROUND.RESULT : FPUF_CP.RESULT :
+                               CALCRESULT.repack;
 
     always {
-        FPUF_CP.SBIAS = RS2[0,1] ? $BIAS64$ : RS2[1,1] ? $BIAS16$ : $BIAS32$;                                                   // SELECT BIAS ( SOURCE FOR CHANGE PRECISION )
-
         onehot( STATE ) {
             case 0: {                                                                                                           // STATE_FPU_IDLE WAIT FOR FPU START FLAG
                 BUSY = START; if( START ) {
@@ -155,21 +168,6 @@ unit fpu_execute(
             case 3: { BUSY = 0; STATE = $STATE_FPU_IDLE$; }                                                                     // STATE_FPU_CALC_FINISH UPDATE FLAGS AND SIGNAL FINISHED
         }
 
-        RESULT = operation[0,1] ? FPUFAST.RESULT :                                                                              // COLLECT THE APPROPRIATE RESULT
-                 operation[1,1] ? converttype[2,1] ? FPUF2IL.RESULT :
-                                  converttype[1,1] ? FPUIL2F.RESULT :
-                                          RS2[2,1] ? FPUROUND.RESULT : FPUF_CP.RESULT :
-                                  CALCRESULT.repack;
-
-        OUT_FPUFLAGS = IN_FPUFLAGS | (                                                                                          // MERGE OLD AND NEW FLAGS
-            IS_FPUCONVERT ? converttype[2,1] ? FPUF2IL.OP_FPUFLAGS :
-                            converttype[1,1] ? FPUIL2F.OP_FPUFLAGS :
-                                    RS2[2,1] ? FPUROUND.OP_FPUFLAGS : FPUF_CP.OP_FPUFLAGS :
-               IS_FASTFPU ? FPUFAST.OUT_FPUFLAGS :
-                            FPUCALC.OUT_FPUFLAGS
-        );
-
-        F_RD = IS_FPUCONVERT ? ( |converttype[0,2] ) : IS_FASTFPU ? FPUFAST.F_RD : 1;
     }
 }
 
@@ -594,7 +592,7 @@ unit floatcalc(
 
     BUSY := START | FPUfused.BUSY | FPUsqrt.BUSY | FPUdivide.BUSY;                                                              // BUSY IF START OR A UNIT IS BUSY
 
-    algorithm <autorun> { while(1) {
+    always {
         onehot( action ) {
             case 2: {                                                                                                           // FDIV
                 RESULT = FPUdivide.special[3,1] ? xINF.value :                                                                  // RETURN INF
@@ -615,7 +613,7 @@ unit floatcalc(
                         FPUfused.F_3_TYPE[0,1] ? MAKERESULT.combined : FPUfused.RESULT;                                         // RETURN MULTIPLY IF C == 0 OR RETURN FULL RESULT
             }
         }
-    } }
+    }
 }
 
 // IDENTIFY { infinity, signalling NAN, quiet NAN, ZERO } CHECKS FOR NAN-BOXING OF FLOAT
@@ -747,22 +745,21 @@ unit clz106(
     input   uint106  bitstream,
     output! uint7   count
 ) {
-    algorithm <autorun> {
-        uint3   mask <:: { |bitstream[104,2], |bitstream[96,8], |bitstream[64,32] };                                            // FLAG PARTS THAT CONTAIN A 1 { [104,2], [96,8], [64,32] }
+    uint3   mask <:: { |bitstream[104,2], |bitstream[96,8], |bitstream[64,32] };                                                // FLAG PARTS THAT CONTAIN A 1 { [104,2], [96,8], [64,32] }
+
+    always {
         uint2   clz_3 = uninitialised;
         uint4   clz_2 = uninitialised;
         uint6   clz_1 = uninitialised;
         uint7   clz_0 = uninitialised;
 
-        while(1) {
-            ( clz_3 ) = clz_silice_2( bitstream[104,2] );                                                                       // CLZ FOR BITS 104 - 105
-            ( clz_2 ) = clz_silice_8( bitstream[96,8] );                                                                        // CLZ FOR BITS  96 - 103
-            ( clz_1 ) = clz_silice_32( bitstream[64,32] );                                                                      // CLZ FOR BITS  64 -  95
-            ( clz_0 ) = clz_silice_64( bitstream[0,64] );                                                                       // CLZ FOR BITS   0 -  63
+        ( clz_3 ) = clz_silice_2( bitstream[104,2] );                                                                           // CLZ FOR BITS 104 - 105
+        ( clz_2 ) = clz_silice_8( bitstream[96,8] );                                                                            // CLZ FOR BITS  96 - 103
+        ( clz_1 ) = clz_silice_32( bitstream[64,32] );                                                                          // CLZ FOR BITS  64 -  95
+        ( clz_0 ) = clz_silice_64( bitstream[0,64] );                                                                           // CLZ FOR BITS   0 -  63
 
-            count = ( mask[2,1] ? clz_3 : mask[1,1] ? clz_2 : mask[0,1] ? clz_1 : clz_0 ) +                                     // COUNT LEADING ZEROS FOR NORMALISATION SHIFT
-                    ( mask[2,1] ? 0 : mask[1,1] ? 2 : mask[0,1] ? 10 : 42 );                                                    // ADD ON AMOUNT IN PRIOR SECTIONS IF APPLICABLE
-        }
+        count = ( mask[2,1] ? clz_3 : mask[1,1] ? clz_2 : mask[0,1] ? clz_1 : clz_0 ) +                                         // COUNT LEADING ZEROS FOR NORMALISATION SHIFT
+                ( mask[2,1] ? 0 : mask[1,1] ? 2 : mask[0,1] ? 10 : 42 );                                                        // ADD ON AMOUNT IN PRIOR SECTIONS IF APPLICABLE
     }
 }
 
@@ -890,34 +887,31 @@ unit float2intlong(                                                             
     int13   exp <:: fp64( F_1_X ).exponent - BIAS;                                                                              // EXTRACT EXPONENT AND REMOVE BIAS
     uint1   NV <:: ( __signed(exp) > __signed( ( il ? 62 : 30 ) | dounsigned ) ) | ( dounsigned & fp64( F_1_X ).sign );         // INVALID IF TOO LARGE, UNSIGNED AND NEGATIVE
     uint65  fraction <:: { 1b1, fp64( F_1_X ).fraction, 12b0 } >> ( 63 - exp );                                                 // EXTRACT FRACTION AND EXTEND TO 65 BITS, SHIFT INTO POSITION
+    uint64  unsignedfraction <:: ( il ? fraction[1,64] : fraction[1,32] ) + ( fraction[0,1] & rm_action );                      // GENERATE ROUNDED 32/64 bit ABSOLUTE INTEGER
+    uint64  min <:: il ? dounsigned ? 0 : 64h8000000000000000 : 64hffffffff80000000;                                            // MINIMUM NEGATIVE INTEGER OR 0 FOR UNSIGNED
+    uint64  max <:: il ? dounsigned ? 64hffffffffffffffff : 64h7fffffffffffffff : 64h000000007fffffff;                          // MAXIMUM POSITIVE INTEGER
 
     OP_FPUFLAGS := { NV, 4b0000 };                                                                                              // RETURN FLAGS
 
-    algorithm <autorun> {
-        uint64  unsignedfraction <:: ( il ? fraction[1,64] : fraction[1,32] ) + ( fraction[0,1] & rm_action );                  // GENERATE ROUNDED 32/64 bit ABSOLUTE INTEGER
-        uint64  min <:: il ? dounsigned ? 0 : 64h8000000000000000 : 64hffffffff80000000;                                        // MINIMUM NEGATIVE INTEGER OR 0 FOR UNSIGNED
-        uint64  max <:: il ? dounsigned ? 64hffffffffffffffff : 64h7fffffffffffffff : 64h000000007fffffff;                      // MAXIMUM POSITIVE INTEGER
-
-        while(1) {
-            if( |F_1_TYPE ) {
-                onehot( F_1_TYPE ) {
-                    case 0: { RESULT = 0; }
-                    default: { RESULT = max; }
-                    case 3: { RESULT = fp64( F_1_X ).sign ? min : max; }
-                }
+    always {
+        if( |F_1_TYPE ) {
+            onehot( F_1_TYPE ) {
+                case 0: { RESULT = 0; }
+                default: { RESULT = max; }
+                case 3: { RESULT = fp64( F_1_X ).sign ? min : max; }
+            }
+        } else {
+            if( ~|( il ? unsignedfraction : unsignedfraction[0,32] ) ) {
+                RESULT = 0;
             } else {
-                if( ~|( il ? unsignedfraction : unsignedfraction[0,32] ) ) {
-                    RESULT = 0;
+                if( dounsigned ) {
+                    RESULT = NV ? { {64{~fp64( F_1_X ).sign}} } : unsignedfraction;                                             // 0 OR MAX IF NV ELSE RETURN UNSIGNED FRACTION
                 } else {
-                    if( dounsigned ) {
-                        RESULT = NV ? { {64{~fp64( F_1_X ).sign}} } : unsignedfraction;                                         // 0 OR MAX IF NV ELSE RETURN UNSIGNED FRACTION
-                    } else {
-                        RESULT = NV ? fp64( F_1_X ).sign ? min : max :                                                          // MIN/MAX FOR SIGNED OUT OF RANGE
-                                 il ? fp64( F_1_X ).sign ? -unsignedfraction : unsignedfraction :                               // RETURN CORRECTLY SIGNED RESULT
-                              domod ? { {32{unsignedfraction[31,1]}}, unsignedfraction[0,32] } :                                // FCVTMOD.W.D, ONLY USE 32 BITS AND SIGN EXTEND
-                                      fp64( F_1_X ).sign ? { 32hffffffff, -unsignedfraction[0,32] } :                           // IF SIGN, SIGN EXTEND 32 BIT INTEGER
-                                                           { 32h00000000,  unsignedfraction[0,32] };
-                    }
+                    RESULT = NV ? fp64( F_1_X ).sign ? min : max :                                                              // MIN/MAX FOR SIGNED OUT OF RANGE
+                                il ? fp64( F_1_X ).sign ? -unsignedfraction : unsignedfraction :                                // RETURN CORRECTLY SIGNED RESULT
+                            domod ? { {32{unsignedfraction[31,1]}}, unsignedfraction[0,32] } :                                  // FCVTMOD.W.D, ONLY USE 32 BITS AND SIGN EXTEND
+                                    fp64( F_1_X ).sign ? { 32hffffffff, -unsignedfraction[0,32] } :                             // IF SIGN, SIGN EXTEND 32 BIT INTEGER
+                                                        { 32h00000000,  unsignedfraction[0,32] };
                 }
             }
         }
@@ -1000,13 +994,11 @@ unit floatround(                                                                
     MASK.roundbit := ( dsh[0,1] ? fraction[10,1] : dsh[1,1] ? fraction[52,1] : fraction[39,1] ) & rm_action;                    // EXTRACT ROUNDING BIT AND SET IF ROUNDING MODE
     OP_FPUFLAGS := { nx & ( RESULT != F_1 ) };                                                                                  // RETURN FLAGS { needs checking }
 
-    algorithm <autorun> {
-        while(1) {
-            if( |F_1_TYPE | NV ) {
-                RESULT = NV ? SPECIAL.xINF : F_1;
-            } else {
-                RESULT = ( __signed( exponent - BIAS ) < __signed(0) ) | ~|unsignedinteger ? SPECIAL.xZERO : TOFLOAT.repack;    // IS THE RESULT ZERO?
-            }
+    always {
+        if( |F_1_TYPE | NV ) {
+            RESULT = NV ? SPECIAL.xINF : F_1;
+        } else {
+            RESULT = ( __signed( exponent - BIAS ) < __signed(0) ) | ~|unsignedinteger ? SPECIAL.xZERO : TOFLOAT.repack;        // IS THE RESULT ZERO?
         }
     }
 }
@@ -1087,7 +1079,7 @@ unit floatfused(
              };
     special := 0;
 
-    algorithm <autorun> { while(1) {
+    always {
         switch( ACTION ) {
             case 2b00: { special = |ADDSUB.RESULTfraction ? 7b0000000 : 7b0000001; }                                            // FUSED IS VALID, CHECK 0 FROM ADDSUB
             case 2b01: {                                                                                                        // ZERO INPUT
@@ -1115,7 +1107,7 @@ unit floatfused(
                 }
             }
         }
-    } }
+    }
 }
 
 // DIVIDE TWO FLOATING POINT NUMBERS
@@ -1144,36 +1136,34 @@ unit do_float_divide(
     input   uint1   powTWO,
     output  uint108 quotient(0)
 ) {
-    algorithm <autorun> {
-        uint7   bit = uninitialised;
-        uint7   bitNEXT <:: bit - 1;
-        uint1   bitMORE <:: ~&bit;
-        uint108 remainder = uninitialised;
-        uint108 temporary <:: { remainder[0,107], sigA[bit,1] };
-        uint1   bitRESULT <:: __unsigned(temporary) >= __unsigned(sigB);
-        uint108 remainderNEXT <:: __unsigned(temporary) - ( bitRESULT ? __unsigned(sigB) : 0 );
+    uint7   bit = uninitialised;
+    uint7   bitNEXT <:: bit - 1;
+    uint1   bitMORE <:: ~&bit;
+    uint108 remainder = uninitialised;
+    uint108 temporary <:: { remainder[0,107], sigA[bit,1] };
+    uint1   bitRESULT <:: __unsigned(temporary) >= __unsigned(sigB);
+    uint108 remainderNEXT <:: __unsigned(temporary) - ( bitRESULT ? __unsigned(sigB) : 0 );
 
-        uint2   STATE = 1;
+    uint2   STATE = 1;
         $$ STATE_FPU_DIV_WAIT = 1
         $$ STATE_FPU_DIV_CALC = 2
 
-        BUSY = 0; while(1) {
-            onehot( STATE ) {
-                case 0: {
-                    if( START ) {
-                        if( powTWO ) {                                                                                          // DETECT DIVISION BY POWER OF 2
-                            quotient = sigA;                                                                                    //      RETURN DIVIDEND
-                        } else {
-                            BUSY = 1; bit = STARTbit; quotient = 0; remainder = 0; STATE = $STATE_FPU_DIV_CALC$;
-                        }
+    always {
+        onehot( STATE ) {
+            case 0: {
+                BUSY = START & ~powTWO; if( START ) {
+                    if( powTWO ) {                                                                                              // DETECT DIVISION BY POWER OF 2
+                        quotient = sigA;                                                                                        //      RETURN DIVIDEND
+                    } else {
+                        bit = STARTbit; quotient = 0; remainder = 0; STATE = $STATE_FPU_DIV_CALC$;
                     }
                 }
-                case 1: {
-                    if( bitMORE ) {
-                        remainder = remainderNEXT; quotient[ bit, 1 ] = bitRESULT; bit = bitNEXT;
-                    } else {
-                        BUSY = 0; STATE = $STATE_FPU_DIV_WAIT$;
-                    }
+            }
+            case 1: {
+                if( bitMORE ) {
+                    remainder = remainderNEXT; quotient[ bit, 1 ] = bitRESULT; bit = bitNEXT;
+                } else {
+                    BUSY = 0; STATE = $STATE_FPU_DIV_WAIT$;
                 }
             }
         }
@@ -1211,7 +1201,7 @@ unit floatdivide(
         b <: b,
         quotientexp :> exponent
         );
-        do_float_divide DODIVIDE(                                                                                                   // DO THE DIVISION PASS QUOTIENT FOR NORMALISATION
+        do_float_divide DODIVIDE(                                                                                               // DO THE DIVISION PASS QUOTIENT FOR NORMALISATION
         STARTbit <: STARTbit,
         sigA <: PREP.sigA,
         sigB <: PREP.sigB,
@@ -1224,13 +1214,13 @@ unit floatdivide(
     flags := { NV, bZERO, ~|ACTION & OF, ~|ACTION & UF, 1b0};                                                                   // RETURN FLAGS
     special := 0;
 
-    algorithm <autorun> { while(1) {
+    always {
         switch( ACTION ) {
             case 2b00: {}                                                                                                       // DIVISION IS VALID
             case 2b01: { special = F1_AND_F2_ZERO ? 7b0000010 : bZERO ? 7b0001000 : 7b0000001; }                                // ZERO INPUT, NAN IF BOTH ZERO, INF IF B ZERO, ZERO IF A ZERO
             default: { special = NV ? 7b0000010 : ( aZERO | bINF ) ? 7b0000001 : 7b0001000; }                                   // qNAN IF INVALID, 0 IF A IS 0 OR B IS INF, INF IF INF / OTHER
         }
-    } }
+    }
 }
 
 // ADAPTED FROM https://projectf.io/posts/square-root-in-verilog/
@@ -1282,41 +1272,38 @@ unit do_float_sqrt(
     input   uint106 START_x,
     output  uint54  squareroot
 ) {
-    algorithm <autorun> {
-        uint108 ac = uninitialised;
-        uint106 x = uninitialised;
-        uint108 test_res <:: ac - { squareroot, 2b01 };
-        uint6   i = uninitialised;
-        uint1   iMORE <:: ~&i;
-        uint6   iNEXT <:: i - 1;
+    uint108 ac = uninitialised;
+    uint106 x = uninitialised;
+    uint108 test_res <:: ac - { squareroot, 2b01 };
+    uint6   i = uninitialised;
+    uint1   iMORE <:: ~&i;
+    uint6   iNEXT <:: i - 1;
 
-        uint2   STATE = 1;
-        $$ STATE_FPU_SQRT_WAIT  = 1
-        $$ STATE_FPU_SQRT       = 2
+    uint2   STATE = 1;
+            $$ STATE_FPU_SQRT_WAIT  = 1
+            $$ STATE_FPU_SQRT       = 2
 
-        BUSY = 0; while(1) {
-            onehot( STATE ) {
-                case 0: {
-                    BUSY = START & ~powTWO;
-                    if( START ) {
-                        if( powTWO ) {
-                            squareroot = expODD ? 54h2D413CCCFE7799 : 1;                                                        // DETECT POWER OF 2, RETURN ROOT 2 / 1 IF EXP ODD / EVEN
-                        } else {
-                            i = STARTbit; squareroot = 0; ac = START_ac; x = START_x;                                           // SELECT STARTING BIT ( counter for number of bits to process )
-                            STATE = $STATE_FPU_SQRT$;
-                        }
+    always {
+        onehot( STATE ) {
+            case 0: {
+                BUSY = START & ~powTWO;
+                if( START ) {
+                    if( powTWO ) {
+                        squareroot = expODD ? 54h2D413CCCFE7799 : 1;                                                            // DETECT POWER OF 2, RETURN ROOT 2 / 1 IF EXP ODD / EVEN
+                    } else {
+                        i = STARTbit; squareroot = 0; ac = START_ac; x = START_x;                                               // SELECT STARTING BIT ( counter for number of bits to process )
+                        STATE = $STATE_FPU_SQRT$;
                     }
                 }
-                case 1: {
-                    BUSY = iMORE;
-                    if( iMORE ) {
-                        ac = { test_res[107,1] ? ac[0,105] : test_res[0,105], x[104,2] };                                       // FIND NEW ACCUMULATOR
-                        squareroot = { squareroot[0,53], ~test_res[107,1] };                                                    // ADD NEXT BIT TO SQUAREROOT ( shift in from right )
-                        x = { x[0,104], 2b00 };                                                                                 // MOVE 2 PLACES ALONG REMAINING FRACTION
-                        i = iNEXT;                                                                                              // MOVE TO NEXT BIT
-                    } else {
-                        STATE = $STATE_FPU_SQRT_WAIT$;
-                    }
+            }
+            case 1: {
+                if( iMORE ) {
+                    ac = { test_res[107,1] ? ac[0,105] : test_res[0,105], x[104,2] };                                           // FIND NEW ACCUMULATOR
+                    squareroot = { squareroot[0,53], ~test_res[107,1] };                                                        // ADD NEXT BIT TO SQUAREROOT ( shift in from right )
+                    x = { x[0,104], 2b00 };                                                                                     // MOVE 2 PLACES ALONG REMAINING FRACTION
+                    i = iNEXT;                                                                                                  // MOVE TO NEXT BIT
+                } else {
+                    BUSY = 0; STATE = $STATE_FPU_SQRT_WAIT$;
                 }
             }
         }

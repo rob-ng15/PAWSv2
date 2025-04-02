@@ -156,7 +156,7 @@ unit audio_$i$(
     output  uint4   audio,
     output  uint1   audio_active,
 
-    input   uint7   samples_MAX,
+    input   uint7   samples_MAX
 ) {
     octave CPUINPUT( frequency <: frequency ); octave SINPUT( frequency <: samples.rdata0 );                                    // GENERATE BASE COUNTER AND SHIFT TO CORRECT OCTAVE
     uint13 frequency_table[] = {
@@ -167,9 +167,6 @@ unit audio_$i$(
     uint13  CPUfrequency <:: frequency_table[ CPUINPUT.basefrequency ] >> CPUINPUT.shift;                                       // COUNTER FOR CPU INPUT
     uint13  Sfrequency <:: frequency_table[ SINPUT.basefrequency ] >> SINPUT.shift;                                             // COUNTER FOR SAMPLE INPUT
     uint7   SAMP0P1 <:: samples.addr0 + 1;                                                                                      // NEXT ADDRESS IN DOOM PC SPEAKER MODE
-    uint1   SAMPLEMODE = uninitialised;                                                                                         // IS CHANNEL IN DOOM PC SPEAKER SAMPLE MODE?
-    uint1   REPEAT = uninitialised;                                                                                             // IS REPEAT FOR DOOM PC SPEAKER MODE RQQUIRED?
-    uint1   newS = uninitialised;                                                                                               // IS A NEW NOTE REQUIRED WHEN AUDIO STOPS?
 
     apu_$i$ apu_processor(                                                                                                      // AUDIO CHANNEL
         bit_samples <:> bit_samples, sine <:> sine, harmonic <:> harmonic,                                                      // 8 bit output from audio channel goes through PWM modulator
@@ -178,11 +175,15 @@ unit audio_$i$(
         staticGenerator <: staticGenerator,
         audio_active :> audio_active
     );
-    audio_pwm PWM( active <: apu_processor.audio_active, wave <: apu_processor.audio_output, pcm_active <: pcm_active, pcm_sample <: pcm_sample, audio :> audio );
+    audio_pwm PWM( active_1 <: apu_processor.audio_active, wave_1 <: apu_processor.audio_output, active_2 <: pcm_active, wave_2 <: pcm_sample, pwm :> audio );
 
     apu_processor.apu_write := 0;
 
     always {
+        uint1   SAMPLEMODE = uninitialised;                                                                                     // IS CHANNEL IN DOOM PC SPEAKER SAMPLE MODE?
+        uint1   REPEAT = uninitialised;                                                                                         // IS REPEAT FOR DOOM PC SPEAKER MODE RQQUIRED?
+        uint1   newS = uninitialised;                                                                                           // IS A NEW NOTE REQUIRED WHEN AUDIO STOPS?
+
         if( SAMPLEMODE ) {                                                                                                      // DOOM PC SPEAKER MODE?
             if( ~apu_processor.audio_active ) {                                                                                 //  PREVIOUS SAMPLE FINISHED?
                 if( newS ) {                                                                                                    //  NEW SAMPLE NEEDED?
@@ -348,18 +349,22 @@ unit bitsample_writer(
 // For now fixed to 8 bits in to 4 bits DAC
 // TODO make it more general
 
+// Expanded by @rob-gn15 to time-multiplex two waveforms, if both are active switch every 32 cycles (at 50MHz not able to tell multiplexing is happening)
+
 unit audio_pwm(
-    input   uint1   active,
-    input   uint8   wave,
-    input   uint1   pcm_active,
-    input   uint8   pcm_sample,
-    output  uint4   audio
+    input   uint1   active_1,
+    input   uint8   wave_1,
+    input   uint1   active_2,
+    input   uint8   wave_2,
+    output  uint4   pwm
 ) {
-    uint9   combined <:: ( ( active ? wave : 0 ) + ( pcm_active ? pcm_sample : 0 ) );
-    uint4   counter = uninitialised;
-    uint4   counter_NEXT <:: counter + 1;
+    uint$AUDIOmultiplex$    timer = uninitialised;                                                                              // COUNTER USED FOR TIME MULTIPLEXING THE AUDIO CHANNELS
+    uint$AUDIOmultiplex$    timer_NEXT <:: timer + 1;                                                                           // AND FOR INTERPOLATION
+    uint8                   combined <:: ( active_1 & active_2 ) ? timer[$AUDIOmultiplex-1$,1] ? wave_1 : wave_2 :              // SELECT CHANNEL, BOTH ACTIVE, BASE ON TIMER
+                                                                                      active_1 ? wave_1 :                       //  ONLY WAVE_1 ACTIVE
+                                                                                                 wave_2;                        //  ONLY WAVE_2 ACTIVE ( DEFAULT )
 
     always {
-        if( active | pcm_active ) { audio = combined[ {2b10,combined[8,1]} , 4 ] + ( counter < combined[ combined[8,1], 4 ] ); counter = counter_NEXT; } else { counter = 0; }
+        if( active_1 | active_2 ) { pwm = combined[ 4, 4 ] + ( timer[0,4] < combined[ 0, 4 ] ); timer = timer_NEXT; } else { timer = 0; }
     }
 }

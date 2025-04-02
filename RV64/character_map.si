@@ -46,7 +46,7 @@ unit character_map(
     input   uint8   tpu_background,
     input   uint1   tpu_showcursor
 ) {
-    uint1   is_cursor <:: tpu_showcursor & blink & ( cursor_x == ( pix_x[3,7] ) ) & ( cursor_y == pix_y[3,6] );                 // Is current coordinate the cursor coordinate, cursor visible?
+    uint1   is_cursor <: tpu_showcursor & blink & ( cursor_x == ( pix_x[3,7] ) ) & ( cursor_y == pix_y[3,6] );                  // Is current coordinate the cursor coordinate, cursor visible?
 
     characterrom512 CGROM <@clockCG> (                                                                                          // Character ROM 8x8 512 characters, 256 normal, 256 bold
         cursor_blink <: blink,
@@ -64,4 +64,64 @@ unit character_map(
     pixel := is_cursor ? CGROM.pixel ? tpu_background : tpu_foreground :                                                        // IF CURSOR, INVERT PIXEL
                          CGROM.pixel ? cmentry(charactermap.rdata0).foreground :                                                // IF PIXEL, FOREGROUND
                                        cmentry(charactermap.rdata0).background;                                                 //  ELSE BACKGROUND
+}
+
+unit charactermap_memmap(
+    // Clocks
+    input   uint1   video_clock,
+    input   uint1   video_reset,
+    input   uint1   clockCG,
+
+    // Pixels
+    input   uint10  pix_x,
+    input   uint10  pix_x1,
+    input   uint9   pix_y,
+    input   uint1   pix_active,
+    input   uint1   pix_vblank,
+    output! uint8   pixel,
+    output! uint1   pixel_display,
+    input   uint1   blink,
+    input   uint1   lorez,
+
+    // Memory access
+    input   uint15  ADDR,
+    input   uint1   WENABLE,
+    input   uint29  WDATA,
+
+    // Memory access direct to charactermap
+    input   uint1   WENABLE_DIRECT,
+    output  uint29  RDATA_DIRECT
+) {
+    // 80 x 30 character buffer
+    dualport_bram uint29 charactermap <@video_clock,@clock> [4800] = uninitialized;
+
+    // CHARACTER MAP DISPLAY
+    character_map character_map_window <@video_clock,!video_reset> (
+        clockCG <: clockCG,
+        charactermap <:> charactermap,
+        pix_active <: pix_active,
+        pix_vblank <: pix_vblank,
+        pixel    :> pixel,
+        character_map_display :> pixel_display,
+        blink <: blink
+    );
+
+    charactermap.addr1 := ADDR[2,13]; charactermap.wdata1 := WDATA; charactermap.wenable1 := WENABLE_DIRECT; RDATA_DIRECT := charactermap.rdata1;
+
+    character_map_window.pix_x := lorez ? pix_x[1,9] : pix_x;
+    character_map_window.pix_x1 := lorez ? pix_x1[1,9] : pix_x1;
+    character_map_window.pix_y := lorez ? pix_y[1,8] : pix_y;
+
+    always {
+        if( WENABLE ) {
+            switch( ADDR[1,3] ) {
+                case 3h0: { character_map_window.cursor_x = WDATA; }
+                case 3h1: { character_map_window.cursor_y = WDATA; }
+                case 3h2: { character_map_window.tpu_background = WDATA; }
+                case 3h3: { character_map_window.tpu_foreground = WDATA; }
+                case 3h4: { character_map_window.tpu_showcursor = WDATA; }
+                default: {}
+            }
+        }
+    }
 }

@@ -19,11 +19,10 @@ $$ NUCUmemaddr = clog2(NUCUmem)
 $$ NUCUstack = 8
 $$ NUCUstackaddr = clog2(NUCUstack)
 
-// PCM AUDIO SAMPLES BUFFER SIZE via DMA
-$$ PCM = 65535
+// AUDIO CHANNEL MULTIPLEXER TIMER WIDTH
+$$ AUDIOmultiplex = 6
 
 // ON CPU INSTRUCTION CACHE DEFINITIONS
-
 // L1 CACHE SIZES FOR HART ID 0 AND 1
 // blocks must be a power of 2
 // HART 0 - MAIN
@@ -41,7 +40,6 @@ $$ L11Ipartaddressstart = 1 + L11Icount
 bitfield L11cacheI{ uint30 instruction, uint1 compressed, uint1 valid, uint$L11Ipartaddresswidth$ partaddress }
 
 // SDRAM CACHE DEFINITIONS
-
 // CACHES SIZES - L2 2 x L2size for SDRAM CACHE
 $$ L2size = 4096
 $$ L2cacheaddrwidth = clog2(L2size)

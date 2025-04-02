@@ -47,106 +47,267 @@ unit framebuffer_read(
     }
 }
 
-unit framebuffer_write(
-    input   uint1   dither_clock,
-    input   uint18  memoryAddressDirect,                                                                                        // CPU MEMORY ADDRESS
-    input   uint18  addressL,                                                                                                   // CPU MEMORY ADDRESS, HANDLE MISALIGNED ACCESS
-    input   uint2   accesssize,                                                                                                 // CPU ACCESSSIZE 8 16 32 BITS ( 64 is 2 x 32 bit )
-    input   uint1   memoryWriteDirect,                                                                                          // CPU WRITE FLAG
-    input   uint32  writeDataDirect,                                                                                            // CPU WRITE DATA
-    output! uint32  readDataDirect,                                                                                             // CPU READ DATA
+unit bitmap_memmap(
+    // Clocks
+    input   uint1   video_clock,
+    input   uint1   video_reset,
+    input   uint1   gpu_clock,
 
-    input   uint2   framebuffer,                                                                                                // BITMAP TO WRITE FLAG
-    input   int10   bitmap_x_write,                                                                                             // INPUTS FROM GPU QUEUE
-    input   int10   bitmap_y_write,
-    input   uint8   bitmap_colour_write,
-    input   uint8   bitmap_colour_write_alt,
-    input   uint1   bitmap_write,
-    input   int10   bitmap_crop_left,
-    input   int10   bitmap_crop_right,
-    input   int10   bitmap_crop_top,
-    input   int10   bitmap_crop_bottom,
-    input   uint4   gpu_active_dithermode,
+    // Pixels
+    input   uint10  pix_x,
+    input   uint9   pix_y,
+    input   uint1   pix_active,
+    input   uint1   pix_vblank,
+    output! uint8   pixel,
+    output! uint1   pixel_display,
+    output! uint1   pixel0_collision,
+    output! uint1   pixel1_collision,
 
-    dualport_bram_port1 bitmap_000,                                                                                             // FRAMEBUFFER MEMORY, READ AND WRITE CAPABLE
-    dualport_bram_port1 bitmap_001,
-    dualport_bram_port1 bitmap_010,
-    dualport_bram_port1 bitmap_011,
-    dualport_bram_port1 bitmap_100,
-    dualport_bram_port1 bitmap_101,
-    dualport_bram_port1 bitmap_110,
-    dualport_bram_port1 bitmap_111,
+    // Memory access via I/O registers
+    input   uint18  ADDR,
+    input   uint18  ADDR0,
+    input   uint1   WENABLE,
+    input   uint32  WDATA,
 
-    input   uint8   static8bit
+    // Memory access direct to bitmap
+    input   uint2   SIZE,
+    input   uint1   WENABLE_DIRECT,
+    output! uint32  RDATA_DIRECT,
+    input   uint8   static8bit,
+
+    output  uint1   gpu_active,
+    output  uint1   gpu_queue_full,
+    output  uint1   gpu_queue_complete,
 ) {
+    // FRAMEBUFFERS - ORGANISED AS 4x8 BIT PIXELS TO ALLOW 8, 16 AND 32 BIT ACCESS FOR 2 FRAMEBUFFERS
+    dualport_bram uint8 bitmap_000 <@video_clock,@clock> [ 19200 ] = uninitialized; dualport_bram uint8 bitmap_001 <@video_clock,@clock> [ 19200 ] = uninitialized;
+    dualport_bram uint8 bitmap_010 <@video_clock,@clock> [ 19200 ] = uninitialized; dualport_bram uint8 bitmap_011 <@video_clock,@clock> [ 19200 ] = uninitialized;
+    dualport_bram uint8 bitmap_100 <@video_clock,@clock> [ 19200 ] = uninitialized; dualport_bram uint8 bitmap_101 <@video_clock,@clock> [ 19200 ] = uninitialized;
+    dualport_bram uint8 bitmap_110 <@video_clock,@clock> [ 19200 ] = uninitialized; dualport_bram uint8 bitmap_111 <@video_clock,@clock> [ 19200 ] = uninitialized;
+
+    // BITMAP DISPLAY
+    framebuffer_read framebuffer_display <@video_clock,!video_reset> (                                                          // READ FROM FRAMEBUFFERS FOR DISPLAY
+        bitmap_000 <:> bitmap_000, bitmap_001 <:> bitmap_001, bitmap_010 <:> bitmap_010, bitmap_011 <:> bitmap_011,
+        bitmap_100 <:> bitmap_100, bitmap_101 <:> bitmap_101, bitmap_110 <:> bitmap_110, bitmap_111 <:> bitmap_111,
+
+        pix_x      <: pix_x,
+        pix_y      <: pix_y,
+        pix_active <: pix_active,
+        pix_vblank <: pix_vblank,
+        pixel    :> pixel,
+        bitmap_display :> pixel_display,
+        pixel0_collision :> pixel0_collision,
+        pixel1_collision :> pixel1_collision
+    );
+
     // DITHER PATTERN GENERATOR
-    dither DODITHER( bitmap_x_write <: bitmap_x_write, bitmap_y_write <: bitmap_y_write, dithermode <: gpu_active_dithermode, static1bit <: static8bit[0,1] );
+    dither DODITHER( bitmap_x_write <: PW.bitmap_x_write, bitmap_y_write <: PW.bitmap_y_write, dithermode <: PW.gpu_active_dithermode, static1bit <: static8bit[0,1] );
 
-    uint17  address <:: bitmap_write ? bitmap_y_write[0,8] * 320 + bitmap_x_write[0,9] : memoryAddressDirect;                   // PRIORITISE GPU WRITE OVER CPU (SET MEMORY ADDRESS IN BITMAP )
-    uint1   bm0L <:: memoryWriteDirect & accesssize[1,1] & ~memoryAddressDirect[17,1] & memoryAddressDirect[1,1];               // HIGH OR LOW SWITCH FOR MEMORY ADDRESS DIRECT WR(TING 32 bit
-    uint1   bm1L <:: memoryWriteDirect & accesssize[1,1] & memoryAddressDirect[17,1] & memoryAddressDirect[1,1];
+    uint2   framebuffer = uninitialised;
+    uint17  GPU_ADDR <:: PW.bitmap_y_write[0,8] * 320 + PW.bitmap_x_write[0,9];                                                 // GPU PIXEL ADDRESS
 
-    uint8   pixeltowrite <:: ( gpu_active_dithermode == 14 ) ? ( static8bit == 64 ) ? 65 : static8bit :                         // DETERMINE COLOUR OF PIXEL
-                                                               DODITHER.condition ? bitmap_colour_write :
-                                                                                    bitmap_colour_write_alt;
+    uint8   pixeltowrite <:: ( PW.gpu_active_dithermode == 14 ) ? ( static8bit == 64 ) ? 65 : static8bit :                      // DETERMINE COLOUR OF PIXEL
+                                                                    DODITHER.condition ? PW.bitmap_colour_write :
+                                                                                         PW.bitmap_colour_write_alt;
+
+    simple_dualport_bram uint16 blit1tilemap <@gpu_clock,@clock> [ 1024 ] = uninitialized;                                      // 64 x 16 x 16 1 bit tilemap for blit1tilemap
+    uint4   BTWline_NEXT <:: blit1tilemap.addr1[0,4] + 1;
+
+    simple_dualport_bram uint8 characterGenerator8x8 <@gpu_clock,@clock> [] = {                                                 // Character ROM 8x8 x 512 for character blitter
+        $include('ROM/FONTS/CODE437-THINBOLD.inc')
+    };
+    uint3   CTWline_NEXT <:: characterGenerator8x8.addr1[0,3] + 1;
+
+    simple_dualport_bram uint8 colourblittilemap <@gpu_clock,@clock> [ 16384 ] = uninitialized;                                 // 64 x 16 x 16 8 bit tilemap for colourblittilemap
+    uint8   CBTWpixel_NEXT <:: colourblittilemap.addr1[0,8] + 1;
+
+    simple_dualport_bram uint8 pb_colourmap <@gpu_clock,@clock> [ 256 ] = uninitialized;                                        // 256 colour remapper
+
+    int10   minmax <:: ( __signed( WDATA ) < __signed( -512 ) ) ? -512 :                                                        // ADJUST FOR 10bit underflow/overflow for pixel coordinates
+                       ( __signed( WDATA ) > __signed( 511 ) ) ? 511 : WDATA;
+    uint8   RGBM <:: { WDATA[22,2], WDATA[13,3], WDATA[6,2], WDATA[21,1] & WDATA[5,1] };                                        // CONVERT R8G8B8 COLOUR TO RGBM COLOUR
+
+    gpu_queue PW <@gpu_clock,!video_reset> (                                                                                    // GPU QUEUE CONTROLLER
+        blit1tilemap <:> blit1tilemap,
+        characterGenerator8x8 <:> characterGenerator8x8,
+        colourblittilemap <:> colourblittilemap,
+        pb_colourmap <:> pb_colourmap,
+        queue_full :> gpu_queue_full,
+        queue_complete :> gpu_queue_complete,
+        gpu_active :> gpu_active
+    );
 
     bitmap_000.wenable1 := 0; bitmap_001.wenable1 := 0; bitmap_010.wenable1 := 0; bitmap_011.wenable1 := 0;                     // BITMAP WRITE FLAGS
     bitmap_100.wenable1 := 0; bitmap_101.wenable1 := 0; bitmap_110.wenable1 := 0; bitmap_111.wenable1 := 0;
 
-    bitmap_000.addr1 := bm0L ? addressL[2,15] : address[2,15]; bitmap_001.addr1 := bm0L ? addressL[2,15] : address[2,15];       // BITMAP ADDRESSES
-    bitmap_010.addr1 := bm0L ? addressL[2,15] : address[2,15]; bitmap_011.addr1 := bm0L ? addressL[2,15] : address[2,15];
-    bitmap_100.addr1 := bm1L ? addressL[2,15] : address[2,15]; bitmap_101.addr1 := bm1L ? addressL[2,15] : address[2,15];
-    bitmap_110.addr1 := bm1L ? addressL[2,15] : address[2,15]; bitmap_111.addr1 := bm1L ? addressL[2,15] : address[2,15];
+    bitmap_000.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_001.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_010.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_011.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_100.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_101.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_110.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_111.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
 
-    readDataDirect := memoryAddressDirect[17,1] ? memoryAddressDirect[1,1] ? { bitmap_101.rdata1, bitmap_100.rdata1, bitmap_111.rdata1, bitmap_110.rdata1 } :
-                                                                             { bitmap_111.rdata1, bitmap_110.rdata1, bitmap_101.rdata1, bitmap_100.rdata1 } :
-                                                  memoryAddressDirect[1,1] ? { bitmap_001.rdata1, bitmap_000.rdata1, bitmap_011.rdata1, bitmap_010.rdata1 } :
-                                                                             { bitmap_011.rdata1, bitmap_010.rdata1, bitmap_001.rdata1, bitmap_000.rdata1 };
+    RDATA_DIRECT := ADDR[17,1] ? ADDR[1,1] ? { bitmap_101.rdata1, bitmap_100.rdata1, bitmap_111.rdata1, bitmap_110.rdata1 } :
+                                             { bitmap_111.rdata1, bitmap_110.rdata1, bitmap_101.rdata1, bitmap_100.rdata1 } :
+                                 ADDR[1,1] ? { bitmap_001.rdata1, bitmap_000.rdata1, bitmap_011.rdata1, bitmap_010.rdata1 } :
+                                             { bitmap_011.rdata1, bitmap_010.rdata1, bitmap_001.rdata1, bitmap_000.rdata1 };
+
+    blit1tilemap.wdata1 := WDATA; blit1tilemap.wenable1 := 0;
+    characterGenerator8x8.wdata1 := WDATA; characterGenerator8x8.wenable1 := 0;
+    colourblittilemap.wdata1 := WDATA; colourblittilemap.wenable1 := 0;
+    pb_colourmap.wenable1 := 1;
+    PW.gpu_write := 0; PW.pb_newpixel := 0;
 
     always {
-        if( memoryWriteDirect ) {                                                                                               // HANDLE CPU MEMORY WRITE
-            switch( accesssize ) {
+        uint3   pbcolour = uninitialised;
+
+        if( WENABLE ) {
+            switch( ADDR[4,4] ) {
+                case 4h0: {
+                    switch( ADDR[1,3] ) {                                                                                       // SET GPU COORDINATES - ADJUST INTO RANGE
+                        case 3h0: { PW.gpu_x = minmax; }
+                        case 3h1: { PW.gpu_y = minmax; }
+                        case 3h2: { PW.gpu_param0 = minmax; }
+                        case 3h3: { PW.gpu_param1 = minmax; }
+                        case 3h4: { PW.gpu_param2 = minmax; }
+                        case 3h5: { PW.gpu_param3 = minmax; }
+                        case 3h6: { PW.gpu_param4 = minmax; }
+                        case 3h7: { PW.gpu_param5 = minmax; }
+                    }
+                }
+                case 4h1: {
+                    switch( ADDR[1,2] ) {
+                        case 2h0: {                                                                                             // SET GPU COLOUR
+                            PW.gpu_colour = SIZE[1,1] ? RGBM : WDATA;                                                           //  32 BIT RGB -> 8 BIT RGBM, 8 BIT RGBM
+                        }
+                        case 2h1: { PW.gpu_colour_alt = WDATA; }
+                        case 2h2: { PW.gpu_dithermode = WDATA; }
+                        case 2h3: { PW.gpu_write = WDATA; if( WDATA == 10 ) { pbcolour=0; } }                                   // START GPU, IF PIXELBLOCK RESET COLOUR RGB CYCLE
+                    }
+                }
+                case 4h4: {
+                    switch( ADDR[1,1] ) {
+                        case 0: { blit1tilemap.addr1 = { WDATA[0,6], 4hf }; }
+                        case 1: { blit1tilemap.addr1[0,4] = BTWline_NEXT; blit1tilemap.wenable1 = 1; }
+                    }
+                }
+                case 4h5: {
+                    switch( ADDR[1,1] ) {
+                        case 0: { characterGenerator8x8.addr1 = { WDATA[0,6], 3h7 }; }
+                        case 1: { characterGenerator8x8.addr1[0,3] = CTWline_NEXT; characterGenerator8x8.wenable1 = 1; }
+                    }
+                }
+                case 4h6: {
+                    switch( ADDR[1,1] ) {
+                        case 0: { colourblittilemap.addr1 = { WDATA[0,6], 8hff }; }
+                        case 1: { colourblittilemap.addr1[0,8] = CBTWpixel_NEXT; colourblittilemap.wenable1 = 1; }
+                    }
+                }
+                case 4h7: {
+                    switch( ADDR[1,3] ) {
+                        default: { PW.pb_colour = WDATA; PW.pb_newpixel = 1; }
+                        case 3h1: {
+                            switch( pbcolour ) {
+                                case 0: { PW.pb_colour8r = WDATA; pbcolour = 1; }
+                                case 1: { PW.pb_colour8g = WDATA; pbcolour = 2; }
+                                default: {  PW.pb_colour8b = WDATA; pbcolour = 0; PW.pb_newpixel = 2; }
+                            }
+                        }
+                        case 3h4: { PW.pb_newpixel = 3; }
+                        case 3h5: { PW.pb_mode = WDATA; }
+                        case 3h6: { pb_colourmap.addr1 = WDATA; }
+                        case 3h7: { pb_colourmap.wdata1 = WDATA; }
+                    }
+                }
+                case 4h8: {
+                    switch( ADDR[2,2] ) {                                                                                       // PIXELBLOCK ARGB RGBA ABGR BGRA modes
+                        case 2b00: {                                                                                            //  ARGB
+                            PW.pb_colour8r = WDATA[16,8];
+                            PW.pb_colour8g = WDATA[8,8];
+                            PW.pb_colour8b = WDATA[0,8];
+                        }
+                        case 2b01: {                                                                                            //  RGBA
+                            PW.pb_colour8r = WDATA[24,8];
+                            PW.pb_colour8g = WDATA[16,8];
+                            PW.pb_colour8b = WDATA[8,8];
+                        }
+                        case 2b10: {                                                                                            //  ABGR
+                            PW.pb_colour8r = WDATA[0,8];
+                            PW.pb_colour8g = WDATA[8,8];
+                            PW.pb_colour8b = WDATA[16,8];
+                        }
+                        case 2b11: {                                                                                            //  BGRA
+                            PW.pb_colour8r = WDATA[8,8];
+                            PW.pb_colour8g = WDATA[16,8];
+                            PW.pb_colour8b = WDATA[24,8];
+                        }
+                    }
+                    PW.pb_newpixel = 2;
+                }
+                case 4he: {
+                    switch( ADDR[1,2] ) {                                                                                       // SET GPU CROP - ADJUST INTO RANGE
+                        case 2h0: { PW.crop_left = minmax; }
+                        case 2h1: { PW.crop_right = minmax; }
+                        case 2h2: { PW.crop_top = minmax; }
+                        case 2h3: { PW.crop_bottom = minmax; }
+                    }
+                }
+                case 4hf: {
+                    switch( ADDR[1,2] ) {
+                        default: { framebuffer_display.framebuffer = WDATA; }
+                        case 2h1: { framebuffer = WDATA; }
+                        case 2h2: { framebuffer_display.display256 = WDATA; }
+                    }
+                }
+                default: {}
+            }
+        }
+
+        if( WENABLE_DIRECT ) {                                                                                                  // HANDLE CPU MEMORY WRITE
+            switch( SIZE ) {
                 case 2b00: {
-                    if( memoryAddressDirect[17,1] ) {                                                                           // 8 BIT
-                        switch( address[0,2] ) {
-                            case 2b00: { bitmap_100.wdata1 = writeDataDirect[0,8]; bitmap_100.wenable1 = 1; }
-                            case 2b01: { bitmap_101.wdata1 = writeDataDirect[0,8]; bitmap_101.wenable1 = 1; }
-                            case 2b10: { bitmap_110.wdata1 = writeDataDirect[0,8]; bitmap_110.wenable1 = 1; }
-                            case 2b11: { bitmap_111.wdata1 = writeDataDirect[0,8]; bitmap_111.wenable1 = 1; }
+                    if( ADDR[17,1] ) {                                                                                          // 8 BIT
+                        switch( ADDR[0,2] ) {
+                            case 2b00: { bitmap_100.wdata1 = WDATA[0,8]; bitmap_100.wenable1 = 1; }
+                            case 2b01: { bitmap_101.wdata1 = WDATA[0,8]; bitmap_101.wenable1 = 1; }
+                            case 2b10: { bitmap_110.wdata1 = WDATA[0,8]; bitmap_110.wenable1 = 1; }
+                            case 2b11: { bitmap_111.wdata1 = WDATA[0,8]; bitmap_111.wenable1 = 1; }
                         }
                     } else {
-                        switch( address[0,2] ) {
-                            case 2b00: { bitmap_000.wdata1 = writeDataDirect[0,8]; bitmap_000.wenable1 = 1; }
-                            case 2b01: { bitmap_001.wdata1 = writeDataDirect[0,8]; bitmap_001.wenable1 = 1; }
-                            case 2b10: { bitmap_010.wdata1 = writeDataDirect[0,8]; bitmap_010.wenable1 = 1; }
-                            case 2b11: { bitmap_011.wdata1 = writeDataDirect[0,8]; bitmap_011.wenable1 = 1; }
+                        switch( ADDR[0,2] ) {
+                            case 2b00: { bitmap_000.wdata1 = WDATA[0,8]; bitmap_000.wenable1 = 1; }
+                            case 2b01: { bitmap_001.wdata1 = WDATA[0,8]; bitmap_001.wenable1 = 1; }
+                            case 2b10: { bitmap_010.wdata1 = WDATA[0,8]; bitmap_010.wenable1 = 1; }
+                            case 2b11: { bitmap_011.wdata1 = WDATA[0,8]; bitmap_011.wenable1 = 1; }
                         }
                     }
                 }
                 default: {                                                                                                      // 16/32 BIT
-                    if( memoryAddressDirect[17,1] ) {
-                        if( memoryAddressDirect[1,1] ) {
-                            bitmap_100.wdata1 = writeDataDirect[16,8]; bitmap_100.wenable1 = accesssize[1,1];
-                            bitmap_101.wdata1 = writeDataDirect[24,8]; bitmap_101.wenable1 = accesssize[1,1];
-                            bitmap_110.wdata1 = writeDataDirect[0,8]; bitmap_110.wenable1 = 1;
-                            bitmap_111.wdata1 = writeDataDirect[8,8]; bitmap_111.wenable1 = 1;
+                    if( ADDR[17,1] ) {
+                        if( ADDR[1,1] ) {
+                            bitmap_100.wdata1 = WDATA[16,8]; bitmap_100.wenable1 = SIZE[1,1];
+                            bitmap_101.wdata1 = WDATA[24,8]; bitmap_101.wenable1 = SIZE[1,1];
+                            bitmap_110.wdata1 = WDATA[0,8]; bitmap_110.wenable1 = 1;
+                            bitmap_111.wdata1 = WDATA[8,8]; bitmap_111.wenable1 = 1;
                         } else {
-                            bitmap_100.wdata1 = writeDataDirect[0,8]; bitmap_100.wenable1 = 1;
-                            bitmap_101.wdata1 = writeDataDirect[8,8]; bitmap_101.wenable1 = 1;
-                            bitmap_110.wdata1 = writeDataDirect[16,8]; bitmap_110.wenable1 = accesssize[1,1];
-                            bitmap_111.wdata1 = writeDataDirect[24,8]; bitmap_111.wenable1 = accesssize[1,1];
+                            bitmap_100.wdata1 = WDATA[0,8]; bitmap_100.wenable1 = 1;
+                            bitmap_101.wdata1 = WDATA[8,8]; bitmap_101.wenable1 = 1;
+                            bitmap_110.wdata1 = WDATA[16,8]; bitmap_110.wenable1 = SIZE[1,1];
+                            bitmap_111.wdata1 = WDATA[24,8]; bitmap_111.wenable1 = SIZE[1,1];
                         }
                     } else {
-                        if( memoryAddressDirect[1,1] ) {
-                            bitmap_000.wdata1 = writeDataDirect[16,8]; bitmap_000.wenable1 = accesssize[1,1];
-                            bitmap_001.wdata1 = writeDataDirect[24,8]; bitmap_001.wenable1 = accesssize[1,1];
-                            bitmap_010.wdata1 = writeDataDirect[0,8]; bitmap_010.wenable1 = 1;
-                            bitmap_011.wdata1 = writeDataDirect[8,8]; bitmap_011.wenable1 = 1;
+                        if( ADDR[1,1] ) {
+                            bitmap_000.wdata1 = WDATA[16,8]; bitmap_000.wenable1 = SIZE[1,1];
+                            bitmap_001.wdata1 = WDATA[24,8]; bitmap_001.wenable1 = SIZE[1,1];
+                            bitmap_010.wdata1 = WDATA[0,8]; bitmap_010.wenable1 = 1;
+                            bitmap_011.wdata1 = WDATA[8,8]; bitmap_011.wenable1 = 1;
                         } else {
-                            bitmap_000.wdata1 = writeDataDirect[0,8]; bitmap_000.wenable1 = 1;
-                            bitmap_001.wdata1 = writeDataDirect[8,8]; bitmap_001.wenable1 = 1;
-                            bitmap_010.wdata1 = writeDataDirect[16,8]; bitmap_010.wenable1 = accesssize[1,1];
-                            bitmap_011.wdata1 = writeDataDirect[24,8]; bitmap_011.wenable1 = accesssize[1,1];
+                            bitmap_000.wdata1 = WDATA[0,8]; bitmap_000.wenable1 = 1;
+                            bitmap_001.wdata1 = WDATA[8,8]; bitmap_001.wenable1 = 1;
+                            bitmap_010.wdata1 = WDATA[16,8]; bitmap_010.wenable1 = SIZE[1,1];
+                            bitmap_011.wdata1 = WDATA[24,8]; bitmap_011.wenable1 = SIZE[1,1];
                         }
                     }
                 }
@@ -154,11 +315,11 @@ unit framebuffer_write(
         }
 
         // IS PIXEL IN THE CROPPING RECTANGLE?
-        if( ( bitmap_x_write >= bitmap_crop_left ) & ( bitmap_x_write <= bitmap_crop_right ) &
-              ( bitmap_y_write >= bitmap_crop_top ) & ( bitmap_y_write <= bitmap_crop_bottom ) &
-              bitmap_write ) {
+        if( ( PW.bitmap_x_write >= PW.bitmap_crop_left ) & ( PW.bitmap_x_write <= PW.bitmap_crop_right ) &
+              ( PW.bitmap_y_write >= PW.bitmap_crop_top ) & ( PW.bitmap_y_write <= PW.bitmap_crop_bottom ) &
+              PW.bitmap_write ) {
             if( framebuffer[0,1] ) {                                                                                          // HANDLE GPU WRITE TO FRAMEBUFFER 0
-                switch( address[0,2] ) {
+                switch( GPU_ADDR[0,2] ) {
                     case 2b00: { bitmap_000.wdata1 = pixeltowrite; bitmap_000.wenable1 = 1; }
                     case 2b01: { bitmap_001.wdata1 = pixeltowrite; bitmap_001.wenable1 = 1; }
                     case 2b10: { bitmap_010.wdata1 = pixeltowrite; bitmap_010.wenable1 = 1; }
@@ -166,7 +327,7 @@ unit framebuffer_write(
                 }
             }
             if( framebuffer[1,1] ) {                                                                                          // HANDLE GPU WRITE TO FRAMEBUFFER 1
-                switch( address[0,2] ) {
+                switch( GPU_ADDR[0,2] ) {
                     case 2b00: { bitmap_100.wdata1 = pixeltowrite; bitmap_100.wenable1 = 1; }
                     case 2b01: { bitmap_101.wdata1 = pixeltowrite; bitmap_101.wenable1 = 1; }
                     case 2b10: { bitmap_110.wdata1 = pixeltowrite; bitmap_110.wenable1 = 1; }
@@ -174,101 +335,12 @@ unit framebuffer_write(
                 }
             }
         }
+
+        if( reset ) {
+            // RESET THE CROPPING RECTANGLE AND DISPLAY256 FLAG
+            PW.pb_mode = 0; PW.crop_left = 0; PW.crop_right = 319; PW.crop_top = 0; PW.crop_bottom = 239; framebuffer_display.display256 = 0;
+        }
     }
-}
-
-unit bitmapwriter(
-    // GPU Parameters
-    input   int10   gpu_x,
-    input   int10   gpu_y,
-    input   uint8   gpu_colour,
-    input   uint8   gpu_colour_alt,
-    input   int10   gpu_param0,
-    input   int10   gpu_param1,
-    input   int10   gpu_param2,
-    input   int10   gpu_param3,
-    input   int10   gpu_param4,
-    input   int10   gpu_param5,
-    input   uint4   gpu_write,
-    input   uint4   gpu_dithermode,
-
-    // CROP RECTANGLE
-    input   uint9   crop_left,
-    input   uint9   crop_right,
-    input   uint8   crop_top,
-    input   uint8   crop_bottom,
-
-    // Colours for the pixelblock
-    input   uint1   pb_mode,
-    input   uint8   pb_colour,
-    input   uint8   pb_colour8r,
-    input   uint8   pb_colour8g,
-    input   uint8   pb_colour8b,
-    input   uint2   pb_newpixel,
-
-    output  uint1   gpu_active,
-    output  uint1   gpu_queue_full,
-    output  uint1   gpu_queue_complete,
-
-    output  int10   bitmap_x_write,
-    output  int10   bitmap_y_write,
-    output  uint8   bitmap_colour_write,
-    output  uint8   bitmap_colour_write_alt,
-    output  uint1   bitmap_write,
-    output  uint9   bitmap_crop_left,
-    output  uint9   bitmap_crop_right,
-    output  uint8   bitmap_crop_top,
-    output  uint8   bitmap_crop_bottom,
-    output  uint4   gpu_active_dithermode,
-
-    simple_dualport_bram_port0 blit1tilemap,
-    simple_dualport_bram_port0 characterGenerator8x8,
-    simple_dualport_bram_port0 colourblittilemap,
-    simple_dualport_bram_port0 pb_colourmap
-) {
-    // GPU QUEUE CONTROLLER, WITH OUTPUTS FOR WRITING PIXELS
-    gpu_queue QUEUE(
-        bitmap_x_write :> bitmap_x_write,
-        bitmap_y_write :> bitmap_y_write,
-        bitmap_colour_write :> bitmap_colour_write,
-        bitmap_colour_write_alt :> bitmap_colour_write_alt,
-        bitmap_write :> bitmap_write,
-        bitmap_crop_left :> bitmap_crop_left,
-        bitmap_crop_right :> bitmap_crop_right,
-        bitmap_crop_top :> bitmap_crop_top,
-        bitmap_crop_bottom :> bitmap_crop_bottom,
-        gpu_active_dithermode :> gpu_active_dithermode,
-
-        crop_left <: crop_left,
-        crop_right <: crop_right,
-        crop_top <: crop_top,
-        crop_bottom <: crop_bottom,
-        gpu_x <: gpu_x,
-        gpu_y <: gpu_y,
-        gpu_colour <: gpu_colour,
-        gpu_colour_alt <: gpu_colour_alt,
-        gpu_param0 <: gpu_param0,
-        gpu_param1 <: gpu_param1,
-        gpu_param2 <: gpu_param2,
-        gpu_param3 <: gpu_param3,
-        gpu_param4 <: gpu_param4,
-        gpu_param5 <: gpu_param5,
-        gpu_write <: gpu_write,
-        gpu_dithermode <: gpu_dithermode,
-        blit1tilemap <:> blit1tilemap,
-        characterGenerator8x8 <:> characterGenerator8x8,
-        colourblittilemap <:> colourblittilemap,
-        pb_mode <: pb_mode,
-        pb_colour <: pb_colour,
-        pb_colour8r <: pb_colour8r,
-        pb_colour8g <: pb_colour8g,
-        pb_colour8b <: pb_colour8b,
-        pb_newpixel <: pb_newpixel,
-        pb_colourmap <:> pb_colourmap,
-        queue_full :> gpu_queue_full,
-        queue_complete :> gpu_queue_complete,
-        gpu_active :> gpu_active
-    );
 }
 
 // DITHERMODE CALCULATIONS

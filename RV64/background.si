@@ -204,3 +204,90 @@ unit starfield(
     rand_x := |pix_x ? rand_x * 31421 + 6927 : 1;
     star := ( pix_y == dotpos );
 }
+
+unit background_memmap(
+    // Clocks
+    input   uint1   video_clock,
+    input   uint1   video_reset,
+
+    // Pixels
+    input   uint10  pix_x,
+    input   uint9   pix_y,
+    input   uint1   pix_vblank,
+    input   uint1   pix_end,
+    output! uint8   pixel,
+
+    // Memory access
+    input   uint6   ADDR,
+    input   uint1   WENABLE,
+    input   uint16  WDATA,
+    output  uint10  RDATA,
+
+    input   uint2   colourmode,
+    input   uint10  staticGenerator
+) {
+    simple_dualport_bram uint4  OP  <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     // BACKGROUND   PROGRAM STORAGE - OPCODE
+    simple_dualport_bram uint3  OPD <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     //              DESTINATION REGISTER ( SOURCE REG1 )
+    simple_dualport_bram uint1  OPF <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     //              REGISTER / LITERAL FLAG
+    simple_dualport_bram uint10 OPL <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                     //              RSOURCE REG 2 / LITERAL VALUE
+
+    // BACKGROUND GENERATOR
+    background_display BACKGROUND <@video_clock,!video_reset> (
+        pix_x <: pix_x,
+        pix_y <: pix_y,
+        pix_end <: pix_end,
+        pixel :> pixel,
+        staticGenerator <: staticGenerator[0,2],
+        b_colour <: BACKGROUND_COPPER.BACKGROUNDcolour,
+        b_alt <: BACKGROUND_COPPER.BACKGROUNDalt,
+        b_mode <: BACKGROUND_COPPER.BACKGROUNDmode,
+        colourmode <: colourmode
+    );
+    nucu BACKGROUND_COPPER <@video_clock,!video_reset> (
+        pix_x <: pix_x,
+        pix_y <: pix_y,
+        pix_vblank <: pix_vblank,
+        staticGenerator <: staticGenerator,
+        backgroundcolour <: BACKGROUND_WRITER.BACKGROUNDcolour,
+        backgroundcolour_alt <: BACKGROUND_WRITER.BACKGROUNDalt,
+        backgroundcolour_mode <: BACKGROUND_WRITER.BACKGROUNDmode,
+        OP <:> OP,
+        OPD <:> OPD,
+        OPF <:> OPF,
+        OPL <:> OPL,
+        copper_cpu_output :> RDATA
+    );
+    background_writer BACKGROUND_WRITER(
+        OP <:> OP,
+        OPD <:> OPD,
+        OPF <:> OPF,
+        OPL <:> OPL,
+        WDATA <: WDATA
+    );
+
+    uint3   mempos = uninitialised;
+    uint3   mempos_NEXT <:: mempos + 1;
+
+    BACKGROUND_WRITER.background_update := 0; BACKGROUND_WRITER.copper_program := 0;
+
+    always {
+        if( WENABLE ) {
+            switch( ADDR[1,4] ) {
+                case 4h0: { BACKGROUND_WRITER.background_update = 1; }
+                case 4h1: { BACKGROUND_WRITER.background_update = 2; }
+                case 4h2: { BACKGROUND_WRITER.background_update = 3; }
+                case 4h3: { BACKGROUND_COPPER.copper_status = WDATA; }
+                case 4h4: { BACKGROUND_COPPER.copper_cpu_input = WDATA; }
+                case 4h5: { BACKGROUND_WRITER.copper_program = 1; }
+                case 4h6: { BACKGROUND_WRITER.copper_address = WDATA; }
+                case 4h7: { BACKGROUND_WRITER.copper_op = WDATA; }
+                case 4h8: { BACKGROUND_WRITER.copper_opd = WDATA; }
+                case 4h9: { BACKGROUND_WRITER.copper_opf = WDATA; }
+                case 4ha: { BACKGROUND_WRITER.copper_opl = WDATA; }
+                case 4hb: { mempos = 0; }
+                case 4hc: { BACKGROUND_COPPER.memoryinit[ mempos * 10, 10 ] = WDATA; mempos = mempos_NEXT; }
+                default: {}
+            }
+        }
+    }
+}
