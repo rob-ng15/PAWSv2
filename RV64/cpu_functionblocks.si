@@ -78,75 +78,6 @@ unit control(
     output  uint$addr_width$  nextPC,
     output  uint$addr_width$  newPC
 ) {
-    uint1   Iwrite <:: write & ~frd & |Rtype(instruction).rd;                                                                   // INTEGER REGISTER WRITE SWITCH
-    $$for i=1,2 do
-        simple_dualport_bram int64 I$i$[64] = { 0, pad(uninitialized) };                                                        // 32 MAIN, 32 SMT INTEGER REGISTERS
-        regR I$i$R(                                                                                                             // INTEGER REGISTERS READ
-            SMT <: SMT,
-            regfile <:> I$i$,
-            addr0 <: Rtype(instruction).sr$i$,
-            rdata0 :> sourceReg$i$,
-        );
-        regW I$i$W(                                                                                                             // INTEGER REGISTERS WRITE
-            SMT <: COMMIT_SMT,
-            regfile <:> I$i$,
-            addr1 <: Rtype(instruction).rd,
-            wdata1 <: result,
-            wenable1 <: Iwrite
-        );
-        abs_3264 I$i$ABS(                                                                                                       // INTEGER REGISTER ABSOLUTE VALUES
-            I <: I$i$.rdata0,
-            ABS_32 :> S$i$_abs32,
-            ABS_64 :> S$i$_abs64
-        );
-    $$end
-    i_compare I1I2_COMPARE(                                                                                                     // INTEGER REGISTER COMPARISON FLAGS
-        I_1 <: I1.rdata0,
-        I_2 <: I2.rdata0,
-        IMMEDIATE <: DECODE.IMMEDIATE,
-        REG_IMM <: instruction[5,1],
-        FLAGS :> COMPARISONS
-    );
-
-    uint1   Fwrite <:: write & frd;                                                                                             // FLOAATING POINT REGISTER WRITE SWITCH
-     $$for i=1,3 do
-        simple_dualport_bram int64 F$i$[64] = uninitialized;                                                                    // 32 MAIN, 32 SMT FLOAT REGISTERS
-        regR F$i$R(
-            SMT <: SMT,
-            regfile <:> F$i$,
-            addr0 <: R4type(instruction).sr$i$,
-            rdata0 :> sourceReg$i$F
-        );
-        regW F$i$W(
-            SMT <: COMMIT_SMT,
-            regfile <:> F$i$,
-            addr1 <: Rtype(instruction).rd,
-            wdata1 <: result,
-            wenable1 <: Fwrite
-        );
-     $$end
-
-     // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
-     typeF class1F( dsh <: Rtype(instruction).f7[0,2], a <: F1R.rdata0, zeroFRACTION :> F1_ZERO_FRACTION, type :> typeAF );     // CLASSIFY A FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
-     typeF class2F( dsh <: Rtype(instruction).f7[0,2], a <: F2R.rdata0, zeroFRACTION :> F2_ZERO_FRACTION, type :> typeBF );     // CLASSIFY B FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
-     typeF class3F( dsh <: Rtype(instruction).f7[0,2], a <: F3R.rdata0, type :> typeCF );                                       // CLASSIFY C FOR { INF, sNAN, qNAN, ZERO }
-
-     typeF class1Fopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1R.rdata0, type :> typeAopp );                                 // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
-     repackage_wide Aopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1.rdata0, repack :> sourceReg1Fxopp );                      // changeprecision SIGN, EXPONENT (with bias), FRACTION
-
-     repackage_wide A( dsh <: Rtype(instruction).f7[0,2], a <: F1.rdata0, repack :> sourceReg1Fx );                             // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
-     repackage_wide B( dsh <: Rtype(instruction).f7[0,2], a <: F2.rdata0, repack :> sourceReg2Fx );                             // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
-     repackage_wide C( dsh <: Rtype(instruction).f7[0,2], a <: F3.rdata0, repack :> sourceReg3Fx );                             // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
-
-    floatcompare FPUcompare(                                                                                                    // FLOATING POINT COMPARISONS
-        a <: A.repack, b <: B.repack,                                                                                           // PASS REPACKED VALUES TO COMPARE
-        F1_OR_F2_NAN <: F1_OR_F2_NAN,                                                                                           // A OR B NAN?
-        F1_AND_F2_ZERO <: F1_AND_F2_ZERO,                                                                                       // A == 0 AND B == 0
-        F1_ZERO_FRACTION <: class1F.zeroFRACTION,                                                                               // A FRACTION 0?
-        F2_ZERO_FRACTION <: class2F.zeroFRACTION,                                                                               // B FRACTION 0?
-        less :> FLT, equal :> FEQ                                                                                               // A < B? A == B?
-    );
-
     // INSTRUCTION DECODER AND CPU CONTROL FLAGS
     decoder DECODE(
         INSTRUCTION <: instruction,
@@ -206,12 +137,100 @@ unit control(
         PC_INC :> nextPC
     );
 
-    newPC := FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).f3[0,1] ^ COMPARISONS[ Rtype(instruction).f3[1,2], 1 ] ) ? AGU.BRANCH_ADDRESS : AGU.PC_INC ) :
-                            ( instruction[3,1] ? AGU.JUMP_ADDRESS : AGU.LOAD_ADDRESS );
+    uint1   Iwrite <:: write & ~frd & |Rtype(instruction).rd;                                                                   // INTEGER REGISTER WRITE SWITCH
+    $$for i=1,2 do
+        simple_dualport_bram int64 I$i$[64] = { 0, pad(uninitialized) };                                                        // 32 MAIN, 32 SMT INTEGER REGISTERS
+        regR I$i$R(                                                                                                             // INTEGER REGISTERS READ
+            SMT <: SMT,
+            regfile <:> I$i$,
+            addr0 <: Rtype(instruction).sr$i$,
+            rdata0 :> sourceReg$i$,
+        );
+        regW I$i$W(                                                                                                             // INTEGER REGISTERS WRITE
+            SMT <: COMMIT_SMT,
+            regfile <:> I$i$,
+            addr1 <: Rtype(instruction).rd,
+            wdata1 <: result,
+            wenable1 <: Iwrite
+        );
+        abs_3264 I$i$ABS(                                                                                                       // INTEGER REGISTER ABSOLUTE VALUES
+            I <: I$i$.rdata0,
+            ABS_32 :> S$i$_abs32,
+            ABS_64 :> S$i$_abs64
+        );
+    $$end
+    i_compare I1I2_COMPARE(                                                                                                     // INTEGER REGISTER COMPARISON FLAGS
+        I_1 <: I1.rdata0,
+        I_2 <: I2.rdata0,
+        IMMEDIATE <: DECODE.IMMEDIATE,
+        REG_IMM <: instruction[5,1],
+        FLAGS :> COMPARISONS
+    );
 
-    F1_OR_F2_INF := class1F.type[3,1] | class2F.type[3,1]; F1_AND_F2_INF := class1F.type[3,1] & class1F.type[3,1];            // A AND/OR B INF?
-    F1_OR_F2_NAN := |( class1F.type[1,2] | class2F.type[1,2] );                                                              // A OR B NAN?
-    F1_OR_F2_ZERO := class1F.type[0,1] | class2F.type[0,1]; F1_AND_F2_ZERO := class1F.type[0,1] & class2F.type[0,1];          // A AND/OR B ZERO
+    uint1   Fwrite <:: write & frd;                                                                                             // FLOAATING POINT REGISTER WRITE SWITCH
+    $$for i=1,3 do
+        simple_dualport_bram int64 F$i$[64] = uninitialized;                                                                    // 32 MAIN, 32 SMT FLOAT REGISTERS
+        regR F$i$R(
+            SMT <: SMT,
+            regfile <:> F$i$,
+            addr0 <: R4type(instruction).sr$i$,
+            rdata0 :> sourceReg$i$F
+        );
+        regW F$i$W(
+            SMT <: COMMIT_SMT,
+            regfile <:> F$i$,
+            addr1 <: Rtype(instruction).rd,
+            wdata1 <: result,
+            wenable1 <: Fwrite
+        );
+    $$end
+
+    // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
+    typeF class1F( dsh <: Rtype(instruction).f7[0,2], a <: F1R.rdata0, zeroFRACTION :> F1_ZERO_FRACTION, type :> typeAF );     // CLASSIFY A FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
+    typeF class2F( dsh <: Rtype(instruction).f7[0,2], a <: F2R.rdata0, zeroFRACTION :> F2_ZERO_FRACTION, type :> typeBF );     // CLASSIFY B FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
+    typeF class3F( dsh <: Rtype(instruction).f7[0,2], a <: F3R.rdata0, type :> typeCF );                                       // CLASSIFY C FOR { INF, sNAN, qNAN, ZERO }
+
+    typeF class1Fopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1R.rdata0, type :> typeAopp );                                 // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
+    repackage_wide Aopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1R.rdata0, repack :> sourceReg1Fxopp );                     // changeprecision SIGN, EXPONENT (with bias), FRACTION
+
+    repackage_wide A( dsh <: Rtype(instruction).f7[0,2], a <: F1.rdata0, repack :> sourceReg1Fx );                             // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
+    repackage_wide B( dsh <: Rtype(instruction).f7[0,2], a <: F2.rdata0, repack :> sourceReg2Fx );                             // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
+    repackage_wide C( dsh <: Rtype(instruction).f7[0,2], a <: F3.rdata0, repack :> sourceReg3Fx );                             // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
+
+    floatcompare FPUcompare(                                                                                                    // FLOATING POINT COMPARISONS
+        a <: A.repack, b <: B.repack,                                                                                           // PASS REPACKED VALUES TO COMPARE
+        F1_OR_F2_NAN <: F1_OR_F2_NAN,                                                                                           // A OR B NAN?
+        F1_AND_F2_ZERO <: F1_AND_F2_ZERO,                                                                                       // A == 0 AND B == 0
+        F1_ZERO_FRACTION <: class1F.zeroFRACTION,                                                                               // A FRACTION 0?
+        F2_ZERO_FRACTION <: class2F.zeroFRACTION,                                                                               // B FRACTION 0?
+        less :> FLT, equal :> FEQ                                                                                               // A < B? A == B?
+    );
+    floattypes FPUtypes(
+        class1F <: class1F.type,
+        class2F <: class2F.type,
+        F1_OR_F2_INF :> F1_OR_F2_INF,
+        F1_AND_F2_INF :> F1_AND_F2_INF,
+        F1_OR_F2_NAN :> F1_OR_F2_NAN,
+        F1_OR_F2_ZERO :> F1_OR_F2_ZERO,
+        F1_AND_F2_ZERO :> F1_AND_F2_ZERO
+    );
+
+    newPC := FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).f3[0,1] ^ COMPARISONS[ Rtype(instruction).f3[1,2], 1 ] ) ? AGU.BRANCH_ADDRESS : AGU.PC_INC ) :
+                           ( instruction[3,1] ? AGU.JUMP_ADDRESS : AGU.LOAD_ADDRESS );
+}
+
+unit floattypes(
+    input   uint4   class1F,
+    input   uint4   class2F,
+    output  uint1   F1_OR_F2_INF,
+    output  uint1   F1_AND_F2_INF,
+    output  uint1   F1_OR_F2_NAN,
+    output  uint1   F1_OR_F2_ZERO,
+    output  uint1   F1_AND_F2_ZERO
+) {
+    F1_OR_F2_INF := class1F[3,1] | class2F[3,1]; F1_AND_F2_INF := class1F[3,1] & class2F[3,1];                                  // A AND/OR B INF?
+    F1_OR_F2_NAN := |( class1F[1,2] | class2F[1,2] );                                                                           // A OR B NAN?
+    F1_OR_F2_ZERO := class1F[0,1] | class2F[0,1]; F1_AND_F2_ZERO := class1F[0,1] & class2F[0,1];                                // A AND/OR B ZERO
 }
 
 // ADDRESS GENERATOR
@@ -253,12 +272,12 @@ unit memsize(
     output  uint1   IS_MEM64,
     output  uint2   accesssize
 ) {
-    accesssize := cacheselect ? IS_MA ? 2b00 : function3 : 2b10;                                                             // DETERMINE MEMORY ACCESS SIZE - FETCH (cacheselect == 0) 32
-                                                                                                                            //  ELSE BY function3 ( IS_MA AS BYTES )
-    IS_MA := ~IS_ATOMIC & |function3 & (                                                                                     // ATOMIC OPERATIONS CANNOT BE MISALIGNED
-                ( IS_LOAD & ( I20 ^ I1R ) ) |                                                                                 // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
-                ( IS_STORE & ( I7 ^ I1R ) ) );                                                                                // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
-    IS_MEM64 := &function3;                                                                                                  // DETECT 64 BIT MEMORY ACCESSES
+    accesssize := cacheselect ? IS_MA ? 2b00 : function3 : 2b10;                                                                // DETERMINE MEMORY ACCESS SIZE - FETCH (cacheselect == 0) 32
+                                                                                                                                //  ELSE BY function3 ( IS_MA AS BYTES )
+    IS_MA := ~IS_ATOMIC & |function3 & (                                                                                        // ATOMIC OPERATIONS CANNOT BE MISALIGNED
+                ( IS_LOAD & ( I20 ^ I1R ) ) |                                                                                   // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
+                ( IS_STORE & ( I7 ^ I1R ) ) );                                                                                  // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
+    IS_MEM64 := &function3;                                                                                                     // DETECT 64 BIT MEMORY ACCESSES
 }
 
 // REGISTER READ AND WRITE BLOCKS
@@ -421,22 +440,22 @@ unit decoder(
     $$ doshxadd =       "OP[ 1,1]"
     $$ dosra =          "OP[ 0,1]"
 
-    ALUOP := {                                                                                                               // DECODE ALU INSTRUCTIONS
-        INSTRUCTION[3,1] & INSTRUCTION[5,1] & ( ( Rtype(INSTRUCTION).f7 == 7b0000100 ) |                                    // 32-BIT ( register - register )   ADD.UW
-        ( Rtype(INSTRUCTION).f7 == 7b0010000 ) ),                                                                           //                                  SHxADD.UW
-        INSTRUCTION[5,1] & ( Rtype(INSTRUCTION).f7 == 7b0100000 ),                                                          // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
-        ( Rtype(INSTRUCTION).f7[1,6] == 6b010010 ),                                                                         // BCLR BCLRI BEXT BEXTI
-        ( Rtype(INSTRUCTION).f7[1,6] == 6b011010 ),                                                                         // BINV BINVI REV8 BREV8
-        ( Rtype(INSTRUCTION).f7[1,6] == 6b001010 ),                                                                         // ( F3 == 001 ) BSET BSETI
-        ( Rtype(INSTRUCTION).f7 == 7b0000111 ),                                                                             // ZICOND czero.eq or czero.nez
-        ( Rtype(INSTRUCTION).f7 == 7b0110000 ),                                                                             // CLZ CPOP CTZ SEXT.B SEXT.H ( immediate only )
-        ( Rtype(INSTRUCTION).f7 == 7b0000101 ),                                                                             // MAX MAXU MIN MINU ( register - register only )
-        ( Rtype(INSTRUCTION).f7 == 7b0000001 ),                                                                             // MULTIPLICATION
-        ( Rtype(INSTRUCTION).f7 == 7b0010100 ),                                                                             // ( F3 := 101 ) ORC.B, XPERM.B XPERM.N
-        ( Rtype(INSTRUCTION).f7 == 7b0000100 ),                                                                             // ZEXT.H PACK PACKH PACKW ( ZEXT.H when rs2 == 0 )
-        ( Rtype(INSTRUCTION).f7[1,6] == 6b011000 ),                                                                         // ROL ROR RORI
-        ( Rtype(INSTRUCTION).f7 == 7b0010000 ),                                                                             // SH1ADD SH2ADD SH3ADD ( register - register only )
-        ( Rtype(INSTRUCTION).f7[1,6] == 6b010000 )                                                                          // SRA SRAI
+    ALUOP := {                                                                                                                  // DECODE ALU INSTRUCTIONS
+        INSTRUCTION[3,1] & INSTRUCTION[5,1] & ( ( Rtype(INSTRUCTION).f7 == 7b0000100 ) |                                        // 32-BIT ( register - register )   ADD.UW
+        ( Rtype(INSTRUCTION).f7 == 7b0010000 ) ),                                                                               //                                  SHxADD.UW
+        INSTRUCTION[5,1] & ( Rtype(INSTRUCTION).f7 == 7b0100000 ),                                                              // ADD/SUB AND/ANDN OR/ORN XOR/XNOR ( register - register only )
+        ( Rtype(INSTRUCTION).f7[1,6] == 6b010010 ),                                                                             // BCLR BCLRI BEXT BEXTI
+        ( Rtype(INSTRUCTION).f7[1,6] == 6b011010 ),                                                                             // BINV BINVI REV8 BREV8
+        ( Rtype(INSTRUCTION).f7[1,6] == 6b001010 ),                                                                             // ( F3 == 001 ) BSET BSETI
+        ( Rtype(INSTRUCTION).f7 == 7b0000111 ),                                                                                 // ZICOND czero.eq or czero.nez
+        ( Rtype(INSTRUCTION).f7 == 7b0110000 ),                                                                                 // CLZ CPOP CTZ SEXT.B SEXT.H ( immediate only )
+        ( Rtype(INSTRUCTION).f7 == 7b0000101 ),                                                                                 // MAX MAXU MIN MINU ( register - register only )
+        ( Rtype(INSTRUCTION).f7 == 7b0000001 ),                                                                                 // MULTIPLICATION
+        ( Rtype(INSTRUCTION).f7 == 7b0010100 ),                                                                                 // ( F3 := 101 ) ORC.B, XPERM.B XPERM.N
+        ( Rtype(INSTRUCTION).f7 == 7b0000100 ),                                                                                 // ZEXT.H PACK PACKH PACKW ( ZEXT.H when rs2 == 0 )
+        ( Rtype(INSTRUCTION).f7[1,6] == 6b011000 ),                                                                             // ROL ROR RORI
+        ( Rtype(INSTRUCTION).f7 == 7b0010000 ),                                                                                 // SH1ADD SH2ADD SH3ADD ( register - register only )
+        ( Rtype(INSTRUCTION).f7[1,6] == 6b010000 )                                                                              // SRA SRAI
     };
 }
 // COMPRESSED INSTRUCTION EXPANSION
