@@ -52,9 +52,9 @@ unit control(
     output  uint64  sourceReg2Fx,
     output  uint64  sourceReg3Fx,
     output  uint64  sourceReg1Fxopp,                                                                                            // REPACKED FLOATING POINT REGISTER FOR CHANGE PRECISION
-    output  uint4   typeAF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1
-    output  uint4   typeBF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 2
-    output  uint4   typeCF,                                                                                                     // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 3
+    output  uint4   type_1F,                                                                                                    // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1
+    output  uint4   type_2F,                                                                                                    // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 2
+    output  uint4   type_3F,                                                                                                    // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 3
     output  uint4   typeAopp,                                                                                                   // { INF sNAN qNAN ZERO } OF INPUT FLOAT REGISTER 1 CHANGE PRECISION
 
     output  uint1               F1_OR_F2_INF,                                                                                   // EITHER A OR B INF?
@@ -64,6 +64,7 @@ unit control(
     output  uint1               F1_AND_F2_ZERO,                                                                                 // BOTH A AND B ZERO?
     output  uint1               F1_ZERO_FRACTION,                                                                               // A FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
     output  uint1               F2_ZERO_FRACTION,                                                                               // B FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
+    output  uint1               F3_ZERO_FRACTION,                                                                               // C FRACTION PART 0, POWER OF TWO DETECTION AND TRUEZERO
 
 
     output  uint4   COMPARISONS,                                                                                                // INTEGER/IMMEDIATE REGISTER COMPARISONS { LTU LT - EQ }
@@ -140,11 +141,13 @@ unit control(
     uint1   Iwrite <:: write & ~frd & |Rtype(instruction).rd;                                                                   // INTEGER REGISTER WRITE SWITCH
     $$for i=1,2 do
         simple_dualport_bram int64 I$i$[64] = { 0, pad(uninitialized) };                                                        // 32 MAIN, 32 SMT INTEGER REGISTERS
-        regR I$i$R(                                                                                                             // INTEGER REGISTERS READ
+        regR_I I$i$R(                                                                                                           // INTEGER REGISTERS READ
             SMT <: SMT,
-            regfile <:> I$i$,
+            I <:> I$i$,
             addr0 <: Rtype(instruction).sr$i$,
             rdata0 :> sourceReg$i$,
+            ABS_32 :> S$i$_abs32,
+            ABS_64 :> S$i$_abs64
         );
         regW I$i$W(                                                                                                             // INTEGER REGISTERS WRITE
             SMT <: COMMIT_SMT,
@@ -152,11 +155,6 @@ unit control(
             addr1 <: Rtype(instruction).rd,
             wdata1 <: result,
             wenable1 <: Iwrite
-        );
-        abs_3264 I$i$ABS(                                                                                                       // INTEGER REGISTER ABSOLUTE VALUES
-            I <: I$i$.rdata0,
-            ABS_32 :> S$i$_abs32,
-            ABS_64 :> S$i$_abs64
         );
     $$end
     i_compare I1I2_COMPARE(                                                                                                     // INTEGER REGISTER COMPARISON FLAGS
@@ -170,11 +168,15 @@ unit control(
     uint1   Fwrite <:: write & frd;                                                                                             // FLOAATING POINT REGISTER WRITE SWITCH
     $$for i=1,3 do
         simple_dualport_bram int64 F$i$[64] = uninitialized;                                                                    // 32 MAIN, 32 SMT FLOAT REGISTERS
-        regR F$i$R(
+        regR_F F$i$R(
             SMT <: SMT,
-            regfile <:> F$i$,
+            F <:> F$i$,
             addr0 <: R4type(instruction).sr$i$,
-            rdata0 :> sourceReg$i$F
+            rdata0 :> sourceReg$i$F,
+            dsh <: Rtype(instruction).f7[0,2],
+            type :> type_$i$F,
+            zeroFRACTION :> F$i$_ZERO_FRACTION,
+            repack :> sourceReg$i$Fx
         );
         regW F$i$W(
             SMT <: COMMIT_SMT,
@@ -185,29 +187,17 @@ unit control(
         );
     $$end
 
-    // FLOATING POINT REGISTER TYPES - detect INF, NAN, ZERO
-    typeF class1F( dsh <: Rtype(instruction).f7[0,2], a <: F1R.rdata0, zeroFRACTION :> F1_ZERO_FRACTION, type :> typeAF );     // CLASSIFY A FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
-    typeF class2F( dsh <: Rtype(instruction).f7[0,2], a <: F2R.rdata0, zeroFRACTION :> F2_ZERO_FRACTION, type :> typeBF );     // CLASSIFY B FOR { INF, sNAN, qNAN, ZERO }, ZEROFRACTION FLAG
-    typeF class3F( dsh <: Rtype(instruction).f7[0,2], a <: F3R.rdata0, type :> typeCF );                                       // CLASSIFY C FOR { INF, sNAN, qNAN, ZERO }
-
-    typeF class1Fopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1R.rdata0, type :> typeAopp );                                 // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
-    repackage_wide Aopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1R.rdata0, repack :> sourceReg1Fxopp );                     // changeprecision SIGN, EXPONENT (with bias), FRACTION
-
-    repackage_wide A( dsh <: Rtype(instruction).f7[0,2], a <: F1.rdata0, repack :> sourceReg1Fx );                             // BREAKDOWN sourceReg1F INTO SIGN, EXPONENT (with bias), FRACTION
-    repackage_wide B( dsh <: Rtype(instruction).f7[0,2], a <: F2.rdata0, repack :> sourceReg2Fx );                             // BREAKDOWN sourceReg2F INTO SIGN, EXPONENT (with bias), FRACTION
-    repackage_wide C( dsh <: Rtype(instruction).f7[0,2], a <: F3.rdata0, repack :> sourceReg3Fx );                             // BREAKDOWN sourceReg3F INTO SIGN, EXPONENT (with bias), FRACTION
-
     floatcompare FPUcompare(                                                                                                    // FLOATING POINT COMPARISONS
-        a <: A.repack, b <: B.repack,                                                                                           // PASS REPACKED VALUES TO COMPARE
-        F1_OR_F2_NAN <: F1_OR_F2_NAN,                                                                                           // A OR B NAN?
-        F1_AND_F2_ZERO <: F1_AND_F2_ZERO,                                                                                       // A == 0 AND B == 0
-        F1_ZERO_FRACTION <: class1F.zeroFRACTION,                                                                               // A FRACTION 0?
-        F2_ZERO_FRACTION <: class2F.zeroFRACTION,                                                                               // B FRACTION 0?
+        a <: F1R.repack, b <: F2R.repack,                                                                                       // PASS REPACKED VALUES TO COMPARE
+        F1_OR_F2_NAN <: FPUcases.F1_OR_F2_NAN,                                                                                  // A OR B NAN?
+        F1_AND_F2_ZERO <: FPUcases.F1_AND_F2_ZERO,                                                                              // A == 0 AND B == 0?
+        F1_ZERO_FRACTION <: F1R.zeroFRACTION,                                                                                   // A FRACTION 0?
+        F2_ZERO_FRACTION <: F2R.zeroFRACTION,                                                                                   // B FRACTION 0?
         less :> FLT, equal :> FEQ                                                                                               // A < B? A == B?
     );
-    floattypes FPUtypes(
-        class1F <: class1F.type,
-        class2F <: class2F.type,
+    floatcases FPUcases(
+        class1F <: F1R.type,
+        class2F <: F2R.type,
         F1_OR_F2_INF :> F1_OR_F2_INF,
         F1_AND_F2_INF :> F1_AND_F2_INF,
         F1_OR_F2_NAN :> F1_OR_F2_NAN,
@@ -215,11 +205,14 @@ unit control(
         F1_AND_F2_ZERO :> F1_AND_F2_ZERO
     );
 
+    typeF class1Fopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1R.rdata0, type :> typeAopp );                                  // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
+    repackage_wide Aopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1R.rdata0, repack :> sourceReg1Fxopp );                      // changeprecision SIGN, EXPONENT (with bias), FRACTION
+
     newPC := FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).f3[0,1] ^ COMPARISONS[ Rtype(instruction).f3[1,2], 1 ] ) ? AGU.BRANCH_ADDRESS : AGU.PC_INC ) :
                            ( instruction[3,1] ? AGU.JUMP_ADDRESS : AGU.LOAD_ADDRESS );
 }
 
-unit floattypes(
+unit floatcases(
     input   uint4   class1F,
     input   uint4   class2F,
     output  uint1   F1_OR_F2_INF,
@@ -281,13 +274,54 @@ unit memsize(
 }
 
 // REGISTER READ AND WRITE BLOCKS
-unit regR(
+unit regR_I(
     input   uint1   SMT,
-    simple_dualport_bram_port0 regfile,
+    simple_dualport_bram_port0 I,
     input   uint5   addr0,
-    output  uint64  rdata0
+    output  uint64  rdata0,
+    output  uint32  ABS_32,
+    output  uint64  ABS_64
 ) {
-    regfile.addr0 := { SMT, addr0 }; rdata0 := regfile.rdata0;
+    I.addr0 := { SMT, addr0 }; rdata0 := I.rdata0;                                                                              // SELECT THE REGISTER
+
+    ABS_32 := I.rdata0[31,1] ? -I.rdata0[0,32] : I.rdata0[0,32];                                                                // ABSOLUTE VALUE - 32 BIT
+    ABS_64 := I.rdata0[63,1] ? -I.rdata0       : I.rdata0;                                                                      // ABSOLUTE VALUE - 64 BIT
+}
+unit regR_F(
+    input   uint1   SMT,
+    simple_dualport_bram_port0 F,
+    input   uint5   addr0,
+    output  uint64  rdata0,
+    input   uint2   dsh,
+    output  uint4   type,
+    output  uint1   zeroFRACTION,
+    output  uint64  repack
+) {
+    uint1   expFF <:: &( dsh[0,1] ? fp64( F.rdata0 ).exponent :                                                                 // CHECK FOR EXP == ALL 1s ( signals INF/NAN )
+                         dsh[1,1] ? fp16( F.rdata0 ).exponent :
+                                    fp32( F.rdata0 ).exponent );
+    uint1   exp00 <:: ~|( dsh[0,1] ? fp64( F.rdata0 ).exponent :                                                                // CHECK FOR EXP == ALL 0s ( signals ZERO/SUBNORMAL )
+                          dsh[1,1] ? fp16( F.rdata0 ).exponent :
+                                     fp32( F.rdata0 ).exponent );
+    uint1   NANboxed <:: ~dsh[0,1] & &( dsh[1,1] ? F.rdata0[16,48] : F.rdata0[32,32] );                                         // CHECK SINGLE/HALF IS NAN BOXED
+    uint6   MSB <:: dsh[0,1] ? 51 : dsh[1,1] ? 9 : 22;                                                                          // IDENTIFY MOST SIGNIFICANT BIT TO DETERMINE sNAN OR qNAN
+
+    zeroFRACTION := ~|( dsh[0,1] ? fp64( F.rdata0 ).fraction :                                                                  // FRACTION == 0
+                        dsh[1,1] ? fp16( F.rdata0 ).fraction :
+                                   fp32( F.rdata0 ).fraction );
+
+    F.addr0 := { SMT, addr0 }; rdata0 := F.rdata0;                                                                              // SELECT THE REGISTER
+
+    type := dsh[0,1] | NANboxed ? {                                                                                             // IF DOUBLE, OR NAN-boxed SINGLE/HALF, SPECIFY TYPE
+        expFF & zeroFRACTION,                                                                                                   // INF
+        expFF & ~fp64( F.rdata0 ).fraction[ MSB, 1 ] & ~zeroFRACTION,                                                           // sNAN
+        expFF & fp64( F.rdata0 ).fraction[ MSB, 1 ],                                                                            // qNAN
+        exp00                                                                                                                   // ZERO / SUBNORMAL
+    } : 4b0010;                                                                                                                 // SINGLE/HALF NOT BOXED, ISSUE qNAN
+
+    repack := dsh[0,1] ? F.rdata0 :                                                                                             // RETURN DOUBLE UNCHANGED
+              dsh[1,1] ? { fp16( F.rdata0 ).sign, 6b0, fp16( F.rdata0 ).exponent, fp16( F.rdata0 ).fraction, 42b0 } :           // RETURN HALF REPACKED
+                         { fp32( F.rdata0 ).sign, 3b0, fp32( F.rdata0 ).exponent, fp32( F.rdata0 ).fraction, 29b0 };            // RETURN SINGLE REPACKED
 }
 unit regW(
     input   uint1   SMT,
@@ -308,10 +342,10 @@ unit i_compare(
     output  uint4               FLAGS
 ) {
     FLAGS := {
-        ( __unsigned( I_1 ) < __unsigned( REG_IMM ? I_2: IMMEDIATE ) ),                                                     //  LTU
-        ( __signed( I_1 ) < __signed( REG_IMM ? I_2: IMMEDIATE ) ),                                                         //  LT,
-        1b0,                                                                                                                //  UNUSED
-        ( I_1 == ( REG_IMM ? I_2: IMMEDIATE ) )                                                                             //  EQ
+        ( __unsigned( I_1 ) < __unsigned( REG_IMM ? I_2: IMMEDIATE ) ),                                                         //  LTU
+        ( __signed( I_1 ) < __signed( REG_IMM ? I_2: IMMEDIATE ) ),                                                             //  LT,
+        1b0,                                                                                                                    //  UNUSED
+        ( I_1 == ( REG_IMM ? I_2: IMMEDIATE ) )                                                                                 //  EQ
     };
 }
 
@@ -324,6 +358,7 @@ unit abs_3264(
     ABS_32 := I[31,1] ? -I[0,32] : I[0,32];
     ABS_64 := I[63,1] ? -I       : I;
 }
+
 // CLASSIFY INSTRUCTION TYPE AND DETIMINE CPU CONTROL FLAGS
 unit controlflags(
     input   uint5   opCode,
@@ -346,10 +381,10 @@ unit controlflags(
     output  uint1   writeRegister,
     output  uint1   incPC
 ) {
-    writeRegister := 1; incPC := 1;                                                                                           // DEFAULT TO SINGLE-CYCLE, WRITE INT REGISTER AND INCREMENT PC
-    IS_FAST := 1;                                                                                                            // DEFAULT TO BASE INTEGER ( FAST OPERATIONS )
-    IS_ALU := 0; IS_ALU32SIGNX := 1;                                                                                          // ALU DETECTED FLAGS, DEFAULT TO 32-BIT SIGN EXTENSION
-    IS_FPU := 0; IS_FASTFPU := 0; IS_FPUCONVERT := 0;                                                                          // FLOATING-POINT UNIT DETECTION FLAGS
+    writeRegister := 1; incPC := 1;                                                                                             // DEFAULT TO SINGLE-CYCLE, WRITE INT REGISTER AND INCREMENT PC
+    IS_FAST := 1;                                                                                                               // DEFAULT TO BASE INTEGER ( FAST OPERATIONS )
+    IS_ALU := 0; IS_ALU32SIGNX := 1;                                                                                            // ALU DETECTED FLAGS, DEFAULT TO 32-BIT SIGN EXTENSION
+    IS_FPU := 0; IS_FASTFPU := 0; IS_FPUCONVERT := 0;                                                                           // FLOATING-POINT UNIT DETECTION FLAGS
 
     IS_ATOMIC := ( opCode == 5b01011 );
     IS_AUIPCLUI := ( opCode == 5b00101 ) | ( opCode == 5b01101 );
@@ -747,33 +782,24 @@ unit csrf(
         } else {
             switch( csr ) {
                 case 0: {}
-                case 1: {
-                    // CSRRW / CSRRWI
-                    switch( writetype ) {
-                        case 1: { CSRf[0,5] = writevalue[0,5]; }
-                        case 2: { CSRf[5,3] = writevalue[0,3]; }
-                        case 3: { CSRf = writevalue[0,8]; }
-                        default: {}
-                    }
-                }
-                case 2: {
-                    // CSRRS / CSRRSI
-                    switch( writetype ) {
-                        case 1: { CSRf[0,5] = CSRf[0,5] | writevalue[0,5]; }
-                        case 2: { CSRf[5,3] = CSRf[5,3] | writevalue[0,3]; }
-                        case 3: { CSRf = CSRf | writevalue[0,8]; }
-                        default: {}
-                    }
-                }
-                case 3: {
-                    // CSRRC / CSRRCI
-                    switch( writetype ) {
-                        case 1: { CSRf[0,5] = CSRf[0,5] & ~writevalue[0,5]; }
-                        case 2: { CSRf[5,3] = CSRf[5,3] & ~writevalue[0,3]; }
-                        case 3: { CSRf = CSRf & ~writevalue[0,8]; }
-                        default: {}
-                    }
-                }
+                case 1: { switch( writetype ) { // CSRRW / CSRRWI
+                    case 1: { CSRf[0,5] = writevalue[0,5]; }
+                    case 2: { CSRf[5,3] = writevalue[0,3]; }
+                    case 3: { CSRf = writevalue[0,8]; }
+                    default: {}
+                } }
+                case 2: { switch( writetype ) { // CSRRS / CSRRSI
+                    case 1: { CSRf[0,5] = CSRf[0,5] | writevalue[0,5]; }
+                    case 2: { CSRf[5,3] = CSRf[5,3] | writevalue[0,3]; }
+                    case 3: { CSRf = CSRf | writevalue[0,8]; }
+                    default: {}
+                } }
+                case 3: { switch( writetype ) { // CSRRC / CSRRCI
+                    case 1: { CSRf[0,5] = CSRf[0,5] & ~writevalue[0,5]; }
+                    case 2: { CSRf[5,3] = CSRf[5,3] & ~writevalue[0,3]; }
+                    case 3: { CSRf = CSRf & ~writevalue[0,8]; }
+                    default: {}
+                } }
             }
         }
     }
@@ -836,12 +862,10 @@ unit CSRblock(
         if( start & ~|csrRegister[4,8] ) {
             switch( function3[0,2] ) {
                 case 2b00: {}                                                                                                   // ECALL / EBBREAK
-                case 2b01: {
-                    switch( { ~|rs1, function3[2,1] } ) {                                                                       // CSRRW / CSRRWI
-                        case 2b10: {}
-                        default: { if( SMT ) { CSRF1.writetype = 1; } else { CSRF0.writetype = 1; } }
-                    }
-                }
+                case 2b01: { switch( { ~|rs1, function3[2,1] } ) {                                                              // CSRRW / CSRRWI
+                    case 2b10: {}
+                    default: { if( SMT ) { CSRF1.writetype = 1; } else { CSRF0.writetype = 1; } }
+                }  }
                 default: {
                     if( |rs1 ) { if( SMT ) { CSRF1.writetype = function3[0,2]; } else { CSRF0.writetype = function3[0,2]; } }
                 }
@@ -849,23 +873,19 @@ unit CSRblock(
         }
 
         switch( csrRegister[8,4] ) {
-            case 4h0: {
-                switch( csrRegister[0,2] ) {
-                    case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                                            // frflags
-                    case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                                             // frrm
-                    case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                                       // frcsr
-                    default: {}
-                }
-            }
+            case 4h0: { switch( csrRegister[0,2] ) {
+                case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                                                // frflags
+                case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                                                 // frrm
+                case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                                           // frcsr
+                default: {}
+            } }
             case 4h3: { result = $CPUISA$; }
-            case 4hc: {
-                switch( { csrRegister[7,1], csrRegister[0,2] } ) {
-                    case 3h0: { result = SMT ? CYCLE.counter1 : CYCLE.counter0; }
-                    case 3h1: { result = TIMER.counter; }
-                    case 3h2: { result = SMT ? INSTRET.counter1 : INSTRET.counter0; }
-                    default: {}
-                }
-                }
+            case 4hc: { switch( { csrRegister[7,1], csrRegister[0,2] } ) {
+                case 3h0: { result = SMT ? CYCLE.counter1 : CYCLE.counter0; }                                                   // CYCLES PER HART
+                case 3h1: { result = TIMER.counter; }                                                                           // TOTAL CYCLES
+                case 3h2: { result = SMT ? INSTRET.counter1 : INSTRET.counter0; }                                               // INSTRUCTIONS RETIRED PER HART
+                default: {}
+            } }
             case 4hf: { result = SMT; }                                                                                         // HART ID
             default: {}
         }

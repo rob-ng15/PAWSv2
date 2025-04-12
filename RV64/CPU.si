@@ -27,7 +27,7 @@ unit PAWSCPU(
     output  uint1   DMA_AUDIO_START,                                                                                            // DMA CONTROLLER FLAGS     CPU TO DMA START FLAG
     input   uint1   DMA_AUDIO_REQ,                                                                                              //                          DMA START REQUEST WHEN != 0
     input   uint1   DMA_AUDIO_ACTIVE                                                                                            //                          DMA ACTIVE
-) {
+)  {
     uint9   STATE = 8b00000001;
         $$ STATE_RESET      = 1
         $$ STATE_DMA_START  = 2
@@ -45,12 +45,17 @@ unit PAWSCPU(
     uint1   COMMIT = uninitialized;                 uint1   COMMIT_SMT = uninitialised;                                         // COMMIT RESULT TO REGISTERS FLAG AND TO WHICH THREAD
     uint1   SMT = 0;                                                                                                            // SMT FLAG
     uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;                                    // PROGRAMS COUNTERS FOR MAIN AND SMT THREADS
+    uint$addr_width$ nextPC = uninitialised;        uint64 AUIPCLUI = uninitialised;                                            // NEXT PC AND AUIPCLUI CACHING
 
     uint64  result <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.RESULT :                                                                 // SELECT RESULT FROM UNIT
                       RV64CONTROL.IS_FAST ? RV64CONTROL.IS_ALU ? { ( RV64CONTROL.opCode[1,1] & RV64CONTROL.IS_ALU32SIGNX ) ? {32{ALU.result[31,1]}} : ALU.result[32,32],
                                                                    ALU.result[0,32] } :                                         // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
-                                            EXECUTEFAST.result :
-                                            EXECUTESLOW.result;
+                                            RV64CONTROL.IS_AUIPCLUI ? AUIPCLUI :
+                                            RV64CONTROL.IS_JAL ? nextPC :
+                                                                MEMORY.memoryinput :
+                                            RV64CONTROL.IS_ALU ? { RV64CONTROL.opCode[1,1] ? {32{ALUMD.result[31,1]}} : ALUMD.result[32,32], ALUMD.result[0,32] } :
+                                            RV64CONTROL.IS_CSR ? CSR.result :
+                                            RV64CONTROL.function7[3,1] ? MEMORY.memoryinput : RV64CONTROL.function7[2,1] ? 0 : MEMORY.memoryinput;
     uint1   frd <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.F_RD : ( RV64CONTROL.IS_LOAD & RV64CONTROL.opCode[0,1] );                   // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
     uint1   write <:: COMMIT & RV64CONTROL.writeRegister;                                                                       // WRITE TO REGISTERS FLAG
 
@@ -65,17 +70,6 @@ unit PAWSCPU(
         accesssize :> accesssize
     );
 
-    cpuexecuteFASTPATH EXECUTEFAST(                                                                                             // RISC-V SINGLE CYCLE OPERATIONS
-        function3 <: RV64CONTROL.function3,
-        function7 <: RV64CONTROL.function7,
-        memoryinput <: MEMORY.memoryinput,
-        AUIPCLUI <: RV64CONTROL.AUIPCLUI,
-        nextPC <: RV64CONTROL.nextPC,
-        isAUIPCLUI <: RV64CONTROL.IS_AUIPCLUI,
-        isJAL <: RV64CONTROL.IS_JAL,
-        isFENCE <: RV64CONTROL.IS_FENCE
-    );
-
     alu ALU(                                                                                                                    // SINGLE CYCLE INTEGER OPERATIONS
         OP <: RV64CONTROL.ALUOP,
         immediate <: RV64CONTROL.opCode[3,1],                                                                                   //  IMMEDIATE OR SOURCEREG2 FLAG
@@ -87,21 +81,23 @@ unit PAWSCPU(
         LT <: RV64CONTROL.COMPARISONS[2,1], LTU <: RV64CONTROL.COMPARISONS[3,1]
     );
 
-    cpuexecuteSLOWPATH EXECUTESLOW(                                                                                             // RISC-V MULTI-CYCLE OPERATIONS
-        SMT <: SMT,
-        size32 <: RV64CONTROL.opCode[1,1],
-        size32extend <: RV64CONTROL.IS_ALU32SIGNX,
-        function3 <: RV64CONTROL.function3,
-        function7 <: RV64CONTROL.function7,
-        rs1 <: RV64CONTROL.rs1, rs2 <: RV64CONTROL.rs2,
+    aludivision ALUMD(                                                                                                          // INTEGER 32/64 BIT SIGNED/UNSIGNED DIVISION
+        size32 <: RV64CONTROL.opCode[1,1], function3 <: RV64CONTROL.function3,
         sourceReg1 <: RV64CONTROL.sourceReg1, S1_abs32 <: RV64CONTROL.S1_abs32, S1_abs64 <: RV64CONTROL.S1_abs64,
-        sourceReg2 <: RV64CONTROL.sourceReg2, S2_abs32 <: RV64CONTROL.S2_abs32, S2_abs64 <: RV64CONTROL.S2_abs64,
-        memoryinput <: MEMORY.memoryinput,
-        isALU <: RV64CONTROL.IS_ALU,
-        isCSR <: RV64CONTROL.IS_CSR,
-        isATOMIC <: RV64CONTROL.IS_ATOMIC,
+        sourceReg2 <: RV64CONTROL.sourceReg2, S2_abs32 <: RV64CONTROL.S2_abs32, S2_abs64 <: RV64CONTROL.S2_abs64
+    );
+
+    aluA ALUA(                                                                                                                  // ATOMIC MEMORY OPERATIONS
+        function7 <: RV64CONTROL.function7[2,5], memoryinput <: MEMORY.memoryinput, sourceReg2 <: RV64CONTROL.sourceReg2
+    );
+
+    CSRblock CSR(                                                                                                               // RISC-V CSR REGISTERS
+        SMT <: SMT,                                                                                                             //  HARTID == 0 MAIN THREAD == 1 SMT THREAD
+        function3 <: RV64CONTROL.function3,
+        rs1 <: RV64CONTROL.rs1,
+        sourceReg1 <: RV64CONTROL.sourceReg1,
         FPUnewflags <: EXECUTEFPU.OUT_FPUFLAGS,
-        CSRupdateFPUflags <: EXECUTEFPU.CSR_UPDATE_FPUFLAGS,
+        updateFPUflags <: EXECUTEFPU.CSR_UPDATE_FPUFLAGS,
         incCSRinstret <: STATE[8,1]
     );
 
@@ -111,9 +107,9 @@ unit PAWSCPU(
         FUNCTION7 <: RV64CONTROL.function7,
         RS1 <: RV64CONTROL.rs1, RS2 <: RV64CONTROL.rs2,
         I_1 <: RV64CONTROL.sourceReg1, I_1_ABS32 <: RV64CONTROL.S1_abs32, I_1_ABS64 <: RV64CONTROL.S1_abs64,
-        F_1 <: RV64CONTROL.sourceReg1F, F_1_X <: RV64CONTROL.sourceReg1Fx, F_1_CP <: RV64CONTROL.sourceReg1Fxopp, F_1_TYPE <: RV64CONTROL.typeAF, F_1_TYPE_CP <: RV64CONTROL.typeAopp,
-        F_2 <: RV64CONTROL.sourceReg2F, F_2_X <: RV64CONTROL.sourceReg2Fx, F_2_TYPE <: RV64CONTROL.typeBF,
-        F_3_X <: RV64CONTROL.sourceReg3Fx, F_3_TYPE <: RV64CONTROL.typeCF,
+        F_1 <: RV64CONTROL.sourceReg1F, F_1_X <: RV64CONTROL.sourceReg1Fx, F_1_CP <: RV64CONTROL.sourceReg1Fxopp, F_1_TYPE <: RV64CONTROL.type_1F, F_1_TYPE_CP <: RV64CONTROL.typeAopp,
+        F_2 <: RV64CONTROL.sourceReg2F, F_2_X <: RV64CONTROL.sourceReg2Fx, F_2_TYPE <: RV64CONTROL.type_2F,
+        F_3_X <: RV64CONTROL.sourceReg3Fx, F_3_TYPE <: RV64CONTROL.type_3F,
         F1_OR_F2_INF <: RV64CONTROL.F1_OR_F2_INF,
         F1_AND_F2_INF <: RV64CONTROL.F1_AND_F2_INF,
         F1_OR_F2_NAN <: RV64CONTROL.F1_OR_F2_NAN,
@@ -124,7 +120,7 @@ unit PAWSCPU(
         FLT <: RV64CONTROL.FLT, FEQ <: RV64CONTROL.FEQ,
         IS_FASTFPU <: RV64CONTROL.IS_FASTFPU,
         IS_FPUCONVERT <: RV64CONTROL.IS_FPUCONVERT,
-        IN_FPUFLAGS <: EXECUTESLOW.FPUflags
+        IN_FPUFLAGS <: CSR.FPUflags
     );
 
     memory_controller MEMORY(
@@ -132,7 +128,7 @@ unit PAWSCPU(
         accesssize <: RV64CONTROL.accesssize, IS_MA <: RV64CONTROL.IS_MA, IS_64 <: RV64CONTROL.IS_MEM64,
         IS_FLOAT <:RV64CONTROL.opCode[0,1], IS_UNSIGNED <: RV64CONTROL.function3[2,1],
         loadAddress <: RV64CONTROL.loadAddress, storeAddress <: RV64CONTROL.storeAddress,
-        SMT <: SMT, pc <: pc, pcSMT <: pcSMT, fenceACTIVE <: EXECUTEFAST.fenceACTIVE,
+        SMT <: SMT, pc <: pc, pcSMT <: pcSMT,
         readdata <: readdata, memorybusy <: memorybusy,
         address :> address,
         writedata :> writedata,
@@ -143,25 +139,26 @@ unit PAWSCPU(
     RV64CONTROL.PC := SMT ? pcSMT : pc;                                                                                         // SELECT PROGRAM COUNTER FOR THIS CYCLE
 
     MEMORY.start := {                                                                                                           // MEMORY CONTROLLER FLAGS
-        RV64CONTROL.IS_STORE & ( ( STATE[4,1] & RV64CONTROL.IS_FAST ) | ( STATE[6,1] & ~( EXECUTESLOW.busy | EXECUTEFPU.BUSY ) ) ),
+        RV64CONTROL.IS_STORE & ( ( STATE[4,1] & RV64CONTROL.IS_FAST ) | ( STATE[6,1] & ~( ALUMD.busy | EXECUTEFPU.BUSY ) ) ),
         STATE[3,1] & RV64CONTROL.IS_LOAD & ~MEMORY.busy,
         STATE[8,1] & ~( DMAREQ | DMA_AUDIO_REQ )
     };
     MEMORY.storedata := RV64CONTROL.IS_FAST ? RV64CONTROL.opCode[0,1] ? RV64CONTROL.sourceReg2F :                               //  SELECT RESULT TO STORE  FAST FLOATING-POINT REGISTER
                                                                         RV64CONTROL.sourceReg2 :                                //                          FAST INTEGER REGISTER
-                                              EXECUTESLOW.memoryoutput;                                                         //                          SLOW ATOMIC MEMORY OPERATION
+                                              RV64CONTROL.function7[3,1] ? ALUA.result : RV64CONTROL.sourceReg2;                //                          SLOW ATOMIC MEMORY OPERATION
 
     DMASTART := STATE[1,1] & DMAREQ; DMA_AUDIO_START := STATE[1,1] &  ~DMAREQ & DMA_AUDIO_REQ;                                  // DMA CONTROLLER START FLAGS
-    EXECUTESLOW.start := ( STATE[4,1] & ~RV64CONTROL.IS_FAST & ~RV64CONTROL.IS_FPU ) | ( STATE[5,1] & ~MEMORY.busy );           // CPU CSR, ATOMIC, INTEGER DIVIDE START FLAG
+    ALUMD.start := ( STATE[4,1] & ~RV64CONTROL.IS_FAST & RV64CONTROL.IS_ALU );
+    CSR.start := ( STATE[4,1] & RV64CONTROL.IS_CSR & |RV64CONTROL.function3 ); CSR.csrRegister := { RV64CONTROL.function7, RV64CONTROL.rs2 };
     EXECUTEFPU.START := STATE[4,1] & RV64CONTROL.IS_FPU;                                                                        // CPU FPU START FLAG
 
-    COMMIT := STATE[7,1] & ( ~MEMORY.busy & ~EXECUTESLOW.busy );                                                                // COMMIT TO REGISTERS FLAG
+    COMMIT := STATE[7,1] & ( ~MEMORY.busy & ~ALUMD.busy );                                                                      // COMMIT TO REGISTERS FLAG
 
     always {
         onehot( STATE ) {
             case 0: {                                                                                                           // STATE_RESET
                 if( |resetCounter ) {
-                    resetCounter = resetCounter - ~( memorybusy | DMAACTIVE | EXECUTESLOW.busy | EXECUTEFPU.BUSY |              // -1 WHEN ALL UNITS ARE NO LONGER BUSY
+                    resetCounter = resetCounter - ~( memorybusy | DMAACTIVE | ALUMD.busy | EXECUTEFPU.BUSY |                    // -1 WHEN ALL UNITS ARE NO LONGER BUSY
                                                      MEMORY.busy );
                 } else {
                     STATE = $STATE_NEXT$;
@@ -185,14 +182,18 @@ unit PAWSCPU(
             }
             case 4: {                                                                                                           // STATE_EXEC
                 STATE = ( RV64CONTROL.IS_FPU | RV64CONTROL.IS_CSR | RV64CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ :                   //      MULTICYCLE FPU CSR ATOMIC -> MULTI
-                                                                                              $STATE_COMMIT$;                   //      ALU DIVISION FAST -> COMMIT
+                                                                                              $STATE_COMMIT$;                   //      ALU DIVISION OR FAST -> COMMIT
+                if( RV64CONTROL.IS_FENCE ) {
+                    MEMORY.fenceACTIVE = { |RV64CONTROL.function7[1,2], ~RV64CONTROL.function3[0,1] };
+                }
+                nextPC = RV64CONTROL.nextPC; AUIPCLUI = RV64CONTROL.AUIPCLUI;
             }
             case 5: { if( ~MEMORY.busy ) { STATE = $STATE_MULTI$; } }                                                           // STATE LOAD WAIT FOR ATOMIC MEMORY OPERATIONS
-            case 6: { if( ~( EXECUTESLOW.busy | EXECUTEFPU.BUSY ) ) { STATE = $STATE_COMMIT$; } }                               // STATE_MULTI, WAIT FOR CSR, ATOMIC FLOATING-POINT TO FINISH
+            case 6: { if( ~EXECUTEFPU.BUSY ) { STATE = $STATE_COMMIT$; } }                                                      // STATE_MULTI, WAIT FOR CSR, ATOMIC FLOATING-POINT TO FINISH
             case 7: {                                                                                                           // STATE_COMMIT
-                if( ~MEMORY.busy & ~EXECUTESLOW.busy ) {                                                                        //      WAIT FOR LOAD/STORE/DIVIDE TO FINISH
+                if( ~MEMORY.busy & ~ALUMD.busy ) {                                                                              //      WAIT FOR LOAD/STORE/DIVIDE TO FINISH
                     pc = SMT ? pc : RV64CONTROL.newPC; pcSMT = SMT ? RV64CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;       //      MOVE TO NEXT INSTRUCTION
-                    if( ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; }                                            //      SWITCH THREADS IF ACTIVE AND NOT FENCED
+                    if( ~MEMORY.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; }                                                 //      SWITCH THREADS IF ACTIVE AND NOT FENCED
                     STATE = $STATE_NEXT$;
                 }
             }
@@ -200,107 +201,6 @@ unit PAWSCPU(
                 RV64CONTROL.cacheselect = ( DMAREQ | DMA_AUDIO_REQ );                                                           // SELECT DATA CACHE FOR DMA, INSTRUCTION CACHE FOR FETCH
                 STATE = ( DMAREQ | DMA_AUDIO_REQ ) ? $STATE_DMA_START$ : $STATE_FETCH$;
             }
-        }
-    }
-}
-
-unit cpuexecuteFASTPATH(
-    input   uint3   function3,
-    input   uint7   function7,
-    input   int64   memoryinput,
-    input   uint64  AUIPCLUI,
-    input   uint$addr_width$  nextPC,
-    input   uint1   isAUIPCLUI,
-    input   uint1   isJAL,
-    input   uint1   isFENCE,
-    output  int64   result,
-    output  uint2   fenceACTIVE(0)
-) {
-    result := isAUIPCLUI ? AUIPCLUI :                                                                                           // LUI AUIPC
-                   isJAL ? nextPC :                                                                                             // JAL[R]
-                           memoryinput;                                                                                         // INTEGER/FLOAT LOAD SIGN EXTENDED/NAN BOIXED BY LOAD UNIT
-
-    fenceACTIVE := isFENCE ? { |function7[1,2], ~function3[0,1] } : fenceACTIVE;                                                // SET FENCE ACTIVE { IO, MEM }
-}
-
-unit cpuexecuteSLOWPATH(
-    input   uint1   size32,
-    input   uint1   size32extend,
-    input   uint1   start,
-    output  uint1   busy(0),
-    input   uint1   SMT,
-    input   uint3   function3,
-    input   uint7   function7,
-    input   uint5   rs1,
-    input   uint5   rs2,
-    input   int64   sourceReg1,
-    input   uint32  S1_abs32,
-    input   uint64  S1_abs64,
-    input   int64   sourceReg2,
-    input   uint32  S2_abs32,
-    input   uint64  S2_abs64,
-    input   int64   memoryinput,
-    output  int64   memoryoutput,
-    output  int64   result,
-    input   uint1   incCSRinstret,
-    input   uint1   isCSR,
-    input   uint1   isATOMIC,
-    input   uint1   isALU,
-    output  uint8   FPUflags,
-    input   uint5   FPUnewflags,
-    input   uint1   CSRupdateFPUflags
-) {
-    uint3   STATE = 1;
-        $$ STATE_CPUSLOW_IDLE       = 1
-        $$ STATE_CPUSLOW_CSR_ATOMIC = 2
-        $$ STATE_CPUSLOW_DIVISION   = 4
-
-    uint3   operation <:: { isALU, isATOMIC, isCSR };                                                                           // DETERMINE OPERATION, DIVIDE, AMO, CSR
-
-    aluA ALUA(                                                                                                                  // ATOMIC MEMORY OPERATIONS
-        function7 <: function7[2,5], memoryinput <: memoryinput, sourceReg2 <: sourceReg2
-    );
-
-    CSRblock CSR(                                                                                                               // RISC-V CSR REGISTERS
-        SMT <: SMT,                                                                                                             //  HARTID == 0 MAIN THREAD == 1 SMT THREAD
-        function3 <: function3,
-        rs1 <: rs1,
-        sourceReg1 <: sourceReg1,
-        FPUflags :> FPUflags,
-        FPUnewflags <: FPUnewflags,
-        updateFPUflags <: CSRupdateFPUflags,
-        incCSRinstret <: incCSRinstret
-    );
-
-    aludivision ALUMD(                                                                                                          // INTEGER 32/64 BIT SIGNED/UNSIGNED DIVISION
-        size32 <: size32, function3 <: function3,
-        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64,
-        sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32, S2_abs64 <: S2_abs64
-    );
-
-    CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                      // START FLAGS
-    CSR.csrRegister := { function7, rs2 };                                                                                      // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
-
-    result :=    isCSR ? |function3 ? CSR.result : 0 :                                                                          //  CSR
-              isATOMIC ? function7[3,1] ? memoryinput : function7[2,1] ? 0 : memoryinput :                                      //  ATOMIC LOAD - MODIFY - STORE
-                         { ( size32 & size32extend ) ? {32{ALUMD.result[31,1]}} : ALUMD.result[32,32], ALUMD.result[0,32] };    //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
-
-    memoryoutput := function7[3,1] ? ALUA.result : sourceReg2;                                                                  //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORYOUTPUT
-
-    busy := ( STATE[0,1] & start ) | ( STATE[2,1] & ALUMD.busy );
-
-    always {
-        onehot( STATE ) {
-            case 0: {                                                                                                           // WAIT FOR START
-                if( start ) {
-                    onehot( operation ) {
-                        default: { STATE = $STATE_CPUSLOW_CSR_ATOMIC$; }                                                        //  CSR OR ATOMIC-MEMORY-OPERATION
-                        case 2: { STATE = $STATE_CPUSLOW_DIVISION$; }                                                           //  DIVISION
-                    }
-                }
-            }
-            case 1: { STATE = $STATE_CPUSLOW_IDLE$; }                                                                           // CSR OR AMO
-            case 2: { if( ~ALUMD.busy ) { STATE = $STATE_CPUSLOW_IDLE$; } }                                                     // DIVISION
         }
     }
 }
@@ -336,7 +236,7 @@ unit memory_controller(
 
     output  uint64  memoryinput,
     input   uint64  storedata
-) {
+)  {
     uint5   STATE = 1;
         $$ STATE_FSL_WAIT       = 1
 
@@ -445,7 +345,7 @@ unit signnanbox(                                                                
     input   uint1   byteaccess,
     input   uint64  memoryinput,
     output  uint64  readdata
-) {
+)  {
     always {
         switch( accesssize ) {
             case 2b00: {                                                                                                        // SIGN EXTEND 8 BIT LOAD ( not for floats )

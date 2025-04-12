@@ -405,10 +405,7 @@ void copper_startstop( unsigned char status ) {
 
 void copper_program( unsigned short address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 ) {
     *BACKGROUND_COPPER_ADDRESS = address;
-    *BACKGROUND_COPPER_OP = command;
-    *BACKGROUND_COPPER_OPD = reg1;
-    *BACKGROUND_COPPER_OPF = flag;
-    *BACKGROUND_COPPER_OPL = reg2;
+    *BACKGROUND_COPPER_OP = ( ( command & 0xf ) << 14 ) | ( ( reg1 & 0x7 ) << 11 ) | ( ( flag & 0x1 ) << 10 ) | ( reg2 & 0x7f );
     *BACKGROUND_COPPER_PROGRAM = 1;
 }
 

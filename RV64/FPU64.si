@@ -108,8 +108,7 @@ unit fpu_execute(
     );
 
     floatcalc FPUCALC(                                                                                                          // FLOATING POINT CALCULATIONS CONTROLLER
-        dsh <: FUNCTION7[0,2],                                                                                                  //  RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
-        BIAS <: BIAS,
+        START <:: STATE[1,1], dsh <: FUNCTION7[0,2], BIAS <: BIAS,                                                              //  RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
         OPCODE <: OPCODE, FUNCTION3 <: FUNCTION3, FUNCTION7 <: FUNCTION7[2,5],
         F_1_X <: F_1_X, F_2_X <: F_2_X, F_3_X <: F_3_X,
         F_1_TYPE <: F_1_TYPE, F_2_TYPE <: F_2_TYPE, F_3_TYPE <: F_3_TYPE,
@@ -135,7 +134,7 @@ unit fpu_execute(
         F_1 <:F_1, F_1_X <:F_1_X, F_1_TYPE <: F_1_TYPE
     );
 
-    FPUCALC.START := STATE[1,1] & operation[2,1]; CSR_UPDATE_FPUFLAGS := STATE[3,1];                                            // START FLAG AND UPDATE CSR
+    CSR_UPDATE_FPUFLAGS := STATE[3,1];                                                                                          // UPDATE CSR
     FPUF_CP.SBIAS := RS2[0,1] ? $BIAS64$ : RS2[1,1] ? $BIAS16$ : $BIAS32$;                                                      // SELECT BIAS ( SOURCE FOR CHANGE PRECISION )
     OUT_FPUFLAGS := IN_FPUFLAGS | (                                                                                             // MERGE OLD AND NEW FLAGS
         IS_FPUCONVERT ? converttype[2,1] ? FPUF2IL.OP_FPUFLAGS :
@@ -156,11 +155,9 @@ unit fpu_execute(
         onehot( STATE ) {
             case 0: {                                                                                                           // STATE_FPU_IDLE WAIT FOR FPU START FLAG
                 BUSY = START; if( START ) {
-                    onehot( operation ) {
-                        case 0: { STATE = $STATE_FPU_CALC_FINISH$; }                                                            // FMIN FMAX FSGNJ FSGNJN FSGNJX FEQ FLT FLE FCLASS FMV
-                        case 1: { STATE = $STATE_FPU_CALC_WAIT$; }                                                              // INT<->FLOAT, PRECISION CHANGE, ROUDNING
-                        case 2: { STATE = $STATE_FPU_CALC_START$; }                                                             // CALCULATION -> ALLOW PROPOGATION THEN DISPATCH
-                    }
+                    STATE = operation[2,1] ? $STATE_FPU_CALC_START$ :                                                           // CALCULATION -> ALLOW PROPOGATION THEN DISPATCH
+                                             $STATE_FPU_CALC_FINISH$;                                                           // F[MIN][MAX] FSGNJ[N][X] F[EQ][LT][LE] FCLASS FMV
+                                                                                                                                // INT<->FLOAT, PRECISION CHANGE, ROUDNING
                 }
             }
             case 1: { STATE = $STATE_FPU_CALC_WAIT$; }                                                                          // STATE_FPU_CALC_START
@@ -401,7 +398,7 @@ unit fpuSINGLECYCLE(
 ) {
     floatclass FPUclass(                                                                                                        // GENERATE FCLASS
         dsh <: dsh,                                                                                                             // DOUBLE/SINGLE/HALF FLAG
-        sign1F <: sign1F, F_1_TYPE <: F_1_TYPE, F1_ZERO_FRACTION <: F1_ZERO_FRACTION                                            // SIGN, { INF sNAN qNAN ZERO } FLAG TO CLASSIFY, IS FRACTION == 0?
+        sign1F <: sign1F, F_1_TYPE <: F_1_TYPE, F1_ZERO_FRACTION <: F1_ZERO_FRACTION                                            // SIGN, { INF sNAN qNAN ZERO } FLAG TO CLASSIFY, FRACTION == 0?
     );
     floateqltle FPUeqltle(                                                                                                      // GENERATE FEQ FLT FLE
         FUNCTION3 <: FUNCTION3,                                                                                                 // COMPARISON SWITCH
@@ -623,17 +620,17 @@ unit typeF(
     output  uint1   zeroFRACTION,                                                                                               // FRACTION PART 0?
     output  uint4   type                                                                                                        // { INF sNAN qNAN ZERO } OF INPUT REGISTER
 ) {
-    uint1   expFF <:: ( dsh[0,1] ? &fp64(a).exponent : dsh[1,1] ? &fp16(a).exponent : &fp32(a).exponent );                      // CHECK FOR EXP == ALL 1s ( signals INF/NAN )
+    uint1   expFF <:: &( dsh[0,1] ? fp64(a).exponent : dsh[1,1] ? fp16(a).exponent : fp32(a).exponent );                        // CHECK FOR EXP == ALL 1s ( signals INF/NAN )
     uint1   exp00 <:: ~|( dsh[0,1] ? fp64(a).exponent : dsh[1,1] ? fp16(a).exponent : fp32(a).exponent );                       // CHECK FOR EXP == ALL 0s ( signals ZERO/SUBNORMAL )
-    uint1   NANboxed <:: ~dsh[0,1] & ( dsh[1,1] ? &a[16,48] : &a[32,32] );                                                      // CHECK SINGLE/HALF IS NAN BOXED
-    uint6   MSB <:: dsh[0,1] ? 51 : dsh[1,1] ? 9 : 22;                                                                          // IDENTIFY MOST SIGNIFICANT BIT TO DETERMINE sNAN OR qNAN
+    uint1   NANboxed <:: ~dsh[0,1] & &( dsh[1,1] ? a[16,48] : a[32,32] );                                                       // CHECK SINGLE/HALF IS NAN BOXED
+    uint6   MSB <:: dsh[0,1] ? 51 : dsh[1,1] ? 9 : 22;
 
     zeroFRACTION := ( dsh[0,1] ? ~|fp64(a).fraction : dsh[1,1] ? ~|fp16(a).fraction : ~|fp32(a).fraction );                     // FRACTION == 0
 
     type := dsh[0,1] | NANboxed ? {                                                                                             // IF DOUBLE, OR NAN-boxed SINGLE/HALF, SPECIFY TYPE
         expFF & zeroFRACTION,                                                                                                   // INF
-        expFF & ~fp64(a).fraction[MSB,1] & ~zeroFRACTION,                                                                       // sNAN
-        expFF & fp64(a).fraction[MSB,1],                                                                                        // qNAN
+        expFF & ~fp64(a).fraction[ MSB, 1 ] & ~zeroFRACTION,                                                                    // sNAN
+        expFF & fp64(a).fraction[ MSB, 1 ],                                                                                     // qNAN
         exp00                                                                                                                   // ZERO / SUBNORMAL
     } : 4b0010;                                                                                                                 // SINGLE/HALF NOT BOXED, ISSUE qNAN
 }
@@ -769,8 +766,8 @@ unit donormalexp(
     output  int13   newexponent,                                                                                                // ADJUSTED EXPONENT FOR ADDITION / SUBTRACTION
     output  uint53  normalfraction                                                                                              // NORMALISED FRACTION 1.xxx
 ) {
-    uint106 temporary <:: ( bitstream << CLZ.count );                                                                           // SHIFT FRACTION LEFT SO 1.xxxx
     clz106 CLZ( bitstream <: bitstream );                                                                                       // COUNT LEADING ZEROS
+    uint106 temporary <:: ( bitstream << CLZ.count );                                                                           // SHIFT FRACTION LEFT SO 1.xxxx
 
     normalfraction := temporary[ 52, 53 ];                                                                                      // EXTRACT 53 BITS ( 1 extra for rounding )
     newexponent := exp - CLZ.count;                                                                                             // ADDSUB EXPONENT ADJUSTMENT
@@ -826,9 +823,9 @@ unit clz64(
     input   uint64  number,
     output! uint7   zeros
 ) {
-    algorithm <autorun> { while(1) {
+    always {
         ( zeros ) = clz_silice_64( number );
-    } }
+    }
 }
 unit intlong2float(                                                                                                             // 32/64 BIT INTEGER TO 16/32/64 BIT FLOATING POINT
     input   uint2   rm,                                                                                                         // ROUNDING MODE
@@ -1097,13 +1094,13 @@ unit floatfused(
                             default: { special = NV ? 7b0000010 : 7b1101000; }                                                  // INVALID MIXED SIGN INFINITY, OR MULTIPLICATION IS INFINITY
                         }
                     }
-                            case 2b11: {                                                                                        // INFINITY AND ZERO INPUTS
-                                switch( { F1_OR_F2_INF, F_3_TYPE[3,1] } ) {
-                                    case 2b01: { special = 7b0011000; }                                                         // MULTIPLICATION IS 0 AND C INPUT IS INFINITY
-                                    case 2b10: { special = 7b1101000;}                                                          // MULTIPLICATION IS INFINITY, C INPUT IS 0
-                                    default: { special = 7b0000010; }                                                           // INFINITY x ZERO, INVALID qNAN
-                                }
-                            }
+                    case 2b11: {                                                                                                // INFINITY AND ZERO INPUTS
+                        switch( { F1_OR_F2_INF, F_3_TYPE[3,1] } ) {
+                            case 2b01: { special = 7b0011000; }                                                                 // MULTIPLICATION IS 0 AND C INPUT IS INFINITY
+                            case 2b10: { special = 7b1101000;}                                                                  // MULTIPLICATION IS INFINITY, C INPUT IS 0
+                            default: { special = 7b0000010; }                                                                   // INFINITY x ZERO, INVALID qNAN
+                        }
+                    }
                 }
             }
         }
@@ -1119,7 +1116,7 @@ unit prep_float_divide(
     output  uint108 sigA,                                                                                                       // DIVIDEND LEFT ALIGNED
     output  uint106 sigB                                                                                                        // DIVISOR RIGHT ALIGNED
 ) {
-    quotientexp := ( fp64( a ).exponent - fp64( b ).exponent ) - ( fp64(b).fraction > fp64(a).fraction );                       // SUBTRACT EXPONENTS FOR RESULT ( -1 if b fraction > a fraction )
+    quotientexp := ( fp64( a ).exponent - fp64( b ).exponent ) - ( fp64(b).fraction > fp64(a).fraction );                       // SUBTRACT EXPONENTS FOR RESULT ( -1 if b  > a  )
     sigA := dsh[0,1] ? { 1b1, fp64(a).fraction, 55b0 } :                                                                        // DIVIDEND LEFT ALIGNED
             dsh[1,1] ? { 1b1, fp64(a).fraction[42,10], 13b0 } :
                        { 1b1, fp64(a).fraction[29,23], 26b0 };

@@ -28,7 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <PAWSlibrary.h>
 
 // Memory config.
-#define HEAP_SIZE_MB 5.5
+#define HEAP_SIZE_MB 16
 
 qboolean isDedicated;
 

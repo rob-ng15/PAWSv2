@@ -227,7 +227,7 @@ void gprsetclippingactive(flag)
      Bool flag;
 {
   if( flag ) {
-    gpu_crop( clipr.x * xscale, clipr.y * yscale, ( clipr.x + clipr.width ) * xscale, ( clipr.y + clipr.height ) * yscale );
+    gpu_crop( 53 * xscale, 53 * yscale, ( 53 + 894 ) * xscale, ( 53 + 394 ) * yscale );
   } else {
     gpu_crop( CROPFULLSCREEN );
   }

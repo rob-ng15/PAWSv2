@@ -24,8 +24,8 @@ unsigned char volatile *SDCARD_READSTART = (unsigned char volatile *) 0xf400;
 unsigned char volatile *SDCARD_WRITESTART = (unsigned char volatile *) 0xf402;
 unsigned int volatile *SDCARD_SECTOR = (unsigned int *) 0xf404;
 unsigned char volatile *SDCARD_RESET_BUFFERADDRESS = (unsigned char volatile *) 0xf500;
-unsigned int volatile *SDCARD_IN_DATA = (unsigned int volatile *) 0xf504;
-unsigned int volatile *SDCARD_OUT_DATA = (unsigned int volatile *) 0xf504;
+unsigned char volatile *SDCARD_IN_DATA = (unsigned char volatile *) 0xf504;
+unsigned char volatile *SDCARD_OUT_DATA = (unsigned char volatile *) 0xf504;
 
 // DISPLAY UNITS
 unsigned char volatile *VBLANK = (unsigned char volatile *) 0xdf00;
@@ -48,10 +48,7 @@ unsigned char volatile *BACKGROUND_COPPER_STARTSTOP = (unsigned char volatile *)
 unsigned short volatile *BACKGROUND_COPPER_CPUINPUT = (unsigned short volatile *) 0xd008;
 unsigned char volatile *BACKGROUND_COPPER_PROGRAM = (unsigned char volatile *) 0xd00a;
 unsigned short volatile *BACKGROUND_COPPER_ADDRESS = (unsigned short volatile *) 0xd00c;
-unsigned char volatile *BACKGROUND_COPPER_OP = (unsigned char volatile *) 0xd00e;
-unsigned char volatile *BACKGROUND_COPPER_OPD = (unsigned char volatile *) 0xd010;
-unsigned char volatile *BACKGROUND_COPPER_OPF = (unsigned char volatile *) 0xd012;
-unsigned short volatile *BACKGROUND_COPPER_OPL = (unsigned short volatile *) 0xd014;
+unsigned int volatile *BACKGROUND_COPPER_OP = (unsigned int volatile *) 0xd010;
 unsigned char volatile *BACKGROUND_COPPER_MEMRESET = (unsigned char volatile *) 0xd016;
 unsigned short volatile *BACKGROUND_COPPER_MEMVINIT = (unsigned short volatile *) 0xd018;
 
