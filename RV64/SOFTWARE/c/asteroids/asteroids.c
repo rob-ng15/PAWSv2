@@ -226,36 +226,33 @@ unsigned char find_asteroid_space( void ) {
     return( ( spaces_free == 1 ) ? 0xff : asteroid_space );
 }
 
-__attribute__((used)) void move_asteroids( void ) {
-    while(1) {
-        await_vblank();
+void __attribute__((interrupt ("machine"))) move_asteroids( void ) {
+    IRQ_ACK( IRQ_VBLANK );
 
-        for( unsigned char asteroid_number = 0; asteroid_number < MAXASTEROIDS; asteroid_number++ ) {
-            if( ( asteroid_active[asteroid_number] != 0 ) && ( asteroid_active[asteroid_number] < 3 ) ) {
-                update_sprite_compat( ASN( asteroid_number ), asteroid_directions[ asteroid_direction[asteroid_number] ] );
-            }
+    for( unsigned char asteroid_number = 0; asteroid_number < MAXASTEROIDS; asteroid_number++ ) {
+        if( ( asteroid_active[asteroid_number] != 0 ) && ( asteroid_active[asteroid_number] < 3 ) ) {
+            update_sprite_compat( ASN( asteroid_number ), asteroid_directions[ asteroid_direction[asteroid_number] ] );
+        }
 
-            // UFO
-            if( asteroid_active[asteroid_number] == 3 ) {
-                set_sprite_attribute( ASN( asteroid_number ), SPRITE_TILE, 6 );
-                update_sprite_compat( ASN( asteroid_number ), ufo_directions[ufo_leftright + ( level > 2 ? 2 : 0 )] );
-                if( get_sprite_attribute( ASN( asteroid_number), 0 ) == 0 ) {
-                    // UFO OFF SCREEN
-                    asteroid_active[asteroid_number] = 0;
-                    ufo_sprite_number = 0xff; sample_change = 1;
-                }
-            }
-
-            // EXPLOSION - STATIC and countdown
-            if( asteroid_active[asteroid_number] > 5 )
-                asteroid_active[asteroid_number]--;
-
-            if( asteroid_active[asteroid_number] == 5 ) {
+        // UFO
+        if( asteroid_active[asteroid_number] == 3 ) {
+            set_sprite_attribute( ASN( asteroid_number ), SPRITE_TILE, 6 );
+            update_sprite_compat( ASN( asteroid_number ), ufo_directions[ufo_leftright + ( level > 2 ? 2 : 0 )] );
+            if( get_sprite_attribute( ASN( asteroid_number), 0 ) == 0 ) {
+                // UFO OFF SCREEN
                 asteroid_active[asteroid_number] = 0;
-                set_sprite( ASN( asteroid_number ), 0, 0, 0, 0, 0 );
+                ufo_sprite_number = 0xff; sample_change = 1;
             }
         }
-        await_vblank_finish();
+
+        // EXPLOSION - STATIC and countdown
+        if( asteroid_active[asteroid_number] > 5 )
+            asteroid_active[asteroid_number]--;
+
+        if( asteroid_active[asteroid_number] == 5 ) {
+            asteroid_active[asteroid_number] = 0;
+            set_sprite( ASN( asteroid_number ), 0, 0, 0, 0, 0 );
+        }
     }
 }
 
@@ -651,8 +648,7 @@ int main( void ) {
     unsigned short placeAsteroids = 4, asteroid_number = 0;
 
     // INITIALISE ALL VARIABLES AND START THE ASTEROID MOVING THREAD
-    setup_game();
-    SMTSTART( smt_thread );
+    setup_game(); IRQ_VECTOR( (void *)move_asteroids ); IRQ_ON( IRQ_VBLANK, TRUE );
 
     while(1) {
         last_fire = ( last_fire > 0 ) ? last_fire - 1 : 0;

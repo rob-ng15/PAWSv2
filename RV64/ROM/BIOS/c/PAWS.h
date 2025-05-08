@@ -184,10 +184,8 @@ unsigned int volatile *RAMBASE = (unsigned int volatile *) 0xf704;
 unsigned int volatile *RAMTOP = (unsigned int volatile *) 0xf708;
 unsigned int volatile *STACKTOP = (unsigned int volatile *) 0xf70c;
 
-// HANDLE SMT - RUNNING STATUS AND POINTER TO CODE TO RUN
-unsigned int volatile *SMTPC = (unsigned int volatile *) 0xff00;
-unsigned char volatile *SMTSTATUS = (unsigned char volatile *) 0xff04;
-unsigned int volatile *SMTSTACK = (unsigned int volatile *) 0xff08;
+// IRQ_TIMER COMPARATOR
+unsigned long volatile *IRQ_TIMER_COMPARATOR = (unsigned long volatile *) 0xfff0;
 
 // HANDLE MINI DMA CONTROLLER
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;

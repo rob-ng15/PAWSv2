@@ -12,6 +12,12 @@ extern unsigned long CSRcycles( void );
 extern unsigned long CSRinstructions( void );
 extern unsigned long CSRtime( void );
 
+// IRQ FUNCTIONS
+extern void IRQ_VECTOR( void *function );
+extern void IRQ_ON( unsigned int IRQ, unsigned int MIE );
+extern void IRQ_OFF( unsigned int IRQ, unsigned int MIE );
+extern void IRQ_ACK( unsigned int IRQ );
+
 // SMT START AND STOP
 extern void SMTSTOP( void );
 extern void SMTSTART( void * );

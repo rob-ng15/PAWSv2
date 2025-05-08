@@ -27,7 +27,9 @@ extern int errno;
 // RISC-V CSR FUNCTIONS
 unsigned int CSRisa() {
    unsigned int isa;
-   asm volatile ("csrr %0, 0x301" : "=r"(isa));
+   asm volatile (
+       "csrr %0, 0x301"
+       : "=r"(isa));
    return isa;
 }
 
@@ -55,17 +57,51 @@ unsigned long CSRtime() {
     return timer;
 }
 
-// SMT START STOP AND STATUS
-void SMTSTOP( void ) {
-    *SMTSTATUS = 0;
+// IRQ FUNCTIONS
+void IRQ_VECTOR( void *function ) {
+    asm(
+        "csrw mtvec, %0\n\t"
+        :
+        : "r"(function)
+        :
+    );
 }
 
-void SMTSTART( void *code ) {
-    *SMTPC = (unsigned long)code; *SMTSTATUS = 1;
+void IRQ_ON( unsigned int IRQ, unsigned int MIE ) {
+    asm(
+        "csrs mie, %0\n\t"
+        :
+        : "r"(IRQ)
+        :
+    );
+    if( MIE ) {
+        asm(
+            "csrsi mstatus, 8\n\t"
+        );
+    }
 }
 
-unsigned char SMTSTATE( void ) {
-    return( *SMTSTATUS );
+void IRQ_OFF( unsigned int IRQ, unsigned int MIE ) {
+    asm(
+        "csrc mie, %0\n\t"
+        :
+        : "r"(IRQ)
+        :
+    );
+    if( MIE ) {
+        asm(
+            "csrwi   mstatus,0\n\t"
+        );
+    }
+}
+
+void IRQ_ACK( unsigned int IRQ ) {
+    asm(
+        "csrc mip, %0\n\t"
+        :
+        : "r"(IRQ)
+        :
+    );
 }
 
 // DMA CONTROLLER

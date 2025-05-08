@@ -68,11 +68,12 @@ unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
                                 12,  0,  0, 19, 12,  0,  0, 20,
                                 19,  0, 20,  0, 22,  0,  24, 0, 0xff };
 
-// SMT THREAD TO PLAY THE INTRO TUNE
-__attribute__((used)) void playtune( void ) {
-    short trebleposition = 0, bassposition = 0;
+// INTERRUPT THREAD TO PLAY THE INTRO TUNE
+short trebleposition = 0, bassposition = 0;
+void __attribute__((interrupt ("machine"))) playtune( void ) {
+    IRQ_ACK( IRQ_VBLANK );
 
-    while( ( tune_treble[ trebleposition ] != 0xff ) || ( tune_bass[ bassposition ] != 0xff ) ) {
+    if( ( tune_treble[ trebleposition ] != 0xff ) || ( tune_bass[ bassposition ] != 0xff ) ) {
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
                 beep( 1, WAVE_SINE, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
@@ -85,15 +86,9 @@ __attribute__((used)) void playtune( void ) {
                 bassposition++;
             }
         }
+    } else {
+        IRQ_OFF( IRQ_VBLANK, TRUE ); trebleposition = 0; bassposition = 0;
     }
-    SMTSTOP();
-}
-
-void smt_thread( void ) {
-    // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li   sp ,0xff08");               // ADDRESS OF SMT STACKTOP
-    asm volatile ("lwu  sp, (sp)");                 // LOAD FROM SMT STACKTOP
-    asm volatile ("j playtune");
 }
 
 // DRAW WELCOME SCREEN
@@ -825,6 +820,7 @@ int main( int argc, char **argv ) {
 
     // SWITCH SCREEN TO OLD PAWSv2 MODE
     set_background( 0, 0, BKG_RAINBOW );
+    IRQ_VECTOR( (void *)playtune );
 
     unsigned short levelselected;
 
@@ -878,7 +874,7 @@ int main( int argc, char **argv ) {
         powerpills = ( level < 4 ) ? level + 1 : 4;
 
         // ENTER THE MAZE IN 3D - Play tune if level 1
-        set_background( DKBLUE, DKGREEN, BKG_5050_V ); if( !level ) SMTSTART( smt_thread );
+        set_background( DKBLUE, DKGREEN, BKG_5050_V ); if( !level ) IRQ_ON( IRQ_VBLANK, TRUE );
         if( walk_maze( levelwidths[level], levelheights[level] ) ) {
             // PACMAN WILT GRAPHICS
             for( unsigned char i = 0; i < 5; i++ ) {

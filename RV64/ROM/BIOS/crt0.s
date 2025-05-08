@@ -1,5 +1,9 @@
         .global _start
 _start:
+    csrwi   mstatus,0
+    csrwi   mie,0
+    csrwi   mip,0
+
     li  sp,0xf70c
     lwu sp,(sp)
 

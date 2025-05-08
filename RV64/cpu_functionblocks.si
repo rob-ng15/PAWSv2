@@ -4,23 +4,26 @@ unit control(
     input   uint1   cacheselect,
     output  uint2   accesssize,
     output  uint1   IS_MEM64,
-    input   uint1   SMT,
-    input   uint1   COMMIT_SMT,
 
     // PC and instruction decoding
     input   uint$addr_width$ PC,
     input   uint32  instruction,
     input   uint1   compressed,
-    output  uint5   opCode,
-    output  uint3   function3,
-    output  uint7   function7,
-    output  uint5   rs1,
-    output  uint5   rs2,
-    output  int64   immediateValue,
+
+    output  int64   IMMEDIATE,
+    output  uint5   OPCODE,
+    output  uint3   FUNCTION3,
+    output  uint7   FUNCTION7,
+    output  uint5   RS1,
+    output  uint5   RS2,
+    output  uint12  CSR_REG,
+
     output  uint1   IS_AUIPCLUI,
     output  uint1   IS_JAL,
     output  uint1   IS_BRANCH,
     output  uint1   IS_CSR,
+    output  uint1   IS_MRET,
+    output  uint1   IS_WFI,
     output  uint1   IS_ATOMIC,
     output  uint1   IS_FPU,
     output  uint1   IS_LOAD,
@@ -73,8 +76,8 @@ unit control(
 
     // ADDRESS GENERATION
     output  uint64  AUIPCLUI,
-    output! uint$addr_width$  loadAddress,
-    output  uint$addr_width$  storeAddress,
+    output! uint$addr_width$  LOAD_ADDRESS,
+    output  uint$addr_width$  STORE_ADDRESS,
     output  uint1   IS_MA,
     output  uint$addr_width$  nextPC,
     output  uint$addr_width$  newPC
@@ -82,22 +85,28 @@ unit control(
     // INSTRUCTION DECODER AND CPU CONTROL FLAGS
     decoder DECODE(
         INSTRUCTION <: instruction,
-        OPCODE :> opCode,
-        FUNCTION3 :> function3,
-        FUNCTION7 :> function7,
-        RS1 :> rs1,
-        RS2 :> rs2,
-        IMMEDIATE :> immediateValue,
+        OPCODE :> OPCODE,
+        FUNCTION3 :> FUNCTION3,
+        FUNCTION7 :> FUNCTION7,
+        RS1 :> RS1,
+        RS2 :> RS2,
+        IMMEDIATE :> IMMEDIATE,
+        CSR_REG :> CSR_REG,
         ALUOP :> ALUOP
     );
     controlflags FLAGS(
         opCode <: Rtype(instruction).opp[2,5],
+        rd <: Rtype(instruction).rd,
+        rs1 <: Rtype(instruction).sr1,
+        rs2 <: Rtype(instruction).sr2,
         function3 <: Rtype(instruction).f3,
         function7 <: Rtype(instruction).f7,
         IS_AUIPCLUI :> IS_AUIPCLUI,
         IS_JAL :> IS_JAL,
         IS_BRANCH :> IS_BRANCH,
         IS_CSR :> IS_CSR,
+        IS_MRET :> IS_MRET,
+        IS_WFI :> IS_WFI,
         IS_ATOMIC :> IS_ATOMIC,
         IS_LOAD :> IS_LOAD,
         IS_STORE :> IS_STORE,
@@ -132,17 +141,16 @@ unit control(
         PC <: PC,
         I_1 <: I1.rdata0,
         COMPRESSED <: compressed,
-        LOAD_ADDRESS :> loadAddress,
-        STORE_ADDRESS :> storeAddress,
+        LOAD_ADDRESS :> LOAD_ADDRESS,
+        STORE_ADDRESS :> STORE_ADDRESS,
         AUIPCLUI :> AUIPCLUI,
         PC_INC :> nextPC
     );
 
     uint1   Iwrite <:: write & ~frd & |Rtype(instruction).rd;                                                                   // INTEGER REGISTER WRITE SWITCH
     $$for i=1,2 do
-        simple_dualport_bram int64 I$i$[64] = { 0, pad(uninitialized) };                                                        // 32 MAIN, 32 SMT INTEGER REGISTERS
+        simple_dualport_bram int64 I$i$[32] = { 0, pad(uninitialized) };                                                        // 32 MAIN, 32 SMT INTEGER REGISTERS
         regR_I I$i$R(                                                                                                           // INTEGER REGISTERS READ
-            SMT <: SMT,
             I <:> I$i$,
             addr0 <: Rtype(instruction).sr$i$,
             rdata0 :> sourceReg$i$,
@@ -150,7 +158,6 @@ unit control(
             ABS_64 :> S$i$_abs64
         );
         regW I$i$W(                                                                                                             // INTEGER REGISTERS WRITE
-            SMT <: COMMIT_SMT,
             regfile <:> I$i$,
             addr1 <: Rtype(instruction).rd,
             wdata1 <: result,
@@ -158,8 +165,8 @@ unit control(
         );
     $$end
     i_compare I1I2_COMPARE(                                                                                                     // INTEGER REGISTER COMPARISON FLAGS
-        I_1 <: I1.rdata0,
-        I_2 <: I2.rdata0,
+        I_1 <: I1R.rdata0,
+        I_2 <: I2R.rdata0,
         IMMEDIATE <: DECODE.IMMEDIATE,
         REG_IMM <: instruction[5,1],
         FLAGS :> COMPARISONS
@@ -167,9 +174,8 @@ unit control(
 
     uint1   Fwrite <:: write & frd;                                                                                             // FLOAATING POINT REGISTER WRITE SWITCH
     $$for i=1,3 do
-        simple_dualport_bram int64 F$i$[64] = uninitialized;                                                                    // 32 MAIN, 32 SMT FLOAT REGISTERS
+        simple_dualport_bram int64 F$i$[32] = uninitialized;                                                                    // 32 MAIN, 32 SMT FLOAT REGISTERS
         regR_F F$i$R(
-            SMT <: SMT,
             F <:> F$i$,
             addr0 <: R4type(instruction).sr$i$,
             rdata0 :> sourceReg$i$F,
@@ -179,7 +185,6 @@ unit control(
             repack :> sourceReg$i$Fx
         );
         regW F$i$W(
-            SMT <: COMMIT_SMT,
             regfile <:> F$i$,
             addr1 <: Rtype(instruction).rd,
             wdata1 <: result,
@@ -208,7 +213,7 @@ unit control(
     typeF class1Fopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1R.rdata0, type :> typeAopp );                                  // FORCE CLASSIFICATION OF DOUBLE/SINGLE/HALF FOR changeprecision
     repackage_wide Aopp( dsh <: Rtype(instruction).sr2[0,2], a <: F1R.rdata0, repack :> sourceReg1Fxopp );                      // changeprecision SIGN, EXPONENT (with bias), FRACTION
 
-    newPC := FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).f3[0,1] ^ COMPARISONS[ Rtype(instruction).f3[1,2], 1 ] ) ? AGU.BRANCH_ADDRESS : AGU.PC_INC ) :
+    newPC := FLAGS.incPC ? ( FLAGS.IS_BRANCH & ( Rtype(instruction).f3[0,1] ^ I1I2_COMPARE.FLAGS[ Rtype(instruction).f3[1,2], 1 ] ) ? AGU.BRANCH_ADDRESS : AGU.PC_INC ) :
                            ( instruction[3,1] ? AGU.JUMP_ADDRESS : AGU.LOAD_ADDRESS );
 }
 
@@ -267,7 +272,7 @@ unit memsize(
 ) {
     accesssize := cacheselect ? IS_MA ? 2b00 : function3 : 2b10;                                                                // DETERMINE MEMORY ACCESS SIZE - FETCH (cacheselect == 0) 32
                                                                                                                                 //  ELSE BY function3 ( IS_MA AS BYTES )
-    IS_MA := ~IS_ATOMIC & |function3 & (                                                                                        // ATOMIC OPERATIONS CANNOT BE MISALIGNED
+    IS_MA := cacheselect & ~IS_ATOMIC & |function3 & (                                                                          // ATOMIC OPERATIONS CANNOT BE MISALIGNED
                 ( IS_LOAD & ( I20 ^ I1R ) ) |                                                                                   // DETECT MIS-ALIGNED LOADS ( 16, 32, 64 bit with address xx1 )
                 ( IS_STORE & ( I7 ^ I1R ) ) );                                                                                  // DETECT MIS-ALIGNED STORES ( 16, 32, 64 bit with address xx1 )
     IS_MEM64 := &function3;                                                                                                     // DETECT 64 BIT MEMORY ACCESSES
@@ -275,17 +280,14 @@ unit memsize(
 
 // REGISTER READ AND WRITE BLOCKS
 unit regR_I(
-    input   uint1   SMT,
     simple_dualport_bram_port0 I,
     input   uint5   addr0,
     output  uint64  rdata0,
     output  uint32  ABS_32,
     output  uint64  ABS_64
 ) {
-    I.addr0 := { SMT, addr0 }; rdata0 := I.rdata0;                                                                              // SELECT THE REGISTER
-
-    ABS_32 := I.rdata0[31,1] ? -I.rdata0[0,32] : I.rdata0[0,32];                                                                // ABSOLUTE VALUE - 32 BIT
-    ABS_64 := I.rdata0[63,1] ? -I.rdata0       : I.rdata0;                                                                      // ABSOLUTE VALUE - 64 BIT
+    abs_3264 ABS( I <: I.rdata0, ABS_32 :> ABS_32, ABS_64 :> ABS_64 );
+    I.addr0 := addr0; rdata0 := I.rdata0;                                                                              // SELECT THE REGISTER
 }
 unit regR_F(
     input   uint1   SMT,
@@ -297,40 +299,17 @@ unit regR_F(
     output  uint1   zeroFRACTION,
     output  uint64  repack
 ) {
-    uint1   expFF <:: &( dsh[0,1] ? fp64( F.rdata0 ).exponent :                                                                 // CHECK FOR EXP == ALL 1s ( signals INF/NAN )
-                         dsh[1,1] ? fp16( F.rdata0 ).exponent :
-                                    fp32( F.rdata0 ).exponent );
-    uint1   exp00 <:: ~|( dsh[0,1] ? fp64( F.rdata0 ).exponent :                                                                // CHECK FOR EXP == ALL 0s ( signals ZERO/SUBNORMAL )
-                          dsh[1,1] ? fp16( F.rdata0 ).exponent :
-                                     fp32( F.rdata0 ).exponent );
-    uint1   NANboxed <:: ~dsh[0,1] & &( dsh[1,1] ? F.rdata0[16,48] : F.rdata0[32,32] );                                         // CHECK SINGLE/HALF IS NAN BOXED
-    uint6   MSB <:: dsh[0,1] ? 51 : dsh[1,1] ? 9 : 22;                                                                          // IDENTIFY MOST SIGNIFICANT BIT TO DETERMINE sNAN OR qNAN
-
-    zeroFRACTION := ~|( dsh[0,1] ? fp64( F.rdata0 ).fraction :                                                                  // FRACTION == 0
-                        dsh[1,1] ? fp16( F.rdata0 ).fraction :
-                                   fp32( F.rdata0 ).fraction );
-
-    F.addr0 := { SMT, addr0 }; rdata0 := F.rdata0;                                                                              // SELECT THE REGISTER
-
-    type := dsh[0,1] | NANboxed ? {                                                                                             // IF DOUBLE, OR NAN-boxed SINGLE/HALF, SPECIFY TYPE
-        expFF & zeroFRACTION,                                                                                                   // INF
-        expFF & ~fp64( F.rdata0 ).fraction[ MSB, 1 ] & ~zeroFRACTION,                                                           // sNAN
-        expFF & fp64( F.rdata0 ).fraction[ MSB, 1 ],                                                                            // qNAN
-        exp00                                                                                                                   // ZERO / SUBNORMAL
-    } : 4b0010;                                                                                                                 // SINGLE/HALF NOT BOXED, ISSUE qNAN
-
-    repack := dsh[0,1] ? F.rdata0 :                                                                                             // RETURN DOUBLE UNCHANGED
-              dsh[1,1] ? { fp16( F.rdata0 ).sign, 6b0, fp16( F.rdata0 ).exponent, fp16( F.rdata0 ).fraction, 42b0 } :           // RETURN HALF REPACKED
-                         { fp32( F.rdata0 ).sign, 3b0, fp32( F.rdata0 ).exponent, fp32( F.rdata0 ).fraction, 29b0 };            // RETURN SINGLE REPACKED
+    typeF TYPE( dsh <: dsh, a <: F.rdata0, zeroFRACTION :> zeroFRACTION, type :> type );
+    repackage_wide REPACK( dsh <: dsh, a <: F.rdata0, repack :> repack );
+    F.addr0 := addr0; rdata0 := F.rdata0;                                                                              // SELECT THE REGISTER
 }
 unit regW(
-    input   uint1   SMT,
     simple_dualport_bram_port1 regfile,
     input   uint5   addr1,
     input   uint1   wenable1,
     input   uint64  wdata1
 ) {
-    regfile.addr1 := { SMT, addr1 }; regfile.wdata1 := wdata1; regfile.wenable1 := wenable1;
+    regfile.addr1 := addr1; regfile.wdata1 := wdata1; regfile.wenable1 := wenable1;
 }
 
 // INTEGER COMPARISONS, REG-REG FOR ALU/BRANCH AND REG-IMMEDIATE FOR ALU
@@ -362,14 +341,19 @@ unit abs_3264(
 // CLASSIFY INSTRUCTION TYPE AND DETIMINE CPU CONTROL FLAGS
 unit controlflags(
     input   uint5   opCode,
+    input   uint5   rd,
     input   uint3   function3,
     input   uint7   function7,
+    input   uint5   rs1,
+    input   uint5   rs2,
     output  uint1   IS_ALU,
     output  uint1   IS_ALU32SIGNX,
     output  uint1   IS_ATOMIC,
     output  uint1   IS_AUIPCLUI,
     output  uint1   IS_BRANCH,
     output  uint1   IS_CSR,
+    output  uint1   IS_MRET,
+    output  uint1   IS_WFI,
     output  uint1   IS_JAL,
     output  uint1   IS_FAST,
     output  uint1   IS_FASTFPU,
@@ -390,6 +374,8 @@ unit controlflags(
     IS_AUIPCLUI := ( opCode == 5b00101 ) | ( opCode == 5b01101 );
     IS_BRANCH := ( opCode == 5b11000 );
     IS_CSR := ( opCode == 5b11100 );
+    IS_MRET := ( ( opCode == 5b11100 ) & ( { function7, rs2 } == 12b001100000010 ) );
+    IS_WFI := ( ( opCode == 5b11100 ) & ( { function7, rs2 } == 12b000100000101 ) );
     IS_FENCE := ( opCode == 5b00011 );
     IS_JAL := ( opCode == 5b11001 ) | ( opCode == 5b11011 );
     IS_LOAD := ~|opCode[1,4];
@@ -417,12 +403,16 @@ unit controlflags(
                 IS_ALU = 1; IS_FAST = ~( ( function7 == 7b0000001 ) & function3[2,1] );                                         //  FAST NOT DIVIDE
             }
             case 5b01110: {                                                                                                     // REGISTER-REGISTER ALU 32BIT
-                IS_ALU = 1; IS_FAST = ~( ( function7 == 7b0000001 ) & function3[2,1] );                                         //  FAST NOT DIVIDE
-                if( ~function3[0,1] ) {
-                    if( |function3[1,2] ) {
-                        IS_ALU32SIGNX = ( function7 != 7b0010000 );                                                             // DETECT SHxADD.UW ( f3 == 010 100 110 )
-                    } else {
-                        IS_ALU32SIGNX = ( function7 != 7b0000100 );                                                             // DETECT ADD.UW ( f3 == 000 )
+                IS_ALU = 1;
+                if( ( function7 == 7b0000001 ) & function3[2,1] ) {
+                    IS_FAST = 0;                                                                                                //  FAST NOT DIVIDE
+                } else {
+                    if( ~function3[0,1] ) {
+                        if( |function3[1,2] ) {
+                            IS_ALU32SIGNX = ( function7 != 7b0010000 );                                                         // DETECT SHxADD.UW ( f3 == 010 100 110 )
+                        } else {
+                            IS_ALU32SIGNX = ( function7 != 7b0000100 );                                                         // DETECT ADD.UW ( f3 == 000 )
+                        }
                     }
                 }
             }
@@ -430,8 +420,8 @@ unit controlflags(
                 IS_FPU = 1; IS_FAST = 0;
                 IS_FASTFPU = ( function7[4,1] | &function7[5,2] );                                                              //  ( FAST NOT ADD SUB MUL DIV SQRT )
                 IS_FPUCONVERT = ( ( function7[2,5] == 5b11000 ) |                                                               //  CONVERSION INT <-> FLOAT, CHNAGE PRECISION
-                                    ( function7[2,5] == 5b11010 ) |
-                                    ( function7[2,5] == 5b01000 ) );
+                                  ( function7[2,5] == 5b11010 ) |
+                                  ( function7[2,5] == 5b01000 ) );
             }
             default: { IS_FPU = 1; IS_FAST = 0; }                                                                               // FUSED-FPU
         }
@@ -446,18 +436,16 @@ unit decoder(
     output  uint7               FUNCTION7,
     output  uint5               RS1,
     output  uint5               RS2,
-    output  uint5               RS3,
-    output  uint5               RD,
+    output  uint12              CSR_REG,
     output  int64               IMMEDIATE,
-    output  uint14              ALUOP,
+    output  uint14              ALUOP
 ) {
     OPCODE := Rtype(INSTRUCTION).opp[2,5];
     FUNCTION3 := Rtype(INSTRUCTION).f3;
     FUNCTION7 := Rtype(INSTRUCTION).f7;
     RS1 := Rtype(INSTRUCTION).sr1;
     RS2 := Rtype(INSTRUCTION).sr2;
-    RS3 := R4type(INSTRUCTION).sr3;
-    RD := Rtype(INSTRUCTION).rd;
+    CSR_REG := INSTRUCTION[20,12];
     IMMEDIATE := { {52{INSTRUCTION[31,1]}}, Itype(INSTRUCTION).imm };
 
     $$ doadduw =        "OP[13,1]"
@@ -771,7 +759,7 @@ unit compressed10(
 unit csrf(
     output  uint8   CSRf(0),
     input   uint2   csr,
-    input   uint8   writevalue,
+    input   uint8   WDATA,
     input   uint2   writetype,
     input   uint1   update,
     input   uint5   newflags
@@ -782,22 +770,22 @@ unit csrf(
         } else {
             switch( csr ) {
                 case 0: {}
-                case 1: { switch( writetype ) { // CSRRW / CSRRWI
-                    case 1: { CSRf[0,5] = writevalue[0,5]; }
-                    case 2: { CSRf[5,3] = writevalue[0,3]; }
-                    case 3: { CSRf = writevalue[0,8]; }
+                case 1: { switch( writetype ) {                                                                                 // CSRRW / CSRRWI
+                    case 1: { CSRf[0,5] = WDATA[0,5]; }
+                    case 2: { CSRf[5,3] = WDATA[0,3]; }
+                    case 3: { CSRf = WDATA[0,8]; }
                     default: {}
                 } }
-                case 2: { switch( writetype ) { // CSRRS / CSRRSI
-                    case 1: { CSRf[0,5] = CSRf[0,5] | writevalue[0,5]; }
-                    case 2: { CSRf[5,3] = CSRf[5,3] | writevalue[0,3]; }
-                    case 3: { CSRf = CSRf | writevalue[0,8]; }
+                case 2: { switch( writetype ) {                                                                                 // CSRRS / CSRRSI
+                    case 1: { CSRf[0,5] = CSRf[0,5] | WDATA[0,5]; }
+                    case 2: { CSRf[5,3] = CSRf[5,3] | WDATA[0,3]; }
+                    case 3: { CSRf = CSRf | WDATA[0,8]; }
                     default: {}
                 } }
-                case 3: { switch( writetype ) { // CSRRC / CSRRCI
-                    case 1: { CSRf[0,5] = CSRf[0,5] & ~writevalue[0,5]; }
-                    case 2: { CSRf[5,3] = CSRf[5,3] & ~writevalue[0,3]; }
-                    case 3: { CSRf = CSRf & ~writevalue[0,8]; }
+                case 3: { switch( writetype ) {                                                                                 // CSRRC / CSRRCI
+                    case 1: { CSRf[0,5] = CSRf[0,5] & ~WDATA[0,5]; }
+                    case 2: { CSRf[5,3] = CSRf[5,3] & ~WDATA[0,3]; }
+                    case 3: { CSRf = CSRf & ~WDATA[0,8]; }
                     default: {}
                 } }
             }
@@ -809,85 +797,204 @@ unit csr_timer(
 ) {
     counter := counter + 1;
 }
-unit csr_smt_timer(
-    input   uint1   SMT,
-    output  uint$CWIDTH$  counter0(0),
-    output  uint$CWIDTH$  counter1(0)
+unit csr_counter(
+    output  uint$CWIDTH$  counter(0),
+    input   uint1   trigger
 ) {
-    counter0 := counter0 + ~SMT;
-    counter1 := counter1 + SMT;
-}
-unit csr_smt_counter(
-    input   uint1   SMT,
-    input   uint1   trigger,
-    output  uint$CWIDTH$  counter0(0),
-    output  uint$CWIDTH$  counter1(0)
-) {
-    counter0 := counter0 + ( ~SMT & trigger );
-    counter1 := counter1 + ( SMT & trigger );
+    counter := counter + trigger;
 }
 
 unit CSRblock(
     input   uint1   start,
-    input   uint1   SMT,
-    input   uint12  csrRegister,
+    input   uint1   CPU_ACTIVE,
+    input   uint1   DMA_ACTIVE,
+    input   uint1   DMA_AUDIO_ACTIVE,
     input   uint3   function3,
     input   uint5   rs1,
-    input   uint8   sourceReg1,
+    input   uint12  csrRegister,
+    input   uint64  sourceReg1,
     input   uint1   incCSRinstret,
     input   uint1   updateFPUflags,
     input   uint5   FPUnewflags,
     output  uint8   FPUflags,
-    output  uint$CWIDTH$  result,
-//    output  uint64  mcause,                                                                                                   // 342 MACHINE EXCEPTION CAUSE
-//    output  uint64  mstatus,                                                                                                  // 300 MACHINE STATUS BIT 3 IS MIE, 7 IS MPIE
-//    output  uint64  mepc,                                                                                                     // 341 MACHINE EXECPTION PROGRAM COUNTER
-//    output  uint64  mtvec                                                                                                     // 305 MACHINE TRAP VECTOR BASE ADDRESS
+    output  uint64  result,
+
+    input   uint$addr_width$ PC_NEXT,
+    input   uint1   IRQ_ACK,
+    input   uint1   IRQ_END,
+    output  uint1   IRQ_PENDING,
+    input   uint1   IRQ_VBLANK,                                                                                               // { VBLANK, TIMER_1, TIMER_0 }
+    input   uint$CWIDTH$ IRQ_TIMER,
+    output  uint$addr_width$ CSR_MEPC,
+    output  uint$addr_width$ CSR_MTVEC
 ) {
-    csr_timer TIMER();                                                                                                          // TIMER
-    csr_smt_timer CYCLE( SMT <: SMT );                                                                                          // CYCLES PER THREAD
-    csr_smt_counter INSTRET( SMT <: SMT, trigger <: incCSRinstret );                                                            // INSTRUCTIONS RETIRED
+    uint64              WDATA <:: function3[2,1] ? rs1 : sourceReg1;                                                            // SWITCH BETWEEN IMMEDIATE OR REGISTER VALUE TO WRITE TO CSR
+    uint2               IRQ_TRIGGERS <:: { IRQ_VBLANK, ( TIMER.counter == IRQ_TIMER ) & |IRQ_TIMER };
 
-    uint32  writevalue <:: function3[2,1] ? rs1 : sourceReg1;                                                                   // SWITCH BETWEEN IMMEDIATE OR REGISTER VALUE TO WRITE TO CSR
-    csrf CSRF0( csr <: csrRegister[0,2], writevalue <: writevalue, newflags <: FPUnewflags );                                   // MAIN CSRf ( csrRegister[0,2] )
-    csrf CSRF1( csr <: csrRegister[0,2], writevalue <: writevalue, newflags <: FPUnewflags );                                   // SMT CSRf  ( csrRegister[0,2] )
+    uint64              CSR_MSCRATCH = uninitialised;
+    uint1               STATUS_BIT_MIE = 1b0;
+    uint1               STATUS_BIT_MPIE = 1b0;
+    uint2               CSR_MIP = 2b00;                                                                         // { 11, 7 }
+    uint2               CSR_MIE = 2b00;                                                                     // { 11, 7 }
+    uint3               CSR_MCAUSE = uninitialised;                                                                       // == 3 software, == 7 timer, == 11 external (vblank)
 
-    CSRF0.writetype := 0; CSRF1.writetype := 0;                                                                                 // UPDATE FLAGS FPU-FLAGS
-    CSRF0.update := updateFPUflags & ~SMT;  CSRF1.update := updateFPUflags & SMT;                                               // UPDATE FLAGS FOR COUNTERS AND TIMERS
+    csr_timer TIMER();                                                                                       // TIMER
+    csr_counter CYCLE( trigger <: CPU_ACTIVE );                                                                 // CYCLES PER THREAD
+    csr_counter INSTRET( trigger <: incCSRinstret );                                                            // INSTRUCTIONS RETIRED
+    csr_counter DMA( trigger <: DMA_ACTIVE );                                                                                   // HIGH PERFORMANCE COUNTER 3
+    csr_counter DMA_AUDIO( trigger <: DMA_AUDIO_ACTIVE );                                                                       // HIGH PERFORMANCE COUNTER 4
 
-    result := 0;                                                                                                                // DEFAULT TO ZERO FOR UNSUPPORTED REGISTER
-    FPUflags := SMT ? CSRF1.CSRf : CSRF0.CSRf;                                                                                  // PASS FPU FLAGS PER THREAD BACK TO FPU
+    csrf CSRF( csr <: csrRegister[0,2], WDATA <: WDATA, CSRf :> FPUflags, newflags <: FPUnewflags, update <: updateFPUflags );    // CSRf ( csrRegister[0,2] )
+
+    CSRF.writetype := 0;                                                                                                        // UPDATE FLAGS FPU-FLAGS
+
+    IRQ_PENDING := STATUS_BIT_MIE & |( CSR_MIE & CSR_MIP );
 
     always {
-        if( start & ~|csrRegister[4,8] ) {
-            switch( function3[0,2] ) {
+        if( start ) {
+            result = 0;                                                                                                         // PERFORM READ, DEFAULT 0
+
+            switch( csrRegister[8,4] ) {
+                case 4h0: { switch( csrRegister[0,2] ) {
+                    case 2h1: { result = CSRF.CSRf[0,5];  }                                            //      001 fflags
+                    case 2h2: { result = CSRF.CSRf[5,3]; }                                             //      002 frm
+                    case 2h3: { result = CSRF.CSRf; }                                                       //      003 fcsr
+                    default: {}
+                } }
+                case 4h3: {
+                    if( csrRegister[6,1] ) {
+                        switch( csrRegister[0,4] ) {
+                            case 4h0: { result = CSR_MSCRATCH; }                                                              //      340 MSCRATCH
+                            case 4h1: { result = CSR_MEPC; }                                                                  //      341 MEPC
+                            case 4h2: { result = CSR_MCAUSE; }                                                                //      342 MCAUSE
+                            case 4h4: { result = { CSR_MIP[1,1], 3b000, CSR_MIP[0,1], 6b000000 }; }                       //      344 MIP
+                            default: {}
+                        }
+                    } else {
+                        switch( csrRegister[0,4] ) {
+                            case 4h0: { result = { STATUS_BIT_MPIE, 3b000, STATUS_BIT_MIE, 3b00 }; }                      //      300 MSTATUS [3] MIE [7] MPIE
+                            case 4h1: { result = $CPUISA$; }                                                                            //      301 MISA
+                            case 4h4: { result = { CSR_MIE[1,1], 3b000, CSR_MIE[0,1], 6b000000 }; }         //      304 MIE
+                            case 4h5: { result = CSR_MTVEC; }                                                                 //      305 MTVEC
+                            default: {}
+                        }
+                    }
+                }
+                case 4hb: { switch( csrRegister[0,4] ) {
+                    case 4h3: { result = DMA.counter; }                                                                         //      B03 MHPMCOUNTER3
+                    case 4h4: { result = DMA_AUDIO.counter; }                                                                   //      B04 MHPMCOUNTER4
+                    default: {}
+                } }
+                case 4hc: { switch( csrRegister[0,3] ) {
+                    case 3h0: { result = CYCLE.counter; }                                               //      C00 CYCLES PER HART
+                    case 3h1: { result = TIMER.counter; }                                                                       //      C01 TOTAL CYCLES
+                    case 3h2: { result = INSTRET.counter; }                                           //      C02 INSTRUCTIONS RETIRED PER HART
+                    default: {}
+                } }
+                case 4hf: { result = 0; }                                                                                     //      F00 HART ID
+                default: {}
+            }
+
+            switch( function3[0,2] ) {                                                                                          // PERFORM WRITE SET CLEAR ( on capable registers )
                 case 2b00: {}                                                                                                   // ECALL / EBBREAK
-                case 2b01: { switch( { ~|rs1, function3[2,1] } ) {                                                              // CSRRW / CSRRWI
-                    case 2b10: {}
-                    default: { if( SMT ) { CSRF1.writetype = 1; } else { CSRF0.writetype = 1; } }
-                }  }
-                default: {
-                    if( |rs1 ) { if( SMT ) { CSRF1.writetype = function3[0,2]; } else { CSRF0.writetype = function3[0,2]; } }
+                case 2b01: {                                                                                                    // CSRRW ( NOP WHEN RD == 0 ) ( read then write )
+                    switch( csrRegister[8,4] ) {
+                        case 4h0: { CSRF.writetype = 1; }                          //      FFLAGS FRM FCSR
+                        case 4h3: {
+                            if( csrRegister[6,1] ) {
+                                switch( csrRegister[0,4] ) {
+                                    case 4h0: { CSR_MSCRATCH = WDATA; }                                                  //      MSCRATCH
+                                    case 4h1: { CSR_MEPC = WDATA; }                                                      //      MEPC
+                                    case 4h2: { CSR_MCAUSE = WDATA; }                                                    //      MCAUSE
+                                    default: {}
+                                }
+                            } else {
+                                switch( csrRegister[0,4] ) {
+                                    case 4h0: { STATUS_BIT_MIE = WDATA[3,1]; STATUS_BIT_MPIE = WDATA[7,1]; }    //      MSTATUS
+                                    case 4h4: { CSR_MIE = { WDATA[11,1], WDATA[7,1] }; }                        //      MIE
+                                    case 4h5: { CSR_MTVEC = WDATA; }                                                     //      MTVEC
+                                    default: {}
+                                }
+                            }
+                        }
+                        default: {}
+                    }
+                }
+                case 2b10: {                                                                                                    // CSRRS ( read then set )
+                    switch( csrRegister[8,4] ) {
+                        case 4h0: { CSRF.writetype = 2; }                          //      FFLAGS FRM FCSR
+                        case 4h3: {
+                            if( csrRegister[6,1] ) {
+                                switch( csrRegister[0,4] ) {
+                                    case 4h0: { CSR_MSCRATCH = CSR_MSCRATCH | WDATA; }                         //      MSCRATCH
+                                    case 4h1: { CSR_MEPC = CSR_MEPC | WDATA; }                                 //      MEPC
+                                    case 4h2: { CSR_MCAUSE = CSR_MCAUSE | WDATA; }                             //      MCAUSE
+                                    default: {}
+                                }
+                            } else {
+                                switch( csrRegister[0,4] ) {
+                                    case 4h0: {
+                                        STATUS_BIT_MIE = STATUS_BIT_MIE | WDATA[3,1];                                //      MSTATUS
+                                        STATUS_BIT_MPIE = STATUS_BIT_MPIE | WDATA[7,1];
+                                    }
+                                    case 4h4: { CSR_MIE = CSR_MIE | { WDATA[11,1], WDATA[7,1] }; }//      MIE
+                                    case 4h5: { CSR_MTVEC = CSR_MTVEC | WDATA; }                               //      MTVEC
+                                    default: {}
+                                }
+                            }
+                        }
+                        default: {}
+                    }
+                }
+                case 2b11: {                                                                                                    // CSRRC ( read then clear )
+                    switch( csrRegister[8,4] ) {
+                        case 4h0: { CSRF.writetype = 3; }                          //      FFLAGS FRM FCSR
+                        case 4h3: {
+                            if( csrRegister[6,1] ) {
+                                switch( csrRegister[0,4] ) {
+                                    case 4h0: { CSR_MSCRATCH = CSR_MSCRATCH & ~WDATA; }                        //      MSCRATCH
+                                    case 4h1: { CSR_MEPC = CSR_MEPC & ~WDATA; }                                //      MEPC
+                                    case 4h2: { CSR_MCAUSE = CSR_MCAUSE & ~WDATA; }                            //      MCAUSE
+                                    default: {}
+                                }
+                            } else {
+                                switch( csrRegister[0,4] ) {
+                                    case 4h0: {
+                                        STATUS_BIT_MIE = STATUS_BIT_MIE & ~WDATA[3,1];                               //      MSTATUS
+                                        STATUS_BIT_MPIE = STATUS_BIT_MPIE & ~WDATA[7,1];
+                                    }
+                                    case 4h4: { CSR_MIE = CSR_MIE & ~{ WDATA[11,1], WDATA[7,1] }; }                     //      MIE
+                                    case 4h5: { CSR_MTVEC = CSR_MTVEC & ~WDATA; }                              //      MTVEC
+                                    default: {}
+                                }
+                            }
+                        }
+                        default: {}
+                    }
+                }
+            }
+        } else {
+            if( IRQ_ACK ) {                                                                                                     // IRQ ACKNOWLEDGE
+                CSR_MEPC = PC_NEXT;
+                CSR_MCAUSE = CSR_MIP[0,1] ? 7 : 11;                                                                //      TIMER
+                STATUS_BIT_MPIE = STATUS_BIT_MIE;
+                STATUS_BIT_MIE = 0;
+            } else {
+                if( IRQ_END ) {                                                                                                 // IRQ END
+                    STATUS_BIT_MIE = STATUS_BIT_MPIE;
+                    CSR_MCAUSE = 0;
                 }
             }
         }
 
-        switch( csrRegister[8,4] ) {
-            case 4h0: { switch( csrRegister[0,2] ) {
-                case 2h1: { result = SMT ? CSRF1.CSRf[0,5] : CSRF0.CSRf[0,5];  }                                                // frflags
-                case 2h2: { result = SMT ? CSRF1.CSRf[5,3] : CSRF0.CSRf[5,3]; }                                                 // frrm
-                case 2h3: { result = SMT ? CSRF1.CSRf : CSRF0.CSRf; }                                                           // frcsr
-                default: {}
-            } }
-            case 4h3: { result = $CPUISA$; }
-            case 4hc: { switch( { csrRegister[7,1], csrRegister[0,2] } ) {
-                case 3h0: { result = SMT ? CYCLE.counter1 : CYCLE.counter0; }                                                   // CYCLES PER HART
-                case 3h1: { result = TIMER.counter; }                                                                           // TOTAL CYCLES
-                case 3h2: { result = SMT ? INSTRET.counter1 : INSTRET.counter0; }                                               // INSTRUCTIONS RETIRED PER HART
-                default: {}
-            } }
-            case 4hf: { result = SMT; }                                                                                         // HART ID
-            default: {}
+
+        if( start & ( csrRegister == 12h344 ) ) {
+            CSR_MIP = ( function3[0,2] == 2b01 ) ? { WDATA[11,1], WDATA[7,1] } :
+                      ( function3[0,2] == 2b10 ) ? { CSR_MIP[1,1] | ( CSR_MIE[1,1] & IRQ_TRIGGERS[1,1] ), CSR_MIP[0,1] | ( CSR_MIE[0,1] & IRQ_TRIGGERS[0,1] ) } | { WDATA[11,1], WDATA[7,1] } :
+                      ( function3[0,2] == 2b11 ) ? { CSR_MIP[1,1] | ( CSR_MIE[1,1] & IRQ_TRIGGERS[1,1] ), CSR_MIP[0,1] | ( CSR_MIE[0,1] & IRQ_TRIGGERS[0,1] ) } & ~{ WDATA[11,1], WDATA[7,1] } :
+                                                   { CSR_MIP[1,1] | ( CSR_MIE[1,1] & IRQ_TRIGGERS[1,1] ), CSR_MIP[0,1] | ( CSR_MIE[0,1] & IRQ_TRIGGERS[0,1] ) };
+        } else {
+            CSR_MIP = { CSR_MIP[1,1] | ( CSR_MIE[1,1] & IRQ_TRIGGERS[1,1] ), CSR_MIP[0,1] | ( CSR_MIE[0,1] & IRQ_TRIGGERS[0,1] ) };
         }
     }
 }

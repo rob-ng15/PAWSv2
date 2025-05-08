@@ -182,78 +182,58 @@ void display_state( void ) {
     }
 }
 
-
 // MONITOR THE KEYBOARD AND SET/CLR BITS IN THE KEYS REGISTER
 // CHECK FOR FUNCTION KEYS AND TAKE ACTION / FLAG MAIN LOOP
-__attribute__((used)) void interactivity( void ) {
-    int pass_control = 0, needvblank = 0, presentvblank;
+void __attribute__((interrupt ("machine"))) interactivity( void ) {
+    IRQ_ACK( IRQ_VBLANK );
 
-    ps2_keyboardmode( TRUE );                                                                                                   // SWITCH TO PS2 MODE TO DETECT KEY PRESSES
+    if( ps2_event_available() ) {
+        uint16_t keycode = ps2_event_get();
+        int keypressed = -1;
+        switch( keycode & 0x1ff ) {
+            case 0x05: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = CHIP8; } break;                          // F1 CHIP8 MODE
+            case 0x06: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = CHIP48; } break;                         // F2 CHIP48 MODE
+            case 0x04: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = SCHIP; } break;                          // F3 SCHIP1.1 MODE
+            case 0x0c: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = XOCHIP; } break;                         // F4 XOCHIP MODE
 
-    while( !pass_control ) {
-        if( ps2_event_available() ) {
-            uint16_t keycode = ps2_event_get();
-            int keypressed = -1;
-            switch( keycode & 0x1ff ) {
-                case 0x05: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = CHIP8; } break;                          // F1 CHIP8 MODE
-                case 0x06: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = CHIP48; } break;                         // F2 CHIP48 MODE
-                case 0x04: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = SCHIP; } break;                          // F3 SCHIP1.1 MODE
-                case 0x0c: if( keycode & 0x200 ) { machine.running = 0; machine.MODE = XOCHIP; } break;                         // F4 XOCHIP MODE
+            case 0x03:                                                                                                      // F5 CYCLE COLOUR SETS
+                if( keycode & 0x200 ) {
+                    machine.COLOURSET = ( machine.COLOURSET == MAXCOLOURSETS ) ? 0 : machine.COLOURSET + 1;
+                }
+                break;
+            case 0x0b: if( keycode & 0x200 ) { machine.debug = 1 - machine.debug; }; break;                                 // F6 TOGGLE DEBUG OUTPUT TO UART
+            case 0x83: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 7 ) ? 7 : machine.limit + 1; } break;     // F7 SLOW DOWN
+            case 0x0a: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 0 ) ? 0 : machine.limit - 1; } break;     // F8 SPEED UP
 
-                case 0x03:                                                                                                      // F5 CYCLE COLOUR SETS
-                    if( keycode & 0x200 ) {
-                        machine.COLOURSET = ( machine.COLOURSET == MAXCOLOURSETS ) ? 0 : machine.COLOURSET + 1;
-                    }
-                    break;
-                case 0x0b: if( keycode & 0x200 ) { machine.debug = 1 - machine.debug; }; break;                                 // F6 TOGGLE DEBUG OUTPUT TO UART
-                case 0x83: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 7 ) ? 7 : machine.limit + 1; } break;     // F7 SLOW DOWN
-                case 0x0a: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 0 ) ? 0 : machine.limit - 1; } break;     // F8 SPEED UP
+            case 0x01: if( keycode & 0x200 ) { machine.running = 0; machine.quit = 1; IRQ_OFF( IRQ_VBLANK, TRUE ); } break;            // F9 QUIT
+            case 0x78: if( keycode & 0x200 ) { machine.restart = 1; } break;                                                // F11 RESTART CHIP8 PROGRAM
+            case 0x07: if( keycode & 0x200 ) { machine.running = 0; machine.loading = 1; IRQ_OFF( IRQ_VBLANK, TRUE ); } break;         // F12 LOAD
 
-                case 0x01: if( keycode & 0x200 ) { machine.running = 0; machine.quit = 1; pass_control = 1; } break;            // F9 QUIT
-                case 0x78: if( keycode & 0x200 ) { machine.restart = 1; } break;                                                // F11 RESTART CHIP8 PROGRAM
-                case 0x07: if( keycode & 0x200 ) { machine.running = 0; machine.loading = 1; pass_control = 1; } break;         // F12 LOAD
-
-                case 0x16: keypressed = 1; break;                                                                               // 1 == 1
-                case 0x1e: keypressed = 2; break;                                                                               // 2 == 2
-                case 0x26: keypressed = 3; break;                                                                               // 3 == 3
-                case 0x25: keypressed = 12; break;                                                                              // 4 == C
-                case 0x15: keypressed = 4; break;                                                                               // Q == 4
-                case 0x1d: keypressed = 5; break;                                                                               // W == 5
-                case 0x24: keypressed = 6; break;                                                                               // E == 6
-                case 0x2d: keypressed = 13; break;                                                                              // R == D
-                case 0x1c: keypressed = 7; break;                                                                               // A == 7
-                case 0x1b: keypressed = 8; break;                                                                               // S == 8
-                case 0x23: keypressed = 9; break;                                                                               // D == 9
-                case 0x2b: keypressed = 14; break;                                                                              // F == E
-                case 0x1a: keypressed = 10; break;                                                                              // Z == A
-                case 0x22: keypressed = 0; break;                                                                               // X == 0
-                case 0x21: keypressed = 11; break;                                                                              // C == B
-                case 0x2a: keypressed = 15; break;                                                                              // V == F
-            }
-            if( keypressed != -1 ) {
-                machine.KEYS = ( keycode & 0x200 ) ? _rv64_bset( machine.KEYS, keypressed ) : _rv64_bclr( machine.KEYS, keypressed );
-            }
+            case 0x16: keypressed = 1; break;                                                                               // 1 == 1
+            case 0x1e: keypressed = 2; break;                                                                               // 2 == 2
+            case 0x26: keypressed = 3; break;                                                                               // 3 == 3
+            case 0x25: keypressed = 12; break;                                                                              // 4 == C
+            case 0x15: keypressed = 4; break;                                                                               // Q == 4
+            case 0x1d: keypressed = 5; break;                                                                               // W == 5
+            case 0x24: keypressed = 6; break;                                                                               // E == 6
+            case 0x2d: keypressed = 13; break;                                                                              // R == D
+            case 0x1c: keypressed = 7; break;                                                                               // A == 7
+            case 0x1b: keypressed = 8; break;                                                                               // S == 8
+            case 0x23: keypressed = 9; break;                                                                               // D == 9
+            case 0x2b: keypressed = 14; break;                                                                              // F == E
+            case 0x1a: keypressed = 10; break;                                                                              // Z == A
+            case 0x22: keypressed = 0; break;                                                                               // X == 0
+            case 0x21: keypressed = 11; break;                                                                              // C == B
+            case 0x2a: keypressed = 15; break;                                                                              // V == F
         }
-
-        presentvblank = is_vblank();
-        if( needvblank == presentvblank ) {
-            if( presentvblank ) {                                                                                               // IF NEW VBLANK
-                draw_screen_hires();                                                                                            // DRAW THE SCREEN
-                display_state();                                                                                                // DISPLAY STATUS
-            }
-            needvblank = 1 - needvblank;
+        if( keypressed != -1 ) {
+            machine.KEYS = ( keycode & 0x200 ) ? _rv64_bset( machine.KEYS, keypressed ) : _rv64_bclr( machine.KEYS, keypressed );
         }
     }
 
-    ps2_keyboardmode( FALSE );                                                                                                  // SWITCH TO JOYSTICK MODE FOR FILE SELECTOR
-    SMTSTOP();
+    draw_screen_hires();                                                                                            // DRAW THE SCREEN
+    display_state();                                                                                                // DISPLAY STATUS
 }
-
-void smt_thread( void ) {
-    asm volatile ("li sp, 0x5f80000");
-    asm volatile ("j interactivity");
-}
-
 
 #define FONTSIZE 5 * 16 + 10 * 16
 unsigned char chip8font[] = {
@@ -329,21 +309,21 @@ int main( void ) {
     tm_cs( LOWER_LAYER ); tm_cs( UPPER_LAYER );
     tilemap_scroll( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scroll( UPPER_LAYER, TM_DOWN, 8 );
 
-    reset_machine(); SMTSTART( smt_thread );                                                                                    // START THE KEYBOARD MONITOR
-
+    reset_machine(); IRQ_VECTOR( (void *)interactivity ); IRQ_ON( IRQ_VBLANK, TRUE );                                           // START THE KEYBOARD MONITOR
     set_timer1khz( (short)1000/60, 0 );
+    ps2_keyboardmode( TRUE );
 
     while( !machine.quit ) {
         set_timer1khz( wait_times[ machine.limit ], 1 );                                                                        // SET !KHz timer for instructions per second
 
         if( machine.loading ) {
             set_background( BLACK, BLACK, BKG_SOLID );
-            while( SMTSTATE() ); gpu_cs(); tpu_cs();
+            gpu_cs(); tpu_cs();
             tm_cs( LOWER_LAYER ); tm_cs( UPPER_LAYER );
             tilemap_scroll( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scroll( UPPER_LAYER, TM_DOWN, 8 );
 
             restart_machine();
-            gpu_rectangle( BLACK, FULLSCREEN );
+            gpu_rectangle( BLACK, FULLSCREEN ); ps2_keyboardmode( FALSE );
             int filesize; uint8_t *filebuffer = sdcard_selectfile( "Please select a CHIP-8 File", "CH8", &filesize, "Running" );    // LOAD A FILE
             if( filebuffer && ( filesize > 0 ) && ( filesize < 65536 ) ) {
                 gpu_cs();                                                                                                   // START EXECUTION
@@ -354,7 +334,7 @@ int main( void ) {
             }
             if( filebuffer ) { free( filebuffer ); }
             machine.loading = 0;
-            SMTSTART( smt_thread );                                                                                         // RESTART THE KEYBOARD MONITOR
+            IRQ_ON( IRQ_VBLANK, TRUE ); ps2_keyboardmode( TRUE );                                                                                       // RESTART THE KEYBOARD MONITOR
             set_background( WHITE, WHITE, BKG_SOLID );
         }
 

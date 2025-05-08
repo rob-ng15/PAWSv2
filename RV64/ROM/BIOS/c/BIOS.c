@@ -257,35 +257,24 @@ void printclock( void ) {
     }
 }
 
-__attribute__((used)) void scrollbars( void ) {
-    unsigned char leds = 1;
-    int count = 0, direction = 0, ledcount = 0;
+unsigned char leds = 1;
+int direction = 0, ledcount = 0;
+void __attribute__((interrupt ("machine"))) scrollbars( void ) {
+    IRQ_ACK( IRQ_VBLANK );
 
-    while(1) {
-        await_vblank(); count++;
-        if( count == 64 ) {
-            *LOWER_TM_SCROLLWRAPCLEAR = 3; *UPPER_TM_SCROLLWRAPCLEAR = 1;
-            count = 0;
-            ledcount++;
-            if( ledcount == 32 ) {
-                ledcount = 0;
-                if( direction ) {
-                    if( leds == 1 ) { direction = 0; } else { leds = leds >> 1; }
-                } else {
-                    if( ( leds & 128 ) != 0 ) { direction = 1; } else { leds = ( *SDCARD_READY ) ? ( leds << 1 ) : ( leds << 1 ) + 1; }
-                }
-                *LEDS = leds;
-                printclock();
-            }
+    *LOWER_TM_SCROLLWRAPCLEAR = 3; *UPPER_TM_SCROLLWRAPCLEAR = 1;
+
+    ledcount++;
+    if( ledcount == 4 ) {
+        ledcount = 0;
+        if( direction ) {
+            if( leds == 1 ) { direction = 0; } else { leds = leds >> 1; }
+        } else {
+            if( ( leds & 128 ) != 0 ) { direction = 1; } else { leds = ( *SDCARD_READY ) ? ( leds << 1 ) : ( leds << 1 ) + 1; }
         }
+        *LEDS = leds;
+        printclock();
     }
-}
-
-void smtthread( void ) {
-    // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li   sp ,0xff08");               // ADDRESS OF SMT STACKTOP
-    asm volatile ("lwu  sp, (sp)");                 // LOAD FROM SMT STACKTOP
-    asm volatile ("j    scrollbars");
 }
 
 extern int _bss_start, _bss_end;
@@ -294,8 +283,8 @@ unsigned char chime[] = { 75, 83, 89, 0 };
 int main( void ) {
     unsigned int i, j, x, y, selectedfile = 0;
 
-    // STOP SMT, PIXELBLOCK AND AUDIO DMA
-    SMTSTOP(); *PB_STOP = *PB_MODE = 0;
+    // STOP SMT, INTERRUPTS, PIXELBLOCK AND AUDIO DMA
+    *PB_STOP = *PB_MODE = 0;
     *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_R_STATUS = 1;
 
     // CLEAR BSS MEMORY AND DEFINE HEAPEND AND ALLOCATE FAT32 MEMORY
@@ -324,7 +313,10 @@ int main( void ) {
         set_tilemap_tile( 0, i, 18, i+1, 0 );
         set_tilemap_tile( 1, i, 30, i+1, 0 );
     }
-    SMTSTART( smtthread );
+
+    // INTERRUPT HANDLER SETUP
+    IRQ_VECTOR( (void *)scrollbars );
+    IRQ_ON( IRQ_VBLANK, TRUE );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 66, 34, 1, "Risc-V RV64GC+", 0 );
@@ -367,8 +359,9 @@ int main( void ) {
         while(1) {}
     }
 
-    // ACKNOWLEDGE SELECTION AND STOP SMT TO ALLOW FASTER LOADING
-    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 63 ); SMTSTOP();
+    // ACKNOWLEDGE SELECTION TO DISABLE IRQ ALLOW FASTER LOADING
+    IRQ_OFF( IRQ_VBLANK | IRQ_TIMER | IRQ_SOFTWARE, TRUE );
+    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 63 );
 
     *LEDS = 255;
     gpu_outputstringcentre( WHITE, 72, 1, "P64 File", 0 );

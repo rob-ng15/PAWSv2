@@ -78,10 +78,11 @@ unsigned short size_bass [] = { 128,
                                 0xff };
 
 // SMT THREAD TO PLAY THE INTRO TUNE
-__attribute__((used)) void playtune( void ) {
-    short trebleposition = 0, bassposition = 0;
+short trebleposition = 0, bassposition = 0;
+void __attribute__((interrupt ("machine"))) playtune( void ) {
+    IRQ_ACK( IRQ_VBLANK );
 
-    while( ( tune_treble[ trebleposition ] != 0xff ) || ( tune_bass[ bassposition ] != 0xff ) ) {
+    if( ( tune_treble[ trebleposition ] != 0xff ) || ( tune_bass[ bassposition ] != 0xff ) ) {
         if( tune_treble[ trebleposition ] != 0xff ) {
             if( !get_beep_active( 1 ) ) {
                 beep( 1, WAVE_WOOD, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 2 );
@@ -94,14 +95,9 @@ __attribute__((used)) void playtune( void ) {
                 bassposition++;
             }
         }
+    } else {
+        IRQ_OFF( IRQ_VBLANK, TRUE ); trebleposition = 0; bassposition = 0;
     }
-    SMTSTOP();
-}
-void smt_thread( void ) {
-    // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li   sp ,0xff08");               // ADDRESS OF SMT STACKTOP
-    asm volatile ("lwu  sp, (sp)");                 // LOAD FROM SMT STACKTOP
-    asm volatile ("j playtune");
 }
 
 // RESET THE DISPLAY
@@ -143,7 +139,7 @@ void display_village( void ) {
     int BDx = 0, BDx_last = 0, BDwidth = 1024, FDx = 0, FDx_last = 0, FDwidth = 4608, anim_number = 0;
 
     // DISPLAY VILLAGE + START TUNE
-    bitmap_display( 3 ); SMTSTART( smt_thread );
+    bitmap_display( 3 );
 
     while( FDx < ( FDwidth - 320 ) ) {
         await_vblank();
@@ -168,7 +164,8 @@ void display_village( void ) {
 }
 
 int main( void ) {
-    displayreset();
+    displayreset(); IRQ_VECTOR( (void *)playtune ); IRQ_ON( IRQ_VBLANK, TRUE );
+
     display_village();
 
     sleep1khz( 4000 );

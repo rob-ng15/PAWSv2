@@ -40,8 +40,31 @@ short strlen( char *s ) {
     return(i);
 }
 
-// TIMER AND PSEUDO RANDOM NUMBER GENERATOR
-// SLEEP FOR counter milliseconds
+// RISC-V CSR FUNCTIONS
+unsigned int CSRisa() {
+    unsigned int isa;
+    asm volatile (
+        "csrr %0, 0x301"
+        : "=r"(isa));
+    return isa;
+}
+
+unsigned long CSRcycles() {
+    unsigned long cycles;
+    asm volatile(
+        "rdcycle %0\n"
+        : "=r"(cycles));
+    return cycles;
+}
+
+unsigned long CSRinstructions() {
+    unsigned long insns;
+    asm volatile(
+        "rdinstret %0\n"
+        : "=r"(insns));
+    return insns;
+}
+
 unsigned long CSRtime() {
     unsigned long timer;
     asm volatile(
@@ -50,6 +73,54 @@ unsigned long CSRtime() {
     return timer;
 }
 
+// IRQ FUNCTIONS
+void IRQ_VECTOR( void *function ) {
+    asm(
+        "csrw mtvec, %0\n\t"
+        :
+        : "r"(function)
+        :
+    );
+}
+
+void IRQ_ON( unsigned int IRQ, unsigned int MIE ) {
+    asm(
+        "csrs mie, %0\n\t"
+        :
+        : "r"(IRQ)
+        :
+    );
+    if( MIE ) {
+        asm(
+            "csrsi mstatus, 8\n\t"
+        );
+    }
+}
+
+void IRQ_OFF( unsigned int IRQ, unsigned int MIE ) {
+    asm(
+        "csrc mie, %0\n\t"
+        :
+        : "r"(IRQ)
+        :
+    );
+    if( MIE ) {
+        asm(
+            "csrwi   mstatus,0\n\t"
+        );
+    }
+}
+
+void IRQ_ACK( unsigned int IRQ ) {
+    asm(
+        "csrc mip, %0\n\t"
+        :
+        : "r"(IRQ)
+        :
+    );
+}
+
+// SLEEP FOR counter milliseconds
 void sleep( unsigned short counter ) {
     unsigned long target = CSRtime() + ( counter * 50000 );
     while( CSRtime() < target );
@@ -386,15 +457,6 @@ void sample_upload( unsigned char channel_number, unsigned short length, unsigne
     if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, DMA_TO_IO ); }
 }
 
-// SMT START STOP
-void SMTSTOP( void ) {
-    *SMTSTATUS = 0;
-}
-void SMTSTART( void *code ) {
-    *SMTPC = (uintptr_t)code;
-    *SMTSTATUS = 1;
-}
-
 // PAWS LOGO BLITTER TILE
 unsigned short PAWSLOGO[] = {
     0b0000000001000000,
@@ -427,4 +489,9 @@ unsigned short PAWSLOGO[] = {
 #define BKG_CHKBRD_2 8
 #define BKG_CHKBRD_3 9
 #define BKG_CHKBRD_4 10
+
+// IRQ FLAGS
+#define IRQ_SOFTWARE    ( 1 << 3 )
+#define IRQ_TIMER       ( 1 << 7 )
+#define IRQ_VBLANK      ( 1 << 11 )
 

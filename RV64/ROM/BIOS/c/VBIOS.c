@@ -135,7 +135,34 @@ void reset_system( void ) {
     }
 }
 
-void smtmandel( void ) {
+void __attribute__((interrupt ("machine"))) vblank_interrupt( void ) {
+    static int j = 0;
+
+    IRQ_ACK( IRQ_VBLANK );
+
+    tilemap_scroll( 0, 3, 1 );
+    tilemap_scroll( 1, 1, 1 );
+    update_sprite( 1, 0, 0, 1, 0, 0 ); update_sprite( 1, 2, 0, 1, 0, 0 );
+    set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
+    set_sprite_attribute( 1, 2, 1, ( j & 128 ) >> 7 );
+    j++;
+    tpu_set( 0, 17, TRANSPARENT, WHITE, 1 );
+    long rtc = *RTC + 0x2000000000000000;
+    for( int i = 0; i < 16; i++ ) {
+        rtc = _rv64_rol( rtc, 4 );
+        switch(i) {
+            case 8: case 9: break;
+            default: tpu_output_character( 48 + ( rtc & 0xf ) );
+        }
+        switch(i) {
+            case 3: case 5: tpu_output_character('-'); break;
+            case 7: tpu_output_character(' '); break;
+            case 11: case 13: tpu_output_character(':'); break;
+        }
+    }
+}
+
+void mandel( void ) {
     const int graphwidth = 320, graphheight = 100;
     float kt = 63, m = 4.0;
     float xmin = -2.1, xmax = 0.6, ymin = -1.35, ymax = 1.35;
@@ -164,20 +191,11 @@ void smtmandel( void ) {
     *PB_STOP = 3;
 }
 
-void smtthread( void ) {
-    // SETUP STACKPOINTER FOR THE SMT THREAD
-    asm volatile ("li   sp ,0xff08");               // ADDRESS OF SMT STACKTOP
-    asm volatile ("lwu  sp, (sp)");                 // LOAD FROM SMT STACKTOP
-    smtmandel();
-    SMTSTOP();
-}
-
 extern int _bss_start, _bss_end;
 void main( void ) {
     unsigned short i,j = 0, x, y;
 
     // STOP SMT, RESET THE SYSTEM, ZERO THE VARIABLE SPACE
-    *SMTSTATUS = 0;
     memset( &_bss_start, 0, &_bss_end - &_bss_start );
     reset_system();
 
@@ -194,43 +212,18 @@ void main( void ) {
         set_tilemap_tile( 0, i, 16, i+1, 0 );
         set_tilemap_tile( 1, i, 30, i+1, 0 );
     }
-    gpu_outputstringcentre( UK_GOLD, 74, 0, "VERILATOR - SMT + FPU TEST", 0 );
-    gpu_outputstringcentre( UK_GOLD, 82, 0, "THREAD 0 - PACMAN SPRITES", 0 );
-    gpu_outputstringcentre( UK_GOLD, 90, 0, "THREAD 1 - GPU AND FPU MANDELBROT", 0 );
+    gpu_outputstringcentre( UK_GOLD, 74, 0, "VERILATOR - INTERRUPT + FPU TEST", 0 );
+    gpu_outputstringcentre( UK_GOLD, 82, 0, "MAIN - GPU AND FPU MANDELBROT", 0 );
+    gpu_outputstringcentre( UK_GOLD, 90, 0, "INTERRUPT - SPRITES AND BARST", 0 );
 
     gpu_triangle( WHITE, 300, 0, 310, 10, 305, 30 );
 
-    SMTSTART( smtthread );
+    set_sprite_bitmaps( 1, 0, &pacman_bitmap[0] ); set_sprite( 1, 0, 1, 0, 440, 4, 13 );
+    set_sprite_bitmaps( 1, 1, &ghost_bitmap[0] ); set_sprite( 1, 2, 1, 64, 440, 0, 8);
 
-    set_sprite_bitmaps( 1, 0, &pacman_bitmap[0] );
-    set_sprite_bitmaps( 1, 1, &ghost_bitmap[0] );
+    // INTERRUPT HANDLER SETUP
+    IRQ_VECTOR( (void *)vblank_interrupt );
+    IRQ_ON( IRQ_VBLANK, TRUE );
 
-    set_sprite( 1, 0, 1, 0, 440, 4, 13 );
-    set_sprite( 1, 2, 1, 64, 440, 0, 8);
-
-    while(1) {
-        await_vblank();
-        tilemap_scroll( 0, 3, 1 );
-        tilemap_scroll( 1, 1, 1 );
-        update_sprite( 1, 0, 0, 1, 0, 0 ); update_sprite( 1, 2, 0, 1, 0, 0 );
-        set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
-        set_sprite_attribute( 1, 2, 1, ( j & 128 ) >> 7 );
-        j++;
-        tpu_set( 0, 17, TRANSPARENT, WHITE, 1 );
-        long rtc = *RTC + 0x2000000000000000;
-        for( int i = 0; i < 16; i++ ) {
-            rtc = _rv64_rol( rtc, 4 );
-            switch(i) {
-                case 8: case 9: break;
-                default: tpu_output_character( 48 + ( rtc & 0xf ) );
-            }
-            switch(i) {
-                case 3: case 5: tpu_output_character('-'); break;
-                case 7: tpu_output_character(' '); break;
-                case 11: case 13: tpu_output_character(':'); break;
-            }
-        }
-
-        await_vblank_finish();
-    }
+    mandel(); while(1) {}
 }

@@ -6,330 +6,316 @@
 // RISC-V - MAIN CPU LOOP
 
 unit PAWSCPU(
-    input   uint1   clock_CPUdecoder,                                                                                           // 100 MHz clocks for fast decode/register fetch
-    input   uint1   clock_cache,                                                                                                // 100 MHz clock for on CPU instruction cache
+    input   uint1               clock_CPUdecoder,                                                                               // 100 MHz clocks for fast decode/register fetch
+    input   uint1               clock_cache,                                                                                    // 100 MHz clock for on CPU instruction cache
 
-    output  uint$addr_width$  address,                                                                                          // MEMORY INTERFACE LINES
-    output  uint2   accesssize,
-    output  uint32  writedata,
-    output  uint1   writememory,
-    input   uint32  readdata,
-    output  uint1   readmemory,
-    input   uint1   memorybusy,
+    output  uint$addr_width$    MEM_ADDR,                                                                                       // MEMORY INTERFACE LINES
+    output  uint2               MEM_SIZE,
+    output  uint32              MEM_WDATA,
+    output  uint1               MEM_WENABLE,
+    input   uint32              MEM_RDATA,
+    output  uint1               MEM_RENABLE,
+    input   uint1               MEM_BUSY,
 
-    input   uint1   SMTRUNNING,                                                                                                 // SMT CONTROL FLAGS FROM IO REGISTERS
-    input   uint$addr_width$  SMTSTARTPC,                                                                                       // HART1 START ADDRESS
+    output  uint1               DMA_START,                                                                                      // DMA CONTROLLER FLAGS     CPU TO DMA START FLAG
+    input   uint1               DMA_REQ,                                                                                        //                          DMA START REQUEST WHEN != 0
+    input   uint1               DMA_ACTIVE,                                                                                     //                          DMA ACTIVE
+    output  uint1               DMA_AUDIO_START,                                                                                //                          CPU TO DMA AUDIO START FLAG
+    input   uint1               DMA_AUDIO_REQ,                                                                                  //                          DMA AUDIO START REQUEST WHEN != 0
+    input   uint1               DMA_AUDIO_ACTIVE,                                                                               //                          DMA AUDIO ACTIVE
 
-    output  uint1   DMASTART,                                                                                                   // DMA CONTROLLER FLAGS     CPU TO DMA START FLAG
-    input   uint1   DMAREQ,                                                                                                     //                          DMA START REQUEST WHEN != 0
-    input   uint1   DMAACTIVE,                                                                                                  //                          DMA ACTIVE
+    input   uint$CWIDTH$        IRQ_TIMER,                                                                                  // IRQ TIMER TRIGGER
+    input   uint1               IRQ_VBLANK                                                                                      // IRQ VBLANK
+) {
+    uint9               STATE = 9b000000001;                                                                                    // CPU STATE MACHINE, DEFAULT TO STATE_RESET
+                        $$ STATE_RESET      = 1
+                        $$ STATE_DMA_START  = 2
+                        $$ STATE_DMA_WAIT   = 4
+                        $$ STATE_FETCH      = 8
+                        $$ STATE_EXEC       = 16
+                        $$ STATE_LOAD       = 32
+                        $$ STATE_MULTI      = 64
+                        $$ STATE_COMMIT     = 128
+                        $$ STATE_NEXT       = 256
 
-    output  uint1   DMA_AUDIO_START,                                                                                            // DMA CONTROLLER FLAGS     CPU TO DMA START FLAG
-    input   uint1   DMA_AUDIO_REQ,                                                                                              //                          DMA START REQUEST WHEN != 0
-    input   uint1   DMA_AUDIO_ACTIVE                                                                                            //                          DMA ACTIVE
-)  {
-    uint9   STATE = 8b00000001;
-        $$ STATE_RESET      = 1
-        $$ STATE_DMA_START  = 2
-        $$ STATE_DMA_WAIT   = 4
-        $$ STATE_FETCH      = 8
-        $$ STATE_EXEC       = 16
-        $$ STATE_LOAD       = 32
-        $$ STATE_MULTI      = 64
-        $$ STATE_COMMIT     = 128
-        $$ STATE_NEXT       = 256
+    uint8               resetCounter = -1;                                                                                      // RESET COUNTER
 
-    uint8   resetCounter = -1;                                                                                                  // RESET COUNTER
-    uint1   DMAREQUESTED = 0;
+    uint1               COMMIT = uninitialized;                                                                                 // COMMIT RESULT TO REGISTERS FLAG AND TO WHICH THREAD
+    uint$addr_width$    pc = 0;                                                                                                 // PROGRAMS COUNTERS FOR MAIN AND SMT THREADS
+    uint$addr_width$    nextPC = uninitialised;                                                                                 // NEXT PC AND AUIPCLUI CACHING
+    uint64              AUIPCLUI = uninitialised;
 
-    uint1   COMMIT = uninitialized;                 uint1   COMMIT_SMT = uninitialised;                                         // COMMIT RESULT TO REGISTERS FLAG AND TO WHICH THREAD
-    uint1   SMT = 0;                                                                                                            // SMT FLAG
-    uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;                                    // PROGRAMS COUNTERS FOR MAIN AND SMT THREADS
-    uint$addr_width$ nextPC = uninitialised;        uint64 AUIPCLUI = uninitialised;                                            // NEXT PC AND AUIPCLUI CACHING
+    uint64 result <::  RV64.IS_FPU ? FPU.RESULT :                                                                               // SELECT RESULT FROM UNIT
+                      RV64.IS_FAST ?      RV64.IS_ALU ? { ( RV64.OPCODE[1,1] & RV64.IS_ALU32SIGNX ) ? {32{ALU.result[31,1]}} : ALU.result[32,32], ALU.result[0, 32] } :
+                                     RV64.IS_AUIPCLUI ? AUIPCLUI :
+                                          RV64.IS_JAL ? nextPC :
+                                                        MEMORY.RDATA :
+                                RV64.IS_ALU ? { RV64.OPCODE[1,1] ? {32{ALUMD.result[31,1]}} : ALUMD.result[32,32], ALUMD.result[0,32] } :
+                                RV64.IS_CSR ? CSR.result :
+                       RV64.FUNCTION7[3, 1] ? MEMORY.RDATA : RV64.FUNCTION7[2, 1] ? 0 : MEMORY.RDATA;
+    uint1 frd <:: RV64.IS_FPU ? FPU.F_RD : ( RV64.IS_LOAD & Rtype(MEMORY.instruction).opp[2,1] );                               // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
+    uint1 write <:: COMMIT & RV64.writeRegister;                                                                                // WRITE TO REGISTERS FLAG
 
-    uint64  result <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.RESULT :                                                                 // SELECT RESULT FROM UNIT
-                      RV64CONTROL.IS_FAST ? RV64CONTROL.IS_ALU ? { ( RV64CONTROL.opCode[1,1] & RV64CONTROL.IS_ALU32SIGNX ) ? {32{ALU.result[31,1]}} : ALU.result[32,32],
-                                                                   ALU.result[0,32] } :                                         // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
-                                            RV64CONTROL.IS_AUIPCLUI ? AUIPCLUI :
-                                            RV64CONTROL.IS_JAL ? nextPC :
-                                                                MEMORY.memoryinput :
-                                            RV64CONTROL.IS_ALU ? { RV64CONTROL.opCode[1,1] ? {32{ALUMD.result[31,1]}} : ALUMD.result[32,32], ALUMD.result[0,32] } :
-                                            RV64CONTROL.IS_CSR ? CSR.result :
-                                            RV64CONTROL.function7[3,1] ? MEMORY.memoryinput : RV64CONTROL.function7[2,1] ? 0 : MEMORY.memoryinput;
-    uint1   frd <:: RV64CONTROL.IS_FPU ? EXECUTEFPU.F_RD : ( RV64CONTROL.IS_LOAD & RV64CONTROL.opCode[0,1] );                   // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
-    uint1   write <:: COMMIT & RV64CONTROL.writeRegister;                                                                       // WRITE TO REGISTERS FLAG
-
-    control RV64CONTROL <@clock_CPUdecoder> (                                                                                   // RISC-V   INSTRUCTION DECODER
-        SMT <:: SMT,
-        COMMIT_SMT <: COMMIT_SMT,
-        frd <: frd,
-        write <: write,
-        result <: result,
-        instruction <: MEMORY.instruction,
-        compressed <: MEMORY.compressed,
-        accesssize :> accesssize
+    control RV64 <@clock_CPUdecoder> (                                                                                          // RISC-V CONTROL FLAGS FOR INSTRUCTION
+        PC <:: pc,
+        frd <: frd, write <: write, result <: result,
+        instruction <: MEMORY.instruction, compressed <: MEMORY.compressed,
+        accesssize :> MEM_SIZE                                                                                                  // MEMORY ACCESSSIZE FLAGS ( handles fetch and misaligned )
     );
 
-    alu ALU(                                                                                                                    // SINGLE CYCLE INTEGER OPERATIONS
-        OP <: RV64CONTROL.ALUOP,
-        immediate <: RV64CONTROL.opCode[3,1],                                                                                   //  IMMEDIATE OR SOURCEREG2 FLAG
-        size32 <: RV64CONTROL.opCode[1,1],                                                                                      //  32 BIT OPERATION FLAG
-        function3 <: RV64CONTROL.function3, shiftbit6 <: RV64CONTROL.function7[0,1],
-        rs1 <: RV64CONTROL.rs1, rs2 <: RV64CONTROL.rs2,
-        sourceReg1 <: RV64CONTROL.sourceReg1, sourceReg2 <: RV64CONTROL.sourceReg2,
-        immediateValue <: RV64CONTROL.immediateValue,
-        LT <: RV64CONTROL.COMPARISONS[2,1], LTU <: RV64CONTROL.COMPARISONS[3,1]
+    alu ALU(                                                                                                                    // ALU OPERATIONS, EXCEPT DIVIDE
+        OP <: RV64.ALUOP,
+        immediate <: RV64.OPCODE[3,1],                                                                                          //  IMMEDIATE OR SOURCEREG2 FLAG
+        size32 <: RV64.OPCODE[1,1],                                                                                             //  32 BIT OPERATION FLAG
+        function3 <: RV64.FUNCTION3, shiftbit6 <: RV64.FUNCTION7[0,1],
+        rs1 <: RV64.RS1, rs2 <: RV64.RS2,
+        sourceReg1 <: RV64.sourceReg1, sourceReg2 <: RV64.sourceReg2,
+        immediateValue <: RV64.IMMEDIATE,
+        LT <: RV64.COMPARISONS[2,1], LTU <: RV64.COMPARISONS[3,1]
     );
 
     aludivision ALUMD(                                                                                                          // INTEGER 32/64 BIT SIGNED/UNSIGNED DIVISION
-        size32 <: RV64CONTROL.opCode[1,1], function3 <: RV64CONTROL.function3,
-        sourceReg1 <: RV64CONTROL.sourceReg1, S1_abs32 <: RV64CONTROL.S1_abs32, S1_abs64 <: RV64CONTROL.S1_abs64,
-        sourceReg2 <: RV64CONTROL.sourceReg2, S2_abs32 <: RV64CONTROL.S2_abs32, S2_abs64 <: RV64CONTROL.S2_abs64
+        size32 <: RV64.OPCODE[1,1], function3 <: RV64.FUNCTION3[0,2],
+        sourceReg1 <: RV64.sourceReg1, S1_abs32 <: RV64.S1_abs32, S1_abs64 <: RV64.S1_abs64,
+        sourceReg2 <: RV64.sourceReg2, S2_abs32 <: RV64.S2_abs32, S2_abs64 <: RV64.S2_abs64
     );
 
-    aluA ALUA(                                                                                                                  // ATOMIC MEMORY OPERATIONS
-        function7 <: RV64CONTROL.function7[2,5], memoryinput <: MEMORY.memoryinput, sourceReg2 <: RV64CONTROL.sourceReg2
+    aluA ALUA(                                                                                                                  // ATOMIC MEMORY OPERATIONS ( NOT TESTED )
+        function7 <: RV64.FUNCTION7[2,5], RDATA <: MEMORY.RDATA, sourceReg2 <: RV64.sourceReg2
     );
 
     CSRblock CSR(                                                                                                               // RISC-V CSR REGISTERS
-        SMT <: SMT,                                                                                                             //  HARTID == 0 MAIN THREAD == 1 SMT THREAD
-        function3 <: RV64CONTROL.function3,
-        rs1 <: RV64CONTROL.rs1,
-        sourceReg1 <: RV64CONTROL.sourceReg1,
-        FPUnewflags <: EXECUTEFPU.OUT_FPUFLAGS,
-        updateFPUflags <: EXECUTEFPU.CSR_UPDATE_FPUFLAGS,
-        incCSRinstret <: STATE[8,1]
+        IRQ_VBLANK <: IRQ_VBLANK, IRQ_TIMER <: IRQ_TIMER,
+        DMA_ACTIVE <: DMA_ACTIVE, DMA_AUDIO_ACTIVE <: DMA_AUDIO_ACTIVE,                                                         //  FOR PERFORMANCE COUNTERS
+        PC_NEXT <: RV64.newPC, incCSRinstret <: COMMIT,                                                                         //  NEXT INSTRUCTION FOR MEPC INTERRUPTS
+        function3 <: RV64.FUNCTION3, rs1 <: RV64.RS1,
+        csrRegister <: RV64.CSR_REG,
+        sourceReg1 <: RV64.sourceReg1,
+        FPUnewflags <: FPU.OUT_FPUFLAGS, updateFPUflags <: FPU.CSR_UPDATE_FPUFLAGS
     );
 
-    fpu_execute EXECUTEFPU(                                                                                                     // RISC-V FLOATING POINT OPERATIONS
-        OPCODE <: RV64CONTROL.opCode,
-        FUNCTION3 <: RV64CONTROL.function3,
-        FUNCTION7 <: RV64CONTROL.function7,
-        RS1 <: RV64CONTROL.rs1, RS2 <: RV64CONTROL.rs2,
-        I_1 <: RV64CONTROL.sourceReg1, I_1_ABS32 <: RV64CONTROL.S1_abs32, I_1_ABS64 <: RV64CONTROL.S1_abs64,
-        F_1 <: RV64CONTROL.sourceReg1F, F_1_X <: RV64CONTROL.sourceReg1Fx, F_1_CP <: RV64CONTROL.sourceReg1Fxopp, F_1_TYPE <: RV64CONTROL.type_1F, F_1_TYPE_CP <: RV64CONTROL.typeAopp,
-        F_2 <: RV64CONTROL.sourceReg2F, F_2_X <: RV64CONTROL.sourceReg2Fx, F_2_TYPE <: RV64CONTROL.type_2F,
-        F_3_X <: RV64CONTROL.sourceReg3Fx, F_3_TYPE <: RV64CONTROL.type_3F,
-        F1_OR_F2_INF <: RV64CONTROL.F1_OR_F2_INF,
-        F1_AND_F2_INF <: RV64CONTROL.F1_AND_F2_INF,
-        F1_OR_F2_NAN <: RV64CONTROL.F1_OR_F2_NAN,
-        F1_OR_F2_ZERO <: RV64CONTROL.F1_OR_F2_ZERO,
-        F1_AND_F2_ZERO <: RV64CONTROL.F1_AND_F2_ZERO,
-        F1_ZERO_FRACTION <: RV64CONTROL.F1_ZERO_FRACTION,
-        F2_ZERO_FRACTION <: RV64CONTROL.F2_ZERO_FRACTION,
-        FLT <: RV64CONTROL.FLT, FEQ <: RV64CONTROL.FEQ,
-        IS_FASTFPU <: RV64CONTROL.IS_FASTFPU,
-        IS_FPUCONVERT <: RV64CONTROL.IS_FPUCONVERT,
+    fpu_execute FPU(                                                                                                            // RISC-V FLOATING POINT OPERATIONS
+        OPCODE <: RV64.OPCODE,
+        FUNCTION3 <: RV64.FUNCTION3,
+        FUNCTION7 <: RV64.FUNCTION7,
+        RS1 <: RV64.RS1, RS2 <: RV64.RS2,
+        I_1 <: RV64.sourceReg1, I_1_ABS32 <: RV64.S1_abs32, I_1_ABS64 <: RV64.S1_abs64,
+        F_1 <: RV64.sourceReg1F, F_1_X <: RV64.sourceReg1Fx, F_1_CP <: RV64.sourceReg1Fxopp, F_1_TYPE <: RV64.type_1F, F_1_TYPE_CP <: RV64.typeAopp,
+        F_2 <: RV64.sourceReg2F, F_2_X <: RV64.sourceReg2Fx, F_2_TYPE <: RV64.type_2F,
+        F_3_X <: RV64.sourceReg3Fx, F_3_TYPE <: RV64.type_3F,
+        F1_OR_F2_INF <: RV64.F1_OR_F2_INF,
+        F1_AND_F2_INF <: RV64.F1_AND_F2_INF,
+        F1_OR_F2_NAN <: RV64.F1_OR_F2_NAN,
+        F1_OR_F2_ZERO <: RV64.F1_OR_F2_ZERO,
+        F1_AND_F2_ZERO <: RV64.F1_AND_F2_ZERO,
+        F1_ZERO_FRACTION <: RV64.F1_ZERO_FRACTION,
+        F2_ZERO_FRACTION <: RV64.F2_ZERO_FRACTION,
+        FLT <: RV64.FLT, FEQ <: RV64.FEQ,
+        IS_FASTFPU <: RV64.IS_FASTFPU,
+        IS_FPUCONVERT <: RV64.IS_FPUCONVERT,
         IN_FPUFLAGS <: CSR.FPUflags
     );
 
-    memory_controller MEMORY(
+    memory_controller MEMORY(                                                                                                   // HANDLE CPU MEMORY OPERATIONS { STORE, LOAD, FETCH }
         clock_CPUdecoder <: clock_CPUdecoder, clock_cache <: clock_cache,
-        accesssize <: RV64CONTROL.accesssize, IS_MA <: RV64CONTROL.IS_MA, IS_64 <: RV64CONTROL.IS_MEM64,
-        IS_FLOAT <:RV64CONTROL.opCode[0,1], IS_UNSIGNED <: RV64CONTROL.function3[2,1],
-        loadAddress <: RV64CONTROL.loadAddress, storeAddress <: RV64CONTROL.storeAddress,
-        SMT <: SMT, pc <: pc, pcSMT <: pcSMT,
-        readdata <: readdata, memorybusy <: memorybusy,
-        address :> address,
-        writedata :> writedata,
-        writememory :> writememory,
-        readmemory :> readmemory
+        pc <: pc,
+        MEM_SIZE <: RV64.FUNCTION3[0,2], IS_MA <: RV64.IS_MA, IS_64 <: RV64.IS_MEM64,
+        IS_FLOAT <: RV64.OPCODE[0,1], IS_UNSIGNED <: RV64.FUNCTION3[2,1],
+        LOAD_ADDRESS <: RV64.LOAD_ADDRESS, STORE_ADDRESS <: RV64.STORE_ADDRESS,
+        MEM_BUSY <: MEM_BUSY, MEM_ADDR :> MEM_ADDR,
+        MEM_WDATA :> MEM_WDATA, MEM_WENABLE :> MEM_WENABLE,
+        MEM_RDATA <: MEM_RDATA, MEM_RENABLE :> MEM_RENABLE
     );
 
-    RV64CONTROL.PC := SMT ? pcSMT : pc;                                                                                         // SELECT PROGRAM COUNTER FOR THIS CYCLE
-
-    MEMORY.start := {                                                                                                           // MEMORY CONTROLLER FLAGS
-        RV64CONTROL.IS_STORE & ( ( STATE[4,1] & RV64CONTROL.IS_FAST ) | ( STATE[6,1] & ~( ALUMD.busy | EXECUTEFPU.BUSY ) ) ),
-        STATE[3,1] & RV64CONTROL.IS_LOAD & ~MEMORY.busy,
-        STATE[8,1] & ~( DMAREQ | DMA_AUDIO_REQ )
+    MEMORY.start := {                                                                                                           // MEMORY CONTROLLER START FLAGS
+        RV64.IS_STORE & ( ( STATE[4,1] & RV64.IS_FAST ) | ( STATE[6,1] & ~( ALUMD.busy | FPU.BUSY ) ) ),                        //  START STORE
+        STATE[3,1] & RV64.IS_LOAD & ~MEMORY.busy,                                                                               //  START LOAD
+        STATE[8,1] & ~( DMA_REQ | DMA_AUDIO_REQ )                                                                               //  START FETCH
     };
-    MEMORY.storedata := RV64CONTROL.IS_FAST ? RV64CONTROL.opCode[0,1] ? RV64CONTROL.sourceReg2F :                               //  SELECT RESULT TO STORE  FAST FLOATING-POINT REGISTER
-                                                                        RV64CONTROL.sourceReg2 :                                //                          FAST INTEGER REGISTER
-                                              RV64CONTROL.function7[3,1] ? ALUA.result : RV64CONTROL.sourceReg2;                //                          SLOW ATOMIC MEMORY OPERATION
+    MEMORY.WDATA :=         RV64.IS_FAST ? RV64.OPCODE[0,1] ? RV64.sourceReg2F :  RV64.sourceReg2 :                             // STORE INTEGER / FLOAT
+                    RV64.FUNCTION7[3, 1] ? ALUA.result : RV64.sourceReg2;                                                       // OR ATOMIC MEMORY OPERATION RESULT
 
-    DMASTART := STATE[1,1] & DMAREQ; DMA_AUDIO_START := STATE[1,1] &  ~DMAREQ & DMA_AUDIO_REQ;                                  // DMA CONTROLLER START FLAGS
-    ALUMD.start := ( STATE[4,1] & ~RV64CONTROL.IS_FAST & RV64CONTROL.IS_ALU );
-    CSR.start := ( STATE[4,1] & RV64CONTROL.IS_CSR & |RV64CONTROL.function3 ); CSR.csrRegister := { RV64CONTROL.function7, RV64CONTROL.rs2 };
-    EXECUTEFPU.START := STATE[4,1] & RV64CONTROL.IS_FPU;                                                                        // CPU FPU START FLAG
-
+    DMA_START := STATE[1, 1] & DMA_REQ; DMA_AUDIO_START := STATE[1, 1] & ~DMA_REQ & DMA_AUDIO_REQ;                              // DMA CONTROLLER START FLAGS
+    ALUMD.start := STATE[4,1] & ~RV64.IS_FAST & RV64.IS_ALU;                                                                    // DIVISION START FLAG
+    CSR.start := STATE[4,1] & RV64.IS_CSR; CSR.IRQ_ACK := 0; CSR.IRQ_END := 0;                                                  // CSR START FLAG AND INSTRUCTION COUNTER, IRQ ACK/END FLAGS
+    FPU.START := STATE[4,1] & RV64.IS_FPU;                                                                                      // CPU FPU START FLAG
     COMMIT := STATE[7,1] & ( ~MEMORY.busy & ~ALUMD.busy );                                                                      // COMMIT TO REGISTERS FLAG
 
     always {
-        onehot( STATE ) {
+        uint1           DMA_REQUESTED = uninitialised;
+
+        onehot(STATE) {
             case 0: {                                                                                                           // STATE_RESET
-                if( |resetCounter ) {
-                    resetCounter = resetCounter - ~( memorybusy | DMAACTIVE | ALUMD.busy | EXECUTEFPU.BUSY |                    // -1 WHEN ALL UNITS ARE NO LONGER BUSY
-                                                     MEMORY.busy );
+                if (| resetCounter) {
+                    CSR.CPU_ACTIVE = 0; MEMORY.CPU_FENCE = 0;
+                    resetCounter = resetCounter - ~( MEM_BUSY | DMA_ACTIVE | DMA_AUDIO_ACTIVE | ALUMD.busy | FPU.BUSY | MEMORY.busy );
                 } else {
                     STATE = $STATE_NEXT$;
                 }
             }
-            case 1: {                                                                                                           // STATE_DMA
-                if( DMAREQ | DMA_AUDIO_REQ ) { DMAREQUESTED = 1; STATE = $STATE_DMA_WAIT$; }
-            }
+            case 1: { DMA_REQUESTED = 1; STATE = $STATE_DMA_WAIT$; }                                                            // STATE_DMA
             case 2: {                                                                                                           // STATE_DMA_WAIT
-                if( DMAREQUESTED ) {
-                    DMAREQUESTED = 0;
+                if( DMA_REQUESTED ) {
+                    DMA_REQUESTED = 0;
                 } else {
-                    if( ~( DMAREQ | DMAACTIVE | DMA_AUDIO_ACTIVE ) ) { STATE = $STATE_NEXT$; }
+                    if( ~( DMA_ACTIVE | DMA_AUDIO_ACTIVE ) ) {  STATE = $STATE_NEXT$; }
                 }
             }
             case 3: {                                                                                                           // STATE_FETCH
                 if( ~MEMORY.busy ) {
-                    RV64CONTROL.cacheselect = 1; COMMIT_SMT = SMT;                                                              //      LATCH THREAD MAIN/SMT, DATA CACHE
-                    STATE = RV64CONTROL.IS_LOAD ? RV64CONTROL.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$ : $STATE_EXEC$;           //      LOAD? COMMIT OR MULTI ELSE EXEC
+                    RV64.cacheselect = 1;                                                                                       //      DATA CACHE
+                    STATE = RV64.IS_LOAD ? RV64.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$ : $STATE_EXEC$;                         //      LOAD? COMMIT OR ATOMIC( MULTI ), ELSE EXEC
                 }
             }
             case 4: {                                                                                                           // STATE_EXEC
-                STATE = ( RV64CONTROL.IS_FPU | RV64CONTROL.IS_CSR | RV64CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ :                   //      MULTICYCLE FPU CSR ATOMIC -> MULTI
-                                                                                              $STATE_COMMIT$;                   //      ALU DIVISION OR FAST -> COMMIT
-                if( RV64CONTROL.IS_FENCE ) {
-                    MEMORY.fenceACTIVE = { |RV64CONTROL.function7[1,2], ~RV64CONTROL.function3[0,1] };
+                STATE = ( RV64.IS_FPU | RV64.IS_CSR | RV64.IS_ATOMIC ) ? $STATE_MULTI$ :                                        //      MULTICYCLE FPU CSR ATOMIC -> MULTI
+                                                                         $STATE_COMMIT$;                                        //      ALU DIVISION OR FAST -> COMMIT
+                if( RV64.IS_FENCE ) {                                                                                           //      ADJUST FENCE
+                    MEMORY.CPU_FENCE = { |RV64.FUNCTION7[1,2], ~RV64.FUNCTION3[0,1] };
                 }
-                nextPC = RV64CONTROL.nextPC; AUIPCLUI = RV64CONTROL.AUIPCLUI;
+                nextPC = RV64.nextPC; AUIPCLUI = RV64.AUIPCLUI;                                                                 //      LATCH NEXTPC AND AUIPCLUI
             }
-            case 5: { if( ~MEMORY.busy ) { STATE = $STATE_MULTI$; } }                                                           // STATE LOAD WAIT FOR ATOMIC MEMORY OPERATIONS
-            case 6: { if( ~EXECUTEFPU.BUSY ) { STATE = $STATE_COMMIT$; } }                                                      // STATE_MULTI, WAIT FOR CSR, ATOMIC FLOATING-POINT TO FINISH
+            case 5: { if( ~MEMORY.busy ) { STATE = $STATE_MULTI$; } }                                                           // STATE_LOAD WAIT FOR ATOMIC MEMORY OPERATIONS
+            case 6: { if( ~FPU.BUSY ) { STATE = $STATE_COMMIT$; } }                                                             // STATE_MULTI, WAIT FOR CSR, ATOMIC FLOATING-POINT TO FINISH
             case 7: {                                                                                                           // STATE_COMMIT
                 if( ~MEMORY.busy & ~ALUMD.busy ) {                                                                              //      WAIT FOR LOAD/STORE/DIVIDE TO FINISH
-                    pc = SMT ? pc : RV64CONTROL.newPC; pcSMT = SMT ? RV64CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;       //      MOVE TO NEXT INSTRUCTION
-                    if( ~MEMORY.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; }                                                 //      SWITCH THREADS IF ACTIVE AND NOT FENCED
-                    STATE = $STATE_NEXT$;
+                    if( RV64.IS_MRET ) {
+                        pc = CSR.CSR_MEPC; CSR.IRQ_END = 1;                        //      HANDLE RETURN FROM INTERRUPT
+                    } else {
+                        if( CSR.IRQ_PENDING ) {                                                                       //      HANDLE INTERRUPT REQUESTED
+                            pc = CSR.CSR_MTVEC; CSR.IRQ_ACK = 1;
+                        } else {
+                            pc = RV64.newPC;              //      MOVE TO NEXT INSTRUCTION
+                        }
+                    }
+                    STATE = $STATE_NEXT$;                                                               //      INCREMENT INSTRUCTION COUNTER
                 }
             }
-            case 8: {                                                                                                           //  STATE_NEXT
-                RV64CONTROL.cacheselect = ( DMAREQ | DMA_AUDIO_REQ );                                                           // SELECT DATA CACHE FOR DMA, INSTRUCTION CACHE FOR FETCH
-                STATE = ( DMAREQ | DMA_AUDIO_REQ ) ? $STATE_DMA_START$ : $STATE_FETCH$;
+            case 8: {                                                                                                           // STATE_NEXT
+                RV64.cacheselect = ( DMA_REQ | DMA_AUDIO_REQ );                                                                 //      SELECT DATA CACHE FOR DMA, INSTRUCTION CACHE FOR FETCH
+                CSR.CPU_ACTIVE = ~( DMA_REQ | DMA_AUDIO_REQ );                                                                  //      SET CPU ACTIUVE IF NOT DMA
+                STATE = ( DMA_REQ | DMA_AUDIO_REQ ) ? $STATE_DMA_START$ : $STATE_FETCH$;                                        //      START DMA OR FETCH
             }
         }
     }
 }
 
 unit memory_controller(
-    input   uint1   clock_CPUdecoder,
-    input   uint1   clock_cache,
-    input   uint3   start,                                                                                                      // { STORE, LOAD, FETCH }
-    output  uint1   busy,
+    input   uint1               clock_CPUdecoder,
+    input   uint1               clock_cache,
+    input   uint3               start,                                                                                          // { STORE, LOAD, FETCH }
+    output  uint1               busy,
 
-    input   uint2   accesssize,
-    input   uint1   IS_MA,
-    input   uint1   IS_64,
-    input   uint1   IS_FLOAT,
-    input   uint1   IS_UNSIGNED,
+    input   uint2               MEM_SIZE,
+    input   uint1               IS_MA,
+    input   uint1               IS_64,
+    input   uint1               IS_FLOAT,
+    input   uint1               IS_UNSIGNED,
 
-    output  uint$addr_width$ address,
-    input   uint1   memorybusy,
-    output  uint1   writememory,
-    output  uint32  writedata,
-    output  uint1   readmemory,
-    input   uint32  readdata,
+    output  uint$addr_width$    MEM_ADDR,
+    input   uint1               MEM_BUSY,
+    output  uint1               MEM_WENABLE,
+    output  uint32              MEM_WDATA,
+    output  uint1               MEM_RENABLE,
+    input   uint32              MEM_RDATA,
 
-    input   uint1   SMT,
-    input   uint2   fenceACTIVE,
-    input   uint$addr_width$ pc,
-    input   uint$addr_width$ pcSMT,
-    input   uint$addr_width$ loadAddress,
-    input   uint$addr_width$ storeAddress,
+    input   uint2               CPU_FENCE,
+    input   uint$addr_width$    pc,
+    input   uint$addr_width$    LOAD_ADDRESS,
+    input   uint$addr_width$    STORE_ADDRESS,
+    output  uint64              RDATA,
+    input   uint64              WDATA,
 
-    output  uint32  instruction,
-    output  uint1   compressed,
+    output  uint32              instruction,
+    output  uint1               compressed
+) {
+    uint5               STATE = 1;
+                        $$ STATE_FSL_WAIT       = 1
+                        $$ STATE_FETCH_READ     = 2
+                        $$ STATE_FETCH_COMPLETE = 4
+                        $$ STATE_LOAD_MEMBUSY   = 8
+                        $$ STATE_LS_NEXT        = 16
 
-    output  uint64  memoryinput,
-    input   uint64  storedata
-)  {
-    uint5   STATE = 1;
-        $$ STATE_FSL_WAIT       = 1
+    uint4               count = uninitialised;                                                                                  // NUMBER OF MEMORY OPERATION
+    uint4               count_NEXT <:: count + 1;
+    uint$addr_width$    MEM_ADDR_NEXT <:: MEM_ADDR + ( IS_MA ? 1 : 4 );                                                         // NEXT MEMORY ADDRESS FOR LOAD/STORE
 
-        $$ STATE_FETCH_READ     = 2
-        $$ STATE_FETCH_COMPLETE = 4
-
-        $$ STATE_LOAD_MEMBUSY   = 8
-        $$ STATE_LS_NEXT        = 16
-
-    uint4   count = uninitialised;                                                                                              // NUMBER OF MEMORY OPERATION
-    uint4   count_NEXT <:: count + 1;
-    uint$addr_width$ address_NEXT <:: address + ( IS_MA ? 1 : 4 );
-
-    uint1   L1match <: ( SMT & ICACHE_1.tagmatch ) | ( ~SMT & ICACHE_0.tagmatch );
     simple_dualport_bram uint$32+L10Ipartaddresswidth$ L10cache <@clock_cache,@clock> [$L10Iblocks$] = uninitialized;           // SMALL ON CPU L1 CACHE - 1 per HART - RESET FENCE MEM IS 1
-    simple_dualport_bram uint$32+L11Ipartaddresswidth$ L11cache <@clock_cache,@clock> [$L11Iblocks$] = uninitialized;
     iL10cache_read ICACHE_0 <@clock_cache> ( L1cache <:> L10cache, CLS <: ICACHE_0W.CLS, ADDR <: pc );
-    iL11cache_read ICACHE_1 <@clock_cache> ( L1cache <:> L11cache, CLS <: ICACHE_1W.CLS, ADDR <: pcSMT );
     iL10cache_write ICACHE_0W( L1cache <:> L10cache, ADDR <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed );
-    iL11cache_write ICACHE_1W( L1cache <:> L11cache, ADDR <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed );
 
-    compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );                                                    // COMPRESSED INSTRUCTION EXPANDERS
-    compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );
-    compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );
+    compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: MEM_RDATA[2,14] );                                                   // COMPRESSED INSTRUCTION EXPANDERS
+    compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: MEM_RDATA[2,14] );
+    compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: MEM_RDATA[2,14] );
 
     signnanbox LOAD(                                                                                                            // SIGN EXTEND IF SIGNED LOAD, OR NAN-BOX FOR FLOAT LOAD
-        floatload <: IS_FLOAT,                                                                                                  //  IS FLOAT LOAD
-        dounsigned <: IS_UNSIGNED,                                                                                              //  IS UNSIGNED INTEGER LOAD
-        accesssize <: accesssize,                                                                                               //  IS 8 BIT, 16, BIT, 32, 64 BIT LOAD
-        byteaccess <: loadAddress[0,1],                                                                                         //  ADDRESS LINE 0 FOR 8 BIT LOAD
-        readdata :> memoryinput                                                                                                 //  OUTPUT LOAD RESULT
+        IS_FLOAT <: IS_FLOAT,                                                                                                   //  IS FLOAT LOAD
+        IS_UNSIGNED <: IS_UNSIGNED,                                                                                             //  IS UNSIGNED INTEGER LOAD
+        MEM_SIZE <: MEM_SIZE,                                                                                                   //  IS 8 BIT, 16, BIT, 32, 64 BIT LOAD
+        ADDR_B0 <: LOAD_ADDRESS[0,1],                                                                                           //  ADDRESS LINE 0 FOR 8 BIT LOAD
+        MEM_RDATA :> RDATA                                                                                                      //  OUTPUT LOAD RESULT
     );
 
-    readmemory := 0; writememory := 0;
-    ICACHE_0W.update := ~SMT & STATE[2,1]; ICACHE_1W.update := SMT & STATE[2,1];                                                // UPDATE CPU L1 CACHE FOR MAIN/SMT THREAD FLAG
-    ICACHE_0W.invalidate := reset | fenceACTIVE[0,1]; ICACHE_1W.invalidate := reset | fenceACTIVE[0,1];                         // CPU L1 CACHE INVALIDATE FLAG, USED AFTER PROGRAM LOAD
+    MEM_RENABLE := 0; MEM_WENABLE := 0;                                                                                         // READ / WRITE FLAGS
+    ICACHE_0W.update := STATE[2,1]; ICACHE_0W.invalidate := reset | CPU_FENCE[0,1];                                             // UPDATE/INVALIDATE( after laod ) CPU L1 CACHE FLAG
 
     always {
-        uint3   ACTION = uninitialised;
+        uint3 ACTION = uninitialised;
 
-        if( STATE[4,1] & ~memorybusy & ACTION[1,1] ) {                                                                          //  IF LOAD, PACK READDATA INTO MEMORY INPUT
+        if( STATE[4,1] & ~MEM_BUSY & ACTION[1,1] ) {                                                                            //  IF LOAD, PACK READDATA INTO MEMORY INPUT
             if( IS_MA ) {
-                LOAD.memoryinput[ { count, 3b000 }, 8 ] = readdata[ { address[0,1], 3b000 }, 8 ];                               //  SINGLE BYTE FOR MISALIGNED LOADS
+                LOAD.RDATA[{ count, 3b000 }, 8] = MEM_RDATA[{ MEM_ADDR[0, 1], 3b000 }, 8];                                      //  SINGLE BYTE FOR MISALIGNED LOADS
             } else {
-                LOAD.memoryinput[ { count[0,1], 5b00000 }, 32 ] = readdata;                                                     //  8/16/32 BITS FOR ALIGNED LOADS
+                LOAD.RDATA[{ count[0,1], 5b00000 }, 32] = MEM_RDATA;                                                            //  8/16/32 BITS FOR ALIGNED LOADS
             }
         }
 
-        onehot( STATE ) {
+        onehot(STATE) {
             case 0: {
-                 if( |start ) {                                                                                                 // WAIT FOR START
-                    count = 0; LOAD.memoryinput = 0;                                                                            //  0 COUNT AND MEMORY INPUT
-                    address = start[0,1] ? SMT ? pcSMT : pc : start[1,1] ? loadAddress : storeAddress;                          //  SET FIRST ADDRESS
+                if( |start ) {                                                                                                  // WAIT FOR START
+                    count = 0;                                                                                                  //  0 COUNT
+                    MEM_ADDR = start[0, 1] ? pc : start[1, 1] ? LOAD_ADDRESS : STORE_ADDRESS;                     //  SET FIRST ADDRESS
                     ACTION = start;
 
-                    onehot( start ) {                                                                                           // SEND TO { STORE, LOAD, FETCH }
+                    onehot(start) {                                                                                             // SEND TO { STORE, LOAD, FETCH }
                         case 0: {
-                            if( L1match ) {
-                                instruction = { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };                      //  FETCH FROM L1 CACHE
-                                compressed = SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
+                            if( ICACHE_0.tagmatch ) {
+                                instruction = { ICACHE_0.instruction, 2b11 };                      //  FETCH FROM L1 CACHE
+                                compressed = ICACHE_0.compressed;
                             } else {
                                 STATE = $STATE_FETCH_READ$;                                                                     //  FETCH FROM MEMORY
                             }
                         }
-                        case 1: { STATE = $STATE_LOAD_MEMBUSY$; }                                                               //  LOAD FROM MEMORY
+                        case 1: { LOAD.RDATA = 0; STATE = $STATE_LOAD_MEMBUSY$; }                                               //  LOAD FROM MEMORY
                         case 2: { STATE = $STATE_LS_NEXT$; }                                                                    //  STORE TO MEMORY
                     }
                 }
 
-                busy = |start[1,2] | ( start[0,1] & ~L1match );
-                readmemory = start[1,1] | ( start[0,1] & ~L1match );
-                writedata = storedata; writememory = start[2,1];
+                busy = |start[1,2] | ( start[0,1] & ~ICACHE_0.tagmatch );
+                MEM_RENABLE = start[1,1] | ( start[0,1] & ~ICACHE_0.tagmatch );
+                MEM_WDATA = WDATA; MEM_WENABLE = start[2, 1];
             }
 
-            case 1: { if( ~memorybusy ) { STATE = $STATE_FETCH_COMPLETE$; } }                                                   // WAIT FOR MEMORYREAD TO COMPLETE
+            case 1: { if( ~MEM_BUSY ) { STATE = $STATE_FETCH_COMPLETE$; } }                                                     // WAIT FOR MEMORYREAD TO COMPLETE
             case 2: {                                                                                                           // PACK FETCHED INSTRUCTION
-                compressed = ~&readdata[0,2];                                                                                   //  SET COMPRESSED FLAGS
-                instruction = { &readdata[0,2] ? readdata[2,30] :                                                               //  32 BIT INSTRUCTION READ
-                               ~|readdata[0,2] ? COMPRESSED00.i32 :                                                             //  16 BIT INSTRUCTION READ block 00
-                                 readdata[0,1] ? COMPRESSED01.i32 :                                                             //                          block 01
-                                                 COMPRESSED10.i32, 2b11 };                                                      //                          block 10, plus trailing 11
+                compressed = ~&MEM_RDATA[0,2];                                                                                  //  SET COMPRESSED FLAGS
+                instruction = { &MEM_RDATA[0,2] ? MEM_RDATA[2,30] :                                                             //  32 BIT INSTRUCTION READ
+                               ~|MEM_RDATA[0,2] ? COMPRESSED00.i32 :                                                            //  16 BIT INSTRUCTION READ block 00
+                                 MEM_RDATA[0,1] ? COMPRESSED01.i32 :                                                            //                          block 01
+                                                  COMPRESSED10.i32, 2b11 };                                                     //                          block 10, plus trailing 11
                 busy = 0; STATE = $STATE_FSL_WAIT$;                                                                             // FINISHED FETCH
             }
 
-            case 3: { if( ~memorybusy ) { STATE = $STATE_LS_NEXT$; } }                                                          // WAIT FOR MEMORYREAD TO COMPLETE
+            case 3: { if( ~MEM_BUSY ) { STATE = $STATE_LS_NEXT$; } }                                                            // WAIT FOR MEMORYREAD TO COMPLETE
             case 4: {
-                if( ~memorybusy ) {                                                                                             // WAIT FOR MEMORYWRITE TO COMPLETE
-                    if( count_NEXT == ( IS_MA ? ( 1 << accesssize ) : IS_64 ? 2 : 1 ) ) {
+                if( ~MEM_BUSY ) {                                                                                               // WAIT FOR MEMORYWRITE TO COMPLETE
+                    if( count_NEXT == ( IS_MA ? (1 << MEM_SIZE) : IS_64 ? 2 : 1 ) ) {
                         busy = 0; STATE = $STATE_FSL_WAIT$;                                                                     //  FINISHED LOAD/STORE
                     } else {
-                        writedata = IS_MA ? storedata[ { count_NEXT, 3b000 }, 8 ] : storedata[ 32, 32 ];                        // SET MEMORY OUTPUT TO PRESENT STORE PART
-                        count = count_NEXT; address = address_NEXT;                                                             //  MOVE TO NEXT PART, 8 bit MA or NEXT 32 BITS FOR 64 BITS
-                        writememory = ACTION[2,1]; readmemory = ACTION[1,1];
+                        MEM_WDATA = IS_MA ? WDATA[{ count_NEXT, 3b000 }, 8] : WDATA[32, 32];                                    // SET MEMORY OUTPUT TO PRESENT STORE PART
+                        count = count_NEXT;
+                        MEM_ADDR = MEM_ADDR_NEXT;                                                                               //  MOVE TO NEXT PART, 8 bit MA or NEXT 32 BITS FOR 64 BITS
+                        MEM_WENABLE = ACTION[2,1]; MEM_RENABLE = ACTION[1,1];
                         STATE = ACTION[2,1] ? $STATE_LS_NEXT$ : $STATE_LOAD_MEMBUSY$;
                     }
                 }
@@ -338,22 +324,22 @@ unit memory_controller(
     }
 }
 
-unit signnanbox(                                                                                                                // SIGN EXTEND/NAN BOX MEMORYINPUT
-    input   uint1   floatload,
-    input   uint1   dounsigned,
-    input   uint2   accesssize,
-    input   uint1   byteaccess,
-    input   uint64  memoryinput,
-    output  uint64  readdata
-)  {
+unit signnanbox( // SIGN EXTEND/NAN BOX MEMORYINPUT
+    input   uint1   IS_FLOAT,
+    input   uint1   IS_UNSIGNED,
+    input   uint2   MEM_SIZE,
+    input   uint1   ADDR_B0,
+    input   uint64  RDATA,
+    output  uint64  MEM_RDATA
+) {
     always {
-        switch( accesssize ) {
+        switch (MEM_SIZE) {
             case 2b00: {                                                                                                        // SIGN EXTEND 8 BIT LOAD ( not for floats )
-                readdata = { {56{~dounsigned & memoryinput[ { byteaccess, 3b111 }, 1 ]}}, memoryinput[ { byteaccess, 3b000 }, 8 ] };
+                MEM_RDATA = { {56{ ~IS_UNSIGNED & RDATA[{ ADDR_B0, 3b111 }, 1] }}, RDATA[{ ADDR_B0, 3b000 }, 8] };
             }
-            case 2b01: { readdata = { {48{floatload | ( ~dounsigned & memoryinput[ 15, 1] )}}, memoryinput[0,16] }; }           // SIGN EXTEND / NAN BOX 16 BIT LOAD
-            case 2b10: { readdata = { {32{floatload | ( ~dounsigned & memoryinput[ 31, 1] )}}, memoryinput[0,32] }; }           // SIGN EXTEND / NAN BOX 32 BIT LOAD
-            case 2b11: { readdata = memoryinput; }                                                                              // COPY 64 BIT LOAD
+            case 2b01: { MEM_RDATA = { { 48{ IS_FLOAT | (~IS_UNSIGNED & RDATA[15, 1]) }}, RDATA[0, 16] }; }                     // SIGN EXTEND / NAN BOX 16 BIT LOAD
+            case 2b10: { MEM_RDATA = { { 32{ IS_FLOAT | (~IS_UNSIGNED & RDATA[31, 1]) }}, RDATA[0, 32] }; }                     // SIGN EXTEND / NAN BOX 32 BIT LOAD
+            case 2b11: { MEM_RDATA = RDATA; }                                                                                   // COPY 64 BIT LOAD
         }
     }
 }
