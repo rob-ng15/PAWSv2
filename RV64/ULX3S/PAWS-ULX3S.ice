@@ -104,10 +104,11 @@ $include('../timers_random.si')
 
 // CPU SPECIFICATION - RV64GCB
 $$CPUISA = 0x4001102F
-$include('../cpu_functionblocks.si')
-$include('../ALU.si')
-$include('../FPU64.si')
-$include('../CPU.si')
+$include('../CPU_ALU.si')
+$include('../CPU_CSR.si')
+$include('../CPU_DECODE.si')
+$include('../CPU_FPU.si')
+$include('../CPU_TOP.si')
 
 // MAIN PAWS.si
 $include('../DMA.si')

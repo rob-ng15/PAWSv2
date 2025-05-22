@@ -186,6 +186,7 @@ unsigned int volatile *STACKTOP = (unsigned int volatile *) 0xf70c;
 
 // IRQ_TIMER COMPARATOR
 unsigned long volatile *IRQ_TIMER_COMPARATOR = (unsigned long volatile *) 0xfff0;
+unsigned int volatile *IRQ_TIMER_NEXT = (unsigned int volatile *) 0xfff8;
 
 // HANDLE MINI DMA CONTROLLER
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
@@ -390,7 +391,7 @@ typedef struct {
 #define CU_RR 0
 #define CU_RL 1
 
-// DMA TRANSFER PROTOCOLS
+// DMA(NEW) TRANSFER PROTOCOLS
 #define DMA_SET_TO_S    0x10
 #define DMA_SET_TO_M    0x12
 #define DMA_CPY_S_TO_S  0x20
@@ -398,6 +399,22 @@ typedef struct {
 #define DMA_CPY_S_TO_M  0x22
 #define DMA_CPY_M_TO_M  0x23
 #define DMA_CPY_STEP_SD 0x27
+#define DMA_SET_RECT    0x40
+#define DMA_CPY_RECT    0x80
 #define DMA_TO_IO       0x100
 #define DMA_FROM_IO     0x101
-#define DMA_PB_RGB      0x200
+
+// IRQ FLAGS
+#define IRQ_SOFTWARE    ( 1 << 3 )
+#define IRQ_TIMER       ( 1 << 7 )
+#define IRQ_VBLANK      ( 1 << 11 )
+#define IRQ_CAUSE_SOFTWARE 3
+#define IRQ_CAUSE_TIMER 7
+#define IRQ_CAUSE_VBLANK 11
+#define IRQ_TIMER_CYCLES 50000000
+#define IRQ_1_HZ 0
+#define IRQ_10_HZ 1
+#define IRQ_100_HZ 2
+#define IRQ_1000_HZ 3
+
+

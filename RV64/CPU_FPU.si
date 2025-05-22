@@ -136,13 +136,6 @@ unit fpu_execute(
 
     CSR_UPDATE_FPUFLAGS := STATE[3,1];                                                                                          // UPDATE CSR
     FPUF_CP.SBIAS := RS2[0,1] ? $BIAS64$ : RS2[1,1] ? $BIAS16$ : $BIAS32$;                                                      // SELECT BIAS ( SOURCE FOR CHANGE PRECISION )
-    OUT_FPUFLAGS := IN_FPUFLAGS | (                                                                                             // MERGE OLD AND NEW FLAGS
-        IS_FPUCONVERT ? converttype[2,1] ? FPUF2IL.OP_FPUFLAGS :
-        converttype[1,1] ? FPUIL2F.OP_FPUFLAGS :
-        RS2[2,1] ? FPUROUND.OP_FPUFLAGS : FPUF_CP.OP_FPUFLAGS :
-        IS_FASTFPU ? FPUFAST.OUT_FPUFLAGS :
-        FPUCALC.OUT_FPUFLAGS
-    );
 
     F_RD := IS_FPUCONVERT ? ( |converttype[0,2] ) : IS_FASTFPU ? FPUFAST.F_RD : 1;
     RESULT := operation[0,1] ? FPUFAST.RESULT :                                                                                 // COLLECT THE APPROPRIATE RESULT
@@ -150,6 +143,13 @@ unit fpu_execute(
                                converttype[1,1] ? FPUIL2F.RESULT :
                     RS2[2,1] ? FPUROUND.RESULT : FPUF_CP.RESULT :
                                CALCRESULT.repack;
+    OUT_FPUFLAGS := IN_FPUFLAGS | (                                                                                             // MERGE OLD AND NEW FLAGS
+                                    IS_FPUCONVERT ? converttype[2,1] ? FPUF2IL.OP_FPUFLAGS :
+                                    converttype[1,1] ? FPUIL2F.OP_FPUFLAGS :
+                                    RS2[2,1] ? FPUROUND.OP_FPUFLAGS : FPUF_CP.OP_FPUFLAGS :
+                                    IS_FASTFPU ? FPUFAST.OUT_FPUFLAGS :
+                                    FPUCALC.OUT_FPUFLAGS
+                                  );
 
     always {
         onehot( STATE ) {
@@ -622,17 +622,16 @@ unit typeF(
 ) {
     uint1   expFF <:: &( dsh[0,1] ? fp64(a).exponent : dsh[1,1] ? fp16(a).exponent : fp32(a).exponent );                        // CHECK FOR EXP == ALL 1s ( signals INF/NAN )
     uint1   exp00 <:: ~|( dsh[0,1] ? fp64(a).exponent : dsh[1,1] ? fp16(a).exponent : fp32(a).exponent );                       // CHECK FOR EXP == ALL 0s ( signals ZERO/SUBNORMAL )
-    uint1   NANboxed <:: ~dsh[0,1] & &( dsh[1,1] ? a[16,48] : a[32,32] );                                                       // CHECK SINGLE/HALF IS NAN BOXED
     uint6   MSB <:: dsh[0,1] ? 51 : dsh[1,1] ? 9 : 22;
 
     zeroFRACTION := ( dsh[0,1] ? ~|fp64(a).fraction : dsh[1,1] ? ~|fp16(a).fraction : ~|fp32(a).fraction );                     // FRACTION == 0
 
-    type := dsh[0,1] | NANboxed ? {                                                                                             // IF DOUBLE, OR NAN-boxed SINGLE/HALF, SPECIFY TYPE
-        expFF & zeroFRACTION,                                                                                                   // INF
-        expFF & ~fp64(a).fraction[ MSB, 1 ] & ~zeroFRACTION,                                                                    // sNAN
-        expFF & fp64(a).fraction[ MSB, 1 ],                                                                                     // qNAN
-        exp00                                                                                                                   // ZERO / SUBNORMAL
-    } : 4b0010;                                                                                                                 // SINGLE/HALF NOT BOXED, ISSUE qNAN
+    type := dsh[0,1] | ( ~dsh[0,1] & &( dsh[1,1] ? a[16,48] : a[32,32] ) ) ? {                                                  // IF DOUBLE, OR NAN-boxed SINGLE/HALF, SPECIFY TYPE
+                                                                              expFF & zeroFRACTION,                             // INF
+                                                                              expFF & ~fp64(a).fraction[MSB,1] & ~zeroFRACTION, // sNAN
+                                                                              expFF & fp64(a).fraction[MSB,1],                  // qNAN
+                                                                              exp00                                             // ZERO / SUBNORMAL
+                                                                             } : 4b0010;                                        // SINGLE/HALF NOT BOXED, ISSUE qNAN
 }
 
 // EXECPTION RETURN VALUES signed infinity, signalling NAN, quiet NAN, signed zero

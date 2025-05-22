@@ -7,16 +7,18 @@
 extern unsigned char *MEMORYTOP;
 
 // RISC-V CSR FUNCTIONS
-extern unsigned int CSRisa( void );
-extern unsigned long CSRcycles( void );
-extern unsigned long CSRinstructions( void );
-extern unsigned long CSRtime( void );
+extern int CSRisa( void );
+extern long CSRcycles( void );
+extern long CSRinstructions( void );
+extern long CSRtime( void );
 
 // IRQ FUNCTIONS
 extern void IRQ_VECTOR( void *function );
-extern void IRQ_ON( unsigned int IRQ, unsigned int MIE );
-extern void IRQ_OFF( unsigned int IRQ, unsigned int MIE );
-extern void IRQ_ACK( unsigned int IRQ );
+extern void IRQ_ON( int IRQ, int MIE );
+extern void IRQ_OFF( int IRQ, int MIE );
+extern void IRQ_ACK( int IRQ );
+extern unsigned long IRQ_CAUSE();
+extern void IRQ_SET_TIMER( long pulses );
 
 // SMT START AND STOP
 extern void SMTSTOP( void );

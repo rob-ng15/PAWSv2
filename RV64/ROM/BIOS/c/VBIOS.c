@@ -135,17 +135,7 @@ void reset_system( void ) {
     }
 }
 
-void __attribute__((interrupt ("machine"))) vblank_interrupt( void ) {
-    static int j = 0;
-
-    IRQ_ACK( IRQ_VBLANK );
-
-    tilemap_scroll( 0, 3, 1 );
-    tilemap_scroll( 1, 1, 1 );
-    update_sprite( 1, 0, 0, 1, 0, 0 ); update_sprite( 1, 2, 0, 1, 0, 0 );
-    set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
-    set_sprite_attribute( 1, 2, 1, ( j & 128 ) >> 7 );
-    j++;
+void timer_interrupt( void ) {
     tpu_set( 0, 17, TRANSPARENT, WHITE, 1 );
     long rtc = *RTC + 0x2000000000000000;
     for( int i = 0; i < 16; i++ ) {
@@ -160,6 +150,17 @@ void __attribute__((interrupt ("machine"))) vblank_interrupt( void ) {
             case 11: case 13: tpu_output_character(':'); break;
         }
     }
+}
+
+void vblank_interrupt( void ) {
+    static int j = 0;
+
+    tilemap_scroll( 0, 3, 1 );
+    tilemap_scroll( 1, 1, 1 );
+    update_sprite( 1, 0, 0, 1, 0, 0 ); update_sprite( 1, 2, 0, 1, 0, 0 );
+    set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
+    set_sprite_attribute( 1, 2, 1, ( j & 128 ) >> 7 );
+    j++;
 }
 
 void mandel( void ) {
@@ -189,6 +190,23 @@ void mandel( void ) {
         }
     }
     *PB_STOP = 3;
+}
+
+void __attribute__((interrupt ("machine"))) interrupt_handler() {
+    long what_irq = IRQ_CAUSE();
+
+    if( what_irq == IRQ_CAUSE_TIMER ) {
+        IRQ_ACK( IRQ_TIMER );
+        timer_interrupt();
+        IRQ_SET_TIMER_QUICK( 1 );
+    } else {
+        if( what_irq == IRQ_CAUSE_VBLANK ) {
+            IRQ_ACK( IRQ_VBLANK );
+            vblank_interrupt();
+        } else {
+            IRQ_ACK( 1 << what_irq );
+        }
+    }
 }
 
 extern int _bss_start, _bss_end;
@@ -222,8 +240,7 @@ void main( void ) {
     set_sprite_bitmaps( 1, 1, &ghost_bitmap[0] ); set_sprite( 1, 2, 1, 64, 440, 0, 8);
 
     // INTERRUPT HANDLER SETUP
-    IRQ_VECTOR( (void *)vblank_interrupt );
-    IRQ_ON( IRQ_VBLANK, TRUE );
+    IRQ_VECTOR( (void *)interrupt_handler ); IRQ_SET_TIMER_QUICK( 1 ); IRQ_ON( IRQ_VBLANK | IRQ_TIMER, TRUE );
 
     mandel(); while(1) {}
 }

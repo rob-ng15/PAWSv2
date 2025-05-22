@@ -24,7 +24,9 @@ unit PAWSCPU(
     input   uint1               DMA_AUDIO_REQ,                                                                                  //                          DMA AUDIO START REQUEST WHEN != 0
     input   uint1               DMA_AUDIO_ACTIVE,                                                                               //                          DMA AUDIO ACTIVE
 
-    input   uint$CWIDTH$        IRQ_TIMER,                                                                                  // IRQ TIMER TRIGGER
+    input   uint$CWIDTH$        IRQ_TIMER,                                                                                      // IRQ TIMER TRIGGER VALUE
+    input   uint1               TIMER_VALID,                                                                                    // HAS IRQ TIMER TRIGGER VALUE BEEN FULLY SET
+    output  uint$CWIDTH$        RDTIME,
     input   uint1               IRQ_VBLANK                                                                                      // IRQ VBLANK
 ) {
     uint9               STATE = 9b000000001;                                                                                    // CPU STATE MACHINE, DEFAULT TO STATE_RESET
@@ -39,26 +41,9 @@ unit PAWSCPU(
                         $$ STATE_NEXT       = 256
 
     uint8               resetCounter = -1;                                                                                      // RESET COUNTER
-
-    uint1               COMMIT = uninitialized;                                                                                 // COMMIT RESULT TO REGISTERS FLAG AND TO WHICH THREAD
-    uint$addr_width$    pc = 0;                                                                                                 // PROGRAMS COUNTERS FOR MAIN AND SMT THREADS
-    uint$addr_width$    nextPC = uninitialised;                                                                                 // NEXT PC AND AUIPCLUI CACHING
-    uint64              AUIPCLUI = uninitialised;
-
-    uint64 result <::  RV64.IS_FPU ? FPU.RESULT :                                                                               // SELECT RESULT FROM UNIT
-                      RV64.IS_FAST ?      RV64.IS_ALU ? { ( RV64.OPCODE[1,1] & RV64.IS_ALU32SIGNX ) ? {32{ALU.result[31,1]}} : ALU.result[32,32], ALU.result[0, 32] } :
-                                     RV64.IS_AUIPCLUI ? AUIPCLUI :
-                                          RV64.IS_JAL ? nextPC :
-                                                        MEMORY.RDATA :
-                                RV64.IS_ALU ? { RV64.OPCODE[1,1] ? {32{ALUMD.result[31,1]}} : ALUMD.result[32,32], ALUMD.result[0,32] } :
-                                RV64.IS_CSR ? CSR.result :
-                       RV64.FUNCTION7[3, 1] ? MEMORY.RDATA : RV64.FUNCTION7[2, 1] ? 0 : MEMORY.RDATA;
-    uint1 frd <:: RV64.IS_FPU ? FPU.F_RD : ( RV64.IS_LOAD & Rtype(MEMORY.instruction).opp[2,1] );                               // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
-    uint1 write <:: COMMIT & RV64.writeRegister;                                                                                // WRITE TO REGISTERS FLAG
+    uint1               COMMIT = uninitialized;                                                                                 // COMMIT RESULT TO REGISTERS FLAG
 
     control RV64 <@clock_CPUdecoder> (                                                                                          // RISC-V CONTROL FLAGS FOR INSTRUCTION
-        PC <:: pc,
-        frd <: frd, write <: write, result <: result,
         instruction <: MEMORY.instruction, compressed <: MEMORY.compressed,
         accesssize :> MEM_SIZE                                                                                                  // MEMORY ACCESSSIZE FLAGS ( handles fetch and misaligned )
     );
@@ -85,13 +70,14 @@ unit PAWSCPU(
     );
 
     CSRblock CSR(                                                                                                               // RISC-V CSR REGISTERS
-        IRQ_VBLANK <: IRQ_VBLANK, IRQ_TIMER <: IRQ_TIMER,
+        IRQ_VBLANK <: IRQ_VBLANK, IRQ_TIMER <: IRQ_TIMER, TIMER_VALID <: TIMER_VALID, RDTIME :> RDTIME,
+        IS_ECALL <: RV64.IS_ECALL,
         DMA_ACTIVE <: DMA_ACTIVE, DMA_AUDIO_ACTIVE <: DMA_AUDIO_ACTIVE,                                                         //  FOR PERFORMANCE COUNTERS
-        PC_NEXT <: RV64.newPC, incCSRinstret <: COMMIT,                                                                         //  NEXT INSTRUCTION FOR MEPC INTERRUPTS
+        PC_NEXT <: RV64.newPC,                                                                                                  //  NEXT INSTRUCTION FOR MEPC INTERRUPTS
         function3 <: RV64.FUNCTION3, rs1 <: RV64.RS1,
-        csrRegister <: RV64.CSR_REG,
+        CSR_REG <: RV64.CSR_REG,
         sourceReg1 <: RV64.sourceReg1,
-        FPUnewflags <: FPU.OUT_FPUFLAGS, updateFPUflags <: FPU.CSR_UPDATE_FPUFLAGS
+        IN_FPUFLAGS <: FPU.OUT_FPUFLAGS, W_FPUFLAGS <: FPU.CSR_UPDATE_FPUFLAGS
     );
 
     fpu_execute FPU(                                                                                                            // RISC-V FLOATING POINT OPERATIONS
@@ -113,12 +99,11 @@ unit PAWSCPU(
         FLT <: RV64.FLT, FEQ <: RV64.FEQ,
         IS_FASTFPU <: RV64.IS_FASTFPU,
         IS_FPUCONVERT <: RV64.IS_FPUCONVERT,
-        IN_FPUFLAGS <: CSR.FPUflags
+        IN_FPUFLAGS <: CSR.OUT_FPUFLAGS
     );
 
     memory_controller MEMORY(                                                                                                   // HANDLE CPU MEMORY OPERATIONS { STORE, LOAD, FETCH }
         clock_CPUdecoder <: clock_CPUdecoder, clock_cache <: clock_cache,
-        pc <: pc,
         MEM_SIZE <: RV64.FUNCTION3[0,2], IS_MA <: RV64.IS_MA, IS_64 <: RV64.IS_MEM64,
         IS_FLOAT <: RV64.OPCODE[0,1], IS_UNSIGNED <: RV64.FUNCTION3[2,1],
         LOAD_ADDRESS <: RV64.LOAD_ADDRESS, STORE_ADDRESS <: RV64.STORE_ADDRESS,
@@ -126,6 +111,17 @@ unit PAWSCPU(
         MEM_WDATA :> MEM_WDATA, MEM_WENABLE :> MEM_WENABLE,
         MEM_RDATA <: MEM_RDATA, MEM_RENABLE :> MEM_RENABLE
     );
+
+    RV64.write := 0;
+    RV64.frd := RV64.IS_FPU ? FPU.F_RD : ( RV64.IS_LOAD & Rtype(MEMORY.instruction).opp[2,1] );
+    RV64.result := RV64.IS_FPU ? FPU.RESULT :                                                                               // SELECT RESULT FROM UNIT
+    RV64.IS_FAST ?      RV64.IS_ALU ? { ( RV64.OPCODE[1,1] & RV64.IS_ALU32SIGNX ) ? {32{ALU.result[31,1]}} : ALU.result[32,32], ALU.result[0, 32] } :
+    RV64.IS_AUIPCLUI ? RV64.AUIPCLUI :
+    RV64.IS_JAL ? RV64.nextPC :
+    MEMORY.RDATA :
+    RV64.IS_ALU ? { RV64.OPCODE[1,1] ? {32{ALUMD.result[31,1]}} : ALUMD.result[32,32], ALUMD.result[0,32] } :
+    RV64.IS_CSR ? CSR.result :
+    RV64.FUNCTION7[3, 1] ? MEMORY.RDATA : RV64.FUNCTION7[2, 1] ? 0 : MEMORY.RDATA;
 
     MEMORY.start := {                                                                                                           // MEMORY CONTROLLER START FLAGS
         RV64.IS_STORE & ( ( STATE[4,1] & RV64.IS_FAST ) | ( STATE[6,1] & ~( ALUMD.busy | FPU.BUSY ) ) ),                        //  START STORE
@@ -135,25 +131,26 @@ unit PAWSCPU(
     MEMORY.WDATA :=         RV64.IS_FAST ? RV64.OPCODE[0,1] ? RV64.sourceReg2F :  RV64.sourceReg2 :                             // STORE INTEGER / FLOAT
                     RV64.FUNCTION7[3, 1] ? ALUA.result : RV64.sourceReg2;                                                       // OR ATOMIC MEMORY OPERATION RESULT
 
-    DMA_START := STATE[1, 1] & DMA_REQ; DMA_AUDIO_START := STATE[1, 1] & ~DMA_REQ & DMA_AUDIO_REQ;                              // DMA CONTROLLER START FLAGS
-    ALUMD.start := STATE[4,1] & ~RV64.IS_FAST & RV64.IS_ALU;                                                                    // DIVISION START FLAG
-    CSR.start := STATE[4,1] & RV64.IS_CSR; CSR.IRQ_ACK := 0; CSR.IRQ_END := 0;                                                  // CSR START FLAG AND INSTRUCTION COUNTER, IRQ ACK/END FLAGS
-    FPU.START := STATE[4,1] & RV64.IS_FPU;                                                                                      // CPU FPU START FLAG
-    COMMIT := STATE[7,1] & ( ~MEMORY.busy & ~ALUMD.busy );                                                                      // COMMIT TO REGISTERS FLAG
+    ALUMD.start := 0; FPU.START := 0;                                                                                           // DIVISION AND FPU START FLAGS
+    CSR.IRQ_ACK := 0; CSR.IRQ_END := 0; CSR.START := 0; CSR.INC_INSNRET := 0;                                                   // CSR START, IRQ ACK AND END, INSTRUCTION COUNTER FLAGS
+    DMA_START := 0; DMA_AUDIO_START := 0;                                                                                       // DMA CONTROLLER START FLAGS
 
     always {
         uint1           DMA_REQUESTED = uninitialised;
 
         onehot(STATE) {
             case 0: {                                                                                                           // STATE_RESET
-                if (| resetCounter) {
-                    CSR.CPU_ACTIVE = 0; MEMORY.CPU_FENCE = 0;
+                if ( |resetCounter ) {
+                    CSR.CPU_ACTIVE = 0; MEMORY.CPU_FENCE = 0; MEMORY.pc = 0; COMMIT = 0;
                     resetCounter = resetCounter - ~( MEM_BUSY | DMA_ACTIVE | DMA_AUDIO_ACTIVE | ALUMD.busy | FPU.BUSY | MEMORY.busy );
                 } else {
                     STATE = $STATE_NEXT$;
                 }
             }
-            case 1: { DMA_REQUESTED = 1; STATE = $STATE_DMA_WAIT$; }                                                            // STATE_DMA
+            case 1: {                                                                                                           // STATE_DMA
+                DMA_START = DMA_REQ; DMA_AUDIO_START = ~DMA_REQ & DMA_AUDIO_REQ;
+                DMA_REQUESTED = 1; STATE = $STATE_DMA_WAIT$;
+            }
             case 2: {                                                                                                           // STATE_DMA_WAIT
                 if( DMA_REQUESTED ) {
                     DMA_REQUESTED = 0;
@@ -163,9 +160,10 @@ unit PAWSCPU(
             }
             case 3: {                                                                                                           // STATE_FETCH
                 if( ~MEMORY.busy ) {
-                    RV64.cacheselect = 1;                                                                                       //      DATA CACHE
+                    RV64.cacheselect = 1; COMMIT = RV64.writeRegister;                                                          //      DATA CACHE, SET COMMIT FLAG IF REGISTER WRITE
                     STATE = RV64.IS_LOAD ? RV64.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$ : $STATE_EXEC$;                         //      LOAD? COMMIT OR ATOMIC( MULTI ), ELSE EXEC
                 }
+                RV64.PC = MEMORY.pc;
             }
             case 4: {                                                                                                           // STATE_EXEC
                 STATE = ( RV64.IS_FPU | RV64.IS_CSR | RV64.IS_ATOMIC ) ? $STATE_MULTI$ :                                        //      MULTICYCLE FPU CSR ATOMIC -> MULTI
@@ -173,27 +171,24 @@ unit PAWSCPU(
                 if( RV64.IS_FENCE ) {                                                                                           //      ADJUST FENCE
                     MEMORY.CPU_FENCE = { |RV64.FUNCTION7[1,2], ~RV64.FUNCTION3[0,1] };
                 }
-                nextPC = RV64.nextPC; AUIPCLUI = RV64.AUIPCLUI;                                                                 //      LATCH NEXTPC AND AUIPCLUI
+                ALUMD.start = ~RV64.IS_FAST & RV64.IS_ALU; CSR.START = RV64.IS_CSR; FPU.START = RV64.IS_FPU;
             }
             case 5: { if( ~MEMORY.busy ) { STATE = $STATE_MULTI$; } }                                                           // STATE_LOAD WAIT FOR ATOMIC MEMORY OPERATIONS
             case 6: { if( ~FPU.BUSY ) { STATE = $STATE_COMMIT$; } }                                                             // STATE_MULTI, WAIT FOR CSR, ATOMIC FLOATING-POINT TO FINISH
             case 7: {                                                                                                           // STATE_COMMIT
                 if( ~MEMORY.busy & ~ALUMD.busy ) {                                                                              //      WAIT FOR LOAD/STORE/DIVIDE TO FINISH
-                    if( RV64.IS_MRET ) {
-                        pc = CSR.CSR_MEPC; CSR.IRQ_END = 1;                        //      HANDLE RETURN FROM INTERRUPT
-                    } else {
-                        if( CSR.IRQ_PENDING ) {                                                                       //      HANDLE INTERRUPT REQUESTED
-                            pc = CSR.CSR_MTVEC; CSR.IRQ_ACK = 1;
-                        } else {
-                            pc = RV64.newPC;              //      MOVE TO NEXT INSTRUCTION
-                        }
-                    }
-                    STATE = $STATE_NEXT$;                                                               //      INCREMENT INSTRUCTION COUNTER
+                    MEMORY.pc =                        RV64.IS_MRET ? CSR.CSR_MEPC :
+                                ( RV64.IS_ECALL | CSR.IRQ_PENDING ) ? CSR.CSR_MTVEC[0,1] ? ( { CSR.CSR_MTVEC[2,$addr_width-2$], 2b00 } + { CSR.IRQ_VECTOR, 2b00 } ) :
+                                                                      CSR.CSR_MTVEC :
+                                                        RV64.IS_WFI ? MEMORY.pc : RV64.newPC;                                   // WFI HOLDS AT CURRENT MEMORY ADDRESS UNTIL INTERRUPT
+                    CSR.IRQ_END = RV64.IS_MRET; CSR.IRQ_ACK = CSR.IRQ_PENDING & ~RV64.IS_MRET;
+                    CSR.INC_INSNRET = 1; STATE = $STATE_NEXT$;
                 }
             }
             case 8: {                                                                                                           // STATE_NEXT
+                RV64.write = COMMIT; COMMIT = 0;                                                                                // CLEAR THE COMMIT FLAG
                 RV64.cacheselect = ( DMA_REQ | DMA_AUDIO_REQ );                                                                 //      SELECT DATA CACHE FOR DMA, INSTRUCTION CACHE FOR FETCH
-                CSR.CPU_ACTIVE = ~( DMA_REQ | DMA_AUDIO_REQ );                                                                  //      SET CPU ACTIUVE IF NOT DMA
+                CSR.CPU_ACTIVE = ~( DMA_REQ | DMA_AUDIO_REQ );                                                                  //      SET CPU ACTIVE IF NOT DMA
                 STATE = ( DMA_REQ | DMA_AUDIO_REQ ) ? $STATE_DMA_START$ : $STATE_FETCH$;                                        //      START DMA OR FETCH
             }
         }
@@ -241,8 +236,8 @@ unit memory_controller(
     uint$addr_width$    MEM_ADDR_NEXT <:: MEM_ADDR + ( IS_MA ? 1 : 4 );                                                         // NEXT MEMORY ADDRESS FOR LOAD/STORE
 
     simple_dualport_bram uint$32+L10Ipartaddresswidth$ L10cache <@clock_cache,@clock> [$L10Iblocks$] = uninitialized;           // SMALL ON CPU L1 CACHE - 1 per HART - RESET FENCE MEM IS 1
-    iL10cache_read ICACHE_0 <@clock_cache> ( L1cache <:> L10cache, CLS <: ICACHE_0W.CLS, ADDR <: pc );
-    iL10cache_write ICACHE_0W( L1cache <:> L10cache, ADDR <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed );
+    iL10cache_read ICACHE <@clock_cache> ( L1cache <:> L10cache, CLS <: ICACHEW.CLS, ADDR <: pc );
+    iL10cache_write ICACHEW( L1cache <:> L10cache, ADDR <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed );
 
     compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: MEM_RDATA[2,14] );                                                   // COMPRESSED INSTRUCTION EXPANDERS
     compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: MEM_RDATA[2,14] );
@@ -257,7 +252,7 @@ unit memory_controller(
     );
 
     MEM_RENABLE := 0; MEM_WENABLE := 0;                                                                                         // READ / WRITE FLAGS
-    ICACHE_0W.update := STATE[2,1]; ICACHE_0W.invalidate := reset | CPU_FENCE[0,1];                                             // UPDATE/INVALIDATE( after laod ) CPU L1 CACHE FLAG
+    ICACHEW.update := STATE[2,1]; ICACHEW.invalidate := reset | CPU_FENCE[0,1];                                             // UPDATE/INVALIDATE( after laod ) CPU L1 CACHE FLAG
 
     always {
         uint3 ACTION = uninitialised;
@@ -279,9 +274,9 @@ unit memory_controller(
 
                     onehot(start) {                                                                                             // SEND TO { STORE, LOAD, FETCH }
                         case 0: {
-                            if( ICACHE_0.tagmatch ) {
-                                instruction = { ICACHE_0.instruction, 2b11 };                      //  FETCH FROM L1 CACHE
-                                compressed = ICACHE_0.compressed;
+                            if( ICACHE.tagmatch ) {
+                                instruction = { ICACHE.instruction, 2b11 };                      //  FETCH FROM L1 CACHE
+                                compressed = ICACHE.compressed;
                             } else {
                                 STATE = $STATE_FETCH_READ$;                                                                     //  FETCH FROM MEMORY
                             }
@@ -291,9 +286,9 @@ unit memory_controller(
                     }
                 }
 
-                busy = |start[1,2] | ( start[0,1] & ~ICACHE_0.tagmatch );
-                MEM_RENABLE = start[1,1] | ( start[0,1] & ~ICACHE_0.tagmatch );
-                MEM_WDATA = WDATA; MEM_WENABLE = start[2, 1];
+                busy = |start[1,2] | ( start[0,1] & ~ICACHE.tagmatch );
+                MEM_RENABLE = start[1,1] | ( start[0,1] & ~ICACHE.tagmatch );
+                MEM_WDATA = WDATA; MEM_WENABLE = start[2,1];
             }
 
             case 1: { if( ~MEM_BUSY ) { STATE = $STATE_FETCH_COMPLETE$; } }                                                     // WAIT FOR MEMORYREAD TO COMPLETE

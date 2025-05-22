@@ -184,9 +184,7 @@ void display_state( void ) {
 
 // MONITOR THE KEYBOARD AND SET/CLR BITS IN THE KEYS REGISTER
 // CHECK FOR FUNCTION KEYS AND TAKE ACTION / FLAG MAIN LOOP
-void __attribute__((interrupt ("machine"))) interactivity( void ) {
-    IRQ_ACK( IRQ_VBLANK );
-
+void interactivity( void ) {
     if( ps2_event_available() ) {
         uint16_t keycode = ps2_event_get();
         int keypressed = -1;
@@ -205,9 +203,9 @@ void __attribute__((interrupt ("machine"))) interactivity( void ) {
             case 0x83: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 7 ) ? 7 : machine.limit + 1; } break;     // F7 SLOW DOWN
             case 0x0a: if( keycode & 0x200 ) { machine.limit = ( machine.limit == 0 ) ? 0 : machine.limit - 1; } break;     // F8 SPEED UP
 
-            case 0x01: if( keycode & 0x200 ) { machine.running = 0; machine.quit = 1; IRQ_OFF( IRQ_VBLANK, TRUE ); } break;            // F9 QUIT
+            case 0x01: if( keycode & 0x200 ) { machine.running = 0; machine.quit = 1; IRQ_OFF( IRQ_VBLANK | IRQ_TIMER, TRUE ); } break;            // F9 QUIT
             case 0x78: if( keycode & 0x200 ) { machine.restart = 1; } break;                                                // F11 RESTART CHIP8 PROGRAM
-            case 0x07: if( keycode & 0x200 ) { machine.running = 0; machine.loading = 1; IRQ_OFF( IRQ_VBLANK, TRUE ); } break;         // F12 LOAD
+            case 0x07: if( keycode & 0x200 ) { machine.running = 0; machine.loading = 1; IRQ_OFF( IRQ_VBLANK | IRQ_TIMER, TRUE ); } break;         // F12 LOAD
 
             case 0x16: keypressed = 1; break;                                                                               // 1 == 1
             case 0x1e: keypressed = 2; break;                                                                               // 2 == 2
@@ -230,9 +228,6 @@ void __attribute__((interrupt ("machine"))) interactivity( void ) {
             machine.KEYS = ( keycode & 0x200 ) ? _rv64_bset( machine.KEYS, keypressed ) : _rv64_bclr( machine.KEYS, keypressed );
         }
     }
-
-    draw_screen_hires();                                                                                            // DRAW THE SCREEN
-    display_state();                                                                                                // DISPLAY STATUS
 }
 
 #define FONTSIZE 5 * 16 + 10 * 16
@@ -298,6 +293,12 @@ void reset_machine( void ) {
 
 extern void execute( void );
 
+void __attribute__((interrupt ("machine"))) interrupt_handler() {
+    IRQ_ACK( IRQ_TIMER );
+    interactivity(); display_state(); draw_screen_hires();
+    IRQ_SET_TIMER( IRQ_TIMER_CYCLES / 15 );
+}
+
 int main( void ) {
     screen_mode( 0, MODE_RGBM, LTM_LOW | UTM_LOW );
     set_background( WHITE, WHITE, BKG_SOLID );
@@ -309,9 +310,10 @@ int main( void ) {
     tm_cs( LOWER_LAYER ); tm_cs( UPPER_LAYER );
     tilemap_scroll( LOWER_LAYER, TM_DOWN, 8 ); tilemap_scroll( UPPER_LAYER, TM_DOWN, 8 );
 
-    reset_machine(); IRQ_VECTOR( (void *)interactivity ); IRQ_ON( IRQ_VBLANK, TRUE );                                           // START THE KEYBOARD MONITOR
+    reset_machine();
     set_timer1khz( (short)1000/60, 0 );
     ps2_keyboardmode( TRUE );
+    IRQ_VECTOR( (void *)interrupt_handler ); IRQ_SET_TIMER( IRQ_TIMER_CYCLES / 15 ); IRQ_ON( IRQ_TIMER, TRUE );                                           // START THE KEYBOARD MONITOR
 
     while( !machine.quit ) {
         set_timer1khz( wait_times[ machine.limit ], 1 );                                                                        // SET !KHz timer for instructions per second
@@ -334,7 +336,7 @@ int main( void ) {
             }
             if( filebuffer ) { free( filebuffer ); }
             machine.loading = 0;
-            IRQ_ON( IRQ_VBLANK, TRUE ); ps2_keyboardmode( TRUE );                                                                                       // RESTART THE KEYBOARD MONITOR
+            IRQ_SET_TIMER( IRQ_TIMER_CYCLES / 15 ); IRQ_ON( IRQ_TIMER, TRUE ); ps2_keyboardmode( TRUE );                                                                                       // RESTART THE KEYBOARD MONITOR
             set_background( WHITE, WHITE, BKG_SOLID );
         }
 

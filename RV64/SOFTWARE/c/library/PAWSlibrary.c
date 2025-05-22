@@ -25,32 +25,32 @@ extern int errno;
 #define NOFENCE asm volatile ("fence.i");
 
 // RISC-V CSR FUNCTIONS
-unsigned int CSRisa() {
-   unsigned int isa;
+int CSRisa() {
+   int isa;
    asm volatile (
        "csrr %0, 0x301"
        : "=r"(isa));
    return isa;
 }
 
-unsigned long CSRcycles() {
-    unsigned long cycles;
+long CSRcycles() {
+    long cycles;
     asm volatile(
         "rdcycle %0\n"
         : "=r"(cycles));
     return cycles;
 }
 
-unsigned long CSRinstructions() {
-    unsigned long insns;
+long CSRinstructions() {
+    long insns;
     asm volatile(
         "rdinstret %0\n"
         : "=r"(insns));
     return insns;
 }
 
-unsigned long CSRtime() {
-    unsigned long timer;
+long CSRtime() {
+    long timer;
     asm volatile(
         "rdtime %0\n"
         : "=r"(timer));
@@ -67,7 +67,15 @@ void IRQ_VECTOR( void *function ) {
     );
 }
 
-void IRQ_ON( unsigned int IRQ, unsigned int MIE ) {
+unsigned long IRQ_CAUSE() {
+    long cause;
+    asm volatile(
+        "csrr %0, mcause\n\t"
+        : "=r"(cause));
+    return cause;
+}
+
+void IRQ_ON( int IRQ, int MIE ) {
     asm(
         "csrs mie, %0\n\t"
         :
@@ -81,7 +89,7 @@ void IRQ_ON( unsigned int IRQ, unsigned int MIE ) {
     }
 }
 
-void IRQ_OFF( unsigned int IRQ, unsigned int MIE ) {
+void IRQ_OFF( int IRQ, int MIE ) {
     asm(
         "csrc mie, %0\n\t"
         :
@@ -95,13 +103,21 @@ void IRQ_OFF( unsigned int IRQ, unsigned int MIE ) {
     }
 }
 
-void IRQ_ACK( unsigned int IRQ ) {
+void IRQ_ACK( int IRQ ) {
     asm(
         "csrc mip, %0\n\t"
         :
         : "r"(IRQ)
         :
     );
+}
+
+void IRQ_SET_TIMER( long pulses ) {
+    *IRQ_TIMER_COMPARATOR = CSRtime() + pulses;
+}
+
+void IRQ_SET_TIMER_QUICK( unsigned int divider ) {
+    *IRQ_TIMER_NEXT = divider;
 }
 
 // DMA CONTROLLER

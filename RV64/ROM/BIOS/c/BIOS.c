@@ -237,7 +237,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
     }
 }
 
-// SMT THREAD TO MOVE COLOUR BARS AND FLASH LEDS
+// INTERRUPT THREADS TO PRINT CLOCK, MOVE COLOUR BARS AND FLASH LEDS
 void printclock( void ) {
     long rtc;
 
@@ -259,7 +259,7 @@ void printclock( void ) {
 
 unsigned char leds = 1;
 int direction = 0, ledcount = 0;
-void __attribute__((interrupt ("machine"))) scrollbars( void ) {
+void scrollbars( void ) {
     IRQ_ACK( IRQ_VBLANK );
 
     *LOWER_TM_SCROLLWRAPCLEAR = 3; *UPPER_TM_SCROLLWRAPCLEAR = 1;
@@ -273,7 +273,24 @@ void __attribute__((interrupt ("machine"))) scrollbars( void ) {
             if( ( leds & 128 ) != 0 ) { direction = 1; } else { leds = ( *SDCARD_READY ) ? ( leds << 1 ) : ( leds << 1 ) + 1; }
         }
         *LEDS = leds;
+
+    }
+}
+
+void __attribute__((interrupt ("machine"))) interrupt_handler() {
+    long what_irq = IRQ_CAUSE();
+
+    if( what_irq == IRQ_CAUSE_TIMER ) {
+        IRQ_ACK( IRQ_TIMER );
         printclock();
+        IRQ_SET_TIMER_QUICK( IRQ_10_HZ );
+    } else {
+        if( what_irq == IRQ_CAUSE_VBLANK ) {
+            IRQ_ACK( IRQ_VBLANK );
+            scrollbars();                                                                                            // DRAW THE SCREEN
+        } else {
+            IRQ_ACK( 1 << what_irq );
+        }
     }
 }
 
@@ -283,7 +300,8 @@ unsigned char chime[] = { 75, 83, 89, 0 };
 int main( void ) {
     unsigned int i, j, x, y, selectedfile = 0;
 
-    // STOP SMT, INTERRUPTS, PIXELBLOCK AND AUDIO DMA
+    // STOP INTERRUPTS, PIXELBLOCK AND AUDIO DMA
+    IRQ_OFF( IRQ_VBLANK | IRQ_TIMER | IRQ_SOFTWARE, TRUE );
     *PB_STOP = *PB_MODE = 0;
     *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_R_STATUS = 1;
 
@@ -315,8 +333,7 @@ int main( void ) {
     }
 
     // INTERRUPT HANDLER SETUP
-    IRQ_VECTOR( (void *)scrollbars );
-    IRQ_ON( IRQ_VBLANK, TRUE );
+    IRQ_VECTOR( (void *)interrupt_handler ); IRQ_SET_TIMER_QUICK( IRQ_10_HZ ); IRQ_ON( IRQ_VBLANK | IRQ_TIMER, TRUE );
 
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 66, 34, 1, "Risc-V RV64GC+", 0 );

@@ -180,6 +180,7 @@ unsigned int volatile *SMTSTACK = (unsigned int volatile *) 0xff08;
 
 // IRQ_TIMER COMPARATOR
 unsigned long volatile *IRQ_TIMER_COMPARATOR = (unsigned long volatile *) 0xfff0;
+unsigned int volatile *IRQ_TIMER_NEXT = (unsigned int volatile *) 0xfff8;
 
 // HANDLE MINI DMA CONTROLLER
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
