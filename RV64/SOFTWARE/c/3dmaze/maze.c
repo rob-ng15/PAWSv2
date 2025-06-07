@@ -740,7 +740,7 @@ unsigned short walk_maze( unsigned short width, unsigned short height )
 
         // SWITCH THE FRAMEBUFFER
         framebuffer = 3 - framebuffer;
-        bitmap_display( framebuffer );
+        screen_order( LAYER_CHARACTERMAP, framebuffer, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
 
         // CHECK IF PLAYER MOVE ALLOWED
         if( get_timer1khz( 0 ) == 0 ) {
@@ -882,16 +882,14 @@ int main( int argc, char **argv ) {
                 gpu_cs();
                 gpu_circle( YELLOW, 160, 120, 80, drawsector[i], 1 );
                 framebuffer = 3 - framebuffer;
-                bitmap_display( framebuffer );
-                sleep1khz( 250 );
+                screen_order( LAYER_CHARACTERMAP, framebuffer, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
             }
             // DISPLAY TOMBSTONE BITMAP AND RESET TO BEGINNING
             bitmap_draw( 3 - framebuffer );
             gpu_cs();
             gpu_pixelblock( 37, 0, 246, 240, TRANSPARENT, tombstonebitmap );
             framebuffer = 3 - framebuffer;
-            bitmap_display( framebuffer );
-            level = 0;
+            screen_order( LAYER_CHARACTERMAP, framebuffer, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
             firstrun = 1;
         } else {
             // COMPLETED THE MAZE

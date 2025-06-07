@@ -55,7 +55,7 @@ unsigned short bomb_hit[] = {
 struct Alien {
     short x, y;
     short type, animation_count;
-    short layer, sprite;
+    short sprite;
 };
 struct Alien Aliens[ MAXALIENS ];
 
@@ -94,8 +94,8 @@ struct Player {
 struct Player Ship;
 
 // BOMBS
-#define BOMB_START 24
-#define BOMB_END 28
+#define BOMB_START 56
+#define BOMB_END 60
 #define MAXBOMBS 5
 #define BOMB_INACTIVE 0
 #define BOMB_TYPE1 1
@@ -109,24 +109,23 @@ struct Bomb {
 struct Bomb Bombs[ MAXBOMBS ];
 unsigned short bomb_timers[] = { 32, 30, 28, 26, 24, };
 
-#define MISSILESPRITE UPPER_LAYER,29
-#define UFOSPRITE UPPER_LAYER,30
-#define PLAYERSPRITE UPPER_LAYER,31
+#define MISSILESPRITE 61
+#define UFOSPRITE 62
+#define PLAYERSPRITE 63
 
 unsigned int framecount, animationcount;
 
 // HELPER TO REMOVE ALL/SOME SPRITES
 void remove_sprites( int start_sprite ) {
-    for( int i = start_sprite; i < 32; i++ ) {
-        set_sprite_attribute( LOWER_LAYER, i, SPRITE_ACTIVE, SPRITE_HIDE );
-        set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, SPRITE_HIDE );
+    for( int i = start_sprite; i < 64; i++ ) {
+        set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, SPRITE_HIDE );
     }
 }
 
 // HELPER TO REMOVE BULLETS
 void remove_bullets() {
-    for( int i = 24; i < 30; i++ )
-        set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, SPRITE_HIDE );
+    for( int i = BOMB_START; i < MISSILESPRITE; i++ )
+        set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, SPRITE_HIDE );
 }
 
 // SETUP THE BACKDROP
@@ -134,31 +133,30 @@ void draw_moonscape( void ) {
     bitmap_draw( 1 );
     gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, backdrop );
     bitmap_draw( 2 );
-    bitmap_display( 3 );
 }
 
 void initialise_graphics( void ) {
     // DROP THE BITMAP TO JUST ABOVE THE BACKGROUND AND PAWSv2 COLOUR PALETTE
-    screen_mode( 1, MODE_RGBM, 0 );
+    screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_3, LAYER_SPRITES_2, LAYER_SPRITES_1, LAYER_SPRITES_0, LAYER_TILEMAP_2, LAYER_BITMAP_1, LAYER_BITMAP_0, FALSE, FALSE, FALSE );
+    screen_mode( MODE_RGBM );
 
     // SET THE ALIEN SPRITES
-    for( int i = 0; i < 16; i++ ) {
-        set_sprite_bitmaps( LOWER_LAYER, i, alien_sprites );
-        set_sprite_bitmaps( UPPER_LAYER, i, alien_sprites );
+    for( int i = 0; i < BOMB_START; i+=2 ) {
+        set_sprite_bitmaps( i, alien_sprites );
     }
 
     // SET THE BOMB/MISSILE SPRITES
-    for( int i = 12; i < 15; i++ ) {
-        set_sprite_bitmaps( UPPER_LAYER, i, bullet_sprites );
+    for( int i = BOMB_START; i < UFOSPRITE; i+=2 ) {
+        set_sprite_bitmaps( i, bullet_sprites );
     }
 
     // SET THE PLAYER AND UFO SPRITES
-    set_sprite_bitmaps( UPPER_LAYER, 15, player_ufo );
+    set_sprite_bitmaps( UFOSPRITE, player_ufo );
     draw_moonscape();
 
     // SET THE UPPER TILEMAP TO THE NUMBERS AND PLAYER SHIP
     for( short i = 0; i < 12; i++ ) {
-        set_tilemap_bitmap( UPPER_LAYER, i + 1, &tilemap_bitmaps_front[ 256 * i ] );
+        set_tilemap_bitmap( 1, i + 1, &tilemap_bitmaps_front[ 256 * i ] );
     }
 
     set_blitter_bitmap( 0, bomb_hit );
@@ -188,10 +186,9 @@ void reset_aliens( void ) {
                     break;
             }
             Aliens[ alien ].animation_count = 0;
-            Aliens[ alien ].layer = ( ( alien < 32 ) ? LOWER_LAYER :  UPPER_LAYER );
-            Aliens[ alien ].sprite = ( alien & 31 );
+            Aliens[ alien ].sprite = ( alien );
 
-            set_sprite( Aliens[ alien ].layer, Aliens[ alien ].sprite, SPRITE_SHOW, Aliens[ alien ].x, Aliens[ alien ].y, ( Aliens[ alien ].type - 1 ) * 2, SPRITE_DOUBLE );
+            set_sprite( Aliens[ alien ].sprite, SPRITE_SHOW, Aliens[ alien ].x, Aliens[ alien ].y, ( Aliens[ alien ].type - 1 ) * 2, SPRITE_DOUBLE );
             alien++;
         }
     }
@@ -260,7 +257,7 @@ void trim_aliens( void ) {
                     break;
                 case 4:
                     Aliens[ y * 11 + x ].type = 0;
-                    set_sprite_attribute( Aliens[ y * 11 + x ].layer, Aliens[ y * 11 + x ].sprite, SPRITE_ACTIVE, SPRITE_HIDE );
+                    set_sprite_attribute( Aliens[ y * 11 + x ].sprite, ATTR_SPRITE_ACTIVE, SPRITE_HIDE );
                     AlienSwarm.count--;
                     break;
                 default:
@@ -344,9 +341,9 @@ void move_aliens( void ) {
         case 1:
             Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].x += ( AlienSwarm.direction == 1 ) ? 16 : -16;
             Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].animation_count = !Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].animation_count;
-            set_sprite_attribute( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].layer, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].sprite, SPRITE_X, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].x );
-            if( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].layer, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].type < 4 )
-                set_sprite_attribute( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].layer, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].sprite, SPRITE_TILE, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].animation_count + 2 * ( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].type - 1) );
+            set_sprite_attribute( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].sprite, ATTR_SPRITE_X, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].x );
+            if( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].type < 4 )
+                set_sprite_attribute( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].sprite, ATTR_SPRITE_TILE, Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].animation_count + 2 * ( Aliens[ AlienSwarm.row * 11 + AlienSwarm.column ].type - 1) );
             trim_aliens();
             break;
 
@@ -357,7 +354,7 @@ void move_aliens( void ) {
                 for( short y = AlienSwarm.toprow; y <= AlienSwarm.bottomrow; y++ ) {
                     for( short x = AlienSwarm.leftcolumn; x <= AlienSwarm.rightcolumn; x++ ) {
                         Aliens[ y * 11 + x ].y += 16;
-                        set_sprite_attribute( Aliens[ y * 11 + x ].layer, Aliens[ y * 11 + x ].sprite, SPRITE_Y, Aliens[ y * 11 + x ].y );
+                        set_sprite_attribute( Aliens[ y * 11 + x ].sprite, ATTR_SPRITE_Y, Aliens[ y * 11 + x ].y );
                     }
                 }
                 AlienSwarm.direction -= 2;
@@ -401,7 +398,7 @@ void ufo_actions( void ) {
                 UFO.active = 0;
                 UFO.lastufo = 1000;
             }
-            set_sprite_attribute( UFOSPRITE, SPRITE_X, UFO.x );
+            set_sprite_attribute( UFOSPRITE, ATTR_SPRITE_X, UFO.x );
             if( !get_beep_active( 2 ) ) {
                 beep( 2, 2, UFO.pitchcount ? 25 : 37, 100 );
                 UFO.pitchcount = !UFO.pitchcount;
@@ -412,7 +409,7 @@ void ufo_actions( void ) {
                 UFO.active = UFOSCORE;
                 UFO.counter = 30;
                 UFO.lastufo = 1000;
-                set_sprite_attribute( UFOSPRITE, SPRITE_TILE, 4 + UFO.score );
+                set_sprite_attribute( UFOSPRITE, ATTR_SPRITE_TILE, 4 + UFO.score );
             } else {
                 UFO.counter--;
             }
@@ -425,7 +422,7 @@ void ufo_actions( void ) {
             if( !UFO.counter ) {
                 UFO.active = 0;
                 UFO.lastufo = 1000;
-                set_sprite_attribute( UFOSPRITE, SPRITE_ACTIVE, SPRITE_HIDE );
+                set_sprite_attribute( UFOSPRITE, ATTR_SPRITE_ACTIVE, SPRITE_HIDE );
             } else {
                 UFO.counter--;
             }
@@ -440,21 +437,21 @@ void bomb_actions( void ) {
 
     // CHECK IF HIT AND MOVE BOMBS
     for( int i = BOMB_START; i <= BOMB_END; i++ ) {
-        if( get_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE ) ) {
+        if( get_sprite_attribute( i, ATTR_SPRITE_ACTIVE ) ) {
             switch( Bombs[ i - BOMB_START ].type ) {
                 case 0:
-                    set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, SPRITE_HIDE );
+                    set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, SPRITE_HIDE );
                     break;
                 case 1:
                 case 2:
-                    if( get_sprite_collision( UPPER_LAYER, i ) & ( 1 << 29 ) ) {
+                    if( get_sprite_collision( i ) & ( (unsigned long)1 << MISSILESPRITE ) ) {
                         // HIT THE PLAYER MISSILE
-                        set_sprite_attribute( UPPER_LAYER, i, SPRITE_TILE, 7 );
-                        set_sprite_attribute( MISSILESPRITE, SPRITE_ACTIVE, 0 );
+                        set_sprite_attribute( i, ATTR_SPRITE_TILE, 7 );
+                        set_sprite_attribute( MISSILESPRITE, ATTR_SPRITE_ACTIVE, 0 );
                         Bombs[ i - BOMB_START ].type = 3;
                         Bombs[ i - BOMB_START ].counter = 8;
                     } else {
-                        if( get_sprite_collision( UPPER_LAYER,i ) & ( 1 << 31 ) ) {
+                        if( get_sprite_collision( i ) & ( (unsigned long)1 << PLAYERSPRITE ) ) {
                             // HIT THE PLAYER
                             beep( 3, 0, 0, 0 ); pcmsample_stop( 3 );
                             pcmsample_start( 1, 14625, &wave_explode[78], KHz11025, FALSE );
@@ -462,15 +459,15 @@ void bomb_actions( void ) {
                             Ship.counter = 100;
                             remove_bullets();
                         } else {
-                            if( get_sprite_layer_collision( UPPER_LAYER, i ) & SPRITE_TO_BITMAP_1 ) {
+                            if( get_sprite_layer_collision( i ) & SPRITE_TO_BITMAP_1 ) {
                                 // HIT THE BUNKER
-                                bomb_x = get_sprite_attribute( UPPER_LAYER, i , SPRITE_X ) / 2 - ( (rng(5) - 2 ));
-                                bomb_y = get_sprite_attribute( UPPER_LAYER, i , SPRITE_Y ) / 2;
-                                set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
+                                bomb_x = get_sprite_attribute( i, ATTR_SPRITE_X ) / 2 - ( (rng(5) - 2 ));
+                                bomb_y = get_sprite_attribute( i, ATTR_SPRITE_Y ) / 2;
+                                set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, 0 );
                                 gpu_blit( TRANSPARENT, bomb_x, bomb_y, 0, 0, 0 );
                             } else {
-                                update_sprite( UPPER_LAYER, i, ( Ship.level > 1 ) ? 4 : 3, 0, 2, 0 );
-                                set_sprite_attribute( UPPER_LAYER, i, SPRITE_TILE, ( Bombs[ i - BOMB_START ].type - 1 ) * 2 + animationcount );
+                                update_sprite( i, ( Ship.level > 1 ) ? 4 : 3, 0, 2, 0 );
+                                set_sprite_attribute( i, ATTR_SPRITE_TILE, ( Bombs[ i - BOMB_START ].type - 1 ) * 2 + animationcount );
                             }
                         }
                     }
@@ -478,7 +475,7 @@ void bomb_actions( void ) {
                 case 3:
                     if( Bombs[ i - BOMB_START ].counter ) {
                         Bombs[ i - BOMB_START ].counter--;
-                        set_sprite_attribute( UPPER_LAYER, i, SPRITE_TILE, 7 );
+                        set_sprite_attribute( i, ATTR_SPRITE_TILE, 7 );
                     } else {
                         Bombs[ i - BOMB_START ].type = 0;
                     }
@@ -491,7 +488,7 @@ void bomb_actions( void ) {
     AlienSwarm.lastbombtimer -= ( AlienSwarm.lastbombtimer ) > 0 ? 1 : 0;
     if( !AlienSwarm.lastbombtimer && !rng(4) ) {
         for( short i = BOMB_START; ( i <= BOMB_END ) && !bombdropped; i++ ) {
-            if( !get_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE ) ) {
+            if( !get_sprite_attribute( i, ATTR_SPRITE_ACTIVE ) ) {
                 // BOMB SLOT FOUND
                 // FIND A COLUMN AND BOTTOM ROW ALIEN
                 while( !bombdropped && attempts ) {
@@ -505,7 +502,7 @@ void bomb_actions( void ) {
                                 Bombs[ i - BOMB_START ].y = Aliens[ bombrow * 11 + bombcolumn ].y + 16;
                                 Bombs[ i - BOMB_START ].type = rng(2) + 1;
                                 Bombs[ i - BOMB_START ].counter = 0;
-                                set_sprite( UPPER_LAYER, i, 1, Bombs[ i - BOMB_START ].x, Bombs[ i - BOMB_START ].y, ( Bombs[ i - BOMB_START ].type - 1 ) * 2, SPRITE_DOUBLE );
+                                set_sprite( i, 1, Bombs[ i - BOMB_START ].x, Bombs[ i - BOMB_START ].y, ( Bombs[ i - BOMB_START ].type - 1 ) * 2, SPRITE_DOUBLE );
                                 AlienSwarm.lastbombtimer = ( Ship.level < 10 ) ? 34 - Ship.level * 2 : 8;
                                 bombdropped = 1;
                                 break;
@@ -526,45 +523,30 @@ short missile_actions( void ) {
 
     // CHECK IF PLAYER MISSILE HAS HIT A BUNKER
     if( missile_layer_collision & SPRITE_TO_BITMAP_1 ) {
-        missile_x = get_sprite_attribute( MISSILESPRITE, SPRITE_X ) / 2 - ( (rng(5) - 2 ));
-        missile_y = get_sprite_attribute( MISSILESPRITE, SPRITE_Y ) / 2 - rng(8);
-        set_sprite_attribute( MISSILESPRITE, SPRITE_ACTIVE, 0 );
+        missile_x = get_sprite_attribute( MISSILESPRITE, ATTR_SPRITE_X ) / 2 - ( (rng(5) - 2 ));
+        missile_y = get_sprite_attribute( MISSILESPRITE, ATTR_SPRITE_Y ) / 2 - rng(8);
+        set_sprite_attribute( MISSILESPRITE, ATTR_SPRITE_ACTIVE, 0 );
         gpu_blit( TRANSPARENT, missile_x, missile_y, 0, 0, 0 );
     } else {
         // CHECK IF PLAYER MISSILE HAS HIT THE UFO
-        if( missile_collision & ( 1 << 30 ) ) {
+        if( missile_collision & ( (unsigned long)1 << UFOSPRITE ) ) {
             UFO.active = UFOEXPLODE;
             beep( 2, 0, 0, 0 );
             UFO.counter = 30;
             UFO.score = rng(3) + 1;
             points = UFO.score * 50;
-            set_sprite_attribute( UFOSPRITE, SPRITE_TILE, 4 );
+            set_sprite_attribute( UFOSPRITE, ATTR_SPRITE_TILE, 4 );
         } else {
             // CHECK IF PLAYER MISSILE HAS HIT AN ALIEN
-            if( ( missile_collision & 0xffffff ) || ( missile_layer_collision & SPRITE_TO_OTHER_SPRITES ) ) {
-                if( missile_collision & 0xffffff ) {
-                    // HIT AN UPPER SPRITE ALIEN, FIND
-                    for( int i = 0; ( i < BOMB_START ) && ( points == 0 ); i++ ) {
-                        if( get_sprite_collision( UPPER_LAYER, i ) & ( 1 << 29 ) ) {
-                            pcmsample_start( 2, 5058, &wave_hit[78], KHz11025, FALSE );
-                            points = ( 4 - Aliens[ 32 + i ].type ) * 10;
-                            Aliens[ 32 + i ].type = 16;
-                            set_sprite_attribute( UPPER_LAYER, i, SPRITE_TILE, 6 );
-                            set_sprite_attribute( MISSILESPRITE, SPRITE_ACTIVE, 0 );
-                        }
-                    }
-                } else {
-                    if( missile_layer_collision & SPRITE_TO_OTHER_SPRITES ) {
-                        // HIT A LOWER SPRITE ALIEN, FIND
-                        for( int i = 0; ( i < 32 ) && ( points == 0 ); i++ ) {
-                            if( get_sprite_layer_collision( LOWER_LAYER, i ) & SPRITE_TO_OTHER_SPRITES ) {
-                                pcmsample_start( 2, 5058, &wave_hit[78], KHz11025, FALSE );
-                                points = ( 4 - Aliens[ i ].type ) * 10;
-                                Aliens[ i ].type = 16;
-                                set_sprite_attribute( LOWER_LAYER, i, SPRITE_TILE, 6 );
-                                set_sprite_attribute( MISSILESPRITE, SPRITE_ACTIVE, 0 );
-                            }
-                        }
+            if( missile_collision ) {
+                // HIT AN UPPER SPRITE ALIEN, FIND
+                for( int i = 0; ( i < BOMB_START ) && ( points == 0 ); i++ ) {
+                    if( get_sprite_collision( i ) & ( (unsigned long)1 << MISSILESPRITE ) ) {
+                        pcmsample_start( 2, 5058, &wave_hit[78], KHz11025, FALSE );
+                        points = ( 4 - Aliens[ 32 + i ].type ) * 10;
+                        Aliens[ 32 + i ].type = 16;
+                        set_sprite_attribute( i, ATTR_SPRITE_TILE, 6 );
+                        set_sprite_attribute( MISSILESPRITE, ATTR_SPRITE_ACTIVE, 0 );
                     }
                 }
             }
@@ -572,7 +554,7 @@ short missile_actions( void ) {
     }
 
     // FIRE? OR MOVE MISSILE
-    if( !get_sprite_attribute( MISSILESPRITE, SPRITE_ACTIVE ) ) {
+    if( !get_sprite_attribute( MISSILESPRITE, ATTR_SPRITE_ACTIVE ) ) {
         // NO MISSILE, CHECK IF FIRE
         if( ( get_buttons() & 2 ) && ( Ship.state == SHIPPLAY ) ) {
             set_sprite( MISSILESPRITE, 1, Ship.x, Ship.y - 2, 4, SPRITE_DOUBLE );
@@ -581,7 +563,7 @@ short missile_actions( void ) {
     } else {
         // MOVE MISSILE
         update_sprite( MISSILESPRITE, 3, 0, -5, 0 );
-        set_sprite_attribute( MISSILESPRITE, SPRITE_TILE, 4 + animationcount );
+        set_sprite_attribute( MISSILESPRITE, ATTR_SPRITE_TILE, 4 + animationcount );
     }
 
     return( points );
@@ -640,16 +622,16 @@ void draw_status( void ) {
 
     // PRINT THE SCORE
     for( short i = 0; i < 8; i++ ) {
-        set_tilemap_tile_abs( UPPER_LAYER, 17 + i, 2,  ( scorestring[i] == ' ' ) ? 1 : scorestring[i] - 47, 0 );
+        set_tilemap_tile_abs( 2, 17 + i, 2,  ( scorestring[i] == ' ' ) ? 1 : scorestring[i] - 47, 0 );
     }
     // PRINT THE LIVES LEFT
-    set_tilemap_tile_abs( UPPER_LAYER, 35, 2,  Ship.life + 1, 0 );
+    set_tilemap_tile_abs( 2, 35, 2,  Ship.life + 1, 0 );
     for( short i = 0; i < 3; i++ ) {
-        set_tilemap_tile_abs( UPPER_LAYER, 37 + i, 2,  ( i < Ship.life ) ? 11 : 0, 0 );
+        set_tilemap_tile_abs( 2, 37 + i, 2,  ( i < Ship.life ) ? 11 : 0, 0 );
     }
     // PRINT THE LEVEL ( 2 DIGITS )
-    set_tilemap_tile_abs( UPPER_LAYER, 2, 2,  ( Ship.level / 10 ) + 1, 0 );
-    set_tilemap_tile_abs( UPPER_LAYER, 3, 2,  ( Ship.level % 10 ) + 1, 0 );
+    set_tilemap_tile_abs( 2, 2, 2,  ( Ship.level / 10 ) + 1, 0 );
+    set_tilemap_tile_abs( 2, 3, 2,  ( Ship.level % 10 ) + 1, 0 );
 }
 
 void play( void ) {

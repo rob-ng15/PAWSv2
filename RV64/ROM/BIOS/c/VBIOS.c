@@ -125,14 +125,16 @@ void reset_system( void ) {
 
     *GPU_DITHERMODE = 0;
     *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1;
-    *SCREENMODE = 0; *COLOUR = 0;
-    tpu_cs();
-    tm_cs( 0 ); tm_cs( 1 );
-    for( unsigned short i = 0; i < 16; i++ ) {
-        LOWER_SPRITE_ACTIVE[i] = 0;
-        UPPER_SPRITE_ACTIVE[i] = 0;
+    *FRAMEBUFFER_DRAW = 1; *BITMAP_DISPLAY256 = 0;
+    *SCREENORDER = ( 3 << 0 ) | ( 1 << 4 ) | ( 4 << 8 ) | ( 8 << 12 ) | ( 9 << 16 ) | ( 10 << 20 ) | ( 11 << 24 );
+    *COLOUR = 0;
+    tpu_cs(); *TPU_LOREZ = 0;
+    *TM_LOREZ = 0;
+    for( int i = 0; i < 4; i++ ) {
+        tm_cs( i );
+        TM_SCROLLAMOUNT[i] = 1;
     }
+    for( int i = 0; i < 63; i++ ) SPRITE_ACTIVE[i] = 0;
 }
 
 void timer_interrupt( void ) {
@@ -157,9 +159,11 @@ void vblank_interrupt( void ) {
 
     tilemap_scroll( 0, 3, 1 );
     tilemap_scroll( 1, 1, 1 );
-    update_sprite( 1, 0, 0, 1, 0, 0 ); update_sprite( 1, 2, 0, 1, 0, 0 );
-    set_sprite_attribute( 1, 0, 1, ( ( j & 192 ) >> 6 ) );
-    set_sprite_attribute( 1, 2, 1, ( j & 128 ) >> 7 );
+    tilemap_scroll( 2, 1, 1 );
+    tilemap_scroll( 3, 3, 1 );
+    update_sprite( 0, 0, 1, 0, 0 ); update_sprite( 2, 0, 1, 0, 0 );
+    set_sprite_attribute( 0, 1, ( ( j & 192 ) >> 6 ) );
+    set_sprite_attribute( 2, 1, ( j & 128 ) >> 7 );
     j++;
 }
 
@@ -223,21 +227,23 @@ void main( void ) {
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 70, 34, 1, "Risc-V RV64GC+ CPU", 0 );
 
-    // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
-    for( i = 0; i < 63; i++ ) {
-        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, DMA_SET_TO_S );
-        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, DMA_SET_TO_S );
-        set_tilemap_tile( 0, i, 16, i+1, 0 );
-        set_tilemap_tile( 1, i, 30, i+1, 0 );
-    }
     gpu_outputstringcentre( UK_GOLD, 74, 0, "VERILATOR - INTERRUPT + FPU TEST", 0 );
     gpu_outputstringcentre( UK_GOLD, 82, 0, "MAIN - GPU AND FPU MANDELBROT", 0 );
     gpu_outputstringcentre( UK_GOLD, 90, 0, "INTERRUPT - SPRITES AND BARST", 0 );
 
     gpu_triangle( WHITE, 300, 0, 310, 10, 305, 30 );
 
-    set_sprite_bitmaps( 1, 0, &pacman_bitmap[0] ); set_sprite( 1, 0, 1, 0, 440, 4, 13 );
-    set_sprite_bitmaps( 1, 1, &ghost_bitmap[0] ); set_sprite( 1, 2, 1, 64, 440, 0, 8);
+    // SET THE SPRITES
+    set_sprite_bitmaps( 0, &pacman_bitmap[0] ); set_sprite( 0, 1, 0, 440, 4, 13 );
+    set_sprite_bitmaps( 1, &ghost_bitmap[0] ); set_sprite( 2, 1, 64, 440, 0, 8);
+
+    // COLOUR BARS ON THE TILEMAP - SCROLL WITH INTERRUPT - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
+    for( i = 0; i < 63; i++ ) {
+        TM_WRITER_TILE_NUMBER[0] = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)&TM_WRITER_COLOUR[0], 256, DMA_SET_TO_S );
+        TM_WRITER_TILE_NUMBER[1] = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)&TM_WRITER_COLOUR[1], 256, DMA_SET_TO_S );
+        set_tilemap_tile( 0, i, 16, i+1, 0 ); set_tilemap_tile( 1, i, 17, i+1, 0 );
+        set_tilemap_tile( 2, i, 30, i+1, 0 ); set_tilemap_tile( 3, i, 29, i+1, 0 );
+    }
 
     // INTERRUPT HANDLER SETUP
     IRQ_VECTOR( (void *)interrupt_handler ); IRQ_SET_TIMER_QUICK( 1 ); IRQ_ON( IRQ_VBLANK | IRQ_TIMER, TRUE );

@@ -338,55 +338,43 @@ void tpu_outputhex( unsigned long hex ) {
 
 // SET THE TILEMAP TILE at (x,y) to tile
 void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
-    ( tm_layer ? UTMAPBUFFER : LTMAPBUFFER )[ y * 64 + x ] = ( action << 6 ) + tile;
+    TMAPBUFFER[tm_layer][ y * 64 + x ] = ( action << 6 ) + tile;
 }
 
-// SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
+// SCROLL/WRAP the TILEMAP by amount ( 0 - 15 ) pixels
 //  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN
 //  action == 5 reset base and offset
 //  action == 7 reset offset
 //  RETURNS 0 if no action taken other than pixel shift, action if SCROLL was actioned
 unsigned char tilemap_scroll( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
-    *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
-    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = action;
-    return( tm_layer ? *UPPER_TM_SCROLLWRAPCLEAR : *LOWER_TM_SCROLLWRAPCLEAR );
+    TM_SCROLLAMOUNT[ tm_layer ] = amount;
+    TM_SCROLLWRAP[ tm_layer ] = action;
+    return( TM_SCROLLWRAP[ tm_layer ] );
 }
 
 void tm_cs( unsigned char tm_layer ) {
-    memset( ( void *)( tm_layer ? UTMAPBUFFER : LTMAPBUFFER ), 0, 64 * 64 * 2 );
+    memset( ( void *)TMAPBUFFER[ tm_layer ], 0, 64 * 64 * 2 );
 
-    *( tm_layer ? UPPER_TM_X : UPPER_TM_X ) = 0;
-    *( tm_layer ? UPPER_TM_Y : UPPER_TM_Y ) = 0;
-    *( tm_layer ? UPPER_TM_OFFSET_X : UPPER_TM_OFFSET_X ) = 0;
-    *( tm_layer ? UPPER_TM_OFFSET_Y : UPPER_TM_OFFSET_Y ) = 0;
+    TM_X[ tm_layer ] = 0;
+    TM_Y[ tm_layer ] = 0;
+    TM_OFFSET_X[ tm_layer ] = 0;
+    TM_OFFSET_Y[ tm_layer ] = 0;
     tilemap_scroll( tm_layer, 5, 0 );
 }
 
 // SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 pixel bitmaps ( 2048 ARRGGBB pixels )
-void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
-    *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = sprite_number;
-    DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, DMA_TO_IO );
+void set_sprite_bitmaps( unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
+    *SPRITE_WRITER_NUMBER = sprite_number;
+    DMASTART( sprite_bitmaps, (void *restrict)SPRITE_WRITER_COLOUR, 2048, DMA_TO_IO );
 }
 
 // SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
-void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
-    switch( sprite_layer ) {
-        case 0:
-            LOWER_SPRITE_ACTIVE[sprite_number] = active;
-            LOWER_SPRITE_TILE[sprite_number] = tile;
-            LOWER_SPRITE_X[sprite_number] = x;
-            LOWER_SPRITE_Y[sprite_number] = y;
-            LOWER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
-            break;
-
-        case 1:
-            UPPER_SPRITE_ACTIVE[sprite_number] = active;
-            UPPER_SPRITE_TILE[sprite_number] = tile;
-            UPPER_SPRITE_X[sprite_number] = x;
-            UPPER_SPRITE_Y[sprite_number] = y;
-            UPPER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
-            break;
-    }
+void set_sprite(unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
+    SPRITE_ACTIVE[sprite_number] = active;
+    SPRITE_TILE[sprite_number] = tile;
+    SPRITE_X[sprite_number] = x;
+    SPRITE_Y[sprite_number] = y;
+    SPRITE_ACTIONS[sprite_number] = sprite_attributes;
 }
 
 // SET or GET ATTRIBUTES for sprite_number in sprite_layer
@@ -396,67 +384,45 @@ void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsign
 //  attribute == 3 x coordinate
 //  attribute == 4 y coordinate
 //  attribute == 5 attributes bit 0 = size == 0 16x16 == 1 32x32. bit 1 = x-mirror bit 2 = y-mirror
-void set_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_number, unsigned char attribute, short value ) {
-    if( sprite_layer == 0 ) {
-        switch( attribute ) {
-            case 0:
-                LOWER_SPRITE_ACTIVE[sprite_number] = ( unsigned char) value;
-                break;
-            case 1:
-                LOWER_SPRITE_TILE[sprite_number] = ( unsigned char) value;
-                break;
-            case 2:
-                break;
-            case 3:
-                LOWER_SPRITE_X[sprite_number] = value;
-                break;
-            case 4:
-                LOWER_SPRITE_Y[sprite_number] = value;
-                break;
-            case 5:
-                LOWER_SPRITE_ACTIONS[sprite_number] = ( unsigned char) value;
-                break;
-        }
-    } else {
-        switch( attribute ) {
-            case 0:
-                UPPER_SPRITE_ACTIVE[sprite_number] = ( unsigned char) value;
-                break;
-            case 1:
-                UPPER_SPRITE_TILE[sprite_number] = ( unsigned char) value;
-                break;
-            case 2:
-                break;
-            case 3:
-                UPPER_SPRITE_X[sprite_number] = value;
-                break;
-            case 4:
-                UPPER_SPRITE_Y[sprite_number] = value;
-                break;
-            case 5:
-                UPPER_SPRITE_ACTIONS[sprite_number] = ( unsigned char) value;
-                break;
-        }
+void set_sprite_attribute( unsigned char sprite_number, unsigned char attribute, short value ) {
+    switch( attribute ) {
+        case 0:
+            SPRITE_ACTIVE[sprite_number] = value;
+            break;
+        case 1:
+            SPRITE_TILE[sprite_number] = value;
+            break;
+        case 2:
+            break;
+        case 3:
+            SPRITE_X[sprite_number] = value;
+            break;
+        case 4:
+            SPRITE_Y[sprite_number] = value;
+            break;
+        case 5:
+            SPRITE_ACTIONS[sprite_number] = value;
+            break;
     }
 }
 
 // UPDATE A SPITE moving by x and y deltas, with optional wrap/kill and optional changing of the tile
-void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char kill, short dx, short dy, unsigned char dt ) {
+void update_sprite( unsigned char sprite_number, unsigned short kill, short dx, short dy, unsigned char dt ) {
     static short sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2 };
 
-    short x = ( sprite_layer ? UPPER_SPRITE_X : LOWER_SPRITE_X )[ sprite_number ] + dx;
-    short y = ( sprite_layer ? UPPER_SPRITE_Y : LOWER_SPRITE_Y )[ sprite_number ] + dy;
-    unsigned char tile = ( sprite_layer ? UPPER_SPRITE_TILE : LOWER_SPRITE_TILE )[ sprite_number ] + dt;
-    unsigned char active = ( sprite_layer ? UPPER_SPRITE_ACTIVE : LOWER_SPRITE_ACTIVE )[ sprite_number ];
-    short size = sizes[ (sprite_layer ? UPPER_SPRITE_ACTIONS : LOWER_SPRITE_ACTIONS )[ sprite_number ] >> 3 ];
+    short x = SPRITE_X[ sprite_number ] + dx;
+    short y = SPRITE_Y[ sprite_number ] + dy;
+    unsigned short tile = SPRITE_TILE[ sprite_number ] + dt;
+    unsigned short active = SPRITE_ACTIVE[ sprite_number ];
+    short size = sizes[ SPRITE_ACTIONS[ sprite_number ] >> ( 3 & 7 ) ] << ( SPRITE_ACTIONS[ sprite_number ] >> 4 );
 
     if( ( ( x > 640 ) | ( x < -size ) ) ) { active = ( kill & 1 ) != 0; x = ( x > 640 ) ? -size : 640; }
     if( ( ( y > 480 ) | ( y < -size ) ) ) { active = ( kill & 2 ) != 0; y = ( y > 480 ) ? -size : 480; }
 
-    ( sprite_layer ? UPPER_SPRITE_X : LOWER_SPRITE_X )[ sprite_number ] = x;
-    ( sprite_layer ? UPPER_SPRITE_Y : LOWER_SPRITE_Y )[ sprite_number ] = y;
-    ( sprite_layer ? UPPER_SPRITE_TILE : LOWER_SPRITE_TILE )[ sprite_number ] = tile;
-    ( sprite_layer ? UPPER_SPRITE_ACTIVE : LOWER_SPRITE_ACTIVE )[ sprite_number ] = active;
+    SPRITE_X[ sprite_number ] = x;
+    SPRITE_Y[ sprite_number ] = y;
+    SPRITE_TILE[ sprite_number ] = tile;
+    SPRITE_ACTIVE[ sprite_number ] = active;
 }
 
 // AUDIO CONTROLS

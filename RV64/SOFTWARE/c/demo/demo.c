@@ -824,16 +824,17 @@ char *dithernames[] = {
 
 void displayreset( void ) {
     // RESET THE DISPLAY
-    screen_mode( 0, MODE_RGBM, 0 ); bitmap_256( false );
+    screen_mode( MODE_RGBM ); bitmap_256( false );
+    screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_3, LAYER_SPRITES_2, LAYER_SPRITES_1, LAYER_SPRITES_0,
+                  LAYER_TILEMAP_3, LAYER_TILEMAP_2, LAYER_TILEMAP_1, LAYER_TILEMAP_0, LAYER_BITMAP_0, FALSE );
+
     gpu_cs();
     tpu_cs();
-    tm_cs( LOWER_LAYER );
-    tm_cs( UPPER_LAYER );
+    for( int i = 0; i < 4; i++ )
+        tm_cs( i );
     set_background( BLACK, BLACK, BKG_SOLID );
-    for( short i = 0; i < 32; i++ ) {
-        set_sprite_attribute( LOWER_LAYER, i, SPRITE_ACTIVE, 0 );
-        set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
-    }
+    for( short i = 0; i < 64; i++ )
+        set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, 0 );
 }
 
 // DISPLAY COLOUR CHART
@@ -851,7 +852,7 @@ void colourtable( void ) {
 
     // CYCLE THROUGH COLOUR MODES
     for( short i = 0; i < 2; i++ ) {
-        screen_mode( 0, i, 0 );
+        screen_mode( i );
         sleep1khz( 2000 );
     }
 }
@@ -1000,19 +1001,21 @@ void tilemapdemo( void ) {
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Tilemap Scroll With Wrap Test" );
 
     unsigned char x, y, count, colour, actionflag;
-    tm_cs( LOWER_LAYER );
-    (void)tm_cs( UPPER_LAYER );
+    for( int i = 0; i < 4; i++ )
+        tm_cs( i );
 
     for( unsigned char tile_number = 0; tile_number < 10; tile_number++ ) {
-        set_tilemap_bitmap( LOWER_LAYER, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
-        set_tilemap_bitmap( UPPER_LAYER, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
+        set_tilemap_bitmap( 0, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
+        set_tilemap_bitmap( 1, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
     }
 
-    // PLACE NUMBERS ALONG THE TOP (LOWER LAYER) AND MIDDLE (UPPER LAYER)
+    // PLACE NUMBERS ALONG THE LAYERS
     x = 0; y = 0; count = 0; actionflag = 0;
     for( unsigned int i = 0; i < 512; i++ ) {
-        set_tilemap_tile_abs( LOWER_LAYER, x, y, count + 1, actionflag & 7 );
-        set_tilemap_tile_abs( UPPER_LAYER, y, x, count + 1, actionflag & 7 );
+        set_tilemap_tile_abs( 0, x, y, count + 1, actionflag & 7 );
+        set_tilemap_tile_abs( 1, y, x, count + 1, actionflag & 7 );
+        set_tilemap_tile_abs( 2, x+20, y+20, count + 1, actionflag & 7 );
+        set_tilemap_tile_abs( 3, y+20, x+20, count + 1, actionflag & 7 );
 
         y = ( x == 63 ) ? y + 1 : y;
         x = ( x == 63 ) ? 0 : x + 1;
@@ -1023,12 +1026,10 @@ void tilemapdemo( void ) {
 
     for( unsigned short i = 0; i < 512; i++ ) {
         await_vblank();
-        // LOWER LEFT AND UP 1 PIXEL AT A TIME
-        (void)tilemap_scroll( LOWER_LAYER, TM_LEFT, 1 );
-        (void)tilemap_scroll( LOWER_LAYER, TM_UP, 1 );
-        // UPPER RIGHT AND DOWN 2 PIXELS AT A TIME
-        (void)tilemap_scroll( UPPER_LAYER, TM_RIGHT, 2 );
-        (void)tilemap_scroll( UPPER_LAYER, TM_DOWN, 2 );
+        tilemap_scroll( 0, TM_LEFT, 1 ); tilemap_scroll( 0, TM_UP, 1 );
+        tilemap_scroll( 1, TM_LEFT, 2 ); tilemap_scroll( 0, TM_UP, 2 );
+        tilemap_scroll( 2, TM_RIGHT, 1 ); tilemap_scroll( 2, TM_DOWN, 1 );
+        tilemap_scroll( 3, TM_RIGHT, 2 ); tilemap_scroll( 3, TM_DOWN, 2 );
         await_vblank_finish();
     }
 }
@@ -1207,38 +1208,38 @@ void spritedemo( void ) {
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "SPRITE Demo" );
 
     for( unsigned char tile_number = 0; tile_number < 2; tile_number++ ) {
-        set_tilemap_bitmap( LOWER_LAYER, tile_number + 1, &pacman_maze_bitmaps[ tile_number * 256 ] );
+        set_tilemap_bitmap( 0, tile_number + 1, &pacman_maze_bitmaps[ tile_number * 256 ] );
     }
 
     for( short y = 0; y < 32; y++ ) {
         for( short x = 0; x < 42; x++ ) {
             switch( pacman_maze[y][x] ) {
                 case '.':
-                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 0, 0 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 0, 0 );
                     break;
                 case '1':
-                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 1, 0 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 1, 0 );
                     break;
                 case '2':
-                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 1, ROTATE90 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 1, ROTATE90 );
                     break;
                 case '3':
-                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 1, ROTATE180 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 1, ROTATE180 );
                     break;
                 case '4':
-                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 1, ROTATE270 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 1, ROTATE270 );
                     break;
                 case '5':
-                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 2, ROTATE180 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 2, ROTATE180 );
                     break;
                 case '6':
-                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 2, 0 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 2, 0 );
                     break;
                 case '7':
-                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 2, ROTATE90 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 2, ROTATE90 );
                     break;
                 case '8':
-                    set_tilemap_tile_abs( LOWER_LAYER, x+1, y+1, 2, ROTATE270 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 2, ROTATE270 );
                     break;
             }
         }
@@ -1279,7 +1280,7 @@ void spritedemo( void ) {
                 colour_sprite_bitmap[ y * 16 + x ] = colour;
             }
         }
-        set_sprite_bitmaps( LOWER_LAYER, i * 2, &colour_sprite_bitmap[ 0 ] );
+        set_sprite_bitmaps( i * 2, &colour_sprite_bitmap[ 0 ] );
     }
 
     // SET COLOUR SPRITE OBJECTS - GHOSTS FROM PACMAN - POWER UP
@@ -1303,17 +1304,17 @@ void spritedemo( void ) {
                 colour_sprite_bitmap[ y * 16 + x ] = colour;
             }
         }
-        set_sprite_bitmaps( LOWER_LAYER, i * 2 + 1, &colour_sprite_bitmap[ 0 ] );
+        set_sprite_bitmaps( i * 2 + 1, &colour_sprite_bitmap[ 0 ] );
     }
 
     // 0, 4, 8, 12 SPRITES GHOST NON-POWER, 2, 6, 10, 14 SPRITES GHOST POWER
-    set_sprite( LOWER_LAYER, 0, 1, 144, 64, 0, SPRITE_DOUBLE );     set_sprite( LOWER_LAYER, 2, 0, 144, 64, 0, SPRITE_DOUBLE );
-    set_sprite( LOWER_LAYER, 4, 1, 464, 64, 2, SPRITE_DOUBLE );     set_sprite( LOWER_LAYER, 6, 0, 464, 64, 2, SPRITE_DOUBLE );
-    set_sprite( LOWER_LAYER, 8, 1, 464, 384, 4, SPRITE_DOUBLE );    set_sprite( LOWER_LAYER, 10, 0, 464, 384, 4, SPRITE_DOUBLE );
-    set_sprite( LOWER_LAYER, 12, 1, 144, 384, 6, SPRITE_DOUBLE );    set_sprite( LOWER_LAYER, 14, 0, 144, 384, 6, SPRITE_DOUBLE );
+    set_sprite( 0, 1, 144, 64, 0, SPRITE_DOUBLE );     set_sprite( 2, 0, 144, 64, 0, SPRITE_DOUBLE );
+    set_sprite( 4, 1, 464, 64, 2, SPRITE_DOUBLE );     set_sprite( 6, 0, 464, 64, 2, SPRITE_DOUBLE );
+    set_sprite( 8, 1, 464, 384, 4, SPRITE_DOUBLE );    set_sprite( 10, 0, 464, 384, 4, SPRITE_DOUBLE );
+    set_sprite( 12, 1, 144, 384, 6, SPRITE_DOUBLE );    set_sprite( 14, 0, 144, 384, 6, SPRITE_DOUBLE );
 
-    set_sprite_bitmaps( UPPER_LAYER, 0, &pacman_bitmap[0] );
-    set_sprite( UPPER_LAYER, 0, 1, 304, 415, 0, 1 );
+    set_sprite_bitmaps( 16, &pacman_bitmap[0] );
+    set_sprite( 16, 1, 304, 415, 0, 1 );
 
     for( short i = 0; i < 1280; i++ ) {
         await_vblank_finish(); await_vblank();
@@ -1334,24 +1335,24 @@ void spritedemo( void ) {
         }
 
         // ANIMATE PACMAN
-        set_sprite_attribute( UPPER_LAYER, 0, SPRITE_TILE, ( ( animation_count & 96 ) >> 5 ) );
-        set_sprite_attribute( UPPER_LAYER, 0, SPRITE_ACTION, ghost_direction[1] + SPRITE_DOUBLE + ROTATE0 );
+        set_sprite_attribute( 16, ATTR_SPRITE_TILE, ( ( animation_count & 96 ) >> 5 ) );
+        set_sprite_attribute( 16, ATTR_SPRITE_ACTION, ghost_direction[1] + SPRITE_DOUBLE + ROTATE0 );
 
         // ANIMATE THE GHOSTS
         for( short i = 0; i < 4; i++ ) {
             if( power ) {
                 for( short i = 0; i < 4; i++ ) {
                     // TURN OFF NON-POWER UP SPRITE, TURN ON POWER UP SPRITE AND ANIMATE
-                    set_sprite_attribute( LOWER_LAYER, i * 4, SPRITE_ACTIVE, 0 );
-                    set_sprite_attribute( LOWER_LAYER, i * 4 + 2, SPRITE_ACTIVE, 1 );
-                    set_sprite_attribute( LOWER_LAYER, i * 4 + 2, SPRITE_TILE, ( ( move_count < 140 ) ? 0 : 1 ) * 2 + ghost_animation_frame );
+                    set_sprite_attribute( i * 4, ATTR_SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( i * 4 + 2, ATTR_SPRITE_ACTIVE, 1 );
+                    set_sprite_attribute( i * 4 + 2, ATTR_SPRITE_TILE, ( ( move_count < 140 ) ? 0 : 1 ) * 2 + ghost_animation_frame );
                 }
             } else {
                 for( short i = 0; i < 4; i++ ) {
                     // TURN ON NON-POWER UP SPRITE AND ANIMATE, TURN OFF POWER UP SPRITE
-                    set_sprite_attribute( LOWER_LAYER, i * 4, SPRITE_TILE, ghost_direction[i] * 2 + ghost_animation_frame );
-                    set_sprite_attribute( LOWER_LAYER, i * 4, SPRITE_ACTIVE, 1 );
-                    set_sprite_attribute( LOWER_LAYER, i * 4 + 2, SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( i * 4, ATTR_SPRITE_TILE, ghost_direction[i] * 2 + ghost_animation_frame );
+                    set_sprite_attribute( i * 4, ATTR_SPRITE_ACTIVE, 1 );
+                    set_sprite_attribute( i * 4 + 2, ATTR_SPRITE_ACTIVE, 0 );
                 }
             }
         }
@@ -1360,20 +1361,20 @@ void spritedemo( void ) {
         for( short i = 0; i <4; i++ ) {
             switch( ghost_direction[i] ) {
                 case 0:
-                    update_sprite( LOWER_LAYER, i * 4,     0, 1, 0, 0 );
-                    update_sprite( LOWER_LAYER, i * 4 + 2, 0, 1, 0, 0 );
+                    update_sprite( i * 4,     0, 1, 0, 0 );
+                    update_sprite( i * 4 + 2, 0, 1, 0, 0 );
                     break;
                 case 1:
-                    update_sprite( LOWER_LAYER, i * 4,     0, 0, 1, 0 );
-                    update_sprite( LOWER_LAYER, i * 4 + 2, 0, 0, 1, 0 );
+                    update_sprite( i * 4,     0, 0, 1, 0 );
+                    update_sprite( i * 4 + 2, 0, 0, 1, 0 );
                     break;
                 case 2:
-                    update_sprite( LOWER_LAYER, i * 4,     0, -1, 0, 0 );
-                    update_sprite( LOWER_LAYER, i * 4 + 2, 0, -1, 0, 0 );
+                    update_sprite( i * 4,     0, -1, 0, 0 );
+                    update_sprite( i * 4 + 2, 0, -1, 0, 0 );
                     break;
                 case 3:
-                    update_sprite( LOWER_LAYER, i * 4,     0, 0, -1, 0 );
-                    update_sprite( LOWER_LAYER, i * 4 + 2, 0, 0, -1, 0 );
+                    update_sprite( i * 4,     0, 0, -1, 0 );
+                    update_sprite( i * 4 + 2, 0, 0, -1, 0 );
                     break;
             }
         }

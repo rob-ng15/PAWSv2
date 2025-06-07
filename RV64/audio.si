@@ -298,7 +298,7 @@ unit audiocounter(
             counter50mhz = 0; counter1khz = 50000; duration = selected_duration;
         } else {
             if( updatepoint ) { counter50mhz = selected_frequency; } else { counter50mhz = counter50mhz_NEXT; }
-            if( |duration & ( ~|counter1khz ) ) { counter1khz = 50000; duration = duration_NEXT; } else { counter1khz = counter1khz_NEXT; }
+            if( active & ( ~|counter1khz ) ) { counter1khz = 50000; duration = duration_NEXT; } else { counter1khz = counter1khz_NEXT; }
         }
     }
 }
@@ -349,22 +349,32 @@ unit bitsample_writer(
 // For now fixed to 8 bits in to 4 bits DAC
 // TODO make it more general
 
-// Expanded by @rob-gn15 to time-multiplex two waveforms, if both are active switch every 32 cycles (at 50MHz not able to tell multiplexing is happening)
+// Expanded by @rob-ng15 to time-multiplex four waveforms
 
 unit audio_pwm(
     input   uint1   active_1,
     input   uint8   wave_1,
     input   uint1   active_2,
     input   uint8   wave_2,
+    input   uint1   active_3,
+    input   uint8   wave_3,
+    input   uint1   active_4,
+    input   uint8   wave_4,
     output  uint4   pwm
 ) {
     uint$AUDIOmultiplex$    timer = uninitialised;                                                                              // COUNTER USED FOR TIME MULTIPLEXING THE AUDIO CHANNELS
-    uint$AUDIOmultiplex$    timer_NEXT <:: timer + 1;                                                                           // AND FOR INTERPOLATION
-    uint8                   sample <:: ( active_1 & active_2 ) ? timer[$AUDIOmultiplex-1$,1] ? wave_1 : wave_2 :                // SELECT CHANNEL, BOTH ACTIVE, BASE ON TIMER
-                                                                                    active_1 ? wave_1 :                         //  ONLY WAVE_1 ACTIVE
-                                                                                               wave_2;                          //  ONLY WAVE_2 ACTIVE ( DEFAULT )
+    uint$AUDIOmultiplex$    timer_NEXT <:: timer + 1;                                                                           //  AND FOR INTERPOLATION
+    uint8                   sample <:: ( timer[$AUDIOmultiplex-2$,2] == 2b00 ) ? active_1 ? wave_1 : 0 :                        // MULTIPLEX THE 4 CHANNELS
+                                       ( timer[$AUDIOmultiplex-2$,2] == 2b01 ) ? active_2 ? wave_2 : 0 :
+                                       ( timer[$AUDIOmultiplex-2$,2] == 2b10 ) ? active_3 ? wave_3 : 0 :
+                                                                                 active_4 ? wave_4 : 0;
 
     always {
-        if( active_1 | active_2 ) { pwm = sample[ 4, 4 ] + ( timer[0,4] < sample[ 0, 4 ] ); timer = timer_NEXT; } else { timer = 0; }
+        if( active_1 | active_2 | active_3 | active_4 ) {
+            pwm = sample[ 4, 4 ] + ( timer[0,4] < sample[ 0, 4 ] );
+            timer = timer_NEXT;
+        } else {
+            timer = 0;
+        }
     }
 }

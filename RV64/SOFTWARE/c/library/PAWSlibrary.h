@@ -76,9 +76,11 @@ extern unsigned char is_vblank( void );
 extern unsigned int get_framecount( void );
 extern void await_vblank( void );
 extern void await_vblank_finish( void );
-extern void screen_mode( unsigned char, unsigned char, unsigned char );
+extern void screen_order( unsigned long L_0, unsigned long L_1, unsigned long L_2, unsigned long L_3,
+                          unsigned long L_4, unsigned long L_5, unsigned long L_6, unsigned long L_7,
+                          unsigned long L_8, unsigned long L_9, unsigned long L_A );
+extern void screen_mode( unsigned char );
 extern void screen_dimmer( unsigned char dimmerlevel );
-extern void bitmap_display( unsigned char );
 extern void bitmap_draw( unsigned char );
 extern void bitmap_256( unsigned char mode );
 extern void set_palette( unsigned char entry, unsigned int rgb );
@@ -95,6 +97,7 @@ extern unsigned short get_copper_cpuoutput( void );
 
 // TILEMAP
 extern void tm_cs( unsigned char tm_layer );
+extern void tilemap_2040( unsigned char flags );
 extern unsigned char tilemap_scroll( unsigned char tm_layer, unsigned char action, unsigned char amount );
 extern void tilemap_setbase( unsigned char tm_layer, unsigned char x, unsigned char y, short offset_x, short offset_y );
 extern void tilemap_readbase( unsigned char tm_layer, unsigned char *base_x, unsigned char *base_y, short *offset_x, short *offset_y );
@@ -170,17 +173,17 @@ extern void DoDrawList2D( struct DrawList2D *, int, int, int, int, float );
 extern void DoDrawList2Dscale( struct DrawList2D *, int, int, int, float );
 
 // SPRITES - MAIN ACCESS
-extern void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes );
-extern void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes );
-extern short get_sprite_attribute( unsigned char, unsigned char , unsigned char );
-extern void set_sprite_attribute( unsigned char, unsigned char, unsigned char, short );
-extern void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char kill, short dx, short dy, unsigned char dt );
-extern void update_sprite_compat( unsigned char sprite_layer, unsigned char sprite_number, unsigned short updateflag );
-extern unsigned int get_sprite_collision( unsigned char, unsigned char );
-extern unsigned char get_sprite_layer_collision( unsigned char, unsigned char );
-extern void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps );
-extern void set_sprite_bitamps_from_spritesheet( unsigned char sprite_layer, unsigned char *sprite_bitmaps );
-extern void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_layer, unsigned char *sprite_bitmaps );
+extern void set_sprite( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes );
+extern void set_sprite32( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes );
+extern short get_sprite_attribute( unsigned char sprite_number, unsigned char attribute );
+extern void set_sprite_attribute( unsigned char sprite_number, unsigned char attribute, short value );
+extern void update_sprite( unsigned char sprite_number, unsigned char kill, short dx, short dy, unsigned char dt );
+extern void update_sprite_compat( unsigned char sprite_number, unsigned short updateflag );
+extern unsigned long get_sprite_collision( unsigned char sprite_number );
+extern unsigned short get_sprite_layer_collision( unsigned char sprite_number );
+extern void set_sprite_bitmaps( unsigned char sprite_number, unsigned char *sprite_bitmaps );
+extern void set_sprite_bitamps_from_spritesheet( unsigned char sprite_number, unsigned char count, unsigned char *sprite_bitmaps, unsigned char mode );
+extern void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_number, unsigned char *sprite_bitmaps );
 
 // CHARACTER MAP
 extern void tpu_cs( void );
@@ -193,6 +196,7 @@ extern void tpu_printf_centre( unsigned char y, unsigned char background, unsign
 extern void tpu_print( unsigned char attribute, char *buffer );
 extern void tpu_print_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, char *buffer );
 extern void tpu_showcursor( unsigned char value );
+extern void tpu_4080( unsigned char mode );
 
 // IMAGE DECODERS
 extern void netppm_display( unsigned char *, unsigned char );

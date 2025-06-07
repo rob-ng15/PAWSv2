@@ -102,63 +102,62 @@ void __attribute__((interrupt ("machine"))) playtune( void ) {
 
 // RESET THE DISPLAY
 void displayreset( void ) {
-    screen_mode( 0, MODE_RGBM, 0 );
-    bitmap_draw( 3 ); bitmap_display( 0 ); screen_dimmer( 0 );
+    screen_mode( MODE_RGBM );
+    bitmap_draw( 3 ); screen_order( FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE ); screen_dimmer( 0 );
     gpu_cs();
     tpu_cs();
-    tm_cs( LOWER_LAYER );
-    tm_cs( UPPER_LAYER );
+    tm_cs( 0 );
+    tm_cs( 2 );
     set_background( 102, 102, BKG_SOLID );
-    for( short i = 0; i < 16; i++ ) {
-        set_sprite_attribute( LOWER_LAYER, i, SPRITE_ACTIVE, 0 );
-        set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
+    for( short i = 0; i < 64; i++ ) {
+        set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, 0 );
     }
 
     // SET THE INITIAL SPRITES FROM THE SPRITESHEET
-    set_sprite_bitamps_from_spritesheet32x32( UPPER_LAYER, &spritesheet_upper_1[0] );
+    set_sprite_bitamps_from_spritesheet32x32( 0, &spritesheet_upper_1[0] );
 
     // SET CLOUD TILEMAPS
     for( int i = 0; i < 6; i++ ) {
-        set_tilemap_bitmap32x32( LOWER_LAYER, 1 + ( i * 4 ), &cloud_graphics[ i * 1024 ] );
+        set_tilemap_bitmap32x32( 0, 1 + ( i * 4 ), &cloud_graphics[ i * 1024 ] );
     }
     // DRAW THE CLOUD WITH SUN
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 17, 4, 1 );
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 17, 6, 5 );
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 19, 4, 9 );
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 19, 6, 13 );
+    set_tilemap_32x32tile_abs( 0, 17, 4, 1 );
+    set_tilemap_32x32tile_abs( 0, 17, 6, 5 );
+    set_tilemap_32x32tile_abs( 0, 19, 4, 9 );
+    set_tilemap_32x32tile_abs( 0, 19, 6, 13 );
 
     // DRAW THE OTHER CLOUDS
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 1, 12, 17 );
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 3, 12, 21 );
+    set_tilemap_32x32tile_abs( 0, 1, 12, 17 );
+    set_tilemap_32x32tile_abs( 0, 3, 12, 21 );
 
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 27, 8, 17 );
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 29, 8, 21 );
+    set_tilemap_32x32tile_abs( 0, 27, 8, 17 );
+    set_tilemap_32x32tile_abs( 0, 29, 8, 21 );
 
 }
 void display_village( void ) {
     int BDx = 0, BDx_last = 0, BDwidth = 1024, FDx = 0, FDx_last = 0, FDwidth = 4608, anim_number = 0;
 
     // DISPLAY VILLAGE + START TUNE
-    bitmap_display( 3 );
+    screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_3, LAYER_SPRITES_2, LAYER_SPRITES_1, LAYER_SPRITES_0, LAYER_BITMAP_1, LAYER_BITMAP_0, LAYER_TILEMAP_2, LAYER_TILEMAP_0, FALSE, FALSE );
 
     while( FDx < ( FDwidth - 320 ) ) {
         await_vblank();
         if( BDx_last != BDx ) {
             BDx_last = BDx; paws_memcpy_rectangle( (const void *restrict)(0x2000000+88*320), BD_village + BDx, 320, 320, BDwidth, 152 );
-            tilemap_scroll( LOWER_LAYER, TM_LEFT, 1 );
+            tilemap_scroll( 0, TM_LEFT, 1 );
         }
         paws_memcpy_rectangle( (const void *restrict)(0x2020000+32*320), FD_village + FDx, 320, 320, FDwidth, 208 );
-        set_sprite32( UPPER_LAYER, 0, SPRITE_SHOW, 320, 416, (anim_number) & 7, SPRITE_DOUBLE );
+        set_sprite32( 0, SPRITE_SHOW, 320, 416, (anim_number) & 7, SPRITE_DOUBLE );
         FDx+=2; if( !(FDx & 3) ) { anim_number++; if( BDx == 510 ) { BDx = 0; } else { BDx+=2; } }
     }
     while( FDx > 0 ) {
         await_vblank();
         if( BDx_last != BDx ) {
             BDx_last = BDx; paws_memcpy_rectangle( (const void *restrict)(0x2000000+88*320), BD_village + BDx, 320, 320, BDwidth, 152 );
-            tilemap_scroll( LOWER_LAYER, TM_RIGHT, 1 );
+            tilemap_scroll( 0, TM_RIGHT, 1 );
         }
         paws_memcpy_rectangle( (const void *restrict)(0x2020000+32*320), FD_village + FDx, 320, 320, FDwidth, 208 );
-        set_sprite32( UPPER_LAYER, 0, SPRITE_SHOW, 320, 416, (anim_number) & 7, SPRITE_DOUBLE | REFLECT_X);
+        set_sprite32( 0, SPRITE_SHOW, 320, 416, (anim_number) & 7, SPRITE_DOUBLE | REFLECT_X);
         FDx-=2; if( !(FDx & 3) ) { anim_number++; if( BDx == 0 ) { BDx = 510; } else { BDx-=2; } }
     }
 }

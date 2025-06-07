@@ -73,10 +73,9 @@ unit video_memmap(
     output  uint32  RDATA,
 
     // Memory access direct to bitmap / character map / tilemaps
-    output! uint32  BITMAP_RDATA,
+    output  uint32  BITMAP_RDATA,
     output  uint32  CMAP_RDATA,
-    output  uint9   LTMAP_RDATA,
-    output  uint9   UTMAP_RDATA,
+    output  uint$9*4$   TMAP_RDATA,
 
 $$if HDMI then
     // HDMI OUTPUT
@@ -147,7 +146,6 @@ $$else
     uint10  xscreenp1 <:: pix_active ? ( pix_x + 1 ) : 0;
     uint9   yscreen <:: vblank ? 0 : pix_y;
 $$end
-    uint3   hilorez = uninitialised;                                                                                            // FLAG FOR hi or lo  SWITCH FOR TILEMAPS, CHARACTERMAP { cm, tm_u, tm_l }
 
     // BACKGROUND
     background_memmap BACKGROUND(
@@ -184,80 +182,62 @@ $$end
         video_clock <: video_clock,
         video_reset <: video_reset,
         clockCG <: palette_clock,
-        lorez <: hilorez[2,1],
         pix_x      <: xscreen,
         pix_x1     <: xscreenp1,
         pix_y      <: yscreen,
-        pix_active <: pix_active,
-        pix_vblank <: vblank,
         blink <: blink,
         ADDR <: ADDR,
         WDATA <: WDATA,
         RDATA_DIRECT :> CMAP_RDATA
     );
 
-    // Sprite Layers - Lower and Upper
-    sprite_memmap LOWER_SPRITE(
+    // Sprite Layers
+    uint7   sprite_pixel_widths[8] = { 16, 32, 64, 128, 16, 8, 4, 2 };                                                                 // POSSIBLE SIZES OF SPRITES
+    dualport_bram uint1 sprite_active <@clock,@video_clock> [64] = uninitialised;
+    dualport_bram uint3 sprite_tile <@clock,@video_clock> [64] = uninitialised;
+    dualport_bram uint7 sprite_actions <@clock,@video_clock> [64] = uninitialised;
+    dualport_bram uint8 sprite_size <@clock,@video_clock> [64] = uninitialised;
+    dualport_bram int11 sprite_x <@clock,@video_clock> [64] = uninitialised;
+    dualport_bram int10 sprite_y <@clock,@video_clock> [64] = uninitialised;
+    simple_dualport_bram uint64 sprite_collision_memory <@clock,@video_clock> [64] = uninitialised;
+    simple_dualport_bram uint7 sprite_layer_collision_memory <@clock,@video_clock> [64] = uninitialised;
+    sprite_memmap SPRITES(
         video_clock <: video_clock,
         video_reset <: video_reset,
+        sprite_active <:> sprite_active,
+        sprite_tile <:> sprite_tile,
+        sprite_actions <:> sprite_actions,
+        sprite_size <:> sprite_size,
+        sprite_x <:> sprite_x,
+        sprite_y <:> sprite_y,
+        sprite_collision_memory <:> sprite_collision_memory,
+        sprite_layer_collision_memory <:> sprite_layer_collision_memory,
         pix_x      <: xscreen,
         pix_x1     <: xscreenp1,
         pix_y      <: yscreen,
-        pix_active <: pix_active,
         pix_end <: pix_end,
         ADDR <: ADDR,
         WDATA <: WDATA,
-        collision_layer_1 <: BITMAP.pixel_display,
-        collision_layer_2 <: LOWER_TILE.pixel_display,
-        collision_layer_3 <: UPPER_TILE.pixel_display,
-        collision_layer_4 <: UPPER_SPRITE.pixel_display,
-    );
-    sprite_memmap UPPER_SPRITE(
-        video_clock <: video_clock,
-        video_reset <: video_reset,
-        pix_x      <: xscreen,
-        pix_x1     <: xscreenp1,
-        pix_y      <: yscreen,
-        pix_active <: pix_active,
-        pix_end <: pix_end,
-        ADDR <: ADDR,
-        WDATA <: WDATA,
-        collision_layer_1 <: BITMAP.pixel_display,
-        collision_layer_2 <: LOWER_TILE.pixel_display,
-        collision_layer_3 <: UPPER_TILE.pixel_display,
-        collision_layer_4 <: LOWER_SPRITE.pixel_display,
-        collision_bitmap_0 <: BITMAP.pixel0_collision,
-        collision_bitmap_1 <: BITMAP.pixel1_collision
+        collision_bitmap_0 <: BITMAP.pixel_0_collision,
+        collision_bitmap_1 <: BITMAP.pixel_1_collision,
+        collision_layer_2 <: TILES.pixel_display_0,
+        collision_layer_3 <: TILES.pixel_display_1,
+        collision_layer_4 <: TILES.pixel_display_2,
+        collision_layer_5 <: TILES.pixel_display_3,
+        collision_layer_6 <: CHARACTER_MAP.pixel_display
     );
 
     // Tilemaps - Lower and Upper
-    tilemap_memmap LOWER_TILE(
+    tilemap_memmap TILES(
         video_clock <: video_clock,
         video_reset <: video_reset,
         clockTG <: palette_clock,
-        lorez <: hilorez[0,1],
         pix_x      <: xscreen,
         pix_x1     <: xscreenp1,
         pix_y      <: yscreen,
-        pix_active <: pix_active,
-        pix_vblank <: vblank,
         ADDR <: ADDR,
         WDATA <: WDATA,
-        RDATA_DIRECT :> LTMAP_RDATA
-    );
-    tilemap_memmap UPPER_TILE(
-        video_clock <: video_clock,
-        video_reset <: video_reset,
-        clockTG <: palette_clock,
-        lorez <: hilorez[1,1],
-        pix_x      <: xscreen,
-        pix_x1     <: xscreenp1,
-        pix_y      <: yscreen,
-        pix_active <: pix_active,
-        pix_vblank <: vblank,
-        ADDR <: ADDR,
-        WDATA <: WDATA,
-        RDATA_DIRECT :> UTMAP_RDATA
+        RDATA_DIRECT :> TMAP_RDATA
     );
 
     // STATUS LIGHTS
@@ -280,16 +260,16 @@ $$end
         palette_clock <: palette_clock,
         palette <:> palette,
         background_p <: BACKGROUND.pixel,
-        lower_tilemap_p <: LOWER_TILE.pixel,
-        lower_tilemap_display <: LOWER_TILE.pixel_display,
-        upper_tilemap_p <: UPPER_TILE.pixel,
-        upper_tilemap_display <: UPPER_TILE.pixel_display,
-        lower_sprites_p <: LOWER_SPRITE.pixel,
-        lower_sprites_display <: LOWER_SPRITE.pixel_display,
-        upper_sprites_p <: UPPER_SPRITE.pixel,
-        upper_sprites_display <: UPPER_SPRITE.pixel_display,
-        bitmap_p <: BITMAP.pixel,
-        bitmap_display <: BITMAP.pixel_display,
+        $$for i=0,3 do
+        tilemap_$i$ <: TILES.pixel_$i$,
+        tilemap_display_$i$ <: TILES.pixel_display_$i$,
+        sprites_$i$ <: SPRITES.pixel_$i$,
+        sprites_display_$i$ <: SPRITES.sprite_display_$i$,
+        $$end
+        bitmap_0 <: BITMAP.pixel_0,
+        bitmap_0_display <: BITMAP.pixel_0_collision,
+        bitmap_1 <: BITMAP.pixel_1,
+        bitmap_1_display <: BITMAP.pixel_1_collision,
         character_map_p <: CHARACTER_MAP.pixel,
         character_map_display <: CHARACTER_MAP.pixel_display,
         status_p <: STATUS.pixel,
@@ -302,10 +282,17 @@ $$end
     BACKGROUND.WENABLE := 0;
     BITMAP.WENABLE := 0; BITMAP.WENABLE_DIRECT := CS_BM & WENABLE;
     CHARACTER_MAP.WENABLE := 0; CHARACTER_MAP.WENABLE_DIRECT := CS_CM & WENABLE;
-    LOWER_SPRITE.WENABLE := 0; LOWER_SPRITE.bitmapwriter := 0;
-    UPPER_SPRITE.WENABLE := 0; UPPER_SPRITE.bitmapwriter := 0;
-    LOWER_TILE.WENABLE := 0; LOWER_TILE.WENABLE_DIRECT := CS_TM & WENABLE & ~ADDR[15,1];
-    UPPER_TILE.WENABLE := 0; UPPER_TILE.WENABLE_DIRECT := CS_TM & WENABLE & ADDR[15,1];
+    SPRITES.bitmapwriter := 0;
+    TILES.WENABLE := 0; TILES.WENABLE_DIRECT := ( CS_TM & WENABLE ) << ADDR[15,2];
+
+    sprite_collision_memory.addr0 := ADDR[3,6]; sprite_layer_collision_memory.addr0 := ADDR[1,6];                               // SELECT THE SPRITE-TO-SPRITE/LAYER COLLISION FLAGS
+    sprite_active.addr0 := ADDR[1,6]; sprite_active.wdata0 := WDATA; sprite_active.wenable0 := 0;
+    sprite_actions.addr0 := ADDR[1,6]; sprite_actions.wdata0 := WDATA; sprite_actions.wenable0 := 0;
+    sprite_tile.addr0 := ADDR[1,6]; sprite_tile.wdata0 := WDATA; sprite_tile.wenable0 := 0;
+    sprite_size.addr0 := ADDR[1,6]; sprite_size.wdata0 := sprite_pixel_widths[ WDATA[3,3] ] << WDATA[6,1]; sprite_size.wenable0 := 0;
+    sprite_x.addr0 := ADDR[1,6]; sprite_x.wdata0 := WDATA; sprite_x.wenable0 := 0;
+    sprite_y.addr0 := ADDR[1,6]; sprite_y.wdata0 := WDATA; sprite_y.wenable0 := 0;
+
     palette.wenable1 := 0; palette.wdata1 := WDATA;
 
     $$if VGA then
@@ -322,14 +309,13 @@ $$end
         if( CS & WENABLE ) {
             switch( ADDR[8,4] ) {
                 case 4h0: { BACKGROUND.WENABLE = 1; }
-                case 4h1: { LOWER_TILE.WENABLE = 1; }
-                case 4h2: { UPPER_TILE.WENABLE = 1; }
-                case 4h3: { LOWER_SPRITE.WENABLE = 1; }
-                case 4h4: { UPPER_SPRITE.WENABLE = 1; }
-                case 4h5: { CHARACTER_MAP.WENABLE = 1; }
-                case 4h6: { BITMAP.WENABLE = 1; }
-                case 4h8: { LOWER_SPRITE.WENABLE = 1; LOWER_SPRITE.bitmapwriter = 1; }
-                case 4h9: { UPPER_SPRITE.WENABLE = 1; UPPER_SPRITE.bitmapwriter = 1; }
+                case 4h1: { TILES.WENABLE = 1; }
+                case 4h2: { CHARACTER_MAP.WENABLE = 1; }
+                case 4h3: { BITMAP.WENABLE = 1; }
+                case 4h4: { sprite_actions.wenable0 = ADDR[7,1]; sprite_size.wenable0 = ADDR[7,1]; sprite_active.wenable0 = ~ADDR[7,1]; }
+                case 4h5: { sprite_tile.wenable0 = 1; }
+                case 4h6: { sprite_y.wenable0 = ADDR[7,1]; sprite_x.wenable0 = ~ADDR[7,1]; }
+                case 4h7: { SPRITES.bitmapwriter = 1; }
                 case 4hf: {
                     if( ADDR[4,1] ) {
                         if( ADDR[2,1] ) {
@@ -338,13 +324,19 @@ $$end
                             palette.wenable1 = 1;
                         }
                     } else {
-                        switch( ADDR[0,3] ) {
-                            default: { display.display_order = WDATA; }
-                            case 1: { display.colour = WDATA; }
-                            case 2: { hilorez = WDATA; }
-                            case 3: { dimmer = WDATA; }
-                            case 4: { STATUS.display = WDATA; }
-                            case 5: { STATUS.background = WDATA; }
+                        if( ADDR[5,1] ) {
+                            if( ADDR[2,1] ) {
+                                display.display_multiplex[32,12] = WDATA[0,12];
+                            } else {
+                                display.display_multiplex[0,32] = WDATA;
+                            }
+                        } else {
+                            switch( ADDR[0,3] ) {
+                                case 1: { display.colour = WDATA; }
+                                case 3: { dimmer = WDATA; }
+                                case 4: { STATUS.display = WDATA; }
+                                default: { STATUS.background = WDATA; }
+                            }
                         }
                     }
                 }
@@ -352,91 +344,32 @@ $$end
             }
         }
 
-        // READ IO Memory
+        // READ VIDEO Memory
         switch( ADDR[8,4] ) {
             case 4h0: { RDATA = BACKGROUND.RDATA; }
             case 4h1: {
-                switch( ADDR[1,3] ) {
-                    case 3h0: { RDATA = LOWER_TILE.base_x; }
-                    case 3h1: { RDATA = LOWER_TILE.base_y; }
-                    case 3h2: { RDATA = { {11{LOWER_TILE.tm_offset_x[4,1]}}, LOWER_TILE.tm_offset_x }; }
-                    case 3h3: { RDATA = { {11{LOWER_TILE.tm_offset_y[4,1]}}, LOWER_TILE.tm_offset_y }; }
-                    case 3h7: { RDATA = LOWER_TILE.tm_lastaction; }
+                switch( ADDR[3,3] ) {
+                    case 3h0: { RDATA = TILES.base_x[ ADDR[1,2] * 6, 6 ]; }
+                    case 3h1: { RDATA = TILES.base_y[ ADDR[1,2] * 6, 6 ]; }
+                    case 3h2: { RDATA = { {11{TILES.tm_offset_x[ADDR[1,2] * 5 + 4,1]}}, TILES.tm_offset_x[ ADDR[1,2] * 5, 5 ] }; }
+                    case 3h3: { RDATA = { {11{TILES.tm_offset_y[ADDR[1,2] * 5 + 4,1]}}, TILES.tm_offset_y[ ADDR[1,2] * 5, 5 ] }; }
+                    case 3h5: { RDATA = TILES.tm_lastaction[ ADDR[1,2] * 4, 4 ]; }
                     default: {}
                 }
             }
-            case 4h2: {
-                switch( ADDR[1,3] ) {
-                    case 3h0: { RDATA = UPPER_TILE.base_x; }
-                    case 3h1: { RDATA = UPPER_TILE.base_y; }
-                    case 3h2: { RDATA = { {11{UPPER_TILE.tm_offset_x[4,1]}}, UPPER_TILE.tm_offset_x }; }
-                    case 3h3: { RDATA = { {11{UPPER_TILE.tm_offset_y[4,1]}}, UPPER_TILE.tm_offset_y }; }
-                    case 3h7: { RDATA = UPPER_TILE.tm_lastaction; }
-                    default: {}
-                }
-            }
-            case 4h3: {
-                switch( ADDR[7,1] ) {
-                    case 0: {
-                        switch( ADDR[5,2] ) {
-                            case 0: {
-                                RDATA = { LOWER_SPRITE.sprite_active[ { ADDR[1,4], 1b1 } ,1 ], 7b0, LOWER_SPRITE.sprite_active[ { ADDR[1,4], 1b0 } ,1 ] };
-                            }
-                            case 1: {
-                                RDATA = { LOWER_SPRITE.sprite_actions[ { ADDR[1,4], 1b1 } * 6 ,6 ], 2b0, LOWER_SPRITE.sprite_actions[ { ADDR[1,4], 1b0 } * 6 ,6 ] };
-                            }
-                            case 2: {
-                                RDATA = { LOWER_SPRITE.sprite_tile[ { ADDR[1,4], 1b1 } * 3 ,3 ], 5b0, LOWER_SPRITE.sprite_tile[ { ADDR[1,4], 1b0 } * 3 ,3 ] };
-                            }
-                            case 3: {
-                                RDATA = { LOWER_SPRITE.sprite_layer_collision[ { ADDR[1,4], 1b1 } * 6 ,6 ],
-                                             2b0,
-                                             LOWER_SPRITE.sprite_layer_collision[ { ADDR[1,4], 1b0 } * 6 ,6 ] };
-                            }
-                        }
-                    }
-                    case 1: {
-                        RDATA = ADDR[6,1] ? {{6{LOWER_SPRITE.sprite_y[ ADDR[1,5] * 10 +  9, 1 ]}}, LOWER_SPRITE.sprite_y[ ADDR[1,5] * 10, 10 ] } :
-                                                        {{5{LOWER_SPRITE.sprite_x[ ADDR[1,5] * 11 + 10, 1 ]}}, LOWER_SPRITE.sprite_x[ ADDR[1,5] * 11, 11 ] };
-                    }
-                }
-            }
-            case 4h4: {
-                switch( ADDR[7,1] ) {
-                    case 0: {
-                        switch( ADDR[5,2] ) {
-                            case 0: {
-                                RDATA = { UPPER_SPRITE.sprite_active[ { ADDR[1,4], 1b1 } ,1 ], 7b0, UPPER_SPRITE.sprite_active[ { ADDR[1,4], 1b0 } ,1 ] };
-                            }
-                            case 1: {
-                                RDATA = { UPPER_SPRITE.sprite_actions[ { ADDR[1,4], 1b1 } * 6 ,6 ], 2b0, UPPER_SPRITE.sprite_actions[ { ADDR[1,4], 1b0 } * 6 ,6 ] };
-                            }
-                            case 2: {
-                                RDATA = { UPPER_SPRITE.sprite_tile[ { ADDR[1,4], 1b1 } * 3 ,3 ], 5b0, UPPER_SPRITE.sprite_tile[ { ADDR[1,4], 1b0 } * 3 ,3 ] };
-                            }
-                            case 3: {
-                                RDATA = { UPPER_SPRITE.sprite_layer_collision[ { ADDR[1,4], 1b1 } * 6 ,6 ],
-                                             2b0,
-                                             UPPER_SPRITE.sprite_layer_collision[ { ADDR[1,4], 1b0 } * 6 ,6 ] };
-                            }
-                        }
-                    }
-                    case 1: {
-                        RDATA = ADDR[6,1] ? {{6{UPPER_SPRITE.sprite_y[ ADDR[1,5] * 10 +  9, 1 ]}}, UPPER_SPRITE.sprite_y[ ADDR[1,5] * 10, 10 ] } :
-                                                        {{5{UPPER_SPRITE.sprite_x[ ADDR[1,5] * 11 + 10, 1 ]}}, UPPER_SPRITE.sprite_x[ ADDR[1,5] * 11, 11 ] };
-                    }
-                }
-            }
-            case 4h6: { RDATA = ADDR[1,1] ? BITMAP.gpu_queue_full : BITMAP.gpu_queue_complete; }
-            case 4h8: { RDATA = LOWER_SPRITE.sprite_collision[ { ADDR[2,5], 5b00000 }, 32 ]; }
-            case 4h9: { RDATA = UPPER_SPRITE.sprite_collision[ { ADDR[2,5], 5b00000 }, 32 ]; }
+            case 4h3: { RDATA = ADDR[1,1] ? BITMAP.gpu_queue_full : BITMAP.gpu_queue_complete; }
+            case 4h4: { RDATA = ADDR[7,1] ? sprite_actions.rdata0 : sprite_active.rdata0; }
+            case 4h5: { RDATA = ADDR[7,1] ? sprite_size.rdata0 : sprite_tile.rdata0; }
+            case 4h6: { RDATA = ADDR[7,1] ? { {6{sprite_y.rdata0[9,1]}}, sprite_y.rdata0 } : { {5{sprite_x.rdata0[10,1]}}, sprite_x.rdata0 }; }
+            case 4h7: { RDATA = sprite_layer_collision_memory.rdata0; }
+            default: { RDATA = sprite_collision_memory.rdata0[ ADDR[2,1] ? 32 : 0, 32 ]; }
             case 4hf: { RDATA = ADDR[2,1] ? framecount : vblank; }
-            default: {}
         }
 
         if( reset ) {
             // SET DEFAULT DISPLAY ORDER, COLOUR MODE AND DIMMER
-            STATUS.display = 1; STATUS.background = 64; display.display_order = 0; display.colour = 0; display.usepalette = 0;hilorez = 0;
+            STATUS.display = 1; STATUS.background = 64; display.colour = 0; display.usepalette = 0;
+            display.display_multiplex = { 4h3, 4h1 };
         }
     }
 }

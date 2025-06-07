@@ -17,7 +17,6 @@ extern int errno;
 #include <reent.h>
 #include "PAWS.h"
 #include "PAWSdefinitions.h"
-//#include "PAWSintrinsics.h"
 
 #define FENCEIO asm volatile ("fence io, io");
 #define FENCEMEM asm volatile ("fence rw, rw");
@@ -401,11 +400,18 @@ unsigned int get_framecount( void ) {
     return *FRAMECOUNT;
 }
 
-// SET THE LAYER ORDER FOR THE DISPLAY, COLOUR MODE ( RRGGGBBM OR GREY ), TILES AND CHARACTER MAP DOUBLE FLAGS
-void screen_mode( unsigned char screenmode, unsigned char colour, unsigned char resolution ) {
-    *SCREENMODE = screenmode;
+// SET COLOUR MODE ( RRGGGBBM OR GREY ), TILES AND CHARACTER MAP DOUBLE FLAGS
+void screen_mode( unsigned char colour ) {
     *COLOUR = colour;
-    *REZ = resolution;
+}
+
+// SET THE SCREEN LAYERS
+void screen_order( unsigned long L_0, unsigned long L_1, unsigned long L_2, unsigned long L_3,
+                   unsigned long L_4, unsigned long L_5, unsigned long L_6, unsigned long L_7,
+                   unsigned long L_8, unsigned long L_9, unsigned long L_A ) {
+    *SCREENORDER = ( (unsigned long)L_0 ) | ( (unsigned long)L_1 <<  4 ) | ( (unsigned long)L_2 <<  8 ) | ( (unsigned long)L_3 << 12 ) |
+                                            ( (unsigned long)L_4 << 16 ) | ( (unsigned long)L_5 << 20 ) | ( (unsigned long)L_6 << 24 ) |
+                                            ( (unsigned long)L_7 << 28 ) | ( (unsigned long)L_8 << 32 ) | ( (unsigned long)L_9 << 36 ) | ( (unsigned long)L_A << 40 );
 }
 
 // SET THE DIMMER LEVEL FOR THE DISPLAY 0 == FULL BRIGHTNESS, 1 - 7 DIMMER, 8 - 15 BLANK
@@ -416,12 +422,6 @@ void screen_dimmer( unsigned char dimmerlevel ) {
 // SET THE SDCARD / JOYSTICK MODE / CAPS LOCK / NUMLOCK STATUS LIGHT DISPLAY
 void status_lights( unsigned char display, unsigned char background ) {
     *STATUS_DISPLAY = display; *STATUS_BACKGROUND = background;
-}
-
-// SET THE FRAMEBUFFER TO DISPLAY / DRAW
-void bitmap_display( unsigned char framebuffer ) {
-    await_vblank();
-    *FRAMEBUFFER_DISPLAY = framebuffer;
 }
 
 void bitmap_draw( unsigned char framebuffer ) {
@@ -479,9 +479,14 @@ unsigned short get_copper_cpuoutput( void ) {
 // The tilemap is 64 x 64, with 40 x 30 displayed, with an x and y offset in the range -15 to 15 to scroll the tilemap
 // The tilemap will scroll once x or y is at -15 or 15
 
+// SET THE LOW/HIGH RESOLUTION FLAGS FOR THE TILEMAPS
+void tilemap_2040( unsigned char flags ) {
+    *TM_LOREZ = flags;
+}
+
 // SET THE TILEMAP TILE at (x,y) to tile - (0,0) always top left, even after scrolling
 void set_tilemap_tile_abs( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
-    ( tm_layer ? UTMAPBUFFER : LTMAPBUFFER )[ y * 64 + x ] = ( action << 6 ) + ( tile & 63 );
+    TMAPBUFFER[ tm_layer ][ y * 64 + x ] = ( action << 6 ) + ( tile & 63 );
 }
 
 // HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
@@ -501,26 +506,22 @@ void set_tilemap_16x32tile_abs( unsigned char tm_layer, short x, short y, unsign
 }
 
 unsigned short read_tilemap_tile_abs( unsigned char tm_layer, unsigned char x, unsigned char y ) {
-    return ( tm_layer ? UTMAPBUFFER : LTMAPBUFFER )[ y * 64 + x ];
+    return ( TMAPBUFFER[ tm_layer ][ y * 64 + x ] );
 }
 
 // SET THE TILE BITMAP for tile to the 16 x 16 pixel bitmap
 void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap ) {
-    *( tm_layer ? UPPER_TM_WRITER_TILE_NUMBER : LOWER_TM_WRITER_TILE_NUMBER ) = tile;
-    DMASTART( bitmap, (void *restrict)( tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR ), 256, DMA_TO_IO );
+    TM_WRITER_TILE_NUMBER[ tm_layer ] = tile;
+    DMASTART( bitmap, (void *restrict)&TM_WRITER_COLOUR[ tm_layer ], 256, DMA_TO_IO );
 }
 
 // SET THE TILE BITMAP for 4 tiles to the 32 x 32 pixel bitmap
 void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap ) {
     for( int i = 0; i < 4; i++ ) {
-        if( tm_layer ) {
-            *UPPER_TM_WRITER_TILE_NUMBER = tile + i;
-        } else {
-            *LOWER_TM_WRITER_TILE_NUMBER = tile + i;
-        }
+        TM_WRITER_TILE_NUMBER[ tm_layer ] = tile + i;
         for( int y = 0; y < 16; y++ ) {
             for( int x = 0; x < 16; x++ ) {
-                *( tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR ) = bitmap[ ( y + (i&1 ? 16 : 0) )* 32 + ( x + ( i>1 ? 16 : 0 ) ) ];
+                TM_WRITER_COLOUR[ tm_layer ] = bitmap[ ( y + (i&1 ? 16 : 0) ) * 32 + ( x + ( i>1 ? 16 : 0 ) ) ];
             }
         }
     }
@@ -529,10 +530,10 @@ void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsign
 void set_tilemap_bitamps_from_spritesheet( unsigned char tm_layer, unsigned char *tile_bitmaps ) {
     for( int xt = 0; xt < 8; xt++ ) {
         for( int yt = 0; yt < 8; yt++ ) {
-            *( tm_layer ? UPPER_TM_WRITER_TILE_NUMBER : LOWER_TM_WRITER_TILE_NUMBER ) = xt * 8 + yt;
+            TM_WRITER_TILE_NUMBER[ tm_layer ] = xt * 8 + yt;
             for( int y = 0; y < 16; y++ ) {
                 for( int x = 0; x < 16; x++ ) {
-                    *(tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR) = tile_bitmaps[ xt * 16 + yt * 2048 + y * 128 + x ];
+                    TM_WRITER_COLOUR[ tm_layer ] = tile_bitmaps[ xt * 16 + yt * 2048 + y * 128 + x ];
                 }
             }
         }
@@ -546,36 +547,26 @@ void set_tilemap_bitamps_from_spritesheet( unsigned char tm_layer, unsigned char
 //  action == 7 reset offset
 //  RETURNS 0 if no action taken other than pixel shift, action if SCROLL was actioned
 unsigned char tilemap_scroll( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
-    *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
-    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = action;
-    return( tm_layer ? *UPPER_TM_SCROLLWRAPCLEAR : *LOWER_TM_SCROLLWRAPCLEAR );
+    TM_SCROLLAMOUNT[ tm_layer ] = amount;
+    TM_SCROLLWRAP[ tm_layer ] = action;
+    return( TM_SCROLLWRAP[ tm_layer ] );
 }
 
 // SET THE BASE COORDINATE FOR THE TILEMAP - COORDINATE OFF TOP LEFT (offscreen) TILE
 void tilemap_setbase( unsigned char tm_layer, unsigned char x, unsigned char y, short offset_x, short offset_y ) {
-    switch( tm_layer ) {
-        case 0:
-            *LOWER_TM_X = x;
-            *LOWER_TM_Y = y;
-            *LOWER_TM_OFFSET_X = offset_x;
-            *LOWER_TM_OFFSET_Y = offset_y;
-            break;
-        case 1:
-            *UPPER_TM_X = x;
-            *UPPER_TM_Y = y;
-            *UPPER_TM_OFFSET_X = offset_x;
-            *UPPER_TM_OFFSET_Y = offset_y;
-            break;
-    }
-    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = 5;
+    TM_X[ tm_layer ] = x;
+    TM_Y[ tm_layer ] = y;
+    TM_OFFSET_X[ tm_layer ] = offset_x;
+    TM_OFFSET_Y[ tm_layer ] = offset_y;
+    TM_SCROLLWRAP[ tm_layer ] = 5;
 }
 
 // READTILEMAP PARAMETERS
 void tilemap_readbase( unsigned char tm_layer, unsigned char *base_x, unsigned char *base_y, short *offset_x, short *offset_y ) {
-    *base_x = tm_layer ? *UPPER_TM_X : *LOWER_TM_X;
-    *base_y = tm_layer ? *UPPER_TM_Y : *LOWER_TM_Y;
-    *offset_x = tm_layer ? *UPPER_TM_OFFSET_X : *LOWER_TM_OFFSET_X;
-    *offset_y = tm_layer ? *UPPER_TM_OFFSET_Y : *LOWER_TM_OFFSET_Y;
+    *base_x = TM_X[ tm_layer ];
+    *base_y = TM_Y[ tm_layer ];
+    *offset_x = TM_OFFSET_X[ tm_layer ];
+    *offset_y = TM_OFFSET_Y[ tm_layer ];
 }
 
 // READ THE TILEMAP TILE+ACTION at (x,y) - (0,0) always top left, even after scrolling
@@ -585,7 +576,7 @@ unsigned short read_tilemap_tile_rel( unsigned char tm_layer, unsigned char x, u
     short dummy;
 
     tilemap_readbase( tm_layer, &base_x, &base_y, &dummy, &dummy );
-    return ( tm_layer ? UTMAPBUFFER : LTMAPBUFFER )[ ( ( base_y + y ) & 63 ) * 64 + ( ( base_x + x ) & 63 ) ];
+    return ( TMAPBUFFER[ tm_layer ][ ( ( base_y + y ) & 63 ) * 64 + ( ( base_x + x ) & 63 ) ] );
 }
 
 // SET THE TILEMAP TILE at (x,y) to tile - (0,0) always top left, even after scrolling
@@ -594,7 +585,7 @@ void set_tilemap_tile_rel( unsigned char tm_layer, unsigned char x, unsigned cha
     short dummy;
 
     tilemap_readbase( tm_layer, &base_x, &base_y, &dummy, &dummy );
-   ( tm_layer ? UTMAPBUFFER : LTMAPBUFFER )[ ( ( base_y + y ) & 63 ) * 64 + ( ( base_x + x ) & 63 ) ] = ( action << 6 ) + tile;
+    TMAPBUFFER[ tm_layer ][ ( ( base_y + y ) & 63 ) * 64 + ( ( base_x + x ) & 63 ) ] = ( action << 6 ) + tile;
 }
 
 // HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
@@ -614,7 +605,7 @@ void set_tilemap_16x32tile_rel( unsigned char tm_layer, short x, short y, unsign
 }
 
 void tm_cs( unsigned char tm_layer ) {
-    memset( ( void *)( tm_layer ? UTMAPBUFFER : LTMAPBUFFER ), 0, 64 * 64 * 2 );
+    memset( ( void *)TMAPBUFFER[ tm_layer ], 0, 64 * 64 * 2 );
     tilemap_setbase( tm_layer, 0, 0, 0, 0 );
 }
 
@@ -1222,63 +1213,153 @@ void DoDrawList2Dscale( struct DrawList2D *list, int numentries, int xc, int yc,
 }
 
 // SPRITE LAYERS - MAIN ACCESS
-// TWO SPRITE LAYERS ( 0 == lower, 1 == upper )
-// WITH 16 SPRITES ( 0 to 15 ) each with 8 16 x 16 pixel bitmaps
+// WITH 64 SPRITES ( 0 to 63 ) each PAIR with 8 16 x 16 pixel bitmaps OR 2 32 x 32 pixel bitmaps
 
-// SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 pixel bitmaps ( 2048 RRGGGBBM pixels )
-void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
-    *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = sprite_number;
-    DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, DMA_TO_IO );
+// SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 or 2 x 32 x 32 pixel bitmaps ( 2048 RRGGGBBM pixels )
+void set_sprite_bitmaps( unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
+    *SPRITE_WRITER_NUMBER = sprite_number >> 1;
+    DMASTART( sprite_bitmaps, (void *restrict)SPRITE_WRITER_COLOUR, 2048, DMA_TO_IO );
 }
 
-// SET THE 16x16 SPRITES FROM A SPRITESHEET
-void set_sprite_bitamps_from_spritesheet( unsigned char sprite_layer, unsigned char *sprite_bitmaps ) {
-    for( int i = 0; i < 16; i++ ) {
-        *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = i;
-        for( int y = 0; y < 128; y++ ) {
-            for( int x = 0; x < 16; x++ ) {
-                *(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR) = sprite_bitmaps[ i*16 + x + y*256 ];
-            }
-        }
-   }
-}
-
-// SET THE 32x32 ( 4 x 16x16 ) FROM A SPRITESHEET
-void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_layer, unsigned char *sprite_bitmaps ) {
-        for( int s = 0; s < 16; s++ ) {
-            *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = s;
-            for( int y = 0; y < 128; y++ ) {
-                int base = ( s & 0x0c ) * 2048 + ( s & 0x01 ) * 4096 + ( s & 0x02 ) * 8 + ( y & 0xf0 ) * 2 + ( y & 0x0f ) * 256;
-                for( int x = 0; x < 16; x++ ) {
-                    *(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR) = sprite_bitmaps[ base + x ];
+// SET THE 16x16/32x32 SPRITES FROM A SPRITESHEET
+void set_sprite_bitamps_from_spritesheet( unsigned char sprite_number, unsigned char count, unsigned char *sprite_bitmaps, unsigned char mode ) {
+    if( mode ) {
+        // 2 x 32 x 32 sprites
+        for( int i = 0; i < count; i++ ) {
+            *SPRITE_WRITER_NUMBER = ( sprite_number >> 1 ) + i;
+            for( int y = 0; y < 64; y++ ) {
+                for( int x = 0; x < 32; x++ ) {
+                    *SPRITE_WRITER_COLOUR = sprite_bitmaps[ ( i * 32 ) + x + ( y * count * 32 ) ];
                 }
             }
         }
+    } else {
+        // 8 x 16 x 16 sprites
+        for( int i = 0; i < count; i++ ) {
+            *SPRITE_WRITER_NUMBER = ( sprite_number >> 1 ) + i;
+            for( int y = 0; y < 128; y++ ) {
+                for( int x = 0; x < 16; x++ ) {
+                    *SPRITE_WRITER_COLOUR = sprite_bitmaps[ ( i * 16 ) + x + ( y * count * 16 ) ];
+                }
+            }
+        }
+    }
 }
 
-// SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
-void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_actions ) {
-    switch( sprite_layer ) {
-        case 0:
-            LOWER_SPRITE_ACTIVE[sprite_number] = active;
-            LOWER_SPRITE_TILE[sprite_number] = tile;
-            LOWER_SPRITE_X[sprite_number] = x;
-            LOWER_SPRITE_Y[sprite_number] = y;
-            LOWER_SPRITE_ACTIONS[sprite_number] = sprite_actions;
-            break;
+// SET SPRITE sprite_number to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
+void set_sprite( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_actions ) {
+    SPRITE_ACTIVE[sprite_number] = active;
+    SPRITE_TILE[sprite_number] = tile;
+    SPRITE_X[sprite_number] = x;
+    SPRITE_Y[sprite_number] = y;
+    SPRITE_ACTIONS[sprite_number] = sprite_actions;
+}
 
+// SET or GET ATTRIBUTES for sprite_number in sprite_layer
+//  attribute == 0 active status ( 0 == inactive, 1 == active )
+//  attribute == 1 tile number ( 0 to 7 )
+//  attribute == 3 x coordinate
+//  attribute == 4 y coordinate
+//  attribute == 5 attributes bit 0 = size == 0 16x16 == 1 32x32. bit 1 = x-mirror bit 2 = y-mirror
+void set_sprite_attribute( unsigned char sprite_number, unsigned char attribute, short value ) {
+    switch( attribute ) {
+        case 0:
+            SPRITE_ACTIVE[sprite_number] = value;
+            break;
         case 1:
-            UPPER_SPRITE_ACTIVE[sprite_number] = active;
-            UPPER_SPRITE_TILE[sprite_number] = tile;
-            UPPER_SPRITE_X[sprite_number] = x;
-            UPPER_SPRITE_Y[sprite_number] = y;
-            UPPER_SPRITE_ACTIONS[sprite_number] = sprite_actions;
+            SPRITE_TILE[sprite_number] = value;
+            break;
+        case 3:
+            SPRITE_X[sprite_number] = value;
+            break;
+        case 4:
+            SPRITE_Y[sprite_number] = value;
+            break;
+        case 5:
+            SPRITE_ACTIONS[sprite_number] = value;
+            break;
+        default:
             break;
     }
 }
 
+short get_sprite_attribute( unsigned char sprite_number, unsigned char attribute ) {
+    switch( attribute ) {
+        case 0:
+            return( SPRITE_ACTIVE[sprite_number] );
+        case 1:
+            return( SPRITE_TILE[sprite_number] );
+        case 3:
+            return( SPRITE_X[sprite_number] );
+        case 4:
+            return( SPRITE_Y[sprite_number] );
+        case 5:
+            return( SPRITE_ACTIONS[sprite_number] );
+        default:
+            return( 0 );
+    }
+}
+
+// RETURN THE COLLISION STATUS for sprite_number to other sprites
+//  bit is 1 if sprite is in collision with { sprite 63, sprite 62 .. in layer sprite 0 }
+unsigned long get_sprite_collision( unsigned char sprite_number ) {
+    return( SPRITE_COLLISION_BASE[sprite_number] );
+}
+// RETURN THE COLLISION STATUS for sprite number in sprite layer to other layers
+// bit is 1 if sprite is in collision with { bitmap_0, bitmap_1, tilemap L, tilemap U, charactermap }
+unsigned short get_sprite_layer_collision( unsigned char sprite_number ) {
+    return( SPRITE_LAYER_COLLISION_BASE[sprite_number] );
+}
+
+// UPDATE A SPITE moving by x and y deltas, with optional wrap/kill and optional changing of the tile
+void update_sprite( unsigned char sprite_number, unsigned char kill, short dx, short dy, unsigned char dt ) {
+    static short sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2 };
+
+    short x = SPRITE_X[ sprite_number ] + dx;
+    short y = SPRITE_Y[ sprite_number ] + dy;
+    unsigned short tile = SPRITE_TILE[ sprite_number ] + dt;
+    unsigned short active = SPRITE_ACTIVE[ sprite_number ];
+    short size = sizes[ SPRITE_ACTIONS[ sprite_number ] >> ( 3 & 7 ) ] << ( SPRITE_ACTIONS[ sprite_number ] >> 4 );
+
+    if( ( ( x > 640 ) || ( x < -size ) ) ) { active = ( kill & 1 ) ? 0 : 1; x = ( x > 640 ) ? -size : 640; }
+    if( ( ( y > 480 ) || ( y < -size ) ) ) { active = ( kill & 2 ) ? 0 : 1; y = ( y > 480 ) ? -size : 480; }
+
+    SPRITE_X[ sprite_number ] = x;
+    SPRITE_Y[ sprite_number ] = y;
+    SPRITE_TILE[ sprite_number ] = tile;
+    SPRITE_ACTIVE[ sprite_number ] = active;
+}
+
+// COMPATABILITY FUNCTION FOR THE OLD SPRITE UPDATE FLAGS
+// kktyyyyyxxxxx
+void update_sprite_compat(unsigned char sprite_number, unsigned short updateflag ) {
+    static short directions[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1 };
+
+    update_sprite(
+        sprite_number,
+        ( updateflag & 0b1100000000000 ) >> 11,
+        directions[ ( updateflag & 0b0000000011111 ) ],
+        directions[ ( updateflag & 0b0001111100000 ) >> 5 ],
+        ( updateflag & 0b0010000000000 ) >> 10
+    );
+}
+
+// COMBINE 4 16x16 SPRITES INTO 1 32x32 SPRITE, USING THE GIVEN COORDINATES AS THE CENTRE, AND ADJUSTING FOR SIZE, REFLECTION AND ROTATION
+// SET THE 32x32 ( 4 x 16x16 ) FROM A SPRITESHEET
+void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
+    for( int s = 0; s < 16; s++ ) {
+        *SPRITE_WRITER_NUMBER = ( sprite_number >> 1 ) + s;
+        for( int y = 0; y < 128; y++ ) {
+            int base = ( s & 0x0c ) * 2048 + ( s & 0x01 ) * 4096 + ( s & 0x02 ) * 8 + ( y & 0xf0 ) * 2 + ( y & 0x0f ) * 256;
+            for( int x = 0; x < 16; x++ ) {
+                *SPRITE_WRITER_COLOUR = sprite_bitmaps[ base + x ];
+            }
+        }
+    }
+}
+
 // SET 4 SPRITES AS A 32x32 BLOCK, REFLECTING/ROTATING AS REQUIRED. POSITION IS THE CENTRE OF THE 32x32 BLOCK (CAN BE DOUBLED TO 64x64)
-void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_actions ) {
+void set_sprite32( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_actions ) {
     static unsigned char positions[][4] = {
         { 0, 1, 2, 3 }, // NO ACTION
         { 2, 3, 0, 1 }, // REFLECT X
@@ -1290,140 +1371,12 @@ void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsi
         { 1, 3, 0, 2 }, // ROTATE 270
     };
     static unsigned char sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2 };
-        int size = sizes[ sprite_actions >> 3 ];
+    int size = sizes[ ( sprite_actions >> 3 ) & 0x7 ] << ( sprite_actions >> 4 );
 
-    set_sprite( sprite_layer, sprite_number + 2 * positions[ sprite_actions & 7 ][0], active, x - size, y - size, tile, sprite_actions );
-    set_sprite( sprite_layer, sprite_number + 2 * positions[ sprite_actions & 7 ][1], active, x - size, y, tile, sprite_actions );
-    set_sprite( sprite_layer, sprite_number + 2 * positions[ sprite_actions & 7 ][2], active, x, y - size, tile, sprite_actions );
-    set_sprite( sprite_layer, sprite_number + 2 * positions[ sprite_actions & 7 ][3], active, x, y, tile, sprite_actions );
-}
-
-// SET or GET ATTRIBUTES for sprite_number in sprite_layer
-//  attribute == 0 active status ( 0 == inactive, 1 == active )
-//  attribute == 1 tile number ( 0 to 7 )
-//  attribute == 3 x coordinate
-//  attribute == 4 y coordinate
-//  attribute == 5 attributes bit 0 = size == 0 16x16 == 1 32x32. bit 1 = x-mirror bit 2 = y-mirror
-void set_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_number, unsigned char attribute, short value ) {
-    if( sprite_layer == 0 ) {
-        switch( attribute ) {
-            case 0:
-                LOWER_SPRITE_ACTIVE[sprite_number] = ( unsigned char) value;
-                break;
-            case 1:
-                LOWER_SPRITE_TILE[sprite_number] = ( unsigned char) value;
-                break;
-            case 2:
-                break;
-            case 3:
-                LOWER_SPRITE_X[sprite_number] = value;
-                break;
-            case 4:
-                LOWER_SPRITE_Y[sprite_number] = value;
-                break;
-            case 5:
-                LOWER_SPRITE_ACTIONS[sprite_number] = ( unsigned char) value;
-                break;
-        }
-    } else {
-        switch( attribute ) {
-            case 0:
-                UPPER_SPRITE_ACTIVE[sprite_number] = ( unsigned char) value;
-                break;
-            case 1:
-                UPPER_SPRITE_TILE[sprite_number] = ( unsigned char) value;
-                break;
-            case 2:
-                break;
-            case 3:
-                UPPER_SPRITE_X[sprite_number] = value;
-                break;
-            case 4:
-                UPPER_SPRITE_Y[sprite_number] = value;
-                break;
-            case 5:
-                UPPER_SPRITE_ACTIONS[sprite_number] = ( unsigned char) value;
-                break;
-        }
-    }
-}
-
-short get_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_number, unsigned char attribute ) {
-    if( sprite_layer == 0 ) {
-        switch( attribute ) {
-            case 0:
-                return( LOWER_SPRITE_ACTIVE[sprite_number] );
-            case 1:
-                return( LOWER_SPRITE_TILE[sprite_number] );
-            case 3:
-                return( LOWER_SPRITE_X[sprite_number] );
-            case 4:
-                return( LOWER_SPRITE_Y[sprite_number] );
-            case 5:
-                return( LOWER_SPRITE_ACTIONS[sprite_number] );
-            default:
-                return( 0 );
-        }
-    } else {
-        switch( attribute ) {
-            case 0:
-                return( UPPER_SPRITE_ACTIVE[sprite_number] );
-            case 1:
-                return( UPPER_SPRITE_TILE[sprite_number] );
-            case 3:
-                return( UPPER_SPRITE_X[sprite_number] );
-            case 4:
-                return( UPPER_SPRITE_Y[sprite_number] );
-            case 5:
-                return( UPPER_SPRITE_ACTIONS[sprite_number] );
-            default:
-                return( 0 );
-        }
-    }
-}
-
-// RETURN THE COLLISION STATUS for sprite_number in sprite_layer to other in layer sprites
-//  bit is 1 if sprite is in collision with { in layer sprite 31, in layer sprite 14 .. in layer sprite 0 }
-unsigned int get_sprite_collision( unsigned char sprite_layer, unsigned char sprite_number ) {
-    return( sprite_layer ? UPPER_SPRITE_COLLISION_BASE[sprite_number] : LOWER_SPRITE_COLLISION_BASE[sprite_number] );
-}
-// RETURN THE COLLISION STATUS for sprite number in sprite layer to other layers
-// bit is 1 if sprite is in collision with { bitmap, tilemap L, tilemap U, other sprite layer }
-unsigned char get_sprite_layer_collision( unsigned char sprite_layer, unsigned char sprite_number ) {
-    return( sprite_layer ? UPPER_SPRITE_LAYER_COLLISION_BASE[sprite_number] : LOWER_SPRITE_LAYER_COLLISION_BASE[sprite_number] );
-}
-
-// UPDATE A SPITE moving by x and y deltas, with optional wrap/kill and optional changing of the tile
-void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char kill, short dx, short dy, unsigned char dt ) {
-    static short sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2 };
-
-    short x = ( sprite_layer ? UPPER_SPRITE_X : LOWER_SPRITE_X )[ sprite_number ] + dx;
-    short y = ( sprite_layer ? UPPER_SPRITE_Y : LOWER_SPRITE_Y )[ sprite_number ] + dy;
-    unsigned char tile = ( sprite_layer ? UPPER_SPRITE_TILE : LOWER_SPRITE_TILE )[ sprite_number ] + dt;
-    unsigned char active = ( sprite_layer ? UPPER_SPRITE_ACTIVE : LOWER_SPRITE_ACTIVE )[ sprite_number ];
-    short size = sizes[ (sprite_layer ? UPPER_SPRITE_ACTIONS : LOWER_SPRITE_ACTIONS )[ sprite_number ] >> 3 ];
-
-    if( ( ( x > 640 ) || ( x < -size ) ) ) { active = ( kill & 1 ) ? 0 : 1; x = ( x > 640 ) ? -size : 640; }
-    if( ( ( y > 480 ) || ( y < -size ) ) ) { active = ( kill & 2 ) ? 0 : 1; y = ( y > 480 ) ? -size : 480; }
-
-    ( sprite_layer ? UPPER_SPRITE_X : LOWER_SPRITE_X )[ sprite_number ] = x;
-    ( sprite_layer ? UPPER_SPRITE_Y : LOWER_SPRITE_Y )[ sprite_number ] = y;
-    ( sprite_layer ? UPPER_SPRITE_TILE : LOWER_SPRITE_TILE )[ sprite_number ] = tile;
-    ( sprite_layer ? UPPER_SPRITE_ACTIVE : LOWER_SPRITE_ACTIVE )[ sprite_number ] = active;
-}
-
-// COMPATABILITY FUNCTION FOR THE OLD SPRITE UPDATE FLAGS
-// kktyyyyyxxxxx
-void update_sprite_compat( unsigned char sprite_layer, unsigned char sprite_number, unsigned short updateflag ) {
-    static short directions[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1 };
-
-    update_sprite(
-        sprite_layer, sprite_number,
-        ( updateflag & 0b1100000000000 ) >> 11,
-        directions[ ( updateflag & 0b0000000011111 ) ],
-        directions[ ( updateflag & 0b0001111100000 ) >> 5 ],
-        ( updateflag & 0b0010000000000 ) >> 10
-    );
+    set_sprite( sprite_number + 2 * positions[ sprite_actions & 7 ][0], active, x - size, y - size, tile, sprite_actions );
+    set_sprite( sprite_number + 2 * positions[ sprite_actions & 7 ][1], active, x - size, y, tile, sprite_actions );
+    set_sprite( sprite_number + 2 * positions[ sprite_actions & 7 ][2], active, x, y - size, tile, sprite_actions );
+    set_sprite( sprite_number + 2 * positions[ sprite_actions & 7 ][3], active, x, y, tile, sprite_actions );
 }
 
 // CHARACTER MAP FUNCTIONS
@@ -1443,6 +1396,9 @@ void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsign
 // SHOW/HIDE THE CURSOR
 void tpu_showcursor( unsigned char value ) {
     *TPU_CURSOR = value;
+}
+void tpu_4080( unsigned char mode ) {
+    *TPU_LOREZ = mode;
 }
 // CLEAR THE CHARACTER MAP
 void tpu_cs( void ) {

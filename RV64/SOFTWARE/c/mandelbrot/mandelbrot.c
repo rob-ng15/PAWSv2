@@ -94,7 +94,7 @@ void mandelbrot( void ) {
 }
 
 int main( int argc, char **argv ) {
-    screen_mode( 0, MODE_RGBM, 0 );
+    screen_mode( MODE_RGBM );
 
     mandelbrot(); sleep1khz( 4000 );
 
@@ -104,8 +104,8 @@ int main( int argc, char **argv ) {
     for( int scale = 720; scale <= 1040; scale += 40 ) {
         bitmap_draw( bitmap );
         juliaSet(320,240,c,4,64,scale);
-        bitmap_display( bitmap );
         bitmap = 3 - bitmap;
+        screen_order( LAYER_CHARACTERMAP, bitmap, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
     }
 
     sleep1khz( 4000 );

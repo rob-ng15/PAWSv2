@@ -91,8 +91,9 @@ void VID_Init (unsigned char *palette)
 		(unsigned long)s_vbuffer);
 
     autorefresh( FALSE ); curs_set( FALSE ); ps2_keyboardmode( PS2_KEYBOARD ); tpu_cs();
-    screen_mode( 0, MODE_RGBM, 0 ); bitmap_256( TRUE ); use_palette( TRUE );
-    bitmap_display( 1 ); bitmap_draw( 1 ); bitmap_256( TRUE ); gpu_pixelblock_mode( PB_WRITEALL );
+    screen_mode( MODE_RGBM ); bitmap_256( TRUE ); use_palette( TRUE );
+    screen_order( LAYER_CHARACTERMAP, LAYER_BITMAP_0, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
+	bitmap_draw( 1 ); bitmap_256( TRUE ); gpu_pixelblock_mode( PB_WRITEALL );
     memset( (void *restrict)0x2000000, 0, 320*240 ); memset( (void *restrict)0x2020000, 0, 320*240 );
 
 	// Set up the vid structure that is used by the Quake rendering engine.

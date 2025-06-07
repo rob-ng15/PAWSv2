@@ -16,14 +16,12 @@ void reset_display( void ) {
     set_background( BLACK, BLACK, BKG_SOLID );
     *GPU_DITHERMODE = 0; *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
     *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DRAW = 1; *FRAMEBUFFER_DISPLAY = 1; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
-    *SCREENMODE = 0; *COLOUR = 0; *REZ = 0; *DIMMER = 0; *STATUS_DISPLAY = 1; *STATUS_BACKGROUND = 0x40;
-    *TPU_CURSOR = 0; tpu_cs();
-    tm_cs( 0 ); tm_cs( 1 );
-    *UPPER_TM_SCROLLWRAPAMOUNT = *LOWER_TM_SCROLLAMOUNT = 1;
-    for( unsigned short i = 0; i < 32; i++ ) {
-        LOWER_SPRITE_ACTIVE[i] = UPPER_SPRITE_ACTIVE[i] = 0;
-    }
+    *FRAMEBUFFER_DRAW = 1; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
+    *SCREENORDER = ( 3 << 0 ) | ( 1 << 4 ) | ( 7 << 8 ) | ( 6 << 12 ) | ( 10 << 16 ) | ( 5 << 20 )  | ( 4 << 24 ) | ( 8 << 28 ) ;
+    *COLOUR = 0; *REZ = 0; *DIMMER = 0; *STATUS_DISPLAY = 1; *STATUS_BACKGROUND = 0x40;
+    *TPU_CURSOR = 0; *TPU_LOREZ = 0; tpu_cs();
+    *TM_LOREZ = 0; for( int i = 0; i < 4; i++ ) { tm_cs( i ); TM_SCROLLAMOUNT[i] = 1; }
+    for( int i = 0; i < 64; i++ ) SPRITE_ACTIVE[i] = 0;
 }
 
 // DISPLAY FILENAME, ADD AN ARROW IN FRONT OF DIRECTORIES
@@ -262,7 +260,7 @@ int direction = 0, ledcount = 0;
 void scrollbars( void ) {
     IRQ_ACK( IRQ_VBLANK );
 
-    *LOWER_TM_SCROLLWRAPCLEAR = 3; *UPPER_TM_SCROLLWRAPCLEAR = 1;
+    TM_SCROLLWRAP[0] = 3; TM_SCROLLWRAP[2] = 1;
 
     ledcount++;
     if( ledcount == 4 ) {
@@ -324,12 +322,12 @@ int main( void ) {
     // DRAW LOGO AND SDCARD
     draw_paws_logo();
 
-    // COLOUR BARS ON THE TILEMAP - SCROLL WITH SMT THREAD - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
+    // COLOUR BARS ON THE TILEMAP - SCROLL WITH INTERRUPT - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
     for( i = 0; i < 63; i++ ) {
-        *LOWER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)LOWER_TM_WRITER_COLOUR, 256, DMA_SET_TO_S );
-        *UPPER_TM_WRITER_TILE_NUMBER = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)UPPER_TM_WRITER_COLOUR, 256, DMA_SET_TO_S );
+        TM_WRITER_TILE_NUMBER[0] = i + 1; *DMASET = 65+i; DMASTART( (const void *restrict)DMASET, (void *restrict)&TM_WRITER_COLOUR[0], 256, DMA_SET_TO_S );
+        TM_WRITER_TILE_NUMBER[1] = i + 1; *DMASET = 255-i; DMASTART( (const void *restrict)DMASET, (void *restrict)&TM_WRITER_COLOUR[1], 256, DMA_SET_TO_S );
         set_tilemap_tile( 0, i, 18, i+1, 0 );
-        set_tilemap_tile( 1, i, 30, i+1, 0 );
+        set_tilemap_tile( 2, i, 30, i+1, 0 );
     }
 
     // INTERRUPT HANDLER SETUP

@@ -161,10 +161,11 @@ static ImGuiKey ImGui_ImplPAWS_KeycodeToImGuiKey(short keycode)
 int main(int, char**)
 {
     short mouse_x, mouse_y, mouse_btns;
-    set_sprite_bitmaps( UPPER_LAYER, 15, mouse_sprite );
+    set_sprite_bitmaps( 62, mouse_sprite );
 
     fb_base = (uint32_t*)malloc( 320 * 240 * 4); cpp_paws_memset( fb_base, 0, (uint32_t)320*240*4 );
-    bitmap_256( TRUE ); bitmap_display( 1 ); bitmap_draw( 1 ); gpu_cs(); gpu_pixelblock_mode( PB_WRITEALL );
+    bitmap_256( TRUE ); bitmap_draw( 1 ); gpu_cs(); gpu_pixelblock_mode( PB_WRITEALL );
+    screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_3, LAYER_BITMAP_0, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
     ps2_keyboardmode( TRUE ); reset_mouse();
 
     IMGUI_CHECKVERSION();
@@ -202,7 +203,7 @@ int main(int, char**)
         io.MouseDown[ImGuiMouseButton_Left] = ( mouse_btns & 2 ) >> 1;          // set the mouse button states
         io.MouseDown[ImGuiMouseButton_Right] = ( mouse_btns & 4 ) >> 2;
         if( mouse_cursor != 0 ) { mouse_x -= 16; mouse_y -= 16; }               // adjust if focus point is not top left
-        set_sprite( UPPER_LAYER, 31, ( mouse_cursor != ImGuiMouseCursor_None ), mouse_x, mouse_y, mouse_cursor, SPRITE_DOUBLE );
+        set_sprite( 63, ( mouse_cursor != ImGuiMouseCursor_None ), mouse_x, mouse_y, mouse_cursor, SPRITE_DOUBLE );
 
         ImGui::NewFrame();
 

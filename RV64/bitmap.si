@@ -8,16 +8,16 @@ unit framebuffer_read(
     dualport_bram_port0 bitmap_110,
     dualport_bram_port0 bitmap_111,
 
-    input   uint2   framebuffer,
     input   uint10  pix_x,
     input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint8   pixel,
-    output! uint1   pixel0_collision,
-    output! uint1   pixel1_collision,
-    output! uint1   bitmap_display,
-    input   uint1   display256
+
+    input   uint2   display256,
+    output! uint8   pixel_1,
+    output! uint8   pixel_0,
+    output! uint1   pixel_1_collision,
+    output! uint1   pixel_0_collision,
 ) {
     uint17  baseaddress <: ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? pix_x[1,9] : 0 );                             // SET BASE ADDRESS
     uint17  baseaddress0 <: baseaddress + ( pix_active & pix_x[0,1] );                                                          // SET BASE ADDRESS FOR FIRST PIXEL IN BLOCK
@@ -28,22 +28,15 @@ unit framebuffer_read(
     bitmap_100.addr0 := baseaddress0[2,15]; bitmap_101.addr0 := baseaddress[2,15]; bitmap_110.addr0 := baseaddress[2,15]; bitmap_111.addr0 := baseaddress[2,15];
 
     always {
-        uint8   pixel0 = uninitialised;                 uint8   pixel1 = uninitialised;                                         // PRESENT PIXEL FROM EACH FRAMEBUFFER
-
-        switch( baseaddress[0,2] ) {                                                                                            // SELECT PIXEL FROM FRAMEBUFFERS (X.Y) SCREEN COORDINATES
-            case 2b00: { pixel0 = bitmap_000.rdata0; pixel1 = bitmap_100.rdata0; }
-            case 2b01: { pixel0 = bitmap_001.rdata0; pixel1 = bitmap_101.rdata0; }
-            case 2b10: { pixel0 = bitmap_010.rdata0; pixel1 = bitmap_110.rdata0; }
-            case 2b11: { pixel0 = bitmap_011.rdata0; pixel1 = bitmap_111.rdata0; }
+        switch( baseaddress[0,2] ) {                                                                                            // SELECT PIXELS FROM FRAMEBUFFERS (X.Y) SCREEN COORDINATES
+            case 2b00: { pixel_0 = bitmap_000.rdata0; pixel_1 = bitmap_100.rdata0; }
+            case 2b01: { pixel_0 = bitmap_001.rdata0; pixel_1 = bitmap_101.rdata0; }
+            case 2b10: { pixel_0 = bitmap_010.rdata0; pixel_1 = bitmap_110.rdata0; }
+            case 2b11: { pixel_0 = bitmap_011.rdata0; pixel_1 = bitmap_111.rdata0; }
         }
 
-        pixel0_collision = pix_active & framebuffer[0,1] & ( pixel0 != 64 );
-        pixel1_collision = pix_active & framebuffer[1,1] & ( pixel1 != 64 );
-
-        pixel = display256 ? framebuffer[1,1] ? pixel1 : framebuffer[0,1] ? pixel0 : 0 :                                        // DISPLAY256 MODE, IF NO BITMAP SELECTED DISPLAY BLACK (0)
-                             framebuffer[1,1] & ( pixel1 != 64 ) ? pixel1 :                                                     // ELSE SELECT SELECTED BITMAP OR TRANSPARENT
-                             framebuffer[0,1] & ( pixel0 != 64 ) ? pixel0 : 64;                                                 //  IF NOTHING SELECTED OR TRANSPARENT
-        bitmap_display = pix_active & |framebuffer & ( ( pixel != 64 ) | display256 );                                          // OUTPUT IF DISPLAY256 OR NOT TRANSPARENT
+        pixel_0_collision = pix_active & ( ( pixel_0 != 64 ) | display256[0,1] );                                               // DETERMINE IF PIXEL_0 IS TO DISPLAY
+        pixel_1_collision = pix_active & ( ( pixel_1 != 64 ) | display256[1,1] );                                               // DETERMINE IF PIXEL_1 IS TO DISPLAY
     }
 }
 
@@ -58,10 +51,10 @@ unit bitmap_memmap(
     input   uint9   pix_y,
     input   uint1   pix_active,
     input   uint1   pix_vblank,
-    output! uint8   pixel,
-    output! uint1   pixel_display,
-    output! uint1   pixel0_collision,
-    output! uint1   pixel1_collision,
+    output! uint8   pixel_1,
+    output! uint8   pixel_0,
+    output! uint1   pixel_0_collision,
+    output! uint1   pixel_1_collision,
 
     // Memory access via I/O registers
     input   uint18  ADDR,
@@ -72,7 +65,7 @@ unit bitmap_memmap(
     // Memory access direct to bitmap
     input   uint2   SIZE,
     input   uint1   WENABLE_DIRECT,
-    output! uint32  RDATA_DIRECT,
+    output  uint32  RDATA_DIRECT,
     input   uint8   static8bit,
 
     output  uint1   gpu_active,
@@ -94,10 +87,10 @@ unit bitmap_memmap(
         pix_y      <: pix_y,
         pix_active <: pix_active,
         pix_vblank <: pix_vblank,
-        pixel    :> pixel,
-        bitmap_display :> pixel_display,
-        pixel0_collision :> pixel0_collision,
-        pixel1_collision :> pixel1_collision
+        pixel_1    :> pixel_1,
+        pixel_0    :> pixel_0,
+        pixel_0_collision :> pixel_0_collision,
+        pixel_1_collision :> pixel_1_collision
     );
 
     // DITHER PATTERN GENERATOR
@@ -256,8 +249,7 @@ unit bitmap_memmap(
                 }
                 case 4hf: {
                     switch( ADDR[1,2] ) {
-                        default: { framebuffer_display.framebuffer = WDATA; }
-                        case 2h1: { framebuffer = WDATA; }
+                        default: { framebuffer = WDATA; }
                         case 2h2: { framebuffer_display.display256 = WDATA; }
                     }
                 }

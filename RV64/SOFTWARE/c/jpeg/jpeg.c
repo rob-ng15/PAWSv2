@@ -17,13 +17,13 @@ int main( int argc, char **argv ) {
         imagebuffer=njGetImage();
 
         // DISPLAY IN COLOUR - SWITCH OFF THE PIXEL BLOCK REMAPPER
-        screen_mode( 0, MODE_RGBM, 0 );
+        screen_mode( MODE_RGBM ); bitmap_256( true );
         gpu_pixelblock_mode( FALSE );
         gpu_pixelblock24( 0, 0, width, height, imagebuffer );
         sleep1khz( 4000 );
 
         // DISPLAY IN GREY - SWITCH ON THE PIXEL BLOCK REMAPPER
-        screen_mode( 0, MODE_GREY, 0 );
+        screen_mode( MODE_GREY ); bitmap_256( true );
         gpu_pixelblock_mode( TRUE );
         gpu_pixelblock24( 0, 0, width, height, imagebuffer );
 

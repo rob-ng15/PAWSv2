@@ -46,8 +46,8 @@ void I_InitGraphics (void) {
         return;
 
     initialized = 1;
-    screens[0] = (byte*)0x2020000; bitmap_display( 1 );
-    screen_mode( 0, MODE_RGBM, 0 ); bitmap_256( TRUE ); use_palette( TRUE );
+    screens[0] = (byte*)0x2020000; screen_order( LAYER_CHARACTERMAP, LAYER_BITMAP_0, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
+    screen_mode( MODE_RGBM ); bitmap_256( TRUE ); use_palette( TRUE );
 }
 
 void I_ShutdownGraphics (void) {

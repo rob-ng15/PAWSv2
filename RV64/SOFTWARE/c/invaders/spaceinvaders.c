@@ -92,8 +92,8 @@ char moonscape_front[][42] = {
 
 // HELPER TO REMOVE ALL/SOME SPRITES
 void remove_sprites( short start_sprite ) {
-    for( short i = start_sprite; i < 31; i++ ) {
-        set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
+    for( short i = start_sprite; i < 64; i++ ) {
+        set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, 0 );
     }
 }
 
@@ -142,74 +142,73 @@ void draw_moonscape( void ) {
         for( short x = 0; x < 41; x++ ) {
             switch( moonscape_back[y][x] ) {
                 case '.':
-                    set_tilemap_tile_abs( LOWER_LAYER, x + 1, 19 + y, 0, 0 );
+                    set_tilemap_tile_abs( 0, x + 1, 19 + y, 0, 0 );
                     break;
                 case '1':
-                    set_tilemap_tile_abs( LOWER_LAYER, x + 1, 19 + y, 1, 0 );
+                    set_tilemap_tile_abs( 0, x + 1, 19 + y, 1, 0 );
                     break;
                 case '2':
-                    set_tilemap_tile_abs( LOWER_LAYER, x + 1, 19 + y, 1, REFLECT_X );
+                    set_tilemap_tile_abs( 0, x + 1, 19 + y, 1, REFLECT_X );
                     break;
                 case '8':
-                    set_tilemap_tile_abs( LOWER_LAYER, x + 1, 19 + y, 2, 0 );
+                    set_tilemap_tile_abs( 0, x + 1, 19 + y, 2, 0 );
                     break;
             }
             switch( moonscape_front[y][x + 1] ) {
                 case '.':
-                    set_tilemap_tile_abs( UPPER_LAYER, x + 1, 19 + y, 0, 0 );
+                    set_tilemap_tile_abs( 2, x + 1, 19 + y, 0, 0 );
                     break;
                 case '1':
-                    set_tilemap_tile_abs( UPPER_LAYER, x + 1, 19 + y, 20, 0 );
+                    set_tilemap_tile_abs( 2, x + 1, 19 + y, 20, 0 );
                     break;
                 case '2':
-                    set_tilemap_tile_abs( UPPER_LAYER, x + 1, 19 + y, 20, REFLECT_X );
+                    set_tilemap_tile_abs( 2, x + 1, 19 + y, 20, REFLECT_X );
                     break;
                 case '3':
-                    set_tilemap_tile_abs( UPPER_LAYER, x + 1, 19 + y, 18, 0 );
+                    set_tilemap_tile_abs( 2, x + 1, 19 + y, 18, 0 );
                     break;
                 case '4':
-                    set_tilemap_tile_abs( UPPER_LAYER, x + 1, 19 + y, 19, 0 );
+                    set_tilemap_tile_abs( 2, x + 1, 19 + y, 19, 0 );
                     break;
                 case '5':
-                    set_tilemap_tile_abs( UPPER_LAYER, x + 1, 19 + y, 19, REFLECT_X );
+                    set_tilemap_tile_abs( 2, x + 1, 19 + y, 19, REFLECT_X );
                     break;
                 case '6':
-                    set_tilemap_tile_abs( UPPER_LAYER, x + 1, 19 + y, 18, REFLECT_X );
+                    set_tilemap_tile_abs( 2, x + 1, 19 + y, 18, REFLECT_X );
                     break;
                 case '7':
-                    set_tilemap_tile_abs( UPPER_LAYER, x + 1, 19 + y, 21, 0 );
+                    set_tilemap_tile_abs( 2, x + 1, 19 + y, 21, 0 );
                     break;
             }
         }
     }
 
     // PLACE PLANETS AND COMET
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 5, 5, 3 );
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 37,5, 7 );
-    set_tilemap_32x32tile_abs( LOWER_LAYER, 22, 7, 11 );
+    set_tilemap_32x32tile_abs( 0, 5, 5, 3 );
+    set_tilemap_32x32tile_abs( 0, 37,5, 7 );
+    set_tilemap_32x32tile_abs( 0, 22, 7, 11 );
 
     // PLACE CRATERS
-    set_tilemap_32x32tile_abs( UPPER_LAYER, 16, 26, 25 );
-    set_tilemap_32x32tile_abs( UPPER_LAYER, 27, 26, 25 );
+    set_tilemap_32x32tile_abs( 2, 16, 26, 25 );
+    set_tilemap_32x32tile_abs( 2, 27, 26, 25 );
 
     // PLACE LAUNCHED ROCKETS
-    set_tilemap_32x32tile_abs( UPPER_LAYER, 4, 19, 14 );
-    set_tilemap_32x32tile_abs( UPPER_LAYER, 31, 20, 14 );
+    set_tilemap_32x32tile_abs( 2, 4, 19, 14 );
+    set_tilemap_32x32tile_abs( 2, 31, 20, 14 );
 
     // PLACE GROUNDED ROCKETS using reflection
-    set_tilemap_16x32tile_abs( UPPER_LAYER, 18, 24, 12);
-    set_tilemap_16x32tile_abs( UPPER_LAYER, 24, 25, 12 );
-    set_tilemap_16x32tile_abs( UPPER_LAYER, 21, 26, 12 );
+    set_tilemap_16x32tile_abs( 2, 18, 24, 12);
+    set_tilemap_16x32tile_abs( 2, 24, 25, 12 );
+    set_tilemap_16x32tile_abs( 2, 21, 26, 12 );
 }
 
 void initialise_graphics( void ) {
     unsigned char colour;
 
     // SET THE BACKGROUND - MULTICOLOURED STARFIELD VIA COPPER
-    program_background(); screen_mode( 0, MODE_RGBM, 0 );
+    program_background(); screen_mode( MODE_RGBM );
     // CLEAR THE TILEMAPS
-    tm_cs( LOWER_LAYER );
-    tm_cs( UPPER_LAYER );
+    tm_cs( 0 ); tm_cs( 2 );
 
     // SET BLITTER OBJECTS - ALIENS, EXPLOSIONS, UFO AND BUNKERS
     for( short i = 0; i < 15; i++ ) {
@@ -253,25 +252,25 @@ void initialise_graphics( void ) {
     }
 
     // SET SPRITES - 1:0 is player, 1:1 is bullet, 1:2-15 are bombs
-    set_sprite_bitmaps( UPPER_LAYER, 0, &player_bitmaps[0] );
-    set_sprite_bitmaps( UPPER_LAYER, 1, &bullet_bitmaps[0] );
+    set_sprite_bitmaps( 0, &player_bitmaps[0] );
+    set_sprite_bitmaps( 1, &bullet_bitmaps[0] );
     for( short i = 2; i < 16; i++ ) {
-        set_sprite_bitmaps( UPPER_LAYER, i, &bomb_bitmaps[0] );
+        set_sprite_bitmaps( i, &bomb_bitmaps[0] );
     }
 
     // SET TILEMAP TILES - NUMBERS AND SHIP GRAPHIC + ROCKET + WEDGES FOR MOONSCAPE
     for( short i = 0; i < 2; i++ ) {
-        set_tilemap_bitmap( LOWER_LAYER, i + 1, &tilemap_bitmaps_back[ 256 * i ] );
+        set_tilemap_bitmap( 0, i + 1, &tilemap_bitmaps_back[ 256 * i ] );
     }
     for( short i = 0; i < 25; i++ ) {
-        set_tilemap_bitmap( UPPER_LAYER, i + 1, &tilemap_bitmaps_front[ 256 * i ] );
+        set_tilemap_bitmap( 2, i + 1, &tilemap_bitmaps_front[ 256 * i ] );
     }
 
     // SET JUPITER SATURN COMET CRATER
-    set_tilemap_bitmap32x32( LOWER_LAYER, 3, &planets_32x32[ 0 ] );
-    set_tilemap_bitmap32x32( LOWER_LAYER, 7, &planets_32x32[ 1024 ] );
-    set_tilemap_bitmap32x32( LOWER_LAYER, 11, &planets_32x32[ 2048 ] );
-    set_tilemap_bitmap32x32( UPPER_LAYER, 25, &crater_tilemap32x32[ 0 ] );
+    set_tilemap_bitmap32x32( 0, 3, &planets_32x32[ 0 ] );
+    set_tilemap_bitmap32x32( 0, 7, &planets_32x32[ 1024 ] );
+    set_tilemap_bitmap32x32( 0, 11, &planets_32x32[ 2048 ] );
+    set_tilemap_bitmap32x32( 2, 25, &crater_tilemap32x32[ 0 ] );
 
     draw_moonscape();
 }
@@ -571,22 +570,22 @@ void bomb_actions( void ) {
 
     // CHECK IF HIT AND MOVE BOMBS
     for( short i = 4; i < 16; i++ ) {
-        if( get_sprite_layer_collision( UPPER_LAYER, i ) & SPRITE_TO_BITMAP ) {
+        if( get_sprite_layer_collision( i ) & ( SPRITE_TO_BITMAP_0 | SPRITE_TO_BITMAP_1 ) ) {
             // HIT THE BUNKER
-            bomb_x = get_sprite_attribute( UPPER_LAYER, i , 3 ) / 2 - 2;
-            bomb_y = get_sprite_attribute( UPPER_LAYER, i , 4 ) / 2;
-            set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
+            bomb_x = get_sprite_attribute( i , ATTR_SPRITE_X ) / 2 - 2;
+            bomb_y = get_sprite_attribute( i , ATTR_SPRITE_Y ) / 2;
+            set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, 0 );
             bitmap_draw( 3 ); gpu_blit( TRANSPARENT, bomb_x, bomb_y, 14, 0, 0 );
             bitmap_draw( 3 - framebuffer );
         } else {
-            update_sprite( UPPER_LAYER, i, 3, 0, 2, 1 );
+            update_sprite( i, 3, 0, 2, 1 );
         }
-        if( get_sprite_collision( UPPER_LAYER, i ) & 4 ) {
+        if( get_sprite_collision( i ) & 4 ) {
             // HIT THE PLAYER MISSILE
-            set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
-            set_sprite_attribute( UPPER_LAYER, 2, SPRITE_ACTIVE, 0 );
+            set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, 0 );
+            set_sprite_attribute( 2, ATTR_SPRITE_ACTIVE, 0 );
         }
-        if( get_sprite_collision( UPPER_LAYER,i ) & 1 ) {
+        if( get_sprite_collision( i ) & 1 ) {
             // HIT THE PLAYER
             beep( 3, 0, 0, 0 ); pcmsample_stop( 3 );
             pcmsample_start( 1, 14625, &wave_explode[78], KHz11025, FALSE );
@@ -600,7 +599,7 @@ void bomb_actions( void ) {
     AlienSwarm.lastbombtimer -= ( AlienSwarm.lastbombtimer ) > 0 ? 1 : 0;
     if( !AlienSwarm.lastbombtimer && !rng(4) ) {
         for( short i = 4; ( i < 16 ) && !bombdropped; i++ ) {
-            if( !get_sprite_attribute( UPPER_LAYER, i, 0 ) ) {
+            if( !get_sprite_attribute( i, ATTR_SPRITE_ACTIVE ) ) {
                 // BOMB SLOT FOUND
                 // FIND A COLUMN AND BOTTOM ROW ALIEN
                 while( !bombdropped && attempts ) {
@@ -610,7 +609,7 @@ void bomb_actions( void ) {
                             case 1:
                             case 2:
                             case 3:
-                                set_sprite( UPPER_LAYER, i, 1, 2 * Aliens[ bombrow * 11 + bombcolumn ].x + 4 + ( rng(5) - 2 ), 2 * Aliens[ bombrow * 11 + bombcolumn ].y + 14, 0, SPRITE_DOUBLE );
+                                set_sprite( i, 1, 2 * Aliens[ bombrow * 11 + bombcolumn ].x + 4 + ( rng(5) - 2 ), 2 * Aliens[ bombrow * 11 + bombcolumn ].y + 14, 0, SPRITE_DOUBLE );
                                 AlienSwarm.lastbombtimer = ( Ship.level == 0 ) ? 32 : ( Ship.level > 2 ) ? 8 : 16;
                                 bombdropped = 1;
                                 break;
@@ -629,9 +628,9 @@ short missile_actions( void ) {
     short missile_x, missile_y, alien_hit = 0, points = 0;
 
     // CHECK IF PLAYER MISSILE HAS HIT
-    if( get_sprite_layer_collision( UPPER_LAYER, 2 ) & SPRITE_TO_BITMAP ) {
-        missile_x = get_sprite_attribute( UPPER_LAYER, 2, 3 ) / 2;
-        missile_y = get_sprite_attribute( UPPER_LAYER, 2, 4 ) / 2;
+    if( get_sprite_layer_collision( 2 ) & ( SPRITE_TO_BITMAP_0 | SPRITE_TO_BITMAP_1 ) ) {
+        missile_x = get_sprite_attribute( 2, ATTR_SPRITE_X ) / 2;
+        missile_y = get_sprite_attribute( 2, ATTR_SPRITE_Y ) / 2;
         for( short y = AlienSwarm.toprow; y <= AlienSwarm.bottomrow && !alien_hit; y++ ) {
             for( short x = AlienSwarm.leftcolumn; x <= AlienSwarm.rightcolumn && !alien_hit; x++ ) {
                 switch( Aliens[ y * 11 + x ].type ) {
@@ -641,7 +640,7 @@ short missile_actions( void ) {
                         if( ( missile_x >= Aliens[ y * 11 + x ].x - 3 ) && ( missile_x <= Aliens[ y * 11 + x ].x + 13 ) && ( missile_y >= Aliens[ y * 11 + x ].y - 4 ) && ( missile_y <= Aliens[ y * 11 + x ].y + 12 ) ) {
                             pcmsample_start( 2, 5058, &wave_hit[78], KHz11025, FALSE );
                             points = ( 4 - Aliens[ y * 11 + x ].type ) * 10;
-                            set_sprite_attribute( UPPER_LAYER, 1, SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( 1, ATTR_SPRITE_ACTIVE, 0 );
                             Aliens[ y * 11 + x ].type = 16;
                             alien_hit = 1;
                         }
@@ -652,7 +651,7 @@ short missile_actions( void ) {
             }
         }
         if( !alien_hit ) {
-            set_sprite_attribute( UPPER_LAYER, 2, SPRITE_ACTIVE, 0 );
+            set_sprite_attribute( 2, ATTR_SPRITE_ACTIVE, 0 );
             if( missile_y > 24 ) {
                 // HIT A BUNKER
                 missile_x = missile_x - 2;
@@ -672,22 +671,22 @@ short missile_actions( void ) {
     }
 
     // FIRE? OR MOVE MISSILE
-    if( !get_sprite_attribute( UPPER_LAYER, 2, 0 ) ) {
+    if( !get_sprite_attribute( 2, ATTR_SPRITE_ACTIVE ) ) {
         // NO MISSILE, CHECK IF FIRE
         if( ( get_buttons() & 2 ) && ( Ship.state == SHIPPLAY ) ) {
-            set_sprite( UPPER_LAYER, 2, 1, Ship.x + 8, Ship.y - 10, 0, SPRITE_DOUBLE );
+            set_sprite( 2, 1, Ship.x + 8, Ship.y - 10, 0, SPRITE_DOUBLE );
             pcmsample_start( 1, 3822, &wave_shoot[78], KHz11025, FALSE );
         }
     } else {
         // MOVE MISSILE
-        update_sprite( UPPER_LAYER, 2, 3, 0, -2, 1 );
+        update_sprite( 2, 3, 0, -2, 1 );
     }
 
     return( points );
 }
 
 void player_actions( void ) {
-    if( ( get_sprite_layer_collision( UPPER_LAYER, 0 ) & SPRITE_TO_BITMAP ) && ( Ship.state != SHIPEXPLODE2 ) ) {
+    if( ( get_sprite_layer_collision( 0 ) & ( SPRITE_TO_BITMAP_0 | SPRITE_TO_BITMAP_1 ) ) && ( Ship.state != SHIPEXPLODE2 ) ) {
         // ALIEN HAS HIT SHIP
         beep( 3, 0, 0, 0 ); pcmsample_stop( 3 );
         pcmsample_start( 1, 14625, &wave_explode[78], KHz11025, FALSE );
@@ -701,17 +700,17 @@ void player_actions( void ) {
                 Ship.x -= 2;
             if( ( get_buttons() & 64 ) && ( Ship.x < 617 ) )
                 Ship.x += 2;
-            set_sprite( UPPER_LAYER, 0, 1, Ship.x, Ship.y, 0, SPRITE_DOUBLE );
+            set_sprite( 0, 1, Ship.x, Ship.y, 0, SPRITE_DOUBLE );
             break;
         case SHIPRESET:
             // RESET
-            set_sprite( UPPER_LAYER, 0, 0, Ship.x, Ship.y, 0, SPRITE_DOUBLE );
+            set_sprite( 0, 0, Ship.x, Ship.y, 0, SPRITE_DOUBLE );
             Ship.counter--;
             if( !Ship.counter ) Ship.state = SHIPPLAY;
             break;
         case SHIPEXPLODE:
             // EXPLODE
-            set_sprite( UPPER_LAYER, 0, 1, Ship.x, Ship.y, framebuffer >> 1, SPRITE_DOUBLE );
+            set_sprite( 0, 1, Ship.x, Ship.y, framebuffer >> 1, SPRITE_DOUBLE );
             Ship.counter--;
             if( !Ship.counter ) {
                 Ship.life--;
@@ -720,7 +719,7 @@ void player_actions( void ) {
            break;
         case SHIPEXPLODE2:
             // EXPLODE
-            set_sprite( UPPER_LAYER, 0, 1, Ship.x, Ship.y, framebuffer >> 1, SPRITE_DOUBLE );
+            set_sprite( 0, 1, Ship.x, Ship.y, framebuffer >> 1, SPRITE_DOUBLE );
             Ship.counter--;
             if( !Ship.counter ) {
                 Ship.life--;
@@ -740,16 +739,16 @@ void draw_status( void ) {
 
     // PRINT THE SCORE
     for( short i = 0; i < 8; i++ ) {
-        set_tilemap_tile_abs( UPPER_LAYER, 17 + i, 2,  ( scorestring[i] == ' ' ) ? 1 : scorestring[i] - 47, 0 );
+        set_tilemap_tile_abs( 2, 17 + i, 2,  ( scorestring[i] == ' ' ) ? 1 : scorestring[i] - 47, 0 );
     }
     // PRINT THE LIVES LEFT
-    set_tilemap_tile_abs( UPPER_LAYER, 35, 2,  Ship.life + 1, 0 );
+    set_tilemap_tile_abs( 2, 35, 2,  Ship.life + 1, 0 );
     for( short i = 0; i < 3; i++ ) {
-        set_tilemap_tile_abs( UPPER_LAYER, 37 + i, 2,  ( i < Ship.life ) ? 11 : 0, 0 );
+        set_tilemap_tile_abs( 2, 37 + i, 2,  ( i < Ship.life ) ? 11 : 0, 0 );
     }
     // PRINT THE LEVEL ( 2 DIGITS )
-    set_tilemap_tile_abs( UPPER_LAYER, 2, 2,  ( Ship.level / 10 ) + 1, 0 );
-    set_tilemap_tile_abs( UPPER_LAYER, 3, 2,  ( Ship.level % 10 ) + 1, 0 );
+    set_tilemap_tile_abs( 2, 2, 2,  ( Ship.level / 10 ) + 1, 0 );
+    set_tilemap_tile_abs( 2, 3, 2,  ( Ship.level % 10 ) + 1, 0 );
 }
 
 void play( void ) {
@@ -782,7 +781,8 @@ void play( void ) {
 
         // SWITCH THE FRAMEBUFFER
         while( get_framecount() == framecount ) {}
-        framebuffer = 3 - framebuffer; bitmap_display( framebuffer );
+        framebuffer = 3 - framebuffer;
+        screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_0, LAYER_TILEMAP_2, LAYER_TILEMAP_0, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
 
         draw_status();
     }
@@ -792,9 +792,9 @@ void missile_demo( void ) {
     short missile_x, missile_y, alien_hit = 0;
 
     // CHECK IF PLAYER MISSILE HAS HIT
-    if( get_sprite_layer_collision( UPPER_LAYER, 2 ) & SPRITE_TO_BITMAP ) {
-        missile_x = get_sprite_attribute( UPPER_LAYER, 2, 3 ) / 2;
-        missile_y = get_sprite_attribute( UPPER_LAYER, 2, 4 ) / 2;
+    if( get_sprite_layer_collision( 2 ) & ( SPRITE_TO_BITMAP_0 | SPRITE_TO_BITMAP_1 ) ) {
+        missile_x = get_sprite_attribute( 2, ATTR_SPRITE_X ) / 2;
+        missile_y = get_sprite_attribute( 2, ATTR_SPRITE_Y ) / 2;
         for( short y = AlienSwarm.toprow; y <= AlienSwarm.bottomrow && !alien_hit; y++ ) {
             for( short x = AlienSwarm.leftcolumn; x <= AlienSwarm.rightcolumn && !alien_hit; x++ ) {
                 switch( Aliens[ y * 11 + x ].type ) {
@@ -802,7 +802,7 @@ void missile_demo( void ) {
                     case 2:
                     case 3:
                         if( ( missile_x >= Aliens[ y * 11 + x ].x - 3 ) && ( missile_x <= Aliens[ y * 11 + x ].x + 13 ) && ( missile_y >= Aliens[ y * 11 + x ].y - 4 ) && ( missile_y <= Aliens[ y * 11 + x ].y + 12 ) ) {
-                            set_sprite_attribute( UPPER_LAYER, 2, SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( 2, ATTR_SPRITE_ACTIVE, 0 );
                             Aliens[ y * 11 + x ].type = 16;
                             alien_hit = 1;
                         }
@@ -813,7 +813,7 @@ void missile_demo( void ) {
             }
         }
         if( !alien_hit && ( missile_y >= 208 ) ) {
-            set_sprite_attribute( UPPER_LAYER, 2, SPRITE_ACTIVE, 0 );
+            set_sprite_attribute( 2, ATTR_SPRITE_ACTIVE, 0 );
             // HIT A BUNKER
             missile_x = missile_x - 2;
             missile_y = missile_y - 2;
@@ -823,40 +823,40 @@ void missile_demo( void ) {
     }
 
     // FIRE? OR MOVE MISSILE
-    if( !get_sprite_attribute( UPPER_LAYER, 2, 0 ) ) {
+    if( !get_sprite_attribute( 2, ATTR_SPRITE_ACTIVE ) ) {
         // NO MISSILE, CHECK IF FIRE
         if( ( Ship.state == SHIPPLAY ) && !rng(8) ) {
-            set_sprite( UPPER_LAYER, 2, 1, Ship.x + 8, Ship.y - 10, 0, SPRITE_DOUBLE );
+            set_sprite( 2, 1, Ship.x + 8, Ship.y - 10, 0, SPRITE_DOUBLE );
         }
     } else {
         // MOVE MISSILE
-        update_sprite( UPPER_LAYER, 2, 3, 0, -2, 1 );
+        update_sprite( 2, 3, 0, -2, 1 );
     }
 }
 
 void demo_actions( void ) {
-    if( ( get_sprite_layer_collision( UPPER_LAYER, 0 ) & SPRITE_TO_BITMAP ) && ( Ship.state != SHIPEXPLODE2 ) ) {
+    if( ( get_sprite_layer_collision( 0 ) & ( SPRITE_TO_BITMAP_0 | SPRITE_TO_BITMAP_1 ) ) && ( Ship.state != SHIPEXPLODE2 ) ) {
         // ALIEN HAS HIT SHIP
         Ship.state = SHIPEXPLODE2;
         Ship.counter = 100;
         for( short i = 1; i < 16; i++ ) {
-            set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
+            set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, 0 );
         }
     }
     switch( Ship.state ) {
         case SHIPPLAY:
             // CODE TO MOVE
-            set_sprite( UPPER_LAYER, 0, 1, Ship.x, Ship.y, 0, SPRITE_DOUBLE );
+            set_sprite( 0, 1, Ship.x, Ship.y, 0, SPRITE_DOUBLE );
             break;
         case SHIPRESET:
             // RESET
-            set_sprite( UPPER_LAYER, 0, 0, Ship.x, Ship.y, 0, SPRITE_DOUBLE );
+            set_sprite( 0, 0, Ship.x, Ship.y, 0, SPRITE_DOUBLE );
             Ship.counter--;
             if( !Ship.counter ) Ship.state = SHIPPLAY;
             break;
         case SHIPEXPLODE:
             // EXPLODE
-            set_sprite( UPPER_LAYER, 0, 1, Ship.x, Ship.y, framebuffer, SPRITE_DOUBLE );
+            set_sprite( 0, 1, Ship.x, Ship.y, framebuffer, SPRITE_DOUBLE );
             Ship.counter--;
             if( !Ship.counter ) {
                 reset_player();
@@ -864,7 +864,7 @@ void demo_actions( void ) {
            break;
         case SHIPEXPLODE2:
             // EXPLODE
-            set_sprite( UPPER_LAYER, 0, 1, Ship.x, Ship.y, framebuffer, SPRITE_DOUBLE );
+            set_sprite( 0, 1, Ship.x, Ship.y, framebuffer, SPRITE_DOUBLE );
             Ship.counter--;
             if( !Ship.counter ) {
                 reset_aliens();
@@ -884,8 +884,8 @@ void attract( void ) {
         bitmap_draw( 3 ); gpu_cs();
         tpu_cs();
         // CLEAR THE SPRITES
-        for( short i = 0; i < 13; i++ ) {
-            set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
+        for( short i = 0; i < 64; i++ ) {
+            set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, 0 );
         }
         set_timer1khz( 16000, 0 );
         if( mode ) {
@@ -931,7 +931,7 @@ void attract( void ) {
 
                     // SWITCH THE FRAMEBUFFER
                     framebuffer = 3 - framebuffer;
-                    bitmap_display( framebuffer );
+                    screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_0, LAYER_TILEMAP_2, LAYER_TILEMAP_0, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
 
                     draw_status();
                     break;
@@ -976,7 +976,7 @@ void attract( void ) {
 
                     // SWITCH THE FRAMEBUFFER
                     framebuffer = 3 - framebuffer;
-                    bitmap_display( framebuffer );
+                    screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_0, LAYER_TILEMAP_2, LAYER_TILEMAP_0, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
 
                     draw_status();
                     break;
