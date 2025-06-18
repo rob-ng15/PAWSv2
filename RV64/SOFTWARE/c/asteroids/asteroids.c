@@ -416,8 +416,8 @@ void fire_bullet( void ) {
 
     set_sprite( BULLETSPRITES + bulletnumber, 1, bulletx, bullety, 2, 0 );
 
-    beep( 2, 4, 61, 128 );
-    last_fire = 25;
+    beep( CHANNEL_LEFT_1, 4, 61, 128, 7 );
+    last_fire = 20;
 }
 
 void update_bullet( void ) {
@@ -430,25 +430,29 @@ void update_bullet( void ) {
     update_sprite_compat( UFOBULLETSPRITE, bullet_directions[ ufo_bullet_direction ] );
 }
 
-unsigned char asteroids_sample[] = { 3, 0, 5, 0 };
-unsigned char ufo_sample[] = { 75, 83, 89, 0 };
+unsigned char asteroids_sample_left[] = { 3, 0, 0, 0 };
+unsigned char asteroids_sample_right[] = { 0, 0, 5, 0 };
+unsigned char ufo_sample[] = { 75, 83, 89, 99, 89, 83, 0 };
 
 void beepboop( void ) {
     switch( sample_change ) {
         case 0:
             break;
-        case 1: // switch to asteroid beeps
-            tune_upload( CHANNEL_LEFT, 4, &asteroids_sample[0] );
-            beep( CHANNEL_LEFT, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 500 );
+        case 1: // switch on asteroid beeps and switch off UFO beeps
+            beep_stop( CHANNEL_RIGHT_2 );
+            tune_upload( CHANNEL_LEFT_0, 4, &asteroids_sample_left[0] );
+            tune_upload( CHANNEL_RIGHT_0, 4, &asteroids_sample_right[0] );
+            beep( CHANNEL_LEFT_0, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 500, 7 );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 500, 7 );
             sample_change = 0;
             break;
-        case 2: // switch to ufo beeps
-            tune_upload( CHANNEL_LEFT, 4, &ufo_sample[0] );
-            beep( CHANNEL_LEFT, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 250 );
+        case 2: // switch on ufo beeps
+            tune_upload( CHANNEL_RIGHT_2, 7, &ufo_sample[0] );
+            beep( CHANNEL_RIGHT_2, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 60, 6 );
             sample_change = 0;
             break;
         case 3: // beeps off
-            beep( CHANNEL_LEFT, 0, 0, 0 );
+            beep_stop( CHANNEL_LEFT_0 ); beep_stop( CHANNEL_RIGHT_0 ); beep_stop( CHANNEL_RIGHT_2 );
             sample_change = 0;
             break;
     }
@@ -512,7 +516,7 @@ void check_ufo_bullet_hit( void ) {
     short x, y;
 
     if( ( ( get_sprite_collision( UFOBULLETSPRITE ) & ASTEROIDCOLLISION ) != 0 ) ) {
-        beep( 2, 4, 8, 500 );
+        beep( CHANNEL_LEFT_1, 4, 8, 500, 7 );
         for( unsigned char asteroid_number = 0; asteroid_number < MAXASTEROIDS; asteroid_number++ ) {
             if( get_sprite_collision( asteroid_number ) & UFOBULLETCOLLISION ) {
                 asteroid_hit = asteroid_number;
@@ -548,7 +552,7 @@ void check_hit( void ) {
     for( short i = 0; i < MAXBULLETS; i++ ) {
         asteroid_hit = 0xff;
         if( ( ( get_sprite_collision( BULLETSPRITES + i ) & ASTEROIDCOLLISION ) != 0 ) ) {
-            beep( 2, 4, 8, 500 );
+            beep( CHANNEL_LEFT_1, 4, 8, 500, 7 );
             for( unsigned char asteroid_number = 0; asteroid_number < MAXASTEROIDS; asteroid_number++ ) {
                 if( get_sprite_collision( asteroid_number ) & ( (unsigned long)1 << ( i + BULLETSPRITES ) ) ) {
                     asteroid_hit = asteroid_number;
@@ -618,7 +622,7 @@ void check_crash( void ) {
             // DELETE UFO BULLET
             set_sprite_attribute( UFOBULLETSPRITE, ATTR_SPRITE_ACTIVE, 0 );
         }
-        beep( 2, 4, 1, 1000 );
+        beep( CHANNEL_LEFT_1, 4, 1, 1000, 7 );
         shipexplode = 1;
         set_sprite_attribute( UFOBULLETSPRITE, ATTR_SPRITE_TILE, 0 );
         resetship = 75;
@@ -702,7 +706,7 @@ int main( void ) {
 
         if( ( rng( ( level > 3 ) ? 64 : 128 ) == 1 ) && ( get_sprite_attribute( UFOBULLETSPRITE, ATTR_SPRITE_ACTIVE ) == 0 ) && ( ufo_sprite_number != 0xff ) && ( ( level != 0 ) || ( lives == 0 ) ) ) {
             // START UFO BULLET
-            beep( 2, 4, 63, 32 );
+            beep( CHANNEL_RIGHT_1, 4, 63, 32, 7 );
 
             ufo_x = get_sprite_attribute( ufo_sprite_number, ATTR_SPRITE_X ) + ( ( level < 2 ) ? 16 : 8 );
             ufo_y = get_sprite_attribute( ufo_sprite_number, ATTR_SPRITE_Y );

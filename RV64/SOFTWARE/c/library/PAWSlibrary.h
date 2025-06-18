@@ -62,12 +62,13 @@ extern int paws_gettimeofday( struct paws_timeval *restrict tv, void *tz );
 extern unsigned long get_systemrtc( void );
 
 // AUDIO
-extern void beep( unsigned char, unsigned char, unsigned char, unsigned short );
-extern void set_volume( unsigned char left, unsigned char right );
-extern void await_beep( unsigned char );
-extern unsigned short get_beep_active( unsigned char );
+extern void beep( unsigned char channel, unsigned char waveform, unsigned char note, unsigned short duration, unsigned char volume );
+extern void beep_stop( unsigned char channel );
+extern void set_volume( unsigned char channel, unsigned char volume );
+extern void await_beep( unsigned char channel );
+extern unsigned short get_beep_active( unsigned char channel );
 extern void tune_upload( unsigned char channel_number, unsigned short length, unsigned char *samples );
-extern void bitsample_upload_128( unsigned char channel_number, unsigned char *samples );
+extern void bitsample_upload( unsigned char channel_number, unsigned char *samples );
 extern void pcmsample_start( unsigned char channel_number, unsigned int count, const unsigned char *samples, unsigned char rate, unsigned char repeat );
 extern void pcmsample_stop( unsigned char channel_number );
 

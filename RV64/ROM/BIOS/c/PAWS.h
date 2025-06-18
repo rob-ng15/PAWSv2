@@ -125,27 +125,23 @@ unsigned short volatile *SPRITE_LAYER_COLLISION_BASE = (unsigned short volatile 
 unsigned long volatile *SPRITE_COLLISION_BASE = (unsigned long volatile *) 0xd800;
 
 unsigned char volatile *AUDIO_WAVEFORM = (unsigned char volatile *) 0xe000;
-unsigned char volatile *AUDIO_FREQUENCY = (unsigned char volatile *) 0xe002;
-unsigned short volatile *AUDIO_DURATION = (unsigned short volatile *) 0xe004;
-unsigned char volatile *AUDIO_START = (unsigned char volatile *) 0xe006;
-unsigned char volatile *AUDIO_NEW_SAMPLE = (unsigned char volatile *) 0xe008;
-unsigned char volatile *AUDIO_LEFT_SAMPLE = (unsigned char volatile *) 0xe00a;
-unsigned char volatile *AUDIO_RIGHT_SAMPLE = (unsigned char volatile *) 0xe00c;
-unsigned char volatile *AUDIO_L_VOLUME = (unsigned char volatile *) 0xe010;
-unsigned char volatile *AUDIO_R_VOLUME = (unsigned char volatile *) 0xe012;
-unsigned char volatile *AUDIO_NEW_BITSAMPLE = (unsigned char volatile *) 0xe014;
-unsigned char volatile *AUDIO_LEFT_BITSAMPLE = (unsigned char volatile *) 0xe016;
-unsigned char volatile *AUDIO_RIGHT_BITSAMPLE = (unsigned char volatile *) 0xe018;
+unsigned char volatile *AUDIO_FREQUENCY = (unsigned char volatile *) 0xe010;
+unsigned short volatile *AUDIO_DURATION = (unsigned short volatile *) 0xe020;
+unsigned char volatile *AUDIO_VOLUME = (unsigned char volatile *) 0xe030;
+unsigned char volatile *AUDIO_NEW_SAMPLE = (unsigned char volatile *) 0xe040;
+unsigned char volatile *AUDIO_SAMPLE = (unsigned char volatile *) 0xe048;
+unsigned char volatile *AUDIO_NEW_BITSAMPLE = (unsigned char volatile *) 0xe050;
+unsigned char volatile *AUDIO_BITSAMPLE = (unsigned char volatile *) 0xe058;
 
-unsigned int volatile *AUDIO_DMA_L_BASE = (unsigned int volatile *) 0xe020;
-unsigned int volatile *AUDIO_DMA_L_LENGTH = (unsigned int volatile *) 0xe024;
-unsigned char volatile *AUDIO_DMA_L_STATUS = (unsigned char volatile *) 0xe028;
+unsigned int volatile *AUDIO_DMA_L_BASE = (unsigned int volatile *) 0xe080;
+unsigned int volatile *AUDIO_DMA_L_LENGTH = (unsigned int volatile *) 0xe084;
+unsigned char volatile *AUDIO_DMA_L_STATUS = (unsigned char volatile *) 0xe088;
 
-unsigned int volatile *AUDIO_DMA_R_BASE = (unsigned int volatile *) 0xe030;
-unsigned int volatile *AUDIO_DMA_R_LENGTH = (unsigned int volatile *) 0xe034;
-unsigned char volatile *AUDIO_DMA_R_STATUS = (unsigned char volatile *) 0xe038;
+unsigned int volatile *AUDIO_DMA_R_BASE = (unsigned int volatile *) 0xe090;
+unsigned int volatile *AUDIO_DMA_R_LENGTH = (unsigned int volatile *) 0xe094;
+unsigned char volatile *AUDIO_DMA_R_STATUS = (unsigned char volatile *) 0xe098;
 
-unsigned char volatile *AUDIO_ACTIVE = (unsigned char volatile *) 0xe000;
+unsigned char volatile *AUDIO_ACTIVE = (unsigned char volatile *) 0xe800;
 
 unsigned short volatile *RNG = (unsigned short volatile *) 0xc000;
 unsigned short volatile *ALT_RNG = (unsigned short volatile *) 0xc002;

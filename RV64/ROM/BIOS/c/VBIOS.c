@@ -122,6 +122,7 @@ void draw_paws_logo( void ) {
 
 void reset_system( void ) {
     *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_R_STATUS = 1;
+    for( int i = 0; i < 6; i++ ) AUDIO_DURATION[ i ] = 0;
 
     *GPU_DITHERMODE = 0;
     *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
@@ -220,6 +221,7 @@ void main( void ) {
     // STOP SMT, RESET THE SYSTEM, ZERO THE VARIABLE SPACE
     memset( &_bss_start, 0, &_bss_end - &_bss_start );
     reset_system();
+    beep( 0, 5, 54, 500, 7 );
 
     // SET THE DISPLAY
     set_background( UK_BLUE, UK_GOLD, 1 );

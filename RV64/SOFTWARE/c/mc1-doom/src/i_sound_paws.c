@@ -133,7 +133,7 @@ void I_StopSound (int handle)
 
 void I_StopAllSounds ()
 {
-    pcmsample_stop( CHANNEL_BOTH );
+    pcmsample_stop( CHANNEL_PCM_BOTH );
 }
 
 int I_SoundIsPlaying (int handle)

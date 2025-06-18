@@ -75,14 +75,14 @@ void __attribute__((interrupt ("machine"))) playtune( void ) {
 
     if( ( tune_treble[ trebleposition ] != 0xff ) || ( tune_bass[ bassposition ] != 0xff ) ) {
         if( tune_treble[ trebleposition ] != 0xff ) {
-            if( !get_beep_active( 1 ) ) {
-                beep( 1, WAVE_SINE, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
+            if( !get_beep_active( ACTIVE_CHANNEL_LEFT_0 ) ) {
+                beep( CHANNEL_LEFT_0, WAVE_SINE, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3, 7 );
                 trebleposition++;
             }
         }
         if( tune_bass[ bassposition ] != 0xff ) {
-            if( !get_beep_active( 2 ) ) {
-                beep( 2, WAVE_SINE, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
+            if( !get_beep_active( ACTIVE_CHANNEL_RIGHT_0 ) ) {
+                beep( CHANNEL_RIGHT_0, WAVE_SINE, tune_bass[ bassposition ] * 2 + 3, 16 << 3, 7 );
                 bassposition++;
             }
         }

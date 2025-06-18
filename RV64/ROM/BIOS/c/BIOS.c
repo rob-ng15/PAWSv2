@@ -10,8 +10,7 @@ void draw_paws_logo( void ) {
 
 void reset_display( void ) {
     // WAIT FOR THE GPU TO FINISH
-    gpu_pixelblock_stop();
-    while( !*GPU_FINISHED );
+    gpu_pixelblock_stop(); while( !*GPU_FINISHED );
 
     set_background( BLACK, BLACK, BKG_SOLID );
     *GPU_DITHERMODE = 0; *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
@@ -190,7 +189,7 @@ unsigned int filebrowser( int startdirectorycluster, int rootdirectorycluster ) 
             // NO ENTRIES FOUND
             gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
             gpu_outputstringcentre( RED, 192, 1, "IN DIRECTORY", 1 );
-            beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
+            beep( 1, WAVE_SAW, 27, 1000, 7 );
             sleep( 1000 );
             return(0);
         }
@@ -314,7 +313,9 @@ int main( void ) {
 
     // RESET THE DISPLAY, AUDIO AND VOLUME
     reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
-    beep( 3, 0, 0, 0 ); volume( 7, 7 );
+    for( int i = 0; i < 6; i++ ) {
+        AUDIO_DURATION[ i ] = 0; AUDIO_VOLUME[ i ] = 7;
+    }
 
     // KEYBOARD INTO JOYSTICK MODE, RESET MOUSE
     *PS2_MODE = 0; *PS2_CAPSLOCK = 0; *PS2_NUMLOCK = 0; *MOUSE_RESET = 0;
@@ -376,7 +377,7 @@ int main( void ) {
 
     // ACKNOWLEDGE SELECTION TO DISABLE IRQ ALLOW FASTER LOADING
     IRQ_OFF( IRQ_VBLANK | IRQ_TIMER | IRQ_SOFTWARE, TRUE );
-    sample_upload( CHANNEL_BOTH, 4, &chime[0] ); beep( CHANNEL_BOTH, WAVE_SINE | WAVE_SAMPLE, 0, 63 );
+    sample_upload( 0, 4, &chime[0] ); beep( 0, WAVE_SINE | WAVE_SAMPLE, 0, 63, 7 );
 
     *LEDS = 255;
     gpu_outputstringcentre( WHITE, 72, 1, "P64 File", 0 );

@@ -426,17 +426,16 @@ void update_sprite( unsigned char sprite_number, unsigned short kill, short dx, 
 }
 
 // AUDIO CONTROLS
-void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
-    *AUDIO_WAVEFORM = waveform; *AUDIO_FREQUENCY = note; *AUDIO_DURATION = duration; *AUDIO_START = channel_number;
+void beep( unsigned char channel, unsigned char waveform, unsigned char note, unsigned short duration, unsigned char volume ) {
+    AUDIO_DURATION[ channel ] = 0; AUDIO_WAVEFORM[ channel ] = waveform; AUDIO_FREQUENCY[ channel ] = note; AUDIO_VOLUME[ channel ] = volume; AUDIO_DURATION[ channel ] = duration;
 }
-void volume( unsigned char left, unsigned char right ) {
-    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
+void beep_stop( unsigned char channel ) {
+    AUDIO_DURATION[ channel ] = 0;
 }
-void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_SAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, DMA_TO_IO ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, DMA_TO_IO ); }
+void sample_upload( unsigned char channel, unsigned short length, unsigned char *samples ) {
+    AUDIO_DURATION[ channel ] = 0;
+    AUDIO_NEW_SAMPLE[ channel ] = 1;
+    DMASTART( samples, (void *restrict)&AUDIO_SAMPLE[ channel ], length, DMA_TO_IO );
 }
 
 // PAWS LOGO BLITTER TILE

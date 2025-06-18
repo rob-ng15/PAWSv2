@@ -36,9 +36,9 @@ int main( void ) {
     int cursor_x, cursor_y;
     unsigned short thecharacter;
 
-    tune_upload( CHANNEL_LEFT, 64, &tune_treble[0] ); tune_upload( CHANNEL_RIGHT, 32, &tune_bass[0] );
-    beep( CHANNEL_LEFT, WAVE_TUNE | WAVE_SINE, 0, 8 << 3 );
-    beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SINE, 0, 16 << 3 );
+    tune_upload( CHANNEL_LEFT_0, 64, &tune_treble[0] ); tune_upload( CHANNEL_RIGHT_0, 32, &tune_bass[0] );
+    beep( CHANNEL_LEFT_0, WAVE_TUNE | WAVE_SINE, 0, 8 << 3, 7 );
+    beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16 << 3, 7 );
 
     while(1) {
         if( ps2_character_available() ) {

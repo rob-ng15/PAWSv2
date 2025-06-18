@@ -264,7 +264,7 @@ unsigned long get_systemrtc( void ){
 
 // AUDIO OUTPUT
 // START A note (1 == DEEP C, 25 == MIDDLE C )
-// OF duration MILLISECONDS TO THE LEFT ( channel_number == 1 ) RIGHT ( channel_number == 2 ) or BOTH ( channel_number == 3 ) AUDIO CHANNEL
+// OF duration MILLISECONDS TO THE LEFT ( channel == 1 ) RIGHT ( channel == 2 ) or BOTH ( channel == 3 ) AUDIO CHANNEL
 // IN waveform 0 == SQUARE, 1 == SAWTOOTH, 2 == TRIANGLE, 3 == SINE, 4 == WHITE NOISE, 7 == SAMPLE MODE
 // 1 = C 2 or Deep C
 // 25 = C 3
@@ -272,56 +272,55 @@ unsigned long get_systemrtc( void ){
 // 73 = C 5 or Tenor C
 // 97 = C 6 or Soprano C
 // 121 = C 7 or Double High C
-void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
-    *AUDIO_WAVEFORM = waveform;
-    *AUDIO_FREQUENCY = note;
-    *AUDIO_DURATION = duration;
-    *AUDIO_START = channel_number;
+void beep_stop( unsigned char channel ) {
+    AUDIO_WAVEFORM[ channel ] = AUDIO_FREQUENCY[ channel ] = AUDIO_DURATION[ channel ] = 0;
 }
-void set_volume( unsigned char left, unsigned char right ) {
-    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
+void beep( unsigned char channel, unsigned char waveform, unsigned char note, unsigned short duration, unsigned char volume ) {
+    beep_stop( channel );
+    AUDIO_WAVEFORM[ channel ] = waveform;
+    AUDIO_FREQUENCY[ channel ] = note;
+    AUDIO_VOLUME[ channel ] = volume;
+    AUDIO_DURATION[ channel ] = duration;
+
 }
-void await_beep( unsigned char channel_number ) {
-    while( ( *AUDIO_ACTIVE & channel_number ) != 0 ) {}
+void set_volume( unsigned char channel, unsigned char volume ) {
+    AUDIO_VOLUME[ channel ] = volume;
+}
+void await_beep( unsigned char channel ) {
+    while( ( *AUDIO_ACTIVE & channel ) != 0 ) {}
 }
 
-unsigned short get_beep_active( unsigned char channel_number ) {
-//    unsigned short active = 0;
-
-//    if( channel_number & 1 ) { active += ( *AUDIO_ACTIVE & 1 ); }
-//    if( channel_number & 2 ) { active += ( *AUDIO_ACTIVE & 2 ) >> 1; }
-    return( ( channel_number & *AUDIO_ACTIVE ) != 0 );
+unsigned short get_beep_active( unsigned char channel ) {
+    return( ( channel & *AUDIO_ACTIVE ) != 0 );
 }
 
-// USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
-void tune_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_SAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, DMA_TO_IO ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, DMA_TO_IO ); }
+// USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE IO multi-source to single-dest
+void tune_upload( unsigned char channel, unsigned short length, unsigned char *samples ) {
+    beep_stop( channel );
+    AUDIO_NEW_SAMPLE[ channel ] = 0;
+    DMASTART( samples, (void *restrict)&AUDIO_SAMPLE[ channel ], length, DMA_TO_IO );
 }
 
-// 128 x 1 BIT SAMPLES ( for XO-CHIP emulator )
-void bitsample_upload_128( unsigned char channel_number, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_BITSAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 16, DMA_TO_IO ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 16, DMA_TO_IO ); }
+// 256 x 6 BIT SAMPLES
+void bitsample_upload( unsigned char channel, unsigned char *samples ) {
+    beep_stop( channel );
+    AUDIO_NEW_BITSAMPLE[ channel ] = 0;
+    DMASTART( samples, (void *restrict)&AUDIO_BITSAMPLE[ channel ], 256, DMA_TO_IO );
 }
 
 // PCM SAMPLE HANDLING CODE
-void pcmsample_start( unsigned char channel_number, unsigned int count, const unsigned char *samples, unsigned char rate, unsigned char repeat ) {
-    if( channel_number & 1 ) {
+void pcmsample_start( unsigned char channel, unsigned int count, const unsigned char *samples, unsigned char rate, unsigned char repeat ) {
+    if( channel & 1 ) {
         *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_L_BASE = (uintptr_t)samples; *AUDIO_DMA_L_LENGTH = count; *AUDIO_DMA_L_STATUS = 2 + ( repeat << 2 ) + ( rate << 3 );
     }
-    if( channel_number & 2 ) {
+    if( channel & 2 ) {
         *AUDIO_DMA_R_STATUS = 1; *AUDIO_DMA_R_BASE = (uintptr_t)samples; *AUDIO_DMA_R_LENGTH = count; *AUDIO_DMA_R_STATUS = 2 + ( repeat << 2 ) + ( rate << 3 );
     }
 }
 
-void pcmsample_stop( unsigned char channel_number ) {
-    if( channel_number & 1 ) { *AUDIO_DMA_L_STATUS = 1; }
-    if( channel_number & 2 ) { *AUDIO_DMA_R_STATUS = 1; }
+void pcmsample_stop( unsigned char channel ) {
+    if( channel & 1 ) { *AUDIO_DMA_L_STATUS = 1; }
+    if( channel & 2 ) { *AUDIO_DMA_R_STATUS = 1; }
 }
 
 // SDCARD FUNCTIONS
@@ -1306,20 +1305,21 @@ unsigned long get_sprite_collision( unsigned char sprite_number ) {
     return( SPRITE_COLLISION_BASE[sprite_number] );
 }
 // RETURN THE COLLISION STATUS for sprite number in sprite layer to other layers
-// bit is 1 if sprite is in collision with { bitmap_0, bitmap_1, tilemap L, tilemap U, charactermap }
+// bit is 1 if sprite is in collision with layers
 unsigned short get_sprite_layer_collision( unsigned char sprite_number ) {
     return( SPRITE_LAYER_COLLISION_BASE[sprite_number] );
 }
 
 // UPDATE A SPITE moving by x and y deltas, with optional wrap/kill and optional changing of the tile
 void update_sprite( unsigned char sprite_number, unsigned char kill, short dx, short dy, unsigned char dt ) {
-    static short sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2 };
+    static unsigned int sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2, 32, 64, 128, 256, 32, 16, 8, 4,  };
+    int size = sizes[ ( SPRITE_ACTIONS[ sprite_number ] >> 3 ) ];
+
 
     short x = SPRITE_X[ sprite_number ] + dx;
     short y = SPRITE_Y[ sprite_number ] + dy;
     unsigned short tile = SPRITE_TILE[ sprite_number ] + dt;
     unsigned short active = SPRITE_ACTIVE[ sprite_number ];
-    short size = sizes[ SPRITE_ACTIONS[ sprite_number ] >> ( 3 & 7 ) ] << ( SPRITE_ACTIONS[ sprite_number ] >> 4 );
 
     if( ( ( x > 640 ) || ( x < -size ) ) ) { active = ( kill & 1 ) ? 0 : 1; x = ( x > 640 ) ? -size : 640; }
     if( ( ( y > 480 ) || ( y < -size ) ) ) { active = ( kill & 2 ) ? 0 : 1; y = ( y > 480 ) ? -size : 480; }
@@ -1370,8 +1370,8 @@ void set_sprite32( unsigned char sprite_number, unsigned char active, short x, s
         { 3, 2, 1, 0 }, // ROTATE 180
         { 1, 3, 0, 2 }, // ROTATE 270
     };
-    static unsigned char sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2 };
-    int size = sizes[ ( sprite_actions >> 3 ) & 0x7 ] << ( sprite_actions >> 4 );
+    static unsigned int sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2, 32, 64, 128, 256, 32, 16, 8, 4 };
+    int size = sizes[ ( sprite_actions >> 3 ) ];
 
     set_sprite( sprite_number + 2 * positions[ sprite_actions & 7 ][0], active, x - size, y - size, tile, sprite_actions );
     set_sprite( sprite_number + 2 * positions[ sprite_actions & 7 ][1], active, x - size, y, tile, sprite_actions );
@@ -1430,14 +1430,22 @@ void tpu_next( void ) {
 // OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
 void tpu_output_character( unsigned char c ) {
     TPUBUFFER[ __tpu_y * 80 + __tpu_x ] = ( __tpu_attributes << 24 ) + ( __tpu_background << 16 ) + ( __tpu_foreground << 8 ) + c;
+    if( __tpu_attributes & TPU_X2 )
+        TPUBUFFER[ __tpu_y * 80 + __tpu_x + 1 ] = ( __tpu_attributes << 24 ) + ( __tpu_background << 16 ) + ( __tpu_foreground << 8 ) + c;
+    if( __tpu_attributes & TPU_Y2 ) {
+        TPUBUFFER[ __tpu_y * 80 + 80 + __tpu_x ] = ( __tpu_attributes << 24 ) + ( __tpu_background << 16 ) + ( __tpu_foreground << 8 ) + c;
+        if( __tpu_attributes & TPU_X2 )
+            TPUBUFFER[ __tpu_y * 80 + 80 + __tpu_x + 1 ] = ( __tpu_attributes << 24 ) + ( __tpu_background << 16 ) + ( __tpu_foreground << 8 ) + c;
+    }
+
     tpu_next();
+    if( __tpu_attributes & TPU_X2 )
+        tpu_next();
 }
 void tpu_do_outputstring( unsigned char x, unsigned char y, char *s ) {
     tpu_move( x, y );
     while( *s ) {
         tpu_output_character( *s );
-        if( __tpu_attributes & TPU_X2 )
-            tpu_output_character( *s );
         s++;
     }
 }
@@ -1446,8 +1454,6 @@ void tpu_outputstring( unsigned char attribute, char *s ) {
     __tpu_attributes = attribute;
 
     tpu_do_outputstring( x, y, s );
-    if( attribute & TPU_Y2 )
-        tpu_do_outputstring( x, y + 1, s );
 }
 void tpu_print( unsigned char attribute, char *buffer ) {
     tpu_outputstring( attribute, buffer );
@@ -1467,11 +1473,6 @@ void tpu_print_centre( unsigned char y, unsigned char background, unsigned char 
         tpu_clearline( y + 1 );
     tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
-    // if( attribute & TPU_Y2 ) {
-    //     tpu_clearline( y + 1 );
-    //     tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y + 1, background, foreground, attribute );
-    //     tpu_outputstring( attribute, buffer );
-    // }
 }
 void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, const char *fmt,...  ) {
     static char buffer[1024];
@@ -1485,12 +1486,6 @@ void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char
         tpu_clearline( y + 1 );
     tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
-
-    // if( attribute & TPU_Y2 ) {
-    //     tpu_clearline( y + 1 );
-    //     tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y + 1, background, foreground, attribute );
-    //     tpu_outputstring( attribute, buffer );
-    // }
 }
 
 // NETPBM DECODER
@@ -2312,7 +2307,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
             // NO ENTRIES FOUND
             gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
             gpu_outputstringcentre( RED, 192, 1, "IN THIS DIRECTORY", 1 );
-            beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
+            beep( CHANNEL_LEFT_0, WAVE_SAW, 27, 1000, 7 );
             sleep1khz( 1000 );
             return(0);
         } else {

@@ -132,9 +132,9 @@ void draw_screen_hires( void ) {
 void display_state( void ) {
     // DISPLAY STATE
     set_sprite32( 32, SPRITE_SHOW, 608, 64, machine.MODE, SPRITE_DOUBLE );
-    set_sprite32( 36, machine.crashed ? ( systemclock() & 1 ) : SPRITE_SHOW, 608, 128, machine.crashed ? 0 : machine.running, SPRITE_DOUBLE );
-    set_sprite32( 40, SPRITE_SHOW, 608, 192, machine.limit, SPRITE_DOUBLE );
-    set_sprite32( 44, ( machine.crashed == 0 ) ? SPRITE_SHOW : ( systemclock() & 1 ), 608, 256, machine.crashed, SPRITE_DOUBLE );
+    set_sprite32( 40, machine.crashed ? ( systemclock() & 1 ) : SPRITE_SHOW, 608, 128, machine.crashed ? 0 : machine.running, SPRITE_DOUBLE );
+    set_sprite32( 48, SPRITE_SHOW, 608, 192, machine.limit, SPRITE_DOUBLE );
+    set_sprite32( 56, ( machine.crashed == 0 ) ? SPRITE_SHOW : ( systemclock() & 1 ), 608, 256, machine.crashed, SPRITE_DOUBLE );
     set_sprite32( 0, SPRITE_SHOW, 608, 320, machine.debug, SPRITE_DOUBLE );
 
     tpu_set( 1, 1, TRANSPARENT, BLACK, TPU_BOLD ); tpu_printf( 0, "PC[%03x] I[%03x]", machine.PC, machine.I );
@@ -278,7 +278,7 @@ void restart_machine( void ) {
     machine.HIRES = 0; machine.PLANES = 1;                                                                                      // SET DISPLAY FLAGS
     machine.STACKTOP = -1;                                                                                                      // EMPTY THE STACK
     machine.PC = 0x200; machine.crashed = NONE;                                                                                 // SET PC TO START OF PROGRAM
-    beep( 3, 0, 0, 0 ); machine.audio_timer = 0; machine.PITCH = 24; machine.timer = 0;
+    beep_stop( CHANNEL_LEFT_0 ); machine.audio_timer = 0; machine.PITCH = 24; machine.timer = 0;
 }
 
 void reset_machine( void ) {
@@ -288,7 +288,7 @@ void reset_machine( void ) {
     machine.HIRES = 0; machine.PLANES = 1;                                                                                      // SET DISPLAY FLAGS
     machine.STACKTOP = -1;                                                                                                      // EMPTY THE STACK
     machine.PC = 0x200; machine.crashed = NONE; machine.limit = 1;                                                                                // SET PC TO START OF PROGRAM
-    beep( 3, 0, 0, 0 ); machine.audio_timer = 0; machine.PITCH = 24; machine.timer = 0;
+    beep_stop( CHANNEL_LEFT_0 ); machine.audio_timer = 0; machine.PITCH = 24; machine.timer = 0;
 }
 
 extern void execute( void );
@@ -304,11 +304,11 @@ int main( void ) {
     screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_3, LAYER_SPRITES_2, LAYER_SPRITES_1, LAYER_SPRITES_0,
                   LAYER_TILEMAP_3, LAYER_TILEMAP_2, LAYER_TILEMAP_1, LAYER_TILEMAP_0, LAYER_BITMAP_0, FALSE );
     set_background( WHITE, WHITE, BKG_SOLID );
-    set_sprite_bitamps_from_spritesheet32x32( 32, sprites );                                                       // SET THE STATUS FLAG SPRITES
-    set_sprite_bitamps_from_spritesheet32x32( 0, &sprites[32768] );                                                       // SET THE STATUS FLAG SPRITES
+    set_sprite_bitamps_from_spritesheet32x32( 32, sprites );                                                                    // SET THE STATUS FLAG SPRITES
+    set_sprite_bitamps_from_spritesheet32x32( 0, &sprites[32768] );                                                             // SET THE STATUS FLAG SPRITES
 
-    set_tilemap_bitamps_from_spritesheet( 0, tml );
-    set_tilemap_bitamps_from_spritesheet( 2, tmu );
+    set_tilemap_bitamps_from_spritesheet( TILESET_01, tml );
+    set_tilemap_bitamps_from_spritesheet( TILESET_23, tmu );
     tm_cs( 0 ); tm_cs( 2 );
     tilemap_scroll( 0, TM_DOWN, 8 ); tilemap_scroll( 2, TM_DOWN, 8 );
 
@@ -357,7 +357,7 @@ int main( void ) {
             if( machine.audio_timer ) {
                 machine.audio_timer--;                                                                                      // UPDATE CHIP8 AUDIO TIMER
             } else {
-                beep( 3, 0, 0, 0 );                                                                                         // CANCEL TONE
+                beep_stop( CHANNEL_LEFT_0 );                                                                                         // CANCEL TONE
             }
             set_timer1khz( (short)1000/60, 0 );
         }

@@ -845,14 +845,14 @@ static void vid_clear(uint8_t tile_code, uint8_t color_code) {
 
     // CLEAR CENTRE TEXT
     for( int y = 0; y < 30; y++ ) {
-        tpu_set( 6, y, TRANSPARENT, WHITE, TPU_NORMAL );
-        tpu_outputstring( 0, "                            " );
+        tpu_set( 12, y * 2, TRANSPARENT, WHITE, TPU_NORMAL | TPU_X2 | TPU_Y2 );
+        tpu_outputstring( TPU_NORMAL | TPU_X2 | TPU_Y2, "                            " );
     }
     // CLEAR SCORE / HISCORE
     if(state.game.num_lives) {
-        tpu_set( 0, 1, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( 0, "      " );
+        tpu_set( 0, 2, TRANSPARENT, WHITE, TPU_NORMAL | TPU_X2 | TPU_Y2 ); tpu_outputstring( TPU_NORMAL | TPU_X2 | TPU_Y2, "      " );
     }
-    tpu_set( 0, 28, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( 0, "      " );
+    tpu_set( TPU_NORMAL | TPU_X2 | TPU_Y2, 56, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( TPU_NORMAL | TPU_X2 | TPU_Y2, "      " );
 }
 
 // check if a tile position is valid
@@ -880,14 +880,14 @@ static char conv_char(char c) {
 
 // put colored text into tpu buffer
 static void vid_color_text(int2_t tile_pos, uint8_t color_code, const char* text) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code, TPU_NORMAL );
-    tpu_outputstring( TPU_BOLD, (char *)text );
+    tpu_set( tile_pos.x * 2, tile_pos.y * 2, TRANSPARENT, color_code, TPU_NORMAL | TPU_X2 | TPU_Y2 );
+    tpu_outputstring( TPU_BOLD | TPU_X2 | TPU_Y2, (char *)text );
 }
 
 // put text into tpu buffer
 static void vid_text(int2_t tile_pos, const char* text) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, COLOR_DEFAULT, TPU_NORMAL );
-    tpu_outputstring( TPU_BOLD, (char *)text );
+    tpu_set( tile_pos.x * 2, tile_pos.y * 2, TRANSPARENT, COLOR_DEFAULT, TPU_NORMAL | TPU_X2 | TPU_Y2 );
+    tpu_outputstring( TPU_BOLD | TPU_X2 | TPU_Y2, (char *)text );
 }
 
 /* print colored score number into tile+color buffers from right to left(!),
@@ -896,12 +896,12 @@ static void vid_text(int2_t tile_pos, const char* text) {
     the Pacman arcade machine)
 */
 static void vid_color_score(int2_t tile_pos, uint8_t color_code, uint32_t score) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code, TPU_NORMAL );
+    tpu_set( tile_pos.x * 2, tile_pos.y * 2, TRANSPARENT, color_code, TPU_NORMAL | TPU_X2 | TPU_Y2 );
     tpu_output_character( '0' );
     tile_pos.x--;
     for (int digit = 0; digit < 8; digit++) {
         char chr = (score % 10) + '0';
-        tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code, TPU_NORMAL );
+        tpu_set( tile_pos.x * 2, tile_pos.y * 2, TRANSPARENT, color_code, TPU_NORMAL | TPU_X2 | TPU_Y2 );
         tpu_output_character( chr );
         tile_pos.x--;
         score /= 10;
@@ -2287,44 +2287,40 @@ static void gfx_draw(void) {
 static void paws_snd( int action ) {
     switch( action ) {
         case SND_START_INTRO:
-            tune_upload( CHANNEL_LEFT, 64, &tune_treble[0] ); tune_upload( CHANNEL_RIGHT, 32, &tune_bass[0] );
-            set_volume( 7, 7 );
-            beep( CHANNEL_LEFT, WAVE_TUNE | WAVE_SINE, 0, 8 << 3 );
-            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SINE, 0, 16 << 3 );
+            tune_upload( CHANNEL_LEFT_0, 64, &tune_treble[0] ); tune_upload( CHANNEL_RIGHT_0, 32, &tune_bass[0] );
+            beep( CHANNEL_LEFT_0, WAVE_TUNE | WAVE_SINE, 0, 8 << 3, 7 );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16 << 3, 7 );
             break;
         case SND_START_DOT1:
-            tune_upload( CHANNEL_RIGHT, 6, &eat_dot_1[0] );
-            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT_0, 6, &eat_dot_1[0] );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16, 7 );
             break;
         case SND_START_DOT2:
-            tune_upload( CHANNEL_RIGHT, 6, &eat_dot_2[0] );
-            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT_0, 6, &eat_dot_2[0] );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16, 7 );
             break;
         case SND_START_FRUIT:
-            tune_upload( CHANNEL_RIGHT, 24, &eat_fruit[0] );
-            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT_0, 24, &eat_fruit[0] );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16, 7 );
             break;
         case SND_START_GHOST:
-            tune_upload( CHANNEL_RIGHT, 33, &eat_ghost[0] );
-            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT_0, 33, &eat_ghost[0] );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16, 7 );
             break;
         case SND_START_PACMAN:
-            tune_upload( CHANNEL_RIGHT, 90, &eat_pacman[0] );
-            beep( CHANNEL_RIGHT, WAVE_TUNE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT_0, 90, &eat_pacman[0] );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16, 7 );
             break;
         case SND_START_NORMAL:
-            set_volume( 6, 7 );
-            tune_upload( CHANNEL_LEFT, 22, &alert_normal[0] );
-            beep( CHANNEL_LEFT, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16 );
+            tune_upload( CHANNEL_LEFT_0, 22, &alert_normal[0] );
+            beep( CHANNEL_LEFT_0, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16, 6 );
             break;
         case SND_START_FRIGHTENDED:
-            set_volume( 6, 7 );
-            tune_upload( CHANNEL_LEFT, 8, &alert_frightended[0] );
-            beep( CHANNEL_LEFT, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16 );
+            tune_upload( CHANNEL_LEFT_0, 8, &alert_frightended[0] );
+            beep( CHANNEL_LEFT_0, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16, 6 );
             break;
         case SND_STOP_ALL:
-            set_volume( 7, 7 );
-            beep( CHANNEL_BOTH, 0, 0, 0 );
+            AUDIO_OFF;
             break;
     }
 }
@@ -2335,13 +2331,13 @@ static void snd_shutdown(void) {
 
 int main( int argc, char **argv ) {
     init();
-    screen_mode( MODE_RGBM ); tpu_4080( TRUE );
+    screen_mode( MODE_RGBM );
 
     // DISPLAY WELCOME SCREEN
     gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, pacman3dbitmap );
-    tpu_set( 0, 27, TRANSPARENT, WHITE, TPU_BOLD ); tpu_outputstring( TRUE, "Ported from" );
-    tpu_set( 0, 28, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( FALSE, "https://github.com/floooh/pacman.c" );
-    tpu_set( 0, 29, TRANSPARENT, WHITE, TPU_BOLD ); tpu_outputstring( TRUE, "by Andre Weissflog" );
+    tpu_set( 0, 54, TRANSPARENT, WHITE, TPU_BOLD ); tpu_outputstring( TPU_BOLD | TPU_X2 | TPU_Y2, "Ported from" );
+    tpu_set( 0, 56, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( TPU_X2 | TPU_Y2, "https://github.com/floooh/pacman.c" );
+    tpu_set( 0, 58, TRANSPARENT, WHITE, TPU_BOLD ); tpu_outputstring( TPU_BOLD | TPU_X2 | TPU_Y2, "by Andre Weissflog" );
     sleep1khz( 4000 );
     tpu_cs(); gpu_cs();
 
