@@ -1280,7 +1280,7 @@ void spritedemo( void ) {
                 colour_sprite_bitmap[ y * 16 + x ] = colour;
             }
         }
-        set_sprite_bitmaps( i * 2, &colour_sprite_bitmap[ 0 ] );
+        set_sprite_bitmaps( i * 4, &colour_sprite_bitmap[ 0 ] );
     }
 
     // SET COLOUR SPRITE OBJECTS - GHOSTS FROM PACMAN - POWER UP
@@ -1304,7 +1304,7 @@ void spritedemo( void ) {
                 colour_sprite_bitmap[ y * 16 + x ] = colour;
             }
         }
-        set_sprite_bitmaps( i * 2 + 1, &colour_sprite_bitmap[ 0 ] );
+        set_sprite_bitmaps( i * 4 + 2, &colour_sprite_bitmap[ 0 ] );
     }
 
     // 0, 4, 8, 12 SPRITES GHOST NON-POWER, 2, 6, 10, 14 SPRITES GHOST POWER
