@@ -868,13 +868,15 @@ int main( int argc, char **argv ) {
         tpu_print_centre( 58, TRANSPARENT, YELLOW, TPU_BOLD | TPU_X2 | TPU_Y2, "Please Wait - Generating Maze" );
 
         // GENERATE THE MAZE
+        set_timer1khz( 1500, 0 );
         generate_maze( levelwidths[level], levelheights[level] );
+        while( get_timer1khz( 0 ) );
 
         // SET NUMBER OF POWER PILLS
         powerpills = ( level < 4 ) ? level + 1 : 4;
 
         // ENTER THE MAZE IN 3D - Play tune if level 1
-        set_background( DKBLUE, DKGREEN, BKG_5050_V ); if( !level ) IRQ_ON( IRQ_VBLANK, TRUE );
+        set_background( DKBLUE, DKGREEN, BKG_5050_H ); if( !level ) IRQ_ON( IRQ_VBLANK, TRUE );
         if( walk_maze( levelwidths[level], levelheights[level] ) ) {
             // PACMAN WILT GRAPHICS
             for( unsigned char i = 0; i < 5; i++ ) {
@@ -883,6 +885,7 @@ int main( int argc, char **argv ) {
                 gpu_circle( YELLOW, 160, 120, 80, drawsector[i], 1 );
                 framebuffer = 3 - framebuffer;
                 screen_order( LAYER_CHARACTERMAP, framebuffer, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
+                sleep1khz( 250 );
             }
             // DISPLAY TOMBSTONE BITMAP AND RESET TO BEGINNING
             bitmap_draw( 3 - framebuffer );

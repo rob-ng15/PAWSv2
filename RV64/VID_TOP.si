@@ -20,6 +20,9 @@ unit statusdisplay(
     input   uint1   NUMLOCK,
     input   uint1   RESETSTATUS
 ) {
+    uint6               COUNTER = uninitialised;                                                                                // TIMER, 1 SECOND = 60 frames
+    uint6               COUNTER_NEXT <:: COUNTER - ( |COUNTER & pix_end );                                                      // TIMER, 1 SECOND = 60 frames
+
     // 4 ICONS, SDCARD, JOYSTICK MODE, CAPS LOCK STATUS, NUM LOCK STATUS
     brom uint16 sdcard[16]   = { 16h0000, 16h3ff8, 16h3ffc, 16h3ffc, 16h3ffc, 16h3ff8, 16h1ffc, 16h1ffc, 16h3ffc, 16h3ffc, 16h3ffc, 16h3ffc, 16h3ffc, 16h3ffc, 16h3ffc, 16h0000 };
     brom uint16 joystick[16] = { 16h0000, 16h0180, 16h03c0, 16h07e0, 16h0180, 16h1188, 16h318c, 16h7ffe, 16h7ffe, 16h318c, 16h1188, 16h0180, 16h07e0, 16h03c0, 16h0180, 16h0000 };
@@ -30,12 +33,9 @@ unit statusdisplay(
     pixel := 8h40;
 
     always {
-        uint6   COUNTER = uninitialised;                                                                                       // TIMER, 1 SECOND = 60 frames
-
-       if( |COUNTER & display & pix_x[8,1] & ~|pix_y[4,4] ) {                                                                  // CHECK IF IN RANGE
+       if( |COUNTER & display & pix_x[8,1] & ~|pix_y[4,4] ) {                                                                   // CHECK IF IN RANGE
             switch( pix_x[4,2] ) {
-                // SELECT PIXEL COLOUR ACCORDING TO EACH STATUS LIGHT
-                case 2b00: {
+                case 2b00: {                                                                                                    // SELECT PIXEL COLOUR ACCORDING TO EACH STATUS LIGHT
                     pixel = sdcard.rdata[~pix_x[0,4],1] ? sdcarderror            ? 8h86 :                                       //        SILENT ERROR ( MAGENTA )
                                                           &sdcardlightcolour     ? 8hc1 :                                       // SDCARD   == 3 ERROR ( RED )
                                                           sdcardlightcolour[1,1] ? 8hf9 :                                       //          == 2 WRITE ( YELLOW )
@@ -49,71 +49,60 @@ unit statusdisplay(
             }
         }
         pixel_display = ( pixel != 8h40 );                                                                                      // CHECK NOT TRANSPARENT
-        if( RESETSTATUS ) { COUNTER = 60; } else { COUNTER = COUNTER - ( |COUNTER & pix_end ); }                                // REQUEST TO DISPLAY STATUS LIGHTS
+        if( RESETSTATUS ) { COUNTER = 60; } else { COUNTER = COUNTER_NEXT; }                                                    // REQUEST TO DISPLAY STATUS LIGHTS
     }
 }
 
 unit video_memmap(
-    input   uint1   CS,
-    input   uint1   CS_BM,
-    input   uint1   CS_CM,
-    input   uint1   CS_TM,
+    input   uint1               CS,
+    input   uint1               CS_BM,
+    input   uint1               CS_CM,
+    input   uint1               CS_TM,
 
-    // CLOCKS
-    input   uint1   palette_clock,                                                                                              // 50MHz (double) clock
-    input   uint1   video_clock,                                                                                                // 25MHz VGA (640x480@60Hz) clock
-    input   uint1   gpu_clock,                                                                                                  // 25MHz (video) clock
+    input   uint1               palette_clock,                                                                                  // 50MHz (double) clock
+    input   uint1               video_clock,                                                                                    // 25MHz VGA (640x480@60Hz) clock
+    input   uint1               gpu_clock,                                                                                      // 25MHz (video) clock
 
-    // Memory access via normal I/O registers
-    input   uint18  ADDR,
-    input   uint18  ADDR0,
-    input   uint2   SIZE,
-    input   uint1   WENABLE,
-    input   uint32  WDATA,
-    output  uint32  RDATA,
-
-    // Memory access direct to bitmap / character map / tilemaps
-    output  uint32  BITMAP_RDATA,
-    output  uint32  CMAP_RDATA,
-    output  uint$9*4$   TMAP_RDATA,
+    input   uint18              ADDR,                                                                                           // CPU/DMA <-> VIDEO        MEMORY ADDRESS
+    input   uint18              ADDR0,                                                                                          //                          16 BIT ALIGNMENT
+    input   uint2               SIZE,                                                                                           //                          ACCESS SIZE
+    input   uint1               WENABLE,                                                                                        //                          WRITE ENABLE
+    input   uint32              WDATA,                                                                                          //                          WRITE DATA
+    output  uint32              RDATA,                                                                                          //                          READ DATA ( REGISTERS )
+    output  uint32              BITMAP_RDATA,                                                                                   //                          READ DATA ( BITMAP MEMORY DIRECT )
+    output  uint32              CMAP_RDATA,                                                                                     //                          READ DATA ( CHARACTER MAP DIRECT )
+    output  uint$9*4$           TMAP_RDATA,                                                                                     //                          READ DATA ( TILE MAP DIRECT )
 
 $$if HDMI then
-    // HDMI OUTPUT
-    output! uint4   gpdi_dp,
+    output! uint4               gpdi_dp,                                                                                        // HDMI OUTPUT
 $$end
 $$if VGA then
-    // VGA OUTPUT
-    output! uint$color_depth$ video_r,
-    output! uint$color_depth$ video_g,
-    output! uint$color_depth$ video_b,
-    output  uint1 video_hs,
-    output  uint1 video_vs,
+    output! uint$color_depth$   video_r,                                                                                        // VGA OUTPUT
+    output! uint$color_depth$   video_g,
+    output! uint$color_depth$   video_b,
+    output  uint1               video_hs,
+    output                      uint1 video_vs,
 $$end
 
-    // RNG + CURSOR
-    input   uint10  staticGenerator,
-    input   uint1   blink,
+    input   uint10              staticGenerator,                                                                                // STATIC ( RANDOM NUMBER GENERATOR OUTPUT )
+    input   uint1               blink,                                                                                          // CURSOR PULSE
 
-    // STATUSLIGHTS
-    input   uint2   sdcardlightcolour,
-    input   uint1   sdcarderror,
-    input   uint1   JOYSTICK,
-    input   uint1   CAPSLOCK,
-    input   uint1   NUMLOCK,
-    input   uint1   RESETSTATUS,
+    input   uint2               sdcardlightcolour,                                                                              // STATUSLIGHTS
+    input   uint1               sdcarderror,
+    input   uint1               JOYSTICK,
+    input   uint1               CAPSLOCK,
+    input   uint1               NUMLOCK,
+    input   uint1               RESETSTATUS,
 
-    output  uint1   IRQ_VBLANK
+    output  uint1               IRQ_VBLANK                                                                                      // SIGNAL START OF VBLANK FOR INTERRUPT
 ) {
-    // Video Reset
-    uint1   video_reset = uninitialised; clean_reset video_rstcond<@video_clock,!reset> ( out :> video_reset );
+    uint1   video_reset = uninitialised; clean_reset video_rstcond<@video_clock,!reset> ( out :> video_reset );                 // Video Reset
 
-    // HDMI driver
-    // Status of the screen, if in range, if in vblank, actual pixel x and y
-    uint1   vblank = uninitialized;
-    uint1   pix_active = uninitialized;
-    uint10  pix_x  = uninitialized;
-    uint9   pix_y  = uninitialized;
-    uint1   pix_end <:: ( pix_x == 639 ) & ( pix_y == 479 );
+    uint1                       vblank = uninitialized;                                                                         // DISPLAY  IN VBLANK
+    uint1                       pix_active = uninitialized;                                                                     //          IN VBLANK OR HBLANK
+    uint10                      pix_x  = uninitialized;                                                                         //          X
+    uint9                       pix_y  = uninitialized;                                                                         //          Y
+    uint1                       pix_end <:: ( pix_x == 639 ) & ( pix_y == 479 );                                                //          LAST PIXEL
 $$if VGA then
   vga vga_driver<@video_clock,!video_reset>(
     vga_hs :> video_hs,
@@ -137,17 +126,14 @@ $$end
     // PREPARE COORDINATES FOR PRE-FETCHERS, ALL LAYERS BUT BACKGROUND
     // HDMI IMAGE STARTS IMMEDIATELY AFTER VBLANK, VGA HAS A "PORCH" FOR EACH LINE, PART OF HBLANK
     // (xscreen,yscreen) is the screen coordinate that is next to be rendered.
+    uint10                  xscreen <:: pix_active ? pix_x : 0;
+    uint10                  xscreenp1 <:: pix_active ? ( pix_x + 1 ) : 0;
 $$if HDMI then
-    uint10  xscreen <:: pix_active ? pix_x : 0;
-    uint10  xscreenp1 <:: pix_active ? ( pix_x + 1 ) : 0;
-    uint9   yscreen <:: vblank ? 0 : pix_active ? pix_y : ( pix_y + 1 );
+    uint9                   yscreen <:: vblank ? 0 : pix_active ? pix_y : ( pix_y + 1 );
 $$else
-    uint10  xscreen <:: pix_active ? pix_x : 0;
-    uint10  xscreenp1 <:: pix_active ? ( pix_x + 1 ) : 0;
-    uint9   yscreen <:: vblank ? 0 : pix_y;
+    uint9                   yscreen <:: vblank ? 0 : pix_y;
 $$end
 
-    // BACKGROUND
     background_memmap BACKGROUND(
         video_clock <: video_clock,
         video_reset <: video_reset,
@@ -177,7 +163,6 @@ $$end
         static8bit <: staticGenerator[0,8]
     );
 
-    // Character Map Window
     charactermap_memmap CHARACTER_MAP(
         video_clock <: video_clock,
         video_reset <: video_reset,
@@ -191,16 +176,15 @@ $$end
         RDATA_DIRECT :> CMAP_RDATA
     );
 
-    // Sprite Layers
-    uint7   sprite_pixel_widths[8] = { 16, 32, 64, 128, 16, 8, 4, 2 };                                                                 // POSSIBLE SIZES OF SPRITES
-    dualport_bram uint1 sprite_active <@clock,@video_clock> [64] = uninitialised;
-    dualport_bram uint3 sprite_tile <@clock,@video_clock> [64] = uninitialised;
-    dualport_bram uint7 sprite_actions <@clock,@video_clock> [64] = uninitialised;
-    dualport_bram uint8 sprite_size <@clock,@video_clock> [64] = uninitialised;
-    dualport_bram int11 sprite_x <@clock,@video_clock> [64] = uninitialised;
-    dualport_bram int10 sprite_y <@clock,@video_clock> [64] = uninitialised;
-    simple_dualport_bram uint64 sprite_collision_memory <@clock,@video_clock> [64] = uninitialised;
-    simple_dualport_bram uint7 sprite_layer_collision_memory <@clock,@video_clock> [64] = uninitialised;
+    uint7   sprite_pixel_widths[8] = { 16, 32, 64, 128, 16, 8, 4, 2 };                                                                  // POSSIBLE SIZES OF SPRITES
+    dualport_bram uint1 sprite_active <@clock,@video_clock> [64] = uninitialised;                                                       // MEMORY MAPPED SPRITE REGISTERS   ACTIVE
+    dualport_bram uint3 sprite_tile <@clock,@video_clock> [64] = uninitialised;                                                         //                                  TILE NUMBER
+    dualport_bram uint7 sprite_actions <@clock,@video_clock> [64] = uninitialised;                                                      //                                  ACTIONS
+    dualport_bram uint8 sprite_size <@clock,@video_clock> [64] = uninitialised;                                                         //                                  SIZE ( not writeable )
+    dualport_bram int11 sprite_x <@clock,@video_clock> [64] = uninitialised;                                                            //                                  X POSITION
+    dualport_bram int10 sprite_y <@clock,@video_clock> [64] = uninitialised;                                                            //                                  Y POSITION
+    simple_dualport_bram uint64 sprite_collision_memory <@clock,@video_clock> [64] = uninitialised;                                     //                                  SPRITE COLLISIONS
+    simple_dualport_bram uint7 sprite_layer_collision_memory <@clock,@video_clock> [64] = uninitialised;                                //                                  LAYER COLLISIONS
     sprite_memmap SPRITES(
         video_clock <: video_clock,
         video_reset <: video_reset,
@@ -227,7 +211,6 @@ $$end
         collision_layer_6 <: CHARACTER_MAP.pixel_display
     );
 
-    // Tilemaps - Lower and Upper
     tilemap_memmap TILES(
         video_clock <: video_clock,
         video_reset <: video_reset,
@@ -240,7 +223,6 @@ $$end
         RDATA_DIRECT :> TMAP_RDATA
     );
 
-    // STATUS LIGHTS
     statusdisplay STATUS <@video_clock,!video_reset> (
         pix_x      <: xscreenp1[1,9],
         pix_y      <: yscreen[1,8],
@@ -254,8 +236,7 @@ $$end
         RESETSTATUS <: RESETSTATUS
     );
 
-    // Combine the display layers for display, output the select RGBM/palette/grey pixel
-    simple_dualport_bram uint24 palette <@palette_clock,@clock> [256] = uninitialized;
+    dualport_bram uint24 palette <@palette_clock,@clock> [256] = uninitialized;
     multiplex_display display <@video_clock,!video_reset> (
         palette_clock <: palette_clock,
         palette <:> palette,
@@ -276,8 +257,8 @@ $$end
         status_display <: STATUS.pixel_display
     );
 
-    uint4   dimmer = 0;
-    uint32  framecount = 0;
+    uint4               dimmer = 0;
+    uint32              framecount = 0;
 
     BACKGROUND.WENABLE := 0;
     BITMAP.WENABLE := 0; BITMAP.WENABLE_DIRECT := CS_BM & WENABLE;
@@ -305,8 +286,7 @@ $$end
     framecount := framecount + pix_end; IRQ_VBLANK := pix_end;
 
     always {
-        // WRITE IO Memory
-        if( CS & WENABLE ) {
+        if( CS & WENABLE ) {                                                                                                    // WRITE VIDEO REGISTERS
             switch( ADDR[8,4] ) {
                 case 4h0: { BACKGROUND.WENABLE = 1; }
                 case 4h1: { TILES.WENABLE = 1; }
@@ -344,8 +324,7 @@ $$end
             }
         }
 
-        // READ VIDEO Memory
-        switch( ADDR[8,4] ) {
+        switch( ADDR[8,4] ) {                                                                                                   // READ VIDEO REGISTERS
             case 4h0: { RDATA = BACKGROUND.RDATA; }
             case 4h1: {
                 switch( ADDR[3,3] ) {
@@ -362,14 +341,13 @@ $$end
             case 4h5: { RDATA = ADDR[7,1] ? sprite_size.rdata0 : sprite_tile.rdata0; }
             case 4h6: { RDATA = ADDR[7,1] ? { {6{sprite_y.rdata0[9,1]}}, sprite_y.rdata0 } : { {5{sprite_x.rdata0[10,1]}}, sprite_x.rdata0 }; }
             case 4h7: { RDATA = sprite_layer_collision_memory.rdata0; }
-            default: { RDATA = sprite_collision_memory.rdata0[ ADDR[2,1] ? 32 : 0, 32 ]; }
-            case 4hf: { RDATA = ADDR[2,1] ? framecount : vblank; }
-        }
-
-        if( reset ) {
-            // SET DEFAULT DISPLAY ORDER, COLOUR MODE AND DIMMER
-            STATUS.display = 1; STATUS.background = 64; display.colour = 0; display.usepalette = 0;
-            display.display_multiplex = { 4h3, 4h1 };
+            default:  { RDATA = sprite_collision_memory.rdata0[ ADDR[2,1] ? 32 : 0, 32 ]; }
+            case 4hf: {
+                RDATA = ADDR[5,1] ? display.display_multiplex[ ADDR[2,1] ? 32 : 0, 32 ] :                                       // READ DISPLAY MULTIPLEX FLAGS
+                        ADDR[4,1] ? palette.rdata1 :                                                                            // READ SELECTED PALETTE REGISTER
+                        ADDR[2,1] ? framecount :                                                                                // READ FRAMECOUNT
+                                    vblank;                                                                                     // READ VBLANK FLAG
+            }
         }
     }
 }

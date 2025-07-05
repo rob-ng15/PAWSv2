@@ -19,11 +19,8 @@ extern void IRQ_OFF( int IRQ, int MIE );
 extern void IRQ_ACK( int IRQ );
 extern unsigned long IRQ_CAUSE();
 extern void IRQ_SET_TIMER( long pulses );
-
-// SMT START AND STOP
-extern void SMTSTOP( void );
-extern void SMTSTART( void * );
-extern unsigned char SMTSTATE( void );
+extern void IRQ_SET_ADD( unsigned int pulses );
+extern void IRQ_SET_TIMER_QUICK( unsigned int divider );
 
 // UART INPUT / OUTPUT
 extern void uart_outputcharacter(char);
@@ -85,6 +82,7 @@ extern void screen_dimmer( unsigned char dimmerlevel );
 extern void bitmap_draw( unsigned char );
 extern void bitmap_256( unsigned char mode );
 extern void set_palette( unsigned char entry, unsigned int rgb );
+extern unsigned int get_palette( unsigned char entry );
 extern void use_palette( unsigned char mode );
 extern void status_lights( unsigned char display, unsigned char background );
 
@@ -198,6 +196,7 @@ extern void tpu_print( unsigned char attribute, char *buffer );
 extern void tpu_print_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, char *buffer );
 extern void tpu_showcursor( unsigned char value );
 extern void tpu_4080( unsigned char mode );
+extern void tpu_setfont( unsigned short start_character, unsigned short number, unsigned char *bitmap );
 
 // IMAGE DECODERS
 extern void netppm_display( unsigned char *, unsigned char );

@@ -116,9 +116,8 @@ unit bitmap_memmap(
 
     simple_dualport_bram uint8 pb_colourmap <@gpu_clock,@clock> [ 256 ] = uninitialized;                                        // 256 colour remapper
 
-    int10   minmax <:: ( __signed( WDATA ) < __signed( -512 ) ) ? -512 :                                                        // ADJUST FOR 10bit underflow/overflow for pixel coordinates
-                       ( __signed( WDATA ) > __signed( 511 ) ) ? 511 : WDATA;
-    uint8   RGBM <:: { WDATA[22,2], WDATA[13,3], WDATA[6,2], WDATA[21,1] & WDATA[5,1] };                                        // CONVERT R8G8B8 COLOUR TO RGBM COLOUR
+    int10   minmax <:: ( __signed( WDATA ) < __signed( -32d512 ) ) ? -10d512 :                                                  // ADJUST FOR 10bit underflow/overflow for pixel coordinates
+                       ( __signed( WDATA ) > __signed(  32d511 ) ) ?  10d511 : WDATA;
 
     gpu_queue PW <@gpu_clock,!video_reset> (                                                                                    // GPU QUEUE CONTROLLER
         blit1tilemap <:> blit1tilemap,
@@ -133,7 +132,7 @@ unit bitmap_memmap(
     bitmap_000.wenable1 := 0; bitmap_001.wenable1 := 0; bitmap_010.wenable1 := 0; bitmap_011.wenable1 := 0;                     // BITMAP WRITE FLAGS
     bitmap_100.wenable1 := 0; bitmap_101.wenable1 := 0; bitmap_110.wenable1 := 0; bitmap_111.wenable1 := 0;
 
-    bitmap_000.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_000.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];                // SET ADDRESS IN BITMAPS
     bitmap_001.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
     bitmap_010.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
     bitmap_011.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
@@ -142,7 +141,7 @@ unit bitmap_memmap(
     bitmap_110.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
     bitmap_111.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
 
-    RDATA_DIRECT := ADDR[17,1] ? ADDR[1,1] ? { bitmap_101.rdata1, bitmap_100.rdata1, bitmap_111.rdata1, bitmap_110.rdata1 } :
+    RDATA_DIRECT := ADDR[17,1] ? ADDR[1,1] ? { bitmap_101.rdata1, bitmap_100.rdata1, bitmap_111.rdata1, bitmap_110.rdata1 } :   // SET THE 32 BIT READ
                                              { bitmap_111.rdata1, bitmap_110.rdata1, bitmap_101.rdata1, bitmap_100.rdata1 } :
                                  ADDR[1,1] ? { bitmap_001.rdata1, bitmap_000.rdata1, bitmap_011.rdata1, bitmap_010.rdata1 } :
                                              { bitmap_011.rdata1, bitmap_010.rdata1, bitmap_001.rdata1, bitmap_000.rdata1 };
@@ -155,6 +154,26 @@ unit bitmap_memmap(
 
     always {
         uint3   pbcolour = uninitialised;
+
+        if( ( PW.bitmap_x_write >= PW.bitmap_crop_left ) & ( PW.bitmap_x_write <= PW.bitmap_crop_right ) &                      // IS PIXEL IN THE CROPPING RECTANGLE?
+            ( PW.bitmap_y_write >= PW.bitmap_crop_top ) & ( PW.bitmap_y_write <= PW.bitmap_crop_bottom ) & PW.bitmap_write ) {  //  AND A PIXEL FROM THE GPU TO WRITE
+            if( framebuffer[0,1] ) {                                                                                            // HANDLE GPU WRITE TO FRAMEBUFFER 0
+                switch( GPU_ADDR[0,2] ) {
+                    case 2b00: { bitmap_000.wdata1 = pixeltowrite; bitmap_000.wenable1 = 1; }
+                    case 2b01: { bitmap_001.wdata1 = pixeltowrite; bitmap_001.wenable1 = 1; }
+                    case 2b10: { bitmap_010.wdata1 = pixeltowrite; bitmap_010.wenable1 = 1; }
+                    case 2b11: { bitmap_011.wdata1 = pixeltowrite; bitmap_011.wenable1 = 1; }
+                }
+            }
+            if( framebuffer[1,1] ) {                                                                                            // HANDLE GPU WRITE TO FRAMEBUFFER 1
+                switch( GPU_ADDR[0,2] ) {
+                    case 2b00: { bitmap_100.wdata1 = pixeltowrite; bitmap_100.wenable1 = 1; }
+                    case 2b01: { bitmap_101.wdata1 = pixeltowrite; bitmap_101.wenable1 = 1; }
+                    case 2b10: { bitmap_110.wdata1 = pixeltowrite; bitmap_110.wenable1 = 1; }
+                    case 2b11: { bitmap_111.wdata1 = pixeltowrite; bitmap_111.wenable1 = 1; }
+                }
+            }
+        }
 
         if( WENABLE ) {
             switch( ADDR[4,4] ) {
@@ -173,10 +192,11 @@ unit bitmap_memmap(
                 case 4h1: {
                     switch( ADDR[1,2] ) {
                         case 2h0: {                                                                                             // SET GPU COLOUR
-                            PW.gpu_colour = SIZE[1,1] ? RGBM : WDATA;                                                           //  32 BIT RGB -> 8 BIT RGBM, 8 BIT RGBM
+                            PW.gpu_colour = SIZE[1,1] ? { WDATA[22,2], WDATA[13,3], WDATA[6,2], WDATA[21,1] & WDATA[5,1] } :    //  32 BIT RGB -> 8 BIT RGBM
+                                                        WDATA;                                                                  //   8 BIT RGBM
                         }
-                        case 2h1: { PW.gpu_colour_alt = WDATA; }
-                        case 2h2: { PW.gpu_dithermode = WDATA; }
+                        case 2h1: { PW.gpu_colour_alt = WDATA; }                                                                // SET GPU ALT COLOUR
+                        case 2h2: { PW.gpu_dithermode = WDATA; }                                                                // SET GPU DITHER MODE
                         case 2h3: { PW.gpu_write = WDATA; pbcolour = 0; }                                                       // START GPU, PIXELBLOCK RESET COLOUR RGB CYCLE
                     }
                 }
@@ -205,7 +225,7 @@ unit bitmap_memmap(
                             switch( pbcolour ) {
                                 case 0: { PW.pb_colour8r = WDATA; pbcolour = 1; }
                                 case 1: { PW.pb_colour8g = WDATA; pbcolour = 2; }
-                                default: {  PW.pb_colour8b = WDATA; pbcolour = 0; PW.pb_newpixel = 2; }
+                                default: { PW.pb_colour8b = WDATA; pbcolour = 0; PW.pb_newpixel = 2; }
                             }
                         }
                         case 3h4: { PW.pb_newpixel = 3; }
@@ -305,33 +325,6 @@ unit bitmap_memmap(
                 }
             }
         }
-
-        // IS PIXEL IN THE CROPPING RECTANGLE?
-        if( ( PW.bitmap_x_write >= PW.bitmap_crop_left ) & ( PW.bitmap_x_write <= PW.bitmap_crop_right ) &
-              ( PW.bitmap_y_write >= PW.bitmap_crop_top ) & ( PW.bitmap_y_write <= PW.bitmap_crop_bottom ) &
-              PW.bitmap_write ) {
-            if( framebuffer[0,1] ) {                                                                                          // HANDLE GPU WRITE TO FRAMEBUFFER 0
-                switch( GPU_ADDR[0,2] ) {
-                    case 2b00: { bitmap_000.wdata1 = pixeltowrite; bitmap_000.wenable1 = 1; }
-                    case 2b01: { bitmap_001.wdata1 = pixeltowrite; bitmap_001.wenable1 = 1; }
-                    case 2b10: { bitmap_010.wdata1 = pixeltowrite; bitmap_010.wenable1 = 1; }
-                    case 2b11: { bitmap_011.wdata1 = pixeltowrite; bitmap_011.wenable1 = 1; }
-                }
-            }
-            if( framebuffer[1,1] ) {                                                                                          // HANDLE GPU WRITE TO FRAMEBUFFER 1
-                switch( GPU_ADDR[0,2] ) {
-                    case 2b00: { bitmap_100.wdata1 = pixeltowrite; bitmap_100.wenable1 = 1; }
-                    case 2b01: { bitmap_101.wdata1 = pixeltowrite; bitmap_101.wenable1 = 1; }
-                    case 2b10: { bitmap_110.wdata1 = pixeltowrite; bitmap_110.wenable1 = 1; }
-                    case 2b11: { bitmap_111.wdata1 = pixeltowrite; bitmap_111.wenable1 = 1; }
-                }
-            }
-        }
-
-        if( reset ) {
-            // RESET THE CROPPING RECTANGLE AND DISPLAY256 FLAG
-            PW.pb_mode = 0; PW.crop_left = 0; PW.crop_right = 319; PW.crop_top = 0; PW.crop_bottom = 239; framebuffer_display.display256 = 0;
-        }
     }
 }
 
@@ -363,7 +356,7 @@ unit dither(
             case 9: { condition = ( bitmap_x_write[0,3] <= bitmap_y_write[0,3] ); }                                             // LEFT TRIANGLE
             case 10: { condition = ( ~bitmap_x_write[0,3] <= bitmap_y_write[0,3] ); }                                           // RIGHT TRIANGLE
             case 11: { condition = ( bitmap_x_write[0,3] == bitmap_y_write[0,3] ) |                                             // X
-                                    ( ~bitmap_x_write[0,3] == bitmap_y_write[0,3] ); }
+                                   ( ~bitmap_x_write[0,3] == bitmap_y_write[0,3] ); }
             case 12: { condition = ( bitmap_x_write[1,2] == 2b10 ) | ( bitmap_y_write[1,2] == 2b10 ); }                         // +
             case 13: { condition = ( ~|bitmap_y_write[0,2] ) | ( bitmap_x_write[0,2] == { bitmap_y_write[2,1], 1b0 } ); }       // BRICK
             case 14: {}                                                                                                         // COLOUR STATIC (placeholder, done in main)

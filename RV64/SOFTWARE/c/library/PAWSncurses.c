@@ -334,6 +334,7 @@ int __pnc_attron( WINDOW *window, int attrs ) {
     if( attrs & A_TALL ) window -> attributes |= TPU_Y2;
     if( attrs & A_BLINK ) window -> attributes |= TPU_BLINK;
     if( attrs & A_UNDERLINE ) window -> attributes |= TPU_UNDER;
+    if( attrs & A_ALTCHARSET ) window -> attributes |= TPU_ALT;
     if( attrs & A_REVERSE ) window -> reverse = 1;
 
     return( true );
@@ -345,6 +346,7 @@ int __pnc_attroff( WINDOW *window, int attrs ) {
     if( attrs & A_TALL ) window -> attributes &= !TPU_Y2;
     if( attrs & A_BLINK ) window -> attributes &= !TPU_BLINK;
     if( attrs & A_UNDERLINE ) window -> attributes &= !TPU_UNDER;
+    if( attrs & A_ALTCHARSET ) window -> attributes &= !TPU_ALT;
     if( attrs & A_REVERSE )  window -> reverse = 0;
 
     return( true );

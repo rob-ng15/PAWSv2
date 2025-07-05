@@ -233,6 +233,7 @@ void main( void ) {
     gpu_outputstringcentre( UK_GOLD, 82, 0, "MAIN - GPU AND FPU MANDELBROT", 0 );
     gpu_outputstringcentre( UK_GOLD, 90, 0, "INTERRUPT - SPRITES AND BARST", 0 );
 
+    gpu_circle( GREY2, 305, 5, 5, 0xff, TRUE );
     gpu_triangle( WHITE, 300, 0, 310, 10, 305, 30 );
 
     // SET THE SPRITES

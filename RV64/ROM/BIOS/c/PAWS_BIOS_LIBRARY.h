@@ -229,6 +229,16 @@ void gpu_triangle( unsigned char colour, short x1, short y1, short x2, short y2,
     *GPU_WRITE = 6;
 }
 
+// DRAW A (optional filled) CIRCLE at centre (x1,y1) of radius
+void gpu_circle( unsigned char colour, short x1, short y1, short radius, unsigned char drawsectors, unsigned char filled ) {
+    if( radius ) {
+        *GPU_COLOUR = colour;
+        *GPU_X = x1; *GPU_Y = y1; *GPU_PARAM0 = radius; *GPU_PARAM1 = drawsectors;
+        wait_gpu();
+        *GPU_WRITE = 4 + filled;
+    }
+}
+
 // CLEAR THE BITMAP by drawing a transparent rectangle from (0,0) to (639,479) and resetting the bitamp scroll position
 void gpu_cs( void ) {
     wait_gpu();
@@ -460,16 +470,21 @@ unsigned short PAWSLOGO[] = {
 
 // BACKGROUND PATTERN GENERATOR
 #define BKG_SOLID 0
-#define BKG_5050_V 1
-#define BKG_5050_H 2
-#define BKG_CHKBRD_5 3
-#define BKG_RAINBOW 4
-#define BKG_SNOW 5
-#define BKG_STATIC 6
-#define BKG_CHKBRD_1 7
-#define BKG_CHKBRD_2 8
-#define BKG_CHKBRD_3 9
-#define BKG_CHKBRD_4 10
+#define BKG_CHKBRD_1 1
+#define BKG_CHKBRD_2 2
+#define BKG_CHKBRD_3 3
+#define BKG_CHKBRD_4 4
+#define BKG_CHKBRD_5 5
+#define BKG_5050_V 6
+#define BKG_5050_H 7
+#define BKG_RAINBOW 8
+#define BKG_SNOW 9
+#define BKG_STATIC 10
+#define BKG_HATCH 11
+#define BKG_LSLOPE 12
+#define BKG_RSLOPE 13
+#define BKG_VSTRIPE 14
+#define BKG_HSTRIPE 15
 
 // IRQ FLAGS
 #define IRQ_SOFTWARE    ( 1 << 3 )

@@ -104,6 +104,8 @@ unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd302;
 unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd303;
 unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd304;
 unsigned char volatile *TPU_LOREZ = (unsigned char volatile *) 0xd305;
+unsigned short volatile *TPU_CHARGEN_CHAR = (unsigned short volatile *) 0xd308;
+unsigned char volatile *TPU_CHARGEN_BITMAP = (unsigned char volatile *) 0xd30a;
 
 unsigned short volatile *SPRITE_ACTIVE = (unsigned short volatile *) 0xd400;
 unsigned short volatile *SPRITE_ACTIONS = (unsigned short volatile *) 0xd480;
@@ -157,6 +159,7 @@ unsigned int volatile *SMTSTACK = (unsigned int volatile *) 0xff08;
 // IRQ_TIMER COMPARATOR
 unsigned long volatile *IRQ_TIMER_COMPARATOR = (unsigned long volatile *) 0xfff0;
 unsigned int volatile *IRQ_TIMER_NEXT = (unsigned int volatile *) 0xfff8;
+unsigned int volatile *IRQ_TIMER_ADD = (unsigned int volatile *) 0xfffc;
 
 // HANDLE MINI DMA CONTROLLER
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;

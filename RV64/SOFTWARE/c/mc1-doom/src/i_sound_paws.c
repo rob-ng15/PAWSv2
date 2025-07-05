@@ -119,10 +119,20 @@ int I_GetSfxLumpNum (sfxinfo_t* sfx)
 unsigned char __lastchannel = 1;
 int I_StartSound (int id, int vol, int sep, int pitch, int priority)
 {
-    __lastchannel = 3 - __lastchannel;      // MOVE TO NEXT CHANNEL
-    pcmsample_stop( __lastchannel );         // STOP CHANNEL
+    if( !get_beep_active( ACTIVE_CHANNEL_LEFT_PCM ) ) {                                                                         // CHECK IF LEFT PCM IS ACTIVE
+        pcmsample_start( CHANNEL_PCM_LEFT, s_sfx_lengths[id] - 40, S_sfx[id].data + 0x18, KHz11025, FALSE );                    //  START A NEW PCM SAMPLE ( LEFT )
+        __lastchannel = 1;
+    } else {
+        if( !get_beep_active( ACTIVE_CHANNEL_RIGHT_PCM ) ) {                                                                    // CHECK IF RIGHT PCM IS ACTIVE
+            pcmsample_start( CHANNEL_PCM_RIGHT, s_sfx_lengths[id] - 40, S_sfx[id].data + 0x18, KHz11025, FALSE );               //  START A NEW PCM SAMPLE ( RIGHT )
+            __lastchannel = 2;
 
-    pcmsample_start( __lastchannel, s_sfx_lengths[id] - 40, S_sfx[id].data + 0x18, KHz11025, FALSE );       // START A NEW PCM SAMPLE
+        } else {
+            __lastchannel = 3 - __lastchannel;                                                                                  // MOVE TO FIRST CHANNEL STARTED
+            pcmsample_stop( __lastchannel );                                                                                    //  STOP CHANNEL
+            pcmsample_start( __lastchannel, s_sfx_lengths[id] - 40, S_sfx[id].data + 0x18, KHz11025, FALSE );                   //  START A NEW PCM SAMPLE
+        }
+    }
     return id;
 }
 

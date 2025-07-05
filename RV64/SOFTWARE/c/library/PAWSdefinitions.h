@@ -42,16 +42,16 @@
 
 // BACKGROUND PATTERN GENERATOR
 #define BKG_SOLID 0
-#define BKG_5050_V 1
-#define BKG_5050_H 2
-#define BKG_CHKBRD_5 3
-#define BKG_RAINBOW 4
-#define BKG_SNOW 5
-#define BKG_STATIC 6
-#define BKG_CHKBRD_1 7
-#define BKG_CHKBRD_2 8
-#define BKG_CHKBRD_3 9
-#define BKG_CHKBRD_4 10
+#define BKG_CHKBRD_1 1
+#define BKG_CHKBRD_2 2
+#define BKG_CHKBRD_3 3
+#define BKG_CHKBRD_4 4
+#define BKG_CHKBRD_5 5
+#define BKG_5050_V 6
+#define BKG_5050_H 7
+#define BKG_RAINBOW 8
+#define BKG_SNOW 9
+#define BKG_STATIC 10
 #define BKG_HATCH 11
 #define BKG_LSLOPE 12
 #define BKG_RSLOPE 13
@@ -281,6 +281,7 @@
 #define TPU_Y2 4
 #define TPU_BLINK 8
 #define TPU_UNDER 16
+#define TPU_ALT 32
 
 #define NORMAL 0
 #define BOLD 1

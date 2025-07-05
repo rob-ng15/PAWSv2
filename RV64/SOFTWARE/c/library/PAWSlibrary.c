@@ -115,6 +115,10 @@ void IRQ_SET_TIMER( long pulses ) {
     *IRQ_TIMER_COMPARATOR = CSRtime() + pulses;
 }
 
+void IRQ_SET_ADD( unsigned int pulses ) {
+    *IRQ_TIMER_ADD = pulses;
+}
+
 void IRQ_SET_TIMER_QUICK( unsigned int divider ) {
     *IRQ_TIMER_NEXT = divider;
 }
@@ -434,6 +438,9 @@ void bitmap_256( unsigned char mode ) {
 
 void set_palette( unsigned char entry, unsigned int rgb ) {
     *PALETTEENTRY = entry; *PALETTERGB = rgb;
+}
+unsigned int get_palette( unsigned char entry ) {
+    *PALETTEENTRY = entry; return( *PALETTERGB );
 }
 
 void use_palette( unsigned char mode ) {
@@ -1380,7 +1387,7 @@ void set_sprite32( unsigned char sprite_number, unsigned char active, short x, s
 }
 
 // CHARACTER MAP FUNCTIONS
-// The character map is an 80 x 60 character window with a 512 character 8 x 8 pixel character generator ROM ) normal/bold/underline/flash/2x/2y
+// The character map is an 80 x 60 character window with a 1024 character 8 x 8 pixel character generator ROM ) normal/bold/underline/flash/2x/2y/altset
 // NO SCROLLING, CURSOR WRAPS TO THE TOP OF THE SCREEN
 // CURSES LIBRARY PROVIDES MORE CAPABILITIES, SEE BELOW
 unsigned char __tpu_x = 0, __tpu_y = 0, __tpu_background = TRANSPARENT, __tpu_foreground = WHITE, __tpu_attributes = TPU_NORMAL;
@@ -1486,6 +1493,12 @@ void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char
         tpu_clearline( y + 1 );
     tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
+}
+
+// UPLOAD CHARACTER SET TO THE ALTERNATE FONT BLOCK
+void tpu_setfont( unsigned short start_character, unsigned short number, unsigned char *bitmap ) {
+    *TPU_CHARGEN_CHAR = start_character;
+    DMASTART( bitmap, (void *restrict)TPU_CHARGEN_BITMAP, number * 8, DMA_TO_IO );
 }
 
 // NETPBM DECODER

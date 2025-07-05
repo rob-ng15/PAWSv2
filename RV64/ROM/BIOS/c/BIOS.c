@@ -8,19 +8,27 @@ void draw_paws_logo( void ) {
     gpu_blit( UK_GOLD, 2, 2, 3, 2 );
 }
 
-void reset_display( void ) {
+void RESET_DEFAULT( void ) {
     // WAIT FOR THE GPU TO FINISH
     gpu_pixelblock_stop(); while( !*GPU_FINISHED );
 
     set_background( BLACK, BLACK, BKG_SOLID );
     *GPU_DITHERMODE = 0; *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
-    *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
-    *FRAMEBUFFER_DRAW = 1; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
+    *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED ); *FRAMEBUFFER_DRAW = 1; *BITMAP_DISPLAY256 = 0; *PALETTEACTIVE = 0;
     *SCREENORDER = ( 3 << 0 ) | ( 1 << 4 ) | ( 7 << 8 ) | ( 6 << 12 ) | ( 10 << 16 ) | ( 5 << 20 )  | ( 4 << 24 ) | ( 8 << 28 ) ;
-    *COLOUR = 0; *REZ = 0; *DIMMER = 0; *STATUS_DISPLAY = 1; *STATUS_BACKGROUND = 0x40;
+    *COLOUR = 0; *DIMMER = 0; *STATUS_DISPLAY = 1; *STATUS_BACKGROUND = 0x40; *PALETTEACTIVE = 0;
     *TPU_CURSOR = 0; *TPU_LOREZ = 0; tpu_cs();
     *TM_LOREZ = 0; for( int i = 0; i < 4; i++ ) { tm_cs( i ); TM_SCROLLAMOUNT[i] = 1; }
     for( int i = 0; i < 64; i++ ) SPRITE_ACTIVE[i] = 0;
+
+    for( int i = 0; i < 6; i++ ) {
+        AUDIO_DURATION[ i ] = 0; AUDIO_VOLUME[ i ] = 7;
+    }
+    *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_R_STATUS = 1;
+
+    // KEYBOARD INTO JOYSTICK MODE, RESET MOUSE
+    *PS2_MODE = 0; *PS2_CAPSLOCK = 0; *PS2_NUMLOCK = 0; *MOUSE_RESET = 0;
+
 }
 
 // DISPLAY FILENAME, ADD AN ARROW IN FRONT OF DIRECTORIES
@@ -300,7 +308,6 @@ int main( void ) {
     // STOP INTERRUPTS, PIXELBLOCK AND AUDIO DMA
     IRQ_OFF( IRQ_VBLANK | IRQ_TIMER | IRQ_SOFTWARE, TRUE );
     *PB_STOP = *PB_MODE = 0;
-    *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_R_STATUS = 1;
 
     // CLEAR BSS MEMORY AND DEFINE HEAPEND AND ALLOCATE FAT32 MEMORY
     memset( &_bss_start, 0, &_bss_end - &_bss_start );
@@ -311,16 +318,8 @@ int main( void ) {
     FAT32table = bios_malloc( 512 );
     directorynames = (DirectoryEntry *)bios_malloc( sizeof( DirectoryEntry ) * 256 );
 
-    // RESET THE DISPLAY, AUDIO AND VOLUME
-    reset_display(); set_background( UK_BLUE, UK_GOLD, 1 );
-    for( int i = 0; i < 6; i++ ) {
-        AUDIO_DURATION[ i ] = 0; AUDIO_VOLUME[ i ] = 7;
-    }
-
-    // KEYBOARD INTO JOYSTICK MODE, RESET MOUSE
-    *PS2_MODE = 0; *PS2_CAPSLOCK = 0; *PS2_NUMLOCK = 0; *MOUSE_RESET = 0;
-
-    // DRAW LOGO AND SDCARD
+    // RESET THE SYSTEM
+    RESET_DEFAULT(); set_background( UK_BLUE, UK_GOLD, BKG_5050_H );
     draw_paws_logo();
 
     // COLOUR BARS ON THE TILEMAP - SCROLL WITH INTERRUPT - SET VIA DMA 5 SINGLE SOURCE TO SINGLE DESTINATION
@@ -391,7 +390,7 @@ int main( void ) {
     sleep(500);
 
     // RESET THE DISPLAY, TURN OFF LEDS
-    reset_display();
+    RESET_DEFAULT();
     *LEDS = 0;
 
     // CALL SDRAM LOADED PROGRAM

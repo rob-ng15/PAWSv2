@@ -31,7 +31,6 @@ unsigned char volatile *SDCARD_OUT_DATA = (unsigned char volatile *) 0xf504;
 unsigned char volatile *VBLANK = (unsigned char volatile *) 0xdf00;
 unsigned int volatile *FRAMECOUNT = ( unsigned int volatile *)0xdf04;
 unsigned char volatile *COLOUR = (unsigned char volatile *) 0xdf01;
-unsigned char volatile *REZ = (unsigned char volatile *) 0xdf02;
 unsigned char volatile *DIMMER = (unsigned char volatile *) 0xdf03;
 unsigned char volatile *STATUS_DISPLAY = (unsigned char volatile *) 0xdf04;
 unsigned char volatile *STATUS_BACKGROUND = (unsigned char volatile *) 0xdf05;
@@ -112,6 +111,8 @@ unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd302;
 unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd303;
 unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd304;
 unsigned char volatile *TPU_LOREZ = (unsigned char volatile *) 0xd305;
+unsigned short volatile *TPU_CHARGEN_CHAR = (unsigned short volatile *) 0xd308;
+unsigned char volatile *TPU_CHARGEN_BITMAP = (unsigned char volatile *) 0xd30a;
 
 unsigned short volatile *SPRITE_ACTIVE = (unsigned short volatile *) 0xd400;
 unsigned short volatile *SPRITE_ACTIONS = (unsigned short volatile *) 0xd480;
@@ -161,6 +162,7 @@ unsigned int volatile *STACKTOP = (unsigned int volatile *) 0xf70c;
 // IRQ_TIMER COMPARATOR
 unsigned long volatile *IRQ_TIMER_COMPARATOR = (unsigned long volatile *) 0xfff0;
 unsigned int volatile *IRQ_TIMER_NEXT = (unsigned int volatile *) 0xfff8;
+unsigned int volatile *IRQ_TIMER_ADD = (unsigned int volatile *) 0xfffc;
 
 // HANDLE MINI DMA CONTROLLER
 int volatile *DMASOURCEADD = (int volatile *) 0xfd00;
@@ -306,24 +308,6 @@ typedef struct {
 #define WAVE_NOISE 4
 #define WAVE_SAMPLE 8
 #define SAMPLE_REPEAT 16
-
-// BACKGROUND PATTERN GENERATOR
-#define BKG_SOLID 0
-#define BKG_5050_V 1
-#define BKG_5050_H 2
-#define BKG_CHKBRD_5 3
-#define BKG_RAINBOW 4
-#define BKG_SNOW 5
-#define BKG_STATIC 6
-#define BKG_CHKBRD_1 7
-#define BKG_CHKBRD_2 8
-#define BKG_CHKBRD_3 9
-#define BKG_CHKBRD_4 10
-#define BKG_HATCH 11
-#define BKG_LSLOPE 12
-#define BKG_RSLOPE 13
-#define BKG_VSTRIPE 14
-#define BKG_HSTRIPE 15
 
 // NEW CU BACKGROUND CO-PROCESSOR
 // OPCODES

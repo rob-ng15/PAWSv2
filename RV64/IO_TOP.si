@@ -55,6 +55,7 @@ $$end
 
     input   uint$CWIDTH$ RDTIME,
     output  uint$CWIDTH$ IRQ_TIMER(0),
+    input   uint1   IRQ_VBLANK,
     output  uint1 TIMER_VALID(0)
 ) {
     uint1   MAGICVALUE = 0;                                                                                                     // WRITE 32h50415357 'PAWS' } TO ALLOW WRITING TO SDCARD SECTOR 0
@@ -88,7 +89,7 @@ $$end
     rtc RTC( clk <: clock, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );                                                // EMARD verilog version
 
 $$if not SIMULATION then
-    mousepointer MOUSE( buttons <: btns[3,4] );
+    mousepointer MOUSE( buttons <: btns[3,4], IRQ_VBLANK <: IRQ_VBLANK );
     MOUSE.RESET := 0;
 
     // I/O FLAGS
@@ -150,7 +151,8 @@ $$end
                         case 4hf: { switch( ADDR[2,2] ) {
                             case 0: { IRQ_TIMER[0,32] = WDATA; TIMER_VALID = 0; }                                               // SET LOWER 32 BITS OF IRQ TIMER COMPARATOR
                             case 1: { IRQ_TIMER[32,$CWIDTH-32$] = WDATA; TIMER_VALID = 1; }                                     //  UPPER BITS OF IRQ TIMER COMPARATOR
-                            default: { IRQ_TIMER = RDTIME + ( 50000000 >> WDATA[0,2] ); TIMER_VALID = 1; }                      // SET NEXT TIMER == 0 1/second, == 1 10/second, == 2 100/second
+                            case 2: { IRQ_TIMER = RDTIME + ( 50000000 >> WDATA[0,2] ); TIMER_VALID = 1; }                       // SET NEXT TIMER == 0 1/second, == 1 10/second, == 2 100/second
+                            case 3: { IRQ_TIMER = RDTIME + WDATA; TIMER_VALID = 1; }                                            // SET NEXT TIMER + ( 32 bit ) WDATA
                         } }
                         default: {}
                     }
@@ -229,9 +231,6 @@ $$end
         if( DMAACTIVE ) { DMAMODE = 0; }                                                                                        // CANCEL DMA REQUEST ONCE DMA STARTS
 
         if( reset) {
-            $$if not SIMULATION then
-            PS2.outputkeycodes = 0;
-            $$end
             RTC.addr = 7;
         }
 
@@ -338,46 +337,42 @@ unit ps2buffer(
 
 // HANDLE SIMULATED MOUSE POINTER
 unit mousetimer(
-    input   uint1   RESET,
-    output  uint1   PAUSE
+    input   uint1   MOVE,                                                                                                       // SIGNAL MOUSE HAS MOVED, PAUSE UNTIL NEXT FRAME
+    input   uint1   IRQ_VBLANK,                                                                                                 // VBLANK SIGNAL
+    output  uint1   PAUSE(0)                                                                                                    // PAUSE
 ) {
-    uint20  timer = uninitialised;
-    uint20  timer_NEXT <:: timer - 1;
-
-    PAUSE := |timer;
-
-    always {
-        if( RESET ) {
-            timer = 20h80000;
-        } else {
-            if( |timer ) { timer = timer_NEXT; }
-        }
-    }
+    PAUSE := MOVE ? 1 : IRQ_VBLANK ? 0 : PAUSE;                                                                                 // SET PAUSE ON MOVE, CLEAR ON VBLANK
 }
 unit mousepointer(
     input   uint1   RESET,
+    input   uint1   IRQ_VBLANK,
     input   uint4   buttons,
     output  uint10  x,
     output  uint10  y,
 ) {
-    mousetimer MOUSELATCH(); MOUSELATCH.RESET := 0;
+    uint10  x_m1 <:: x - |x;
+    uint10  x_p1 <:: x + ( x != 639 );
+    uint10  y_m1 <:: y - |y;
+    uint10  y_p1 <:: y + ( y != 479 );
+
+    mousetimer MOUSELATCH( IRQ_VBLANK <: IRQ_VBLANK ); MOUSELATCH.MOVE := 0;                                                    // STOP MOUSE MOVING MORE THAN ONCE PER VIDEO FRAME
 
     always {
         if( ~MOUSELATCH.PAUSE ) {                                                                                               // HANDLE SIMULATED MOUSE USING ULX3S BUTTONS
             switch( buttons[0,2] ) {
-                case 2b01: { y = y - |y; }                                                                                      // MOUSE Y UP IF NOT AT TOP
-                case 2b10: { y = y + ( y != 479 ); }                                                                            // MOUSE Y DOWN IF NOT AT BOTTOM
+                case 2b01: { y = y_m1; }                                                                                        // MOUSE Y UP IF NOT AT TOP
+                case 2b10: { y = y_p1; }                                                                                        // MOUSE Y DOWN IF NOT AT BOTTOM
                 default: {}
             }
             switch( buttons[2,2] ) {
-                case 2b01: { x = x - |x; }                                                                                      // MOUSE X LEFT IF NOT AT LEFT
-                case 2b10: { x = x + ( x != 639 ); }                                                                            // MOUSE X RIGHT IF NOT AT RIGHT
+                case 2b01: { x = x_m1; }                                                                                        // MOUSE X LEFT IF NOT AT LEFT
+                case 2b10: { x = x_p1; }                                                                                        // MOUSE X RIGHT IF NOT AT RIGHT
                 default: {}
             }
-            MOUSELATCH.RESET = |buttons;                                                                                        // LATCH SO AS NOT TO MOVE MOUSE AT 50MHz
+            MOUSELATCH.MOVE = |buttons;                                                                                         // LATCH SO AS NOT TO MOVE MOUSE AT 50MHz
         }
 
-        if( RESET ) { x = 320; y = 240; }                                                                                        // RETURN TO CENTRE IF RESET SIGNAL
+        if( RESET ) { x = 320; y = 240; }                                                                                       // RETURN TO CENTRE IF RESET SIGNAL
     }
 }
 // SDCARD CONTROLLER - Code for the SDCARD from @sylefeb with write support added by self

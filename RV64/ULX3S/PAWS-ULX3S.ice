@@ -91,17 +91,18 @@ $include('../definitions.si')
 $include('../circuitry.si')
 
 // Multiplexed Display Includes
-$include('../background.si')
-$include('../bitmap.si')
-$include('../GPU.si')
-$include('../character_map.si')
-$include('../sprite_layer.si')
-$include('../tile_map.si')
-$include('../multiplex_display.si')
-$include('../audio.si')
-$include('../video_memmap.si')
-$include('../io_memmap.si')
-$include('../timers_random.si')
+$include('../VID_BACKGROUND.si')
+$include('../VID_BITMAP.si')
+$include('../VID_SPRITES.si')
+$include('../VID_TEXT.si')
+$include('../VID_TILES.si')
+$include('../VID_MULTIPLEX.si')
+$include('../VID_TOP.si')
+
+// IO DEVICES
+$include('../IO_AUDIO.si')
+$include('../IO_TIMERS.si')
+$include('../IO_TOP.si')
 
 // CPU SPECIFICATION - RV64GCB
 $$CPUISA = 0x4001102F
@@ -113,6 +114,7 @@ $include('../CPU_TOP.si')
 
 // MAIN PAWS.si
 $include('../DMA.si')
+$include('../GPU.si')
 $include('../MEMORY.si')
 $include('../PAWS.si')
 
