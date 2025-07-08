@@ -1,0 +1,410 @@
+unit io_memmap(
+    input   uint1   CS,
+    input   uint12  ADDR,
+    input   uint1   WENABLE,
+    input   uint1   RENABLE,
+    input   uint32  WDATA,
+    output  uint32  RDATA,
+
+    // LEDS (8 of) + SDCARD JOYSTICK CAPSLOCK NUMLOCK STATUS LIGHTS
+    output  uint8   leds,
+    output  uint2   sdcardlightcolour,
+    output  uint1   CAPSLOCK(0),
+    output  uint1   NUMLOCK(0),
+    output  uint1   JOYSTICK(1),
+    output  uint1   RESETSTATUS,
+
+$$if not SIMULATION then
+    input   uint$NUM_BTNS$ btns,
+    output  uint10  mouse_x(320),
+    output  uint9   mouse_y(240),
+
+    // GPIO
+    input   uint28  gn,
+    output  uint28  gp,
+
+    // UART
+    output  uint1   uart_tx,
+    input   uint1   uart_rx,
+
+    // USB for PS/2
+    input   uint1   us2_bd_dp,
+    input   uint1   us2_bd_dn,
+
+    // SDCARD
+    output  uint1   sd_clk,
+    output  uint1   sd_mosi,
+    output  uint1   sd_csn,
+    input   uint1   sd_miso,
+    output  uint1   sd_error,
+$$end
+    // I2C
+    inout   uint1   gpdi_sda,
+    inout   uint1   gpdi_scl,
+
+    // MINI DMA CONTROLLER
+    output  uint$addr_width$  DMASOURCE,
+    output  uint$addr_width$  DMASOURCEADD,
+    output  uint$addr_width$  DMADEST,
+    output  uint$addr_width$  DMADESTADD,
+    output  uint$addr_width$  DMACOUNT(0),
+    output  uint8   DMACYCLES(0),
+    output  uint9   DMAMODE(0),
+    output  uint32  DMASET,
+    input   uint1   DMAACTIVE,
+
+    input   uint$CWIDTH$ RDTIME,
+    output  uint$CWIDTH$ IRQ_TIMER(0),
+    input   uint1   IRQ_VBLANK,
+    output  uint1 TIMER_VALID(0)
+) {
+    uint1   MAGICVALUE = 0;                                                                                                     // WRITE 32h50415357 'PAWS' } TO ALLOW WRITING TO SDCARD SECTOR 0
+    uint64  LATCHrtc = uninitialised;                                                                                           // LATCH RTC ON READ SO VALUE IS RETURNED FOR 64 BIT READ
+
+$$if not SIMULATION then
+    // UART CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
+    uart_IN UART_IN( uart_rx <: uart_rx );
+    uart_OUT UART_OUT( uart_tx :> uart_tx, outchar <: WDATA[0,8] );
+
+    // PS2 CONTROLLER, CONTAINS BUFFERS FOR INPUT/OUTPUT
+    ps2buffer PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn );
+
+    // SDCARD AND BUFFER
+    simple_dualport_bram uint8 buffer_in[512] = uninitialized;                                                                  // READ FROM SDCARD
+    simple_dualport_bram uint8 buffer_out[512] = uninitialized;                                                                 // WRITE TO SDCARD
+    uint9   buffer_in_NEXT <:: buffer_in.addr0 + 1;
+    uint9   buffer_out_NEXT <:: buffer_out.addr1 + 1;
+    sdcardcontroller SDCARD(
+        sd_clk :> sd_clk,
+        sd_mosi :> sd_mosi,
+        sd_csn :> sd_csn,
+        sd_miso <: sd_miso,
+        error :> sd_error,
+        buffer_in <:> buffer_in,
+        buffer_out <:> buffer_out
+    );
+$$end
+
+    // I2C FOR RTC
+    rtc RTC( clk <: clock, reset <: reset, sda <:> gpdi_sda, scl <:> gpdi_scl );                                                // EMARD verilog version
+
+$$if not SIMULATION then
+    mousepointer MOUSE( buttons <: btns[3,4], IRQ_VBLANK <: IRQ_VBLANK );
+    MOUSE.RESET := 0;
+
+    // I/O FLAGS
+    UART_IN.inread := 0; UART_OUT.outwrite := 0; PS2.inread := 0;
+    SDCARD.readsector := 0; SDCARD.writesector := 0; buffer_out.wenable1 := 0; buffer_out.wdata1 := WDATA[0,8];
+$$end
+//    RTC.wr := 0;
+    RESETSTATUS := 0;
+
+    always {
+        if( CS & WENABLE ) {
+            switch( ADDR[8,4] ) {
+                $$if not SIMULATION then
+                case 4h0: { UART_OUT.outwrite = 1; }
+                case 4h1: {
+                    switch( ADDR[1,2] ) {
+                        default: { PS2.outputkeycodes = WDATA; JOYSTICK = ~WDATA; }
+                        case 2h1: { CAPSLOCK = WDATA; }
+                        case 2h2: { NUMLOCK = WDATA; }
+                    }
+                    RESETSTATUS = 1;
+                }
+                case 4h2: { MOUSE.RESET = 1; }
+                case 4h4: {
+                    switch( ADDR[1,2] ) {
+                        case 2h0: { SDCARD.readsector = 1; sdcardlightcolour = 1; }
+                        case 2h1: { SDCARD.writesector = |SDCARD.sectoraddress | MAGICVALUE; sdcardlightcolour = 2; }
+                        default: { SDCARD.sectoraddress = WDATA; }
+                    }
+                    RESETSTATUS = 1;
+                }
+                case 4h5: {
+                    switch( ADDR[2,1] ) {
+                        case 0: { buffer_in.addr0 = 0; buffer_out.addr1 = -1; }
+                        case 1: { buffer_out.addr1 = buffer_out_NEXT; buffer_out.wenable1 = 1; }
+                    }
+                }
+                $$end
+                case 4h3: { leds = WDATA; }
+                case 4h7: { MAGICVALUE = ( WDATA == 32h50415357 ); }                                                            // SPECIAL VALUE TO ALLOW WRITING TO SDCARD SECTOR 0 'PAWS'
+                case 4hd: {
+                    switch( ADDR[2,2] ) {
+                        case 2b00: { DMASOURCEADD = WDATA; }
+                        case 2b01: { DMADESTADD = WDATA; }
+                        case 2b10: { DMACYCLES = WDATA; }
+                        case 2b11: { DMASET = WDATA; }
+                    }
+                }
+                case 4he: {
+                    switch( ADDR[2,2] ) {
+                        case 2b00: { DMASOURCE = WDATA; }
+                        case 2b01: { DMADEST = WDATA; }
+                        case 2b10: { DMACOUNT = WDATA; }
+                        case 2b11: { if( ADDR[1,1] ) { DMASET = {4{WDATA[0,8]}}; } else { DMAMODE = WDATA; } }
+                    }
+                }
+                case 4hf: {
+                    switch( ADDR[4,4] ) {
+                        case 4hf: { switch( ADDR[2,2] ) {
+                            case 0: { IRQ_TIMER[0,32] = WDATA; TIMER_VALID = 0; }                                               // SET LOWER 32 BITS OF IRQ TIMER COMPARATOR
+                            case 1: { IRQ_TIMER[32,$CWIDTH-32$] = WDATA; TIMER_VALID = 1; }                                     //  UPPER BITS OF IRQ TIMER COMPARATOR
+                            case 2: { IRQ_TIMER = RDTIME + ( 50000000 >> WDATA[0,2] ); TIMER_VALID = 1; }                       // SET NEXT TIMER == 0 1/second, == 1 10/second, == 2 100/second
+                            case 3: { IRQ_TIMER = RDTIME + WDATA; TIMER_VALID = 1; }                                            // SET NEXT TIMER + ( 32 bit ) WDATA
+                        } }
+                        default: {}
+                    }
+                }
+                default: {}
+            }
+        }
+
+        if( CS &  RENABLE ) {
+            switch( ADDR[8,4] ) {
+                $$if not SIMULATION then
+                case 4h0: {
+                    if( ADDR[1,1] ) {
+                        RDATA = { 14b0, UART_OUT.outfull, UART_IN.inavailable };
+                    } else {
+                        { RDATA = { 8b0, UART_IN.inchar }; } { UART_IN.inread = 1; }
+                    }
+                }
+                case 4h1: {
+                    if( ADDR[1,1] ) {
+                        if( PS2.inavailable ) {
+                            RDATA = PS2.inkey; PS2.inread = 1;
+                        } else {
+                            RDATA = 0;
+                        }
+                    } else {
+                        RDATA = PS2.inavailable;
+                    }
+                }
+                case 4h2: {
+                    switch( ADDR[1,2] ) {
+                        case 2b00: { RDATA = PS2.outputkeycodes ? btns : btns | PS2.joystick; }
+                        case 2b01: { RDATA = MOUSE.x; }
+                        case 2b10: { RDATA = MOUSE.y; }
+                        case 2b11: { RDATA = btns[1,2]; }
+                    }
+                }
+                case 4h4: {
+                    switch( ADDR[0,1] ) {
+                        case 0: { RDATA = SDCARD.ready; if( SDCARD.ready ) { sdcardlightcolour = 0; } }
+                        case 1: { RDATA = SDCARD.error; if( SDCARD.error ) { sdcardlightcolour = 3; } }
+                    }
+                    RESETSTATUS = 1;
+                }
+                case 4h5: { RDATA = buffer_in.rdata0; buffer_in.addr0 = buffer_in_NEXT; }
+                $$end
+                case 4h3: { RDATA = leds; }
+                case 4h6: {
+                    switch( ADDR[2,1] ) {
+                        case 0: { LATCHrtc = RTC.datetime_o; RDATA = RTC.datetime_o[0,32]; }
+                        case 1: { RDATA = LATCHrtc[32,32]; }
+                    }
+                }
+                case 4h7: {
+                    switch( ADDR[2,2] ) {
+                        case 2b00: { RDATA = 32b00000010000; }                                                                  // PAWS SOC
+                        case 2b01: { RDATA = 32h4000000; }                                                                      // RAMBASE
+                        case 2b10: { RDATA = 32h5f00000; }                                                                      // RAMTOP
+                        case 2b11: { RDATA = 32h6000000; }                                                                      // MAIN STACK TOP
+                    }
+                }
+                case 4he: { RDATA = DMASET; }
+                case 4hf: {
+                    switch( ADDR[4,4] ) {
+                        case 4hf: { switch( ADDR[2,1] ) {
+                            case 0: { RDATA = IRQ_TIMER[0,32]; }
+                            case 1: { RDATA = IRQ_TIMER[32,$CWIDTH-32$]; }
+                        } }
+                        default: {}
+                    }
+                }
+                default: { RDATA = 0; }
+            }
+        }
+
+        if( DMAACTIVE ) { DMAMODE = 0; }                                                                                        // CANCEL DMA REQUEST ONCE DMA STARTS
+
+        if( reset) {
+            RTC.addr = 7;
+        }
+
+    }
+}
+
+// UART BUFFER CONTROLLER
+// 128 entry FIFO queue
+unit fifo8(
+    output  uint1   available,
+    output  uint1   full,
+    input   uint1   read,
+    input   uint1   write,
+    output  uint8   first,
+    input   uint8   last
+) {
+    simple_dualport_bram uint8 queue[128] = uninitialized;
+    uint1   update = uninitialized;
+    uint7   top = 0;
+    uint7   next = 0;
+
+    queue.wenable1 := 1; queue.addr0 := next; first := queue.rdata0;
+    available := ( top != next ); full := ( top + 1 == next );
+    next := next + read;
+
+    always {
+        if( write ) {
+            queue.addr1 = top; queue.wdata1 = last; update = 1;
+        } else {
+            if( update ) { top = top + 1; update = 0; }
+        }
+    }
+}
+unit uart_IN(
+    // UART
+    input   uint1   uart_rx,
+    output  uint1   inavailable,
+    output  uint8   inchar,
+    input   uint1   inread
+) {
+    uart_in ui; uart_receiver urecv( io <:> ui, uart_rx <: uart_rx );
+    fifo8 IN(
+        available :> inavailable,
+        first :> inchar,
+        read <: inread,
+        last <: ui.data_out,
+        write <: ui.data_out_ready
+    );
+}
+unit uart_OUT(
+    // UART
+    output  uint1   uart_tx,
+    output  uint1   outfull,
+    input   uint8   outchar,
+    input   uint1   outwrite
+) {
+    uart_out uo; uart_sender usend( io <:> uo, uart_tx :> uart_tx );
+    fifo8 OUT(
+        full :> outfull,
+        last <: outchar,
+        write <: outwrite,
+        first :> uo.data_in
+    );
+    OUT.read := OUT.available & !uo.busy;
+    uo.data_in_ready := OUT.available & ( !uo.busy );
+}
+
+// PS2 BUFFER CONTROLLER
+// 10 bit 128 entry FIFO buffer
+unit fifo10(
+    output  uint1   available,
+    input   uint1   read,
+    input   uint1   write,
+    output  uint10  first,
+    input   uint10  last
+) {
+    uint7   top = 0;
+    uint7   next = 0;
+    simple_dualport_bram uint10 queue[128] = uninitialized;
+
+    queue.wenable1 := 1; queue.addr0 := next; first := queue.rdata0;
+    available := ( top != next ); next := next + read;
+
+    always {
+        if( write ) { queue.addr1 = top; queue.wdata1 = last; top = top + 1; }
+    }
+}
+unit ps2buffer(
+    // USB for PS/2
+    input   uint1   us2_bd_dp,
+    input   uint1   us2_bd_dn,
+    output  uint10  inkey,
+    output  uint1   inavailable,
+    input   uint1   inread,
+    input   uint1   outputkeycodes,
+    output  uint16  joystick
+) {
+    // PS/2 input FIFO (128 character) - 10 bit to deal with special characters
+    fifo10 FIFO( available :> inavailable, read <: inread, write <: PS2.keycodevalid, first :> inkey, last <: PS2.keycode );
+
+    // PS/2 KEYCODE AND JOYSTICK EMULATION MAPPER
+    ps2ascii PS2( us2_bd_dp <: us2_bd_dp, us2_bd_dn <: us2_bd_dn, outputkeycodes <: outputkeycodes, joystick :> joystick );
+}
+
+// HANDLE SIMULATED MOUSE POINTER
+unit mousetimer(
+    input   uint1   MOVE,                                                                                                       // SIGNAL MOUSE HAS MOVED, PAUSE UNTIL NEXT FRAME
+    input   uint1   IRQ_VBLANK,                                                                                                 // VBLANK SIGNAL
+    output  uint1   PAUSE(0)                                                                                                    // PAUSE
+) {
+    PAUSE := MOVE ? 1 : IRQ_VBLANK ? 0 : PAUSE;                                                                                 // SET PAUSE ON MOVE, CLEAR ON VBLANK
+}
+unit mousepointer(
+    input   uint1   RESET,
+    input   uint1   IRQ_VBLANK,
+    input   uint4   buttons,
+    output  uint10  x,
+    output  uint10  y,
+) {
+    uint10  x_m1 <:: x - |x;
+    uint10  x_p1 <:: x + ( x != 639 );
+    uint10  y_m1 <:: y - |y;
+    uint10  y_p1 <:: y + ( y != 479 );
+
+    mousetimer MOUSELATCH( IRQ_VBLANK <: IRQ_VBLANK ); MOUSELATCH.MOVE := 0;                                                    // STOP MOUSE MOVING MORE THAN ONCE PER VIDEO FRAME
+
+    always {
+        if( ~MOUSELATCH.PAUSE ) {                                                                                               // HANDLE SIMULATED MOUSE USING ULX3S BUTTONS
+            switch( buttons[0,2] ) {
+                case 2b01: { y = y_m1; }                                                                                        // MOUSE Y UP IF NOT AT TOP
+                case 2b10: { y = y_p1; }                                                                                        // MOUSE Y DOWN IF NOT AT BOTTOM
+                default: {}
+            }
+            switch( buttons[2,2] ) {
+                case 2b01: { x = x_m1; }                                                                                        // MOUSE X LEFT IF NOT AT LEFT
+                case 2b10: { x = x_p1; }                                                                                        // MOUSE X RIGHT IF NOT AT RIGHT
+                default: {}
+            }
+            MOUSELATCH.MOVE = |buttons;                                                                                         // LATCH SO AS NOT TO MOVE MOUSE AT 50MHz
+        }
+
+        if( RESET ) { x = 320; y = 240; }                                                                                       // RETURN TO CENTRE IF RESET SIGNAL
+    }
+}
+// SDCARD CONTROLLER - Code for the SDCARD from @sylefeb with write support added by self
+unit sdcardcontroller(
+    // SDCARD
+    output  uint1   sd_clk,
+    output  uint1   sd_mosi,
+    output  uint1   sd_csn,
+    input   uint1   sd_miso,
+
+    input   uint1   readsector,
+    input   uint1   writesector,
+    input   uint32  sectoraddress,
+    output  uint1   ready,
+    output  uint1   error,
+
+  simple_dualport_bram_port0 buffer_out,
+  simple_dualport_bram_port1 buffer_in
+) {
+    sdcardio sdcio();
+    sdcard sd(
+        sd_clk :> sd_clk,                                                                                                       // SD CONTROLLER PINS
+        sd_mosi :> sd_mosi,
+        sd_csn :> sd_csn,
+        sd_miso <: sd_miso,
+        io <:> sdcio,                                                                                                           // READ, WRITE, ADDRESS AND READY SIGNALS
+        buffer_read <:> buffer_in,                                                                                              // FROM SDCARD
+        buffer_write <:> buffer_out                                                                                             // TO SDCARD
+    );
+
+    sdcio.addr_sector := sectoraddress;                                                                                         // SECTOR TO READ/WRITE
+    sdcio.read_sector := readsector; sdcio.write_sector := writesector;                                                         // READ?WRITE START
+    ready := sdcio.ready;                                                                                                       // SDCARD IS READY FOR NEXT COMMAND
+    error := sdcio.error;
+}

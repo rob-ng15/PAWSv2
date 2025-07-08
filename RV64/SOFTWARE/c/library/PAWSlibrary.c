@@ -1,3 +1,4 @@
+#include "PAWSlibrary.h"
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -16,7 +17,6 @@ extern int errno;
 #include <reent.h>
 #include "PAWS.h"
 #include "PAWSdefinitions.h"
-#include "PAWSintrinsics.h"
 
 #define FENCEIO asm volatile ("fence io, io");
 #define FENCEMEM asm volatile ("fence rw, rw");
@@ -24,90 +24,146 @@ extern int errno;
 #define NOFENCE asm volatile ("fence.i");
 
 // RISC-V CSR FUNCTIONS
-unsigned int CSRisa() {
-   unsigned int isa;
-   asm volatile ("csrr %0, 0x301" : "=r"(isa));
+int CSRisa() {
+   int isa;
+   asm volatile (
+       "csrr %0, 0x301"
+       : "=r"(isa));
    return isa;
 }
 
-unsigned long CSRcycles() {
-    unsigned long cycles;
+long CSRcycles() {
+    long cycles;
     asm volatile(
         "rdcycle %0\n"
         : "=r"(cycles));
     return cycles;
 }
 
-unsigned long CSRinstructions() {
-    unsigned long insns;
+long CSRinstructions() {
+    long insns;
     asm volatile(
         "rdinstret %0\n"
         : "=r"(insns));
     return insns;
 }
 
-unsigned long CSRtime() {
-    unsigned long timer;
+long CSRtime() {
+    long timer;
     asm volatile(
         "rdtime %0\n"
         : "=r"(timer));
     return timer;
 }
 
-// SMT START STOP AND STATUS
-void SMTSTOP( void ) {
-    *SMTSTATUS = 0;
+// IRQ FUNCTIONS
+void IRQ_VECTOR( void *function ) {
+    asm(
+        "csrw mtvec, %0\n\t"
+        :
+        : "r"(function)
+        :
+    );
 }
 
-void SMTSTART( void *code ) {
-    *SMTPC = (unsigned long)code; *SMTSTATUS = 1;
+unsigned long IRQ_CAUSE() {
+    long cause;
+    asm volatile(
+        "csrr %0, mcause\n\t"
+        : "=r"(cause));
+    return cause;
 }
 
-unsigned char SMTSTATE( void ) {
-    return( *SMTSTATUS );
+void IRQ_ON( int IRQ, int MIE ) {
+    asm(
+        "csrs mie, %0\n\t"
+        :
+        : "r"(IRQ)
+        :
+    );
+    if( MIE ) {
+        asm(
+            "csrsi mstatus, 8\n\t"
+        );
+    }
+}
+
+void IRQ_OFF( int IRQ, int MIE ) {
+    asm(
+        "csrc mie, %0\n\t"
+        :
+        : "r"(IRQ)
+        :
+    );
+    if( MIE ) {
+        asm(
+            "csrwi   mstatus,0\n\t"
+        );
+    }
+}
+
+void IRQ_ACK( int IRQ ) {
+    asm(
+        "csrc mip, %0\n\t"
+        :
+        : "r"(IRQ)
+        :
+    );
+}
+
+void IRQ_SET_TIMER( long pulses ) {
+    *IRQ_TIMER_COMPARATOR = CSRtime() + pulses;
+}
+
+void IRQ_SET_ADD( unsigned int pulses ) {
+    *IRQ_TIMER_ADD = pulses;
+}
+
+void IRQ_SET_TIMER_QUICK( unsigned int divider ) {
+    *IRQ_TIMER_NEXT = divider;
 }
 
 // DMA CONTROLLER
-void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned char mode ) {
+void DMASTART( const void *restrict source, void *restrict destination, unsigned int count, unsigned short mode ) {
     *DMASOURCE = (unsigned long)source; *DMADEST = (unsigned long)destination; *DMACOUNT = count; *DMAMODE = mode;
 }
 
 // PAWS MEMCPY USING THE DMA ENGINE - MODE 3 IS READ INCREMENT TO WRITE INCREMENT
 void *paws_memcpy( void *restrict destination, const void *restrict source, size_t count ) {
-    DMASTART( source, destination, count, 3 );
+    DMASTART( source, destination, count, DMA_CPY_M_TO_M );
     return( destination );
 }
 
 void paws_memcpy_step( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd ) {
     *DMASOURCEADD = sourceadd; *DMADESTADD = destadd;
-    DMASTART( source, (void *restrict)destination, count, 6 );
+    DMASTART( source, (void *restrict)destination, count, DMA_CPY_STEP_SD );
 }
 
 void paws_memcpy_rectangle( const void *restrict destination, const void *restrict source, size_t count, int destadd, int sourceadd, unsigned char cycles ) {
     *DMASOURCEADD = sourceadd; *DMADESTADD = destadd; *DMACYCLES = cycles;
-    DMASTART( source, (void *restrict)destination, count, 8 );
+    DMASTART( source, (void *restrict)destination, count, DMA_CPY_RECT );
 }
 
 // PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
 void *paws_memset( void *restrict destination, int value, size_t count ) {
-    *DMASET = (unsigned char)value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    *DMASET = (unsigned char)value; DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_TO_M );
     return( destination );
 }
 
 void paws_memset_rectangle( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
     *DMASET = (unsigned char)value; *DMADESTADD = destadd; *DMACYCLES = cycles;
-    DMASTART( (const void *restrict)DMASET, destination, count, 9 );
+    DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_RECT );
 }
 
 // PAWS MEMSET USING THE DMA ENGINE - MODE 4 IS READ NO INCREMENT TO WRITE INCREMENT
 void *paws_memset32( void *restrict destination, int value, size_t count ) {
-    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, 4 );
+    *DMASET32 = value; DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_TO_M );
     return( destination );
 }
 
 void paws_memset_rectangle32( void *restrict destination, int value, size_t count, int destadd, unsigned char cycles ) {
     *DMASET32 = value; *DMADESTADD = destadd; *DMACYCLES = cycles;
-    DMASTART( (const void *restrict)DMASET, destination, count, 9 );
+    DMASTART( (const void *restrict)DMASET, destination, count, DMA_SET_RECT );
 }
 
 // OUTPUT TO UART
@@ -118,6 +174,15 @@ void uart_outputcharacter(char c) {
 }
 void uart_outputstring( const char *s ) {
     while( *s ) uart_outputcharacter( *s++ );
+}
+void uart_printf( const char *fmt,... ) {
+    static char buffer[1024];
+    va_list args;
+    va_start (args, fmt);
+    vsnprintf( buffer, 1023, fmt, args);
+    va_end(args);
+
+    uart_outputstring( buffer );
 }
 // INPUT FROM UART
 // RETURN 1 IF UART CHARACTER AVAILABLE, OTHERWISE 0
@@ -158,33 +223,37 @@ unsigned short rng( unsigned short range ) {
 }
 
 // SLEEP FOR counter milliseconds
-void sleep1khz( unsigned short counter, unsigned char timer ) {
-    TIMER_REGS[ 0x0c + timer ] = counter; while( TIMER_REGS[ 0x0c + timer ] );
+void sleep1khz( unsigned short counter ) {
+    unsigned long target = CSRtime() + ( counter * 50000 );
+    while( CSRtime() < target );
 }
 
 // SET THE 1khz COUNTDOWN TIMER
+unsigned long __timer_targets_1khz[8];
 void set_timer1khz( unsigned short counter, unsigned char timer ) {
-    TIMER_REGS[ 0x0a + timer ] = counter;
+    __timer_targets_1khz[ timer & 7 ] = CSRtime() + ( counter * 50000 );
 }
 
 // READ THE 1khz COUNTDOWN TIMER
 unsigned short get_timer1khz( unsigned char timer  ) {
-    return( TIMER_REGS[ 0x0a + timer ] );
+    unsigned long cpu_time = CSRtime();
+    return ( cpu_time > __timer_targets_1khz[ timer & 7 ] ) ? 0 : ( ( __timer_targets_1khz[ timer & 7 ] - cpu_time ) / 50000 );
 }
 
 // WAIT FOR THE 1khz COUNTDOWN TIMER
 void wait_timer1khz( unsigned char timer  ) {
-    while( TIMER_REGS[ 0x0a + timer ] );
+    if( __timer_targets_1khz[ timer & 7] ) while( ( CSRtime() < __timer_targets_1khz[ timer & 7] ) );
 }
 
 // READ THE 1hz TIMER
-unsigned short get_timer1hz( unsigned char timer  ) {
-    return( TIMER_REGS[ 0x08 + timer ] );
+unsigned long __timer_base_1hz[8];
+unsigned long get_timer1hz( unsigned char timer  ) {
+    return ( CSRtime() - __timer_base_1hz[ timer & 7 ] ) / 50000000;
 }
 
 // RESET THE 1hz TIMER
-void reset_timer1hz( unsigned char timer  ) {
-    TIMER_REGS[ 0x08 + timer ] = 0;
+void reset_timer1hz( unsigned char timer ) {
+    __timer_base_1hz[ timer & 7 ] = CSRtime();
 }
 
 // SYSTEM CLOCK, SECONDS SINCE RESET
@@ -199,7 +268,7 @@ unsigned long get_systemrtc( void ){
 
 // AUDIO OUTPUT
 // START A note (1 == DEEP C, 25 == MIDDLE C )
-// OF duration MILLISECONDS TO THE LEFT ( channel_number == 1 ) RIGHT ( channel_number == 2 ) or BOTH ( channel_number == 3 ) AUDIO CHANNEL
+// OF duration MILLISECONDS TO THE LEFT ( channel == 1 ) RIGHT ( channel == 2 ) or BOTH ( channel == 3 ) AUDIO CHANNEL
 // IN waveform 0 == SQUARE, 1 == SAWTOOTH, 2 == TRIANGLE, 3 == SINE, 4 == WHITE NOISE, 7 == SAMPLE MODE
 // 1 = C 2 or Deep C
 // 25 = C 3
@@ -207,57 +276,55 @@ unsigned long get_systemrtc( void ){
 // 73 = C 5 or Tenor C
 // 97 = C 6 or Soprano C
 // 121 = C 7 or Double High C
-void beep( unsigned char channel_number, unsigned char waveform, unsigned char note, unsigned short duration ) {
-    *AUDIO_WAVEFORM = waveform;
-    *AUDIO_FREQUENCY = note;
-    *AUDIO_DURATION = duration;
-    *AUDIO_START = channel_number;
+void beep_stop( unsigned char channel ) {
+    AUDIO_WAVEFORM[ channel ] = AUDIO_FREQUENCY[ channel ] = AUDIO_DURATION[ channel ] = 0;
 }
-void set_volume( unsigned char left, unsigned char right ) {
-    *AUDIO_L_VOLUME = left; *AUDIO_R_VOLUME = right;
+void beep( unsigned char channel, unsigned char waveform, unsigned char note, unsigned short duration, unsigned char volume ) {
+    beep_stop( channel );
+    AUDIO_WAVEFORM[ channel ] = waveform;
+    AUDIO_FREQUENCY[ channel ] = note;
+    AUDIO_VOLUME[ channel ] = volume;
+    AUDIO_DURATION[ channel ] = duration;
+
 }
-void await_beep( unsigned char channel_number ) {
-    while( ( ( channel_number & 1) & *AUDIO_L_ACTIVE ) | ( ( channel_number & 2) & *AUDIO_R_ACTIVE ) ) {}
+void set_volume( unsigned char channel, unsigned char volume ) {
+    AUDIO_VOLUME[ channel ] = volume;
+}
+void await_beep( unsigned char channel ) {
+    while( ( *AUDIO_ACTIVE & channel ) != 0 ) {}
 }
 
-unsigned short get_beep_active( unsigned char channel_number ) {
-    return( ( ( channel_number & 1) & *AUDIO_L_ACTIVE ) | ( ( channel_number & 2) & *AUDIO_R_ACTIVE ) );
+unsigned short get_beep_active( unsigned char channel ) {
+    return( ( channel & *AUDIO_ACTIVE ) != 0 );
 }
 
-// USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE 1 multi-source to single-dest
-void sample_upload( unsigned char channel_number, unsigned short length, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_SAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_SAMPLE, length, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_SAMPLE, length, 1 ); }
+// USES DOOM PC SPEAKER FORMAT SAMPLES - USE DMA MODE IO multi-source to single-dest
+void tune_upload( unsigned char channel, unsigned short length, unsigned char *samples ) {
+    beep_stop( channel );
+    AUDIO_NEW_SAMPLE[ channel ] = 0;
+    DMASTART( samples, (void *restrict)&AUDIO_SAMPLE[ channel ], length, DMA_TO_IO );
 }
 
-// 128 x 1 BIT SAMPLES ( for XO-CHIP emulator )
-void bitsample_upload_128( unsigned char channel_number, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_BITSAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_BITSAMPLE, 16, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_BITSAMPLE, 16, 1 ); }
+// 256 x 6 BIT SAMPLES
+void bitsample_upload( unsigned char channel, unsigned char *samples ) {
+    beep_stop( channel );
+    AUDIO_NEW_BITSAMPLE[ channel ] = 0;
+    DMASTART( samples, (void *restrict)&AUDIO_BITSAMPLE[ channel ], 256, DMA_TO_IO );
 }
 
-// 256 ENTRY USER DEFINED WAVEFORM
-void wavesample_upload( unsigned char channel_number, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_WAVEFORM = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_WAVESAMPLE, 256, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_WAVESAMPLE, 256, 1 ); }
+// PCM SAMPLE HANDLING CODE
+void pcmsample_start( unsigned char channel, unsigned int count, const unsigned char *samples, unsigned char rate, unsigned char repeat ) {
+    if( channel & 1 ) {
+        *AUDIO_DMA_L_STATUS = 1; *AUDIO_DMA_L_BASE = (uintptr_t)samples; *AUDIO_DMA_L_LENGTH = count; *AUDIO_DMA_L_STATUS = 2 + ( repeat << 2 ) + ( rate << 3 );
+    }
+    if( channel & 2 ) {
+        *AUDIO_DMA_R_STATUS = 1; *AUDIO_DMA_R_BASE = (uintptr_t)samples; *AUDIO_DMA_R_LENGTH = count; *AUDIO_DMA_R_STATUS = 2 + ( repeat << 2 ) + ( rate << 3 );
+    }
 }
 
-// PCM SAMPLES UPLOAD
-void pcmsample_upload( unsigned char channel_number, unsigned short count, unsigned char *samples ) {
-    beep( channel_number, 0, 0, 0 );
-    *AUDIO_NEW_PCMSAMPLE = channel_number; *DMASET = 0;
-    if( channel_number & 1 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_LEFT_PCMSAMPLE, 20480, 5 ); }
-    if( channel_number & 2 ) { DMASTART( (const void *restrict)DMASET, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, 20480, 5 );}
-
-    *AUDIO_NEW_PCMSAMPLE = channel_number;
-    if( channel_number & 1 ) { DMASTART( samples, (void *restrict)AUDIO_LEFT_PCMSAMPLE, count, 1 ); }
-    if( channel_number & 2 ) { DMASTART( samples, (void *restrict)AUDIO_RIGHT_PCMSAMPLE, count, 1 ); }
+void pcmsample_stop( unsigned char channel ) {
+    if( channel & 1 ) { *AUDIO_DMA_L_STATUS = 1; }
+    if( channel & 2 ) { *AUDIO_DMA_R_STATUS = 1; }
 }
 
 // SDCARD FUNCTIONS
@@ -276,7 +343,7 @@ void sdcard_readsector( unsigned int sectorAddress, unsigned char *copyAddress )
 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 4 COPIES FROM A SINGLE ADDRESS TO MULTIPLE
     // EACH READ OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
-    DMASTART( (const void *restrict)SDCARD_DATA, copyAddress, 512, 4 );
+    DMASTART( (const void *restrict)SDCARD_IN_DATA, copyAddress, 512, DMA_FROM_IO );
 }
 // WRITE A SECTOR TO THE SDCARD COPIED FROM MEMORY
 void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress ) {
@@ -285,7 +352,7 @@ void sdcard_writesector( unsigned int sectorAddress, unsigned char *copyAddress 
     // USE DMA CONTROLLER TO COPY THE DATA, MODE 1 COPIES FROM MULTIPLE-ADDRESSES TO SINGLE ADDRESS
     // EACH WRITE OF THE SDCARD BUFFER INCREMENTS THE BUFFER ADDRESS
     *SDCARD_RESET_BUFFERADDRESS = 0;                // WRITE ANY VALUE TO RESET THE BUFFER ADDRESS
-    DMASTART( copyAddress, (void *restrict)SDCARD_DATA, 512, 1 );
+    DMASTART( copyAddress, (void *restrict)SDCARD_OUT_DATA, 512, DMA_TO_IO );
 
     *SDCARD_SECTOR = sectorAddress;
     *SDCARD_WRITESTART = 1;
@@ -307,10 +374,13 @@ unsigned short get_buttons( void ) {
 void get_mouse( short *x, short *y, short *buttons ) {
     *x = *MOUSE_X; *y = *MOUSE_Y; *buttons = *MOUSE_BUTTONS;
 }
-
+void reset_mouse( void ) {
+    *MOUSE_RESET = 0;
+}
 // DISPLAY FUNCTIONS
 // FUNCTIONS ARE IN LAYER ORDER: BACKGROUND, TILEMAP, SPRITES (for LOWER ), BITMAP & GPU, ( UPPER SPRITES ), CHARACTERMAP & TPU
 // colour is in the form { RRGGGBBM } { COLOUR 64 ALPHA - show layer below }
+
 // INTERNAL FUNCTION - WAIT FOR THE GPU TO BE ABLE TO RECEIVE A NEW COMMAND
 void wait_gpu( void ) {
     while( *GPU_STATUS );
@@ -320,7 +390,7 @@ void wait_gpu_finished( void ) {
     while( !*GPU_FINISHED );
 }
 // WAIT FOR VBLANK TO START/FINISH
-int is_vblank( void ) {
+unsigned char is_vblank( void ) {
     return( *VBLANK );
 }
 void await_vblank( void ) {
@@ -330,11 +400,22 @@ void await_vblank_finish( void ) {
     while( *VBLANK );
 }
 
-// SET THE LAYER ORDER FOR THE DISPLAY, COLOUR MODE ( RRGGGBBM OR GREY ), TILES AND CHARACTER MAP DOUBLE FLAGS
-void screen_mode( unsigned char screenmode, unsigned char colour, unsigned char resolution ) {
-    *SCREENMODE = screenmode;
+unsigned int get_framecount( void ) {
+    return *FRAMECOUNT;
+}
+
+// SET COLOUR MODE ( RRGGGBBM OR GREY ), TILES AND CHARACTER MAP DOUBLE FLAGS
+void screen_mode( unsigned char colour ) {
     *COLOUR = colour;
-    *REZ = resolution;
+}
+
+// SET THE SCREEN LAYERS
+void screen_order( unsigned long L_0, unsigned long L_1, unsigned long L_2, unsigned long L_3,
+                   unsigned long L_4, unsigned long L_5, unsigned long L_6, unsigned long L_7,
+                   unsigned long L_8, unsigned long L_9, unsigned long L_A ) {
+    *SCREENORDER = ( (unsigned long)L_0 ) | ( (unsigned long)L_1 <<  4 ) | ( (unsigned long)L_2 <<  8 ) | ( (unsigned long)L_3 << 12 ) |
+                                            ( (unsigned long)L_4 << 16 ) | ( (unsigned long)L_5 << 20 ) | ( (unsigned long)L_6 << 24 ) |
+                                            ( (unsigned long)L_7 << 28 ) | ( (unsigned long)L_8 << 32 ) | ( (unsigned long)L_9 << 36 ) | ( (unsigned long)L_A << 40 );
 }
 
 // SET THE DIMMER LEVEL FOR THE DISPLAY 0 == FULL BRIGHTNESS, 1 - 7 DIMMER, 8 - 15 BLANK
@@ -345,12 +426,6 @@ void screen_dimmer( unsigned char dimmerlevel ) {
 // SET THE SDCARD / JOYSTICK MODE / CAPS LOCK / NUMLOCK STATUS LIGHT DISPLAY
 void status_lights( unsigned char display, unsigned char background ) {
     *STATUS_DISPLAY = display; *STATUS_BACKGROUND = background;
-}
-
-// SET THE FRAMEBUFFER TO DISPLAY / DRAW
-void bitmap_display( unsigned char framebuffer ) {
-    await_vblank();
-    *FRAMEBUFFER_DISPLAY = framebuffer;
 }
 
 void bitmap_draw( unsigned char framebuffer ) {
@@ -365,21 +440,15 @@ void bitmap_256( unsigned char mode ) {
 void set_palette( unsigned char entry, unsigned int rgb ) {
     *PALETTEENTRY = entry; *PALETTERGB = rgb;
 }
+unsigned int get_palette( unsigned char entry ) {
+    *PALETTEENTRY = entry; return( *PALETTERGB );
+}
 
 void use_palette( unsigned char mode ) {
     *PALETTEACTIVE = mode;
 }
 
 // BACKGROUND GENERATOR
-// backgroundmode ==
-//  0 SOLID in colour
-//  1, 2, 3, 4 checkerboard in colour/altcolour in increasing sizes of squares
-//  5 rainbow
-//  6 static
-//  7 @sylefeb's snow/starfield with colour stars and altcolour background
-//  8 split vertical
-//  9 split horizontal
-//  10 quarters
 void set_background( unsigned char colour, unsigned char altcolour, unsigned char backgroundmode ) {
     *BACKGROUND_COPPER_STARTSTOP = 0;
     *BACKGROUND_COLOUR = colour;
@@ -393,12 +462,9 @@ void copper_startstop( unsigned char status ) {
     *BACKGROUND_COPPER_STARTSTOP = status;
 }
 
-void copper_program( unsigned char address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 ) {
+void copper_program( unsigned short address, unsigned char command, unsigned char reg1, unsigned char flag, unsigned short reg2 ) {
     *BACKGROUND_COPPER_ADDRESS = address;
-    *BACKGROUND_COPPER_OP = command;
-    *BACKGROUND_COPPER_OPD = reg1;
-    *BACKGROUND_COPPER_OPF = flag;
-    *BACKGROUND_COPPER_OPL = reg2;
+    *BACKGROUND_COPPER_OP = ( ( command & 0xf ) << 14 ) | ( ( reg1 & 0x7 ) << 11 ) | ( ( flag & 0x1 ) << 10 ) | ( reg2 & 0x7f );
     *BACKGROUND_COPPER_PROGRAM = 1;
 }
 
@@ -417,82 +483,52 @@ unsigned short get_copper_cpuoutput( void ) {
 }
 
 // SCROLLABLE TILEMAP
-// The tilemap is 42 x 32, with 40 x 30 displayed, with an x and y offset in the range -15 to 15 to scroll the tilemap
-// The tilemap can scroll or wrap once x or y is at -15 or 15
+// The tilemap is 64 x 64, with 40 x 30 displayed, with an x and y offset in the range -15 to 15 to scroll the tilemap
+// The tilemap will scroll once x or y is at -15 or 15
+
+// SET THE LOW/HIGH RESOLUTION FLAGS FOR THE TILEMAPS
+void tilemap_2040( unsigned char flags ) {
+    *TM_LOREZ = flags;
+}
 
 // SET THE TILEMAP TILE at (x,y) to tile - (0,0) always top left, even after scrolling
-void set_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
-    switch( tm_layer ) {
-        case 0:
-            while( *LOWER_TM_STATUS );
-            *LOWER_TM_X = x;
-            *LOWER_TM_Y = y;
-            *LOWER_TM_TILE = tile;
-            *LOWER_TM_ACTION = action;
-            *LOWER_TM_COMMIT = 1;
-            break;
-        case 1:
-            while( *UPPER_TM_STATUS );
-            *UPPER_TM_X = x;
-            *UPPER_TM_Y = y;
-            *UPPER_TM_TILE = tile;
-            *UPPER_TM_ACTION = action;
-            *UPPER_TM_COMMIT = 1;
-            break;
-    }
+void set_tilemap_tile_abs( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
+    TMAPBUFFER[ tm_layer ][ y * 64 + x ] = ( action << 6 ) + ( tile & 63 );
 }
 
 // HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
-void set_tilemap_32x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
-    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
-    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y, start_tile + 2, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
+void set_tilemap_32x32tile_abs( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile_abs( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile_abs( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile_abs( tm_layer, x + 1, y, start_tile + 2, 0 );
+    set_tilemap_tile_abs( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
 }
 
 // HELPER FOR PLACING A 2 TILE 16 x 32 TILE TO THE TILEMAPS with REFLECTION for right hand side
-void set_tilemap_16x32tile( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
-    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
-    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y, start_tile, REFLECT_X );
-    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 1, REFLECT_X );
+void set_tilemap_16x32tile_abs( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile_abs( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile_abs( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile_abs( tm_layer, x + 1, y, start_tile, REFLECT_X );
+    set_tilemap_tile_abs( tm_layer, x + 1, y + 1, start_tile + 1, REFLECT_X );
 }
 
-// READ THE TILEMAP TILE+ACTION at (x,y) - (0,0) always top left, even after scrolling
-unsigned short read_tilemap_tile( unsigned char tm_layer, unsigned char x, unsigned char y ) {
-    switch( tm_layer ) {
-        case 0:
-            while( *LOWER_TM_STATUS );
-            *LOWER_TM_X = x;
-            *LOWER_TM_Y = y;
-            return( *LOWER_TM_TILE );
-            break;
-        case 1:
-            while( *UPPER_TM_STATUS );
-            *UPPER_TM_X = x;
-            *UPPER_TM_Y = y;
-            return( *UPPER_TM_TILE );
-            break;
-    }
+unsigned short read_tilemap_tile_abs( unsigned char tm_layer, unsigned char x, unsigned char y ) {
+    return ( TMAPBUFFER[ tm_layer ][ y * 64 + x ] );
 }
 
 // SET THE TILE BITMAP for tile to the 16 x 16 pixel bitmap
 void set_tilemap_bitmap( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap ) {
-    *( tm_layer ? UPPER_TM_WRITER_TILE_NUMBER : LOWER_TM_WRITER_TILE_NUMBER ) = tile;
-    DMASTART( bitmap, (void *restrict)( tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR ), 256, 1 );
+    TM_WRITER_TILE_NUMBER[ tm_layer ] = tile;
+    DMASTART( bitmap, (void *restrict)&TM_WRITER_COLOUR[ tm_layer ], 256, DMA_TO_IO );
 }
 
 // SET THE TILE BITMAP for 4 tiles to the 32 x 32 pixel bitmap
 void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsigned char *bitmap ) {
     for( int i = 0; i < 4; i++ ) {
-        if( tm_layer ) {
-            *UPPER_TM_WRITER_TILE_NUMBER = tile + i;
-        } else {
-            *LOWER_TM_WRITER_TILE_NUMBER = tile + i;
-        }
+        TM_WRITER_TILE_NUMBER[ tm_layer ] = tile + i;
         for( int y = 0; y < 16; y++ ) {
             for( int x = 0; x < 16; x++ ) {
-                *( tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR ) = bitmap[ ( y + (i&1 ? 16 : 0) )* 32 + ( x + ( i>1 ? 16 : 0 ) ) ];
+                TM_WRITER_COLOUR[ tm_layer ] = bitmap[ ( y + (i&1 ? 16 : 0) ) * 32 + ( x + ( i>1 ? 16 : 0 ) ) ];
             }
         }
     }
@@ -501,34 +537,85 @@ void set_tilemap_bitmap32x32( unsigned char tm_layer, unsigned char tile, unsign
 void set_tilemap_bitamps_from_spritesheet( unsigned char tm_layer, unsigned char *tile_bitmaps ) {
     for( int xt = 0; xt < 8; xt++ ) {
         for( int yt = 0; yt < 8; yt++ ) {
-            *( tm_layer ? UPPER_TM_WRITER_TILE_NUMBER : LOWER_TM_WRITER_TILE_NUMBER ) = xt * 8 + yt;
+            TM_WRITER_TILE_NUMBER[ tm_layer ] = xt * 8 + yt;
             for( int y = 0; y < 16; y++ ) {
                 for( int x = 0; x < 16; x++ ) {
-                    *(tm_layer ? UPPER_TM_WRITER_COLOUR : LOWER_TM_WRITER_COLOUR) = tile_bitmaps[ xt * 16 + yt * 2048 + y * 128 + x ];
+                    TM_WRITER_COLOUR[ tm_layer ] = tile_bitmaps[ xt * 16 + yt * 2048 + y * 128 + x ];
                 }
             }
         }
     }
 }
 
-// HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
-void set_tilemap_tile32x32( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
-    set_tilemap_tile( tm_layer, x, y, start_tile, 0 );
-    set_tilemap_tile( tm_layer, x, y + 1, start_tile + 1, 0 );
-    set_tilemap_tile( tm_layer, x + 1, y, start_tile + 2,  0 );
-    set_tilemap_tile( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
+// SCROLL TILEMAP by amount ( 0 - 15 ) pixels OR RESET PARAMETERS
+//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN
+//  action == 5 reset base and offset
+//  action == 6 reset base
+//  action == 7 reset offset
+//  RETURNS 0 if no action taken other than pixel shift, action if SCROLL was actioned
+unsigned char tilemap_scroll( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
+    TM_SCROLLAMOUNT[ tm_layer ] = amount;
+    TM_SCROLLWRAP[ tm_layer ] = action;
+    return( TM_SCROLLWRAP[ tm_layer ] );
 }
 
-// SCROLL WRAP or CLEAR the TILEMAP by amount ( 0 - 15 ) pixels
-//  action == 1 to 4 move the tilemap amount pixels LEFT, UP, RIGHT, DOWN
-//  action == 5 clear the tilemap
-//  RETURNS 0 if no action taken other than pixel shift, action if SCROLL was actioned
-unsigned char tilemap_scrollwrapclear( unsigned char tm_layer, unsigned char action, unsigned char amount ) {
-    while( *( tm_layer ? UPPER_TM_STATUS : LOWER_TM_STATUS ) );
-    *( tm_layer ? UPPER_TM_SCROLLWRAPAMOUNT : LOWER_TM_SCROLLAMOUNT ) = amount;
-    *( tm_layer ? UPPER_TM_SCROLLWRAPCLEAR : LOWER_TM_SCROLLWRAPCLEAR ) = action;
-    return( tm_layer ? *UPPER_TM_SCROLLWRAPCLEAR : *LOWER_TM_SCROLLWRAPCLEAR );
+// SET THE BASE COORDINATE FOR THE TILEMAP - COORDINATE OFF TOP LEFT (offscreen) TILE
+void tilemap_setbase( unsigned char tm_layer, unsigned char x, unsigned char y, short offset_x, short offset_y ) {
+    TM_X[ tm_layer ] = x;
+    TM_Y[ tm_layer ] = y;
+    TM_OFFSET_X[ tm_layer ] = offset_x;
+    TM_OFFSET_Y[ tm_layer ] = offset_y;
+    TM_SCROLLWRAP[ tm_layer ] = 5;
 }
+
+// READTILEMAP PARAMETERS
+void tilemap_readbase( unsigned char tm_layer, unsigned char *base_x, unsigned char *base_y, short *offset_x, short *offset_y ) {
+    *base_x = TM_X[ tm_layer ];
+    *base_y = TM_Y[ tm_layer ];
+    *offset_x = TM_OFFSET_X[ tm_layer ];
+    *offset_y = TM_OFFSET_Y[ tm_layer ];
+}
+
+// READ THE TILEMAP TILE+ACTION at (x,y) - (0,0) always top left, even after scrolling
+// READ THE TILEMAP BASE AND OFFSET, ADJUST INTO THE TILEMAP ( &63 to bring into range of 0-63 for x and y )
+unsigned short read_tilemap_tile_rel( unsigned char tm_layer, unsigned char x, unsigned char y ) {
+    unsigned char base_x, base_y;
+    short dummy;
+
+    tilemap_readbase( tm_layer, &base_x, &base_y, &dummy, &dummy );
+    return ( TMAPBUFFER[ tm_layer ][ ( ( base_y + y ) & 63 ) * 64 + ( ( base_x + x ) & 63 ) ] );
+}
+
+// SET THE TILEMAP TILE at (x,y) to tile - (0,0) always top left, even after scrolling
+void set_tilemap_tile_rel( unsigned char tm_layer, unsigned char x, unsigned char y, unsigned char tile, unsigned char action ) {
+    unsigned char base_x, base_y;
+    short dummy;
+
+    tilemap_readbase( tm_layer, &base_x, &base_y, &dummy, &dummy );
+    TMAPBUFFER[ tm_layer ][ ( ( base_y + y ) & 63 ) * 64 + ( ( base_x + x ) & 63 ) ] = ( action << 6 ) + tile;
+}
+
+// HELPER FOR PLACING A 4 TILE 32 x 32 TILE TO THE TILEMAPS
+void set_tilemap_32x32tile_rel( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile_rel( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile_rel( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile_rel( tm_layer, x + 1, y, start_tile + 2, 0 );
+    set_tilemap_tile_rel( tm_layer, x + 1, y + 1, start_tile + 3, 0 );
+}
+
+// HELPER FOR PLACING A 2 TILE 16 x 32 TILE TO THE TILEMAPS with REFLECTION for right hand side
+void set_tilemap_16x32tile_rel( unsigned char tm_layer, short x, short y, unsigned char start_tile ) {
+    set_tilemap_tile_rel( tm_layer, x, y, start_tile, 0 );
+    set_tilemap_tile_rel( tm_layer, x, y + 1, start_tile + 1, 0 );
+    set_tilemap_tile_rel( tm_layer, x + 1, y, start_tile, REFLECT_X );
+    set_tilemap_tile_rel( tm_layer, x + 1, y + 1, start_tile + 1, REFLECT_X );
+}
+
+void tm_cs( unsigned char tm_layer ) {
+    memset( ( void *)TMAPBUFFER[ tm_layer ], 0, 64 * 64 * 2 );
+    tilemap_setbase( tm_layer, 0, 0, 0, 0 );
+}
+
 
 // GPU AND BITMAP
 // The bitmap is 320 x 240 pixels (0,0) is top left
@@ -542,7 +629,9 @@ void gpu_dither( unsigned char mode, unsigned char colour ) {
 // SET GPU CROPPING RECTANGLE
 void gpu_crop( short left, short top, short right, short bottom ) {
     wait_gpu();
-    *CROP_LEFT = left < 0 ? 0 : left; *CROP_RIGHT = right > 319 ? 319 : right; *CROP_TOP = top < 0 ? 0 : top; *CROP_BOTTOM = bottom > 239 ? 239 : bottom;
+    short L = min( left, right ), R = max( left, right ), B = min( top, bottom ), T = max( top, bottom );
+
+    *CROP_LEFT = L < 0 ? 0 : L; *CROP_RIGHT = R > 319 ? 319 : R; *CROP_TOP = T < 0 ? 0 : T; *CROP_BOTTOM = B > 239 ? 239 : B;
 }
 
 // SET THE PIXEL at (x,y) to colour
@@ -721,7 +810,7 @@ void gpu_colourblit( short x1, short y1, short tile, unsigned char blit_size, un
 // SET THE BLITTER TILE to the 16 x 16 pixel bitmap
 void set_blitter_bitmap( unsigned char tile, unsigned short *bitmap ) {
     *BLIT_WRITER_TILE = tile;
-    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, 1 );
+    DMASTART( bitmap, (void *restrict)BLIT_WRITER_BITMAP, 32, DMA_CPY_M_TO_S );
 }
 
 // SET THE BLITTER CHARACTER TILE to the 8 x 8 pixel bitmap
@@ -736,7 +825,7 @@ void set_blitter_chbitmap( unsigned char tile, unsigned char *bitmap ) {
 // SET THE COLOURBLITTER TILE to the 16 x 16 pixel bitmap
 void set_colourblitter_bitmap( unsigned char tile, unsigned char *bitmap ) {
     *COLOURBLIT_WRITER_TILE = tile;
-    DMASTART( bitmap, (void *restrict)COLOURBLIT_WRITER_COLOUR, 256, 1 );
+    DMASTART( bitmap, (void *restrict)COLOURBLIT_WRITER_COLOUR, 256, DMA_TO_IO );
 }
 
 // DRAW A FILLED TRIANGLE with vertices (x1,y1) (x2,y2) (x3,y3) in colour
@@ -849,11 +938,7 @@ void gpu_pixelblock( short x,  short y, unsigned short w, unsigned short h, unsi
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_PARAM1 = transparent; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    if( ( (unsigned long)buffer & 1 ) || ( ( w*h ) & 1 ) ) {
-        DMASTART( buffer, (void *)PB_COLOUR, w*h, 1 );      // UNALIGNED, ODD NUMBER OF PIXELS USE 8 BIT MODE
-    } else {
-        DMASTART( buffer, (void *)PB_COLOUR, w*h/2, 7 );    // ALIGNED, EVEN PIXELS USE 16 BIT MODE
-    }
+    DMASTART( buffer, (void *)PB_COLOUR, w*h, DMA_TO_IO );
 
     *PB_STOP = 0;
 }
@@ -865,7 +950,7 @@ void gpu_pixelblock24( short x, short y, unsigned short w, unsigned short h, uns
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_COLOUR8R, 3*w*h, 2 );
+    DMASTART( buffer, (void *)PB_COLOUR_RGB, 3*w*h, DMA_TO_IO );
 
     *PB_STOP = 0;
 }
@@ -877,7 +962,7 @@ void gpu_pixelblockARGB( short x, short y, unsigned short w, unsigned short h, u
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_ARGB, 4*w*h, 1 );
+    DMASTART( buffer, (void *)PB_ARGB, 4*w*h, DMA_CPY_M_TO_S );
 
     *PB_STOP = 0;
 }
@@ -889,7 +974,7 @@ void gpu_pixelblockRGBA( short x, short y, unsigned short w, unsigned short h, u
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_RGBA, 4*w*h, 1 );
+    DMASTART( buffer, (void *)PB_RGBA, 4*w*h, DMA_CPY_M_TO_S );
 
     *PB_STOP = 0;
 }
@@ -901,7 +986,7 @@ void gpu_pixelblockABGR( short x, short y, unsigned short w, unsigned short h, u
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_ABGR, 4*w*h, 1 );
+    DMASTART( buffer, (void *)PB_ABGR, 4*w*h, DMA_CPY_M_TO_S );
 
     *PB_STOP = 0;
 }
@@ -913,7 +998,7 @@ void gpu_pixelblockBGRA( short x, short y, unsigned short w, unsigned short h, u
     *GPU_X = x; *GPU_Y = y; *GPU_PARAM0 = w; *GPU_WRITE = 10;
 
     // USE THE DMA CONTROLLER TO TRANSFER THE PIXELS
-    DMASTART( buffer, (void *)PB_BGRA, 4*w*h, 1 );
+    DMASTART( buffer, (void *)PB_BGRA, 4*w*h, DMA_CPY_M_TO_S );
 
     *PB_STOP = 0;
 }
@@ -1137,63 +1222,154 @@ void DoDrawList2Dscale( struct DrawList2D *list, int numentries, int xc, int yc,
 }
 
 // SPRITE LAYERS - MAIN ACCESS
-// TWO SPRITE LAYERS ( 0 == lower, 1 == upper )
-// WITH 16 SPRITES ( 0 to 15 ) each with 8 16 x 16 pixel bitmaps
+// WITH 64 SPRITES ( 0 to 63 ) each PAIR with 8 16 x 16 pixel bitmaps OR 2 32 x 32 pixel bitmaps
 
-// SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 pixel bitmaps ( 2048 ARRGGBB pixels )
-void set_sprite_bitmaps( unsigned char sprite_layer, unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
-    *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = sprite_number;
-    DMASTART( sprite_bitmaps, (void *restrict)(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR), 2048, 1 );
+// SET THE BITMAPS FOR sprite_number in sprite_layer to the 8 x 16 x 16 or 2 x 32 x 32 pixel bitmaps ( 2048 RRGGGBBM pixels )
+void set_sprite_bitmaps( unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
+    *SPRITE_WRITER_NUMBER = sprite_number >> 1;
+    DMASTART( sprite_bitmaps, (void *restrict)SPRITE_WRITER_COLOUR, 2048, DMA_TO_IO );
 }
 
-// SET THE 16x16 SPRITES FROM A SPRITESHEET
-void set_sprite_bitamps_from_spritesheet( unsigned char sprite_layer, unsigned char *sprite_bitmaps ) {
-    for( int i = 0; i < 16; i++ ) {
-        *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = i;
-        for( int y = 0; y < 128; y++ ) {
-            for( int x = 0; x < 16; x++ ) {
-                *(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR) = sprite_bitmaps[ i*16 + x + y*256 ];
-            }
-        }
-   }
-}
-
-// SET THE 32x32 ( 4 x 16x16 ) FROM A SPRITESHEET
-void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_layer, unsigned char *sprite_bitmaps ) {
-        for( int s = 0; s < 16; s++ ) {
-            *( sprite_layer ? UPPER_SPRITE_WRITER_NUMBER : LOWER_SPRITE_WRITER_NUMBER ) = s;
-            for( int y = 0; y < 128; y++ ) {
-                int base = ( s & 0x0c ) * 2048 + ( s & 0x01 ) * 4096 + ( s & 0x02 ) * 8 + ( y & 0xf0 ) * 2 + ( y & 0x0f ) * 256;
-                for( int x = 0; x < 16; x++ ) {
-                    *(sprite_layer ? UPPER_SPRITE_WRITER_COLOUR : LOWER_SPRITE_WRITER_COLOUR) = sprite_bitmaps[ base + x ];
+// SET THE 16x16/32x32 SPRITES FROM A SPRITESHEET
+void set_sprite_bitamps_from_spritesheet( unsigned char sprite_number, unsigned char count, unsigned char *sprite_bitmaps, unsigned char mode ) {
+    if( mode ) {
+        // 2 x 32 x 32 sprites
+        for( int i = 0; i < count; i++ ) {
+            *SPRITE_WRITER_NUMBER = ( sprite_number >> 1 ) + i;
+            for( int y = 0; y < 64; y++ ) {
+                for( int x = 0; x < 32; x++ ) {
+                    *SPRITE_WRITER_COLOUR = sprite_bitmaps[ ( i * 32 ) + x + ( y * count * 32 ) ];
                 }
             }
         }
+    } else {
+        // 8 x 16 x 16 sprites
+        for( int i = 0; i < count; i++ ) {
+            *SPRITE_WRITER_NUMBER = ( sprite_number >> 1 ) + i;
+            for( int y = 0; y < 128; y++ ) {
+                for( int x = 0; x < 16; x++ ) {
+                    *SPRITE_WRITER_COLOUR = sprite_bitmaps[ ( i * 16 ) + x + ( y * count * 16 ) ];
+                }
+            }
+        }
+    }
 }
 
-// SET SPRITE sprite_number in sprite_layer to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
-void set_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
-    switch( sprite_layer ) {
-        case 0:
-            LOWER_SPRITE_ACTIVE[sprite_number] = active;
-            LOWER_SPRITE_TILE[sprite_number] = tile;
-            LOWER_SPRITE_X[sprite_number] = x;
-            LOWER_SPRITE_Y[sprite_number] = y;
-            LOWER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
-            break;
+// SET SPRITE sprite_number to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
+void set_sprite( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_actions ) {
+    SPRITE_ACTIVE[sprite_number] = active;
+    SPRITE_TILE[sprite_number] = tile;
+    SPRITE_X[sprite_number] = x;
+    SPRITE_Y[sprite_number] = y;
+    SPRITE_ACTIONS[sprite_number] = sprite_actions;
+}
 
+// SET or GET ATTRIBUTES for sprite_number in sprite_layer
+//  attribute == 0 active status ( 0 == inactive, 1 == active )
+//  attribute == 1 tile number ( 0 to 7 )
+//  attribute == 3 x coordinate
+//  attribute == 4 y coordinate
+//  attribute == 5 attributes bit 0 = size == 0 16x16 == 1 32x32. bit 1 = x-mirror bit 2 = y-mirror
+void set_sprite_attribute( unsigned char sprite_number, unsigned char attribute, short value ) {
+    switch( attribute ) {
+        case 0:
+            SPRITE_ACTIVE[sprite_number] = value;
+            break;
         case 1:
-            UPPER_SPRITE_ACTIVE[sprite_number] = active;
-            UPPER_SPRITE_TILE[sprite_number] = tile;
-            UPPER_SPRITE_X[sprite_number] = x;
-            UPPER_SPRITE_Y[sprite_number] = y;
-            UPPER_SPRITE_ACTIONS[sprite_number] = sprite_attributes;
+            SPRITE_TILE[sprite_number] = value;
+            break;
+        case 3:
+            SPRITE_X[sprite_number] = value;
+            break;
+        case 4:
+            SPRITE_Y[sprite_number] = value;
+            break;
+        case 5:
+            SPRITE_ACTIONS[sprite_number] = value;
+            break;
+        default:
             break;
     }
 }
 
+short get_sprite_attribute( unsigned char sprite_number, unsigned char attribute ) {
+    switch( attribute ) {
+        case 0:
+            return( SPRITE_ACTIVE[sprite_number] );
+        case 1:
+            return( SPRITE_TILE[sprite_number] );
+        case 3:
+            return( SPRITE_X[sprite_number] );
+        case 4:
+            return( SPRITE_Y[sprite_number] );
+        case 5:
+            return( SPRITE_ACTIONS[sprite_number] );
+        default:
+            return( 0 );
+    }
+}
+
+// RETURN THE COLLISION STATUS for sprite_number to other sprites
+//  bit is 1 if sprite is in collision with { sprite 63, sprite 62 .. in layer sprite 0 }
+unsigned long get_sprite_collision( unsigned char sprite_number ) {
+    return( SPRITE_COLLISION_BASE[sprite_number] );
+}
+// RETURN THE COLLISION STATUS for sprite number in sprite layer to other layers
+// bit is 1 if sprite is in collision with layers
+unsigned short get_sprite_layer_collision( unsigned char sprite_number ) {
+    return( SPRITE_LAYER_COLLISION_BASE[sprite_number] );
+}
+
+// UPDATE A SPITE moving by x and y deltas, with optional wrap/kill and optional changing of the tile
+void update_sprite( unsigned char sprite_number, unsigned char kill, short dx, short dy, unsigned char dt ) {
+    static unsigned int sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2, 32, 64, 128, 256, 32, 16, 8, 4,  };
+    int size = sizes[ ( SPRITE_ACTIONS[ sprite_number ] >> 3 ) ];
+
+
+    short x = SPRITE_X[ sprite_number ] + dx;
+    short y = SPRITE_Y[ sprite_number ] + dy;
+    unsigned short tile = SPRITE_TILE[ sprite_number ] + dt;
+    unsigned short active = SPRITE_ACTIVE[ sprite_number ];
+
+    if( ( ( x > 640 ) || ( x < -size ) ) ) { active = ( kill & 1 ) ? 0 : 1; x = ( x > 640 ) ? -size : 640; }
+    if( ( ( y > 480 ) || ( y < -size ) ) ) { active = ( kill & 2 ) ? 0 : 1; y = ( y > 480 ) ? -size : 480; }
+
+    SPRITE_X[ sprite_number ] = x;
+    SPRITE_Y[ sprite_number ] = y;
+    SPRITE_TILE[ sprite_number ] = tile;
+    SPRITE_ACTIVE[ sprite_number ] = active;
+}
+
+// COMPATABILITY FUNCTION FOR THE OLD SPRITE UPDATE FLAGS
+// kktyyyyyxxxxx
+void update_sprite_compat(unsigned char sprite_number, unsigned short updateflag ) {
+    static short directions[] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -16, -15, -14, -13, -12, -11, -10, -9, -8, -7, -6, -5, -4, -3, -2, -1 };
+
+    update_sprite(
+        sprite_number,
+        ( updateflag & 0b1100000000000 ) >> 11,
+        directions[ ( updateflag & 0b0000000011111 ) ],
+        directions[ ( updateflag & 0b0001111100000 ) >> 5 ],
+        ( updateflag & 0b0010000000000 ) >> 10
+    );
+}
+
+// COMBINE 4 16x16 SPRITES INTO 1 32x32 SPRITE, USING THE GIVEN COORDINATES AS THE CENTRE, AND ADJUSTING FOR SIZE, REFLECTION AND ROTATION
+// SET THE 32x32 ( 4 x 16x16 ) FROM A SPRITESHEET
+void set_sprite_bitamps_from_spritesheet32x32( unsigned char sprite_number, unsigned char *sprite_bitmaps ) {
+    for( int s = 0; s < 16; s++ ) {
+        *SPRITE_WRITER_NUMBER = ( sprite_number >> 1 ) + s;
+        for( int y = 0; y < 128; y++ ) {
+            int base = ( s & 0x0c ) * 2048 + ( s & 0x01 ) * 4096 + ( s & 0x02 ) * 8 + ( y & 0xf0 ) * 2 + ( y & 0x0f ) * 256;
+            for( int x = 0; x < 16; x++ ) {
+                *SPRITE_WRITER_COLOUR = sprite_bitmaps[ base + x ];
+            }
+        }
+    }
+}
+
 // SET 4 SPRITES AS A 32x32 BLOCK, REFLECTING/ROTATING AS REQUIRED. POSITION IS THE CENTRE OF THE 32x32 BLOCK (CAN BE DOUBLED TO 64x64)
-void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes ) {
+void set_sprite32( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_actions ) {
     static unsigned char positions[][4] = {
         { 0, 1, 2, 3 }, // NO ACTION
         { 2, 3, 0, 1 }, // REFLECT X
@@ -1204,187 +1380,95 @@ void set_sprite32( unsigned char sprite_layer, unsigned char sprite_number, unsi
         { 3, 2, 1, 0 }, // ROTATE 180
         { 1, 3, 0, 2 }, // ROTATE 270
     };
-    int size = ( sprite_attributes & 16 ) ? 64 : ( sprite_attributes & 8 ) ? 32 : 16;
+    static unsigned int sizes[] = { 16, 32, 64, 128, 16, 8, 4, 2, 32, 64, 128, 256, 32, 16, 8, 4 };
+    int size = sizes[ ( sprite_actions >> 3 ) ];
 
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][0], active, x - size, y - size, tile, sprite_attributes );
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][1], active, x - size, y, tile, sprite_attributes );
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][2], active, x, y - size, tile, sprite_attributes );
-    set_sprite( sprite_layer, sprite_number + positions[ sprite_attributes & 7 ][3], active, x, y, tile, sprite_attributes );
-}
-
-// SET or GET ATTRIBUTES for sprite_number in sprite_layer
-//  attribute == 0 active status ( 0 == inactive, 1 == active )
-//  attribute == 1 tile number ( 0 to 7 )
-//  attribute == 3 x coordinate
-//  attribute == 4 y coordinate
-//  attribute == 5 attributes bit 0 = size == 0 16x16 == 1 32x32. bit 1 = x-mirror bit 2 = y-mirror
-void set_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_number, unsigned char attribute, short value ) {
-    if( sprite_layer == 0 ) {
-        switch( attribute ) {
-            case 0:
-                LOWER_SPRITE_ACTIVE[sprite_number] = ( unsigned char) value;
-                break;
-            case 1:
-                LOWER_SPRITE_TILE[sprite_number] = ( unsigned char) value;
-                break;
-            case 2:
-                break;
-            case 3:
-                LOWER_SPRITE_X[sprite_number] = value;
-                break;
-            case 4:
-                LOWER_SPRITE_Y[sprite_number] = value;
-                break;
-            case 5:
-                LOWER_SPRITE_ACTIONS[sprite_number] = ( unsigned char) value;
-                break;
-        }
-    } else {
-        switch( attribute ) {
-            case 0:
-                UPPER_SPRITE_ACTIVE[sprite_number] = ( unsigned char) value;
-                break;
-            case 1:
-                UPPER_SPRITE_TILE[sprite_number] = ( unsigned char) value;
-                break;
-            case 2:
-                break;
-            case 3:
-                UPPER_SPRITE_X[sprite_number] = value;
-                break;
-            case 4:
-                UPPER_SPRITE_Y[sprite_number] = value;
-                break;
-            case 5:
-                UPPER_SPRITE_ACTIONS[sprite_number] = ( unsigned char) value;
-                break;
-        }
-    }
-}
-
-short get_sprite_attribute( unsigned char sprite_layer, unsigned char sprite_number, unsigned char attribute ) {
-    if( sprite_layer == 0 ) {
-        switch( attribute ) {
-            case 0:
-                return( (short)LOWER_SPRITE_ACTIVE[sprite_number] );
-            case 1:
-                return( (short)LOWER_SPRITE_TILE[sprite_number] );
-            case 2:
-                return( 0 );
-            case 3:
-                return( LOWER_SPRITE_X[sprite_number] );
-            case 4:
-                return( LOWER_SPRITE_Y[sprite_number] );
-            case 5:
-                return( (short)LOWER_SPRITE_ACTIONS[sprite_number] );
-            default:
-                return( 0 );
-        }
-    } else {
-        switch( attribute ) {
-            case 0:
-                return( (short)UPPER_SPRITE_ACTIVE[sprite_number] );
-            case 1:
-                return( (short)UPPER_SPRITE_TILE[sprite_number] );
-            case 2:
-                return( 0 );
-            case 3:
-                return( UPPER_SPRITE_X[sprite_number] );
-            case 4:
-                return( UPPER_SPRITE_Y[sprite_number] );
-            case 5:
-                return( (short)UPPER_SPRITE_ACTIONS[sprite_number] );
-            default:
-                return( 0 );
-        }
-    }
-}
-
-// RETURN THE COLLISION STATUS for sprite_number in sprite_layer to other in layer sprites
-//  bit is 1 if sprite is in collision with { in layer sprite 15, in layer sprite 14 .. in layer sprite 0 }
-unsigned short get_sprite_collision( unsigned char sprite_layer, unsigned char sprite_number ) {
-    return( sprite_layer ? UPPER_SPRITE_COLLISION_BASE[sprite_number] : LOWER_SPRITE_COLLISION_BASE[sprite_number] );
-}
-// RETURN THE COLLISION STATUS for sprite number in sprite layer to other layers
-// bit is 1 if sprite is in collision with { bitmap, tilemap L, tilemap U, other sprite layer }
-unsigned short get_sprite_layer_collision( unsigned char sprite_layer, unsigned char sprite_number ) {
-    return( sprite_layer ? UPPER_SPRITE_LAYER_COLLISION_BASE[sprite_number] : LOWER_SPRITE_LAYER_COLLISION_BASE[sprite_number] );
-}
-
-// UPDATE A SPITE moving by x and y deltas, with optional wrap/kill and optional changing of the tile
-//  update_flag = { y action, x action, tile action, 5 bit y delta, 5 bit x delta }
-//  x and y action ( 0 == wrap, 1 == kill when moves offscreen )
-//  x and y deltas a 2s complement -15 to 15 range
-//  tile action, increase the tile number ( provides limited animation effects )
-void update_sprite( unsigned char sprite_layer, unsigned char sprite_number, unsigned short update_flag ) {
-    switch( sprite_layer ) {
-        case 0:
-            LOWER_SPRITE_UPDATE[sprite_number] = update_flag;
-            break;
-        case 1:
-            UPPER_SPRITE_UPDATE[sprite_number] = update_flag;
-            break;
-    }
+    set_sprite( sprite_number + 2 * positions[ sprite_actions & 7 ][0], active, x - size, y - size, tile, sprite_actions );
+    set_sprite( sprite_number + 2 * positions[ sprite_actions & 7 ][1], active, x - size, y, tile, sprite_actions );
+    set_sprite( sprite_number + 2 * positions[ sprite_actions & 7 ][2], active, x, y - size, tile, sprite_actions );
+    set_sprite( sprite_number + 2 * positions[ sprite_actions & 7 ][3], active, x, y, tile, sprite_actions );
 }
 
 // CHARACTER MAP FUNCTIONS
-// The character map is an 80 x 30 character window with a 512 character 8 x 8 pixel character generator ROM ) normal/bold
+// The character map is an 80 x 60 character window with a 1024 character 8 x 8 pixel character generator ROM ) normal/bold/underline/flash/2x/2y/altset
 // NO SCROLLING, CURSOR WRAPS TO THE TOP OF THE SCREEN
 // CURSES LIBRARY PROVIDES MORE CAPABILITIES, SEE BELOW
+unsigned char __tpu_x = 0, __tpu_y = 0, __tpu_background = TRANSPARENT, __tpu_foreground = WHITE, __tpu_attributes = TPU_NORMAL;
 
+// POSITION THE CURSOR to (x,y) and set background, foreground colours and attributes
+void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground, unsigned char attributes ) {
+    *TPU_X = __tpu_x = x;
+    *TPU_Y = __tpu_y = y;
+    *TPU_BACKGROUND = __tpu_background = background;
+    *TPU_FOREGROUND = __tpu_foreground = foreground;
+    __tpu_attributes = attributes;
+}
+// SHOW/HIDE THE CURSOR
+void tpu_showcursor( unsigned char value ) {
+    *TPU_CURSOR = value;
+}
+void tpu_4080( unsigned char mode ) {
+    *TPU_LOREZ = mode;
+}
 // CLEAR THE CHARACTER MAP
 void tpu_cs( void ) {
-    while( *TPU_COMMIT );
-    *TPU_COMMIT = 3;
+    paws_memset32( ( void *)TPUBUFFER, ( 64 << 16 ), 4800 * 4 );
+    tpu_set( 0, 0, TRANSPARENT, WHITE, TPU_NORMAL );
 }
-
-// CLEAR A LINE
 void tpu_clearline( unsigned char y ) {
-    while( *TPU_COMMIT );
-    *TPU_Y = y;
-    *TPU_COMMIT = 4;
+    paws_memset32( (void *)TPUBUFFER + 80 * y * 4, ( 64 << 16 ), 80 * 4 );
 }
 
 // POSITION THE CURSOR to (x,y)
 void tpu_move( unsigned char x, unsigned char y ) {
-    while( *TPU_COMMIT );
-    *TPU_X = x; *TPU_Y = y; *TPU_COMMIT = 1;
-}
-// READ THE CHARACTER AT (x,y)
-unsigned short tpu_read_cell( unsigned char x, unsigned char y ) {
-    tpu_move( x, y );
-    return( *TPUREAD_CHARACTER );
-}
-// READ THE COLOUR AT (x,y)
-unsigned short tpu_read_colour( unsigned char x, unsigned char y ) {
-    tpu_move( x, y );
-    return( (*TPUREAD_BACKGROUND<<8)+*TPUREAD_FOREGROUND);
-}
-void tpu_write( short c ) {
-     while( *TPU_COMMIT );
-    *TPU_CHARACTER = c; *TPU_COMMIT = 12;
+    *TPU_X = __tpu_x = x;
+    *TPU_Y = __tpu_y = y;
 }
 
-// POSITION THE CURSOR to (x,y) and set background and foreground colours
-void tpu_set( unsigned char x, unsigned char y, unsigned char background, unsigned char foreground ) {
-    while( *TPU_COMMIT );
-    *TPU_X = x; *TPU_Y = y; *TPU_BACKGROUND = background; *TPU_FOREGROUND = foreground; *TPU_COMMIT = 1;
+// MOVE TO NEXT TPU CELL
+void tpu_next( void ) {
+    __tpu_x++;
+    if( __tpu_x == 80 ) {
+        __tpu_x = 0;
+        __tpu_y++;
+        if( __tpu_y == 59)
+            __tpu_y = 0;
+    }
+    *TPU_X = __tpu_x; *TPU_Y = __tpu_y;
 }
-// OUTPUT CHARACTER, STRING, and PRINTF EQUIVALENT FOR THE TPU
-void tpu_output_character( short c ) {
-    while( *TPU_COMMIT );
-    *TPU_CHARACTER = c; *TPU_COMMIT = 2;
+
+// OUTPUT CHARACTER, STRING EQUIVALENT FOR THE TPU
+void tpu_output_character( unsigned char c ) {
+    TPUBUFFER[ __tpu_y * 80 + __tpu_x ] = ( __tpu_attributes << 24 ) + ( __tpu_background << 16 ) + ( __tpu_foreground << 8 ) + c;
+    if( __tpu_attributes & TPU_X2 )
+        TPUBUFFER[ __tpu_y * 80 + __tpu_x + 1 ] = ( __tpu_attributes << 24 ) + ( __tpu_background << 16 ) + ( __tpu_foreground << 8 ) + c;
+    if( __tpu_attributes & TPU_Y2 ) {
+        TPUBUFFER[ __tpu_y * 80 + 80 + __tpu_x ] = ( __tpu_attributes << 24 ) + ( __tpu_background << 16 ) + ( __tpu_foreground << 8 ) + c;
+        if( __tpu_attributes & TPU_X2 )
+            TPUBUFFER[ __tpu_y * 80 + 80 + __tpu_x + 1 ] = ( __tpu_attributes << 24 ) + ( __tpu_background << 16 ) + ( __tpu_foreground << 8 ) + c;
+    }
+
+    tpu_next();
+    if( __tpu_attributes & TPU_X2 )
+        tpu_next();
 }
-void tpu_outputstring( char attribute, char *s ) {
+void tpu_do_outputstring( unsigned char x, unsigned char y, char *s ) {
+    tpu_move( x, y );
     while( *s ) {
-        tpu_output_character( ( attribute ? 256 : 0 ) + *s );
+        tpu_output_character( *s );
         s++;
     }
 }
-void tpu_print( char attribute, char *buffer ) {
+void tpu_outputstring( unsigned char attribute, char *s ) {
+    unsigned char y = __tpu_y; unsigned char x = __tpu_x;
+    __tpu_attributes = attribute;
+
+    tpu_do_outputstring( x, y, s );
+}
+void tpu_print( unsigned char attribute, char *buffer ) {
     tpu_outputstring( attribute, buffer );
 }
-void tpu_printf( char attribute, const char *fmt,... ) {
+void tpu_printf( unsigned char attribute, const char *fmt,... ) {
     static char buffer[1024];
     va_list args;
     va_start (args, fmt);
@@ -1393,12 +1477,14 @@ void tpu_printf( char attribute, const char *fmt,... ) {
 
     tpu_outputstring( attribute, buffer );
 }
-void tpu_print_centre( unsigned char y, unsigned char background, unsigned char foreground, char attribute, char *buffer  ) {
+void tpu_print_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, char *buffer ) {
     tpu_clearline( y );
-    tpu_set( 40 - ( strlen(buffer) >> 1 ), y, background, foreground );
+    if( attribute & TPU_Y2 )
+        tpu_clearline( y + 1 );
+    tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
 }
-void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground, char attribute, const char *fmt,...  ) {
+void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char foreground,  unsigned char attribute, const char *fmt,...  ) {
     static char buffer[1024];
     va_list args;
     va_start (args, fmt);
@@ -1406,49 +1492,16 @@ void tpu_printf_centre( unsigned char y, unsigned char background, unsigned char
     va_end(args);
 
     tpu_clearline( y );
-    tpu_set( 40 - ( strlen(buffer) >> 1 ), y, background, foreground );
+    if( attribute & TPU_Y2 )
+        tpu_clearline( y + 1 );
+    tpu_set( 40 - ( ( attribute & TPU_X2 ) ? ( strlen(buffer) & 0xfe ) : ( strlen(buffer) >> 1 ) ), y, background, foreground, attribute );
     tpu_outputstring( attribute, buffer );
 }
 
-// SIMPLE TERMINAL WINDOW FUNCTIONS
-// The terminal is an 80 x 8 character window with a 256 character 8 x 8 pixel character generator ROM )
-// Outputs characters, understands backspace, newline, linefeed and clear
-
-// CLEAR THE TERMINAL
-void terminal_cs( void ) {
-    while( *TERMINAL_STATUS );
-    *TERMINAL_RESET = 1;
-}
-
-// SHOW/HIDE THE TERMINAL WINDOW
-void terminal_showhide( unsigned char flag ) {
-    *TERMINAL_SHOW = flag;
-}
-
-void terminal_output_character( char c ) {
-    while( *TERMINAL_STATUS );
-    *TERMINAL_COMMIT = c;
-    if( c == '\n' ) {
-        while( *TERMINAL_STATUS );
-        *TERMINAL_COMMIT = 13;
-    }
-}
-void terminal_outputstring( char *s ) {
-    while( *s ) {
-        terminal_output_character( *s++ );
-    }
-}
-void terminal_print( char *buffer ) {
-    terminal_outputstring( buffer );
-}
-void terminal_printf( const char *fmt,... ) {
-    static char buffer[1024];
-    va_list args;
-    va_start (args, fmt);
-    vsnprintf( buffer, 1023, fmt, args);
-    va_end(args);
-
-    terminal_outputstring( buffer );
+// UPLOAD CHARACTER SET TO THE ALTERNATE FONT BLOCK
+void tpu_setfont( unsigned short start_character, unsigned short number, unsigned char *bitmap ) {
+    *TPU_CHARGEN_CHAR = start_character;
+    DMASTART( bitmap, (void *restrict)TPU_CHARGEN_BITMAP, number * 8, DMA_TO_IO );
 }
 
 // NETPBM DECODER
@@ -1556,331 +1609,7 @@ void netppm_decoder( unsigned char *netppmimagefile, unsigned char *buffer ) {
     }
 }
 
-// SIMPLE CURSES LIBRARY
-// USES THE CURSES BUFFER IN THE CHARACTER MAP
-char __stdinout_init = FALSE, __sdcard_init = FALSE;
-
-unsigned char   __curses_backgroundcolours[COLOR_PAIRS], __curses_foregroundcolours[COLOR_PAIRS],
-                __curses_scroll = 1, __curses_echo = 0, __curses_bold = 0, __curses_reverse = 0, __curses_autorefresh = 0;
-unsigned short  __curses_x = 0, __curses_y = 0, __curses_fore = WHITE, __curses_back = BLACK;
-
-void *stdscr;
-
-typedef union curses_cell {
-    unsigned int bitfield;
-    struct {
-        unsigned int pad : 7;
-        unsigned int character : 9;
-        unsigned int background : 8;
-        unsigned int foreground : 8;
-    } cell;
-} __curses_cell;
-
-void __position_curses( unsigned short x, unsigned short y ) {
-    while( *TPU_COMMIT );
-    *TPU_X = x; *TPU_Y = y; *TPU_COMMIT = 1;
-}
-
-void __update_tpu( void ) {
-    while( *TPU_COMMIT );
-    *TPU_X = __curses_x; *TPU_Y = __curses_y; *TPU_COMMIT = 1;
-    *TPU_BACKGROUND = __curses_back; *TPU_FOREGROUND = __curses_fore;
-}
-
-__curses_cell __read_curses_cell( unsigned short x, unsigned short y ) {
-    __curses_cell storage;
-    __position_curses( x, y );
-    storage.cell.character = *TPU_CHARACTER;
-    storage.cell.background = *TPU_BACKGROUND;
-    storage.cell.foreground = *TPU_FOREGROUND;
-    return( storage );
-}
-
-void __write_curses_cell( unsigned short x, unsigned short y, __curses_cell writecell ) {
-    while( *TPU_COMMIT );
-    __position_curses( x, y );
-    *TPU_CHARACTER = writecell.cell.character;
-    *TPU_BACKGROUND = writecell.cell.background;
-    *TPU_FOREGROUND = writecell.cell.foreground;
-    *TPU_COMMIT = 5;
-}
-
-void initscr( void ) {
-    while( *TPU_COMMIT );
-    *CURSES_BACKGROUND = BLACK; *CURSES_FOREGROUND = WHITE; *TPU_COMMIT = 6; while( *TPU_COMMIT );
-    __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; __curses_scroll = 1; __curses_bold = 0; __update_tpu();
-    *TPU_CURSOR = TRUE;
-    __stdinout_init = TRUE;
-}
-
-int endwin( void ) {
-    return( true );
-}
-
-int refresh( void ) {
-    while( *TPU_COMMIT ); *TPU_COMMIT = 7;
-    return( true );
-}
-
-int clear( void ) {
-    while( *TPU_COMMIT ); *TPU_COMMIT = 6;
-    __curses_x = 0; __curses_y = 0; __curses_fore = WHITE; __curses_back = BLACK; __curses_bold = 0; __update_tpu();
-    return( true );
-}
-
-void cbreak( void ) {
-}
-
-void echo( void ) {
-}
-
-void noecho( void ) {
-}
-
-void scroll( void ) {
-    __curses_scroll = 1;
-}
-
-void noscroll( void ) {
-    __curses_scroll = 0;
-}
-
-void curs_set( int visibility ) {
-    *TPU_CURSOR = visibility;
-}
-
-void autorefresh( int flag ) {
-    __curses_autorefresh = flag;
-}
-
-int start_color( void ) {
-    for( unsigned short i = 0; i < 15; i++ ) {
-        __curses_foregroundcolours[i] = BLACK;
-        __curses_backgroundcolours[i] = BLACK;
-    }
-    __curses_foregroundcolours[0] = BLACK;
-    __curses_foregroundcolours[1] = RED;
-    __curses_foregroundcolours[2] = GREEN;
-    __curses_foregroundcolours[3] = YELLOW;
-    __curses_foregroundcolours[4] = BLUE;
-    __curses_foregroundcolours[5] = MAGENTA;
-    __curses_foregroundcolours[6] = CYAN;
-    __curses_foregroundcolours[7] = WHITE;
-
-    return( true );
-}
-
-bool has_colors( void ) {
-    return( true );
-}
-
-bool can_change_color( void ) {
-    return( true );
-}
-
-int init_color(short color, short r, short g, short b) {
-    return( true );
-}
-
-int init_pair( short pair, short f, short b ) {
-    __curses_foregroundcolours[ pair ] = f;
-    __curses_backgroundcolours[ pair ] = b;
-    return( true );
-}
-
-
-int move( int y, int x ) {
-    __curses_x = ( unsigned short ) ( x < 0 ) ? 0 : ( x > COLS-1 ) ? COLS-1 : x;
-    __curses_y = ( unsigned short ) ( y < 0 ) ? 0 : ( y > LINES-1 ) ? LINES-1 : y;
-    __position_curses( __curses_x, __curses_y );
-    return( true );
-}
-
-int getyx( int *y, int *x ) {
-    *y = (int)__curses_y;
-    *x = (int)__curses_x;
-    return( true );
-}
-
-void __scroll( void ) {
-    while( *TPU_COMMIT );
-    *TPU_COMMIT = 8;
-}
-
-int addch( unsigned char ch ) {
-    __curses_cell temp;
-    short gonextline = 0;
-
-    switch( ch ) {
-        case '\b': {
-            // BACKSPACE
-            if( __curses_x ) {
-                __curses_x--;
-            } else {
-                if( __curses_y ) {
-                    __curses_y--;
-                    __curses_x = COLS-1;
-                }
-            }
-            break;
-        }
-        case '\n': {
-            // LINE FEED
-            __curses_x = 0;
-            gonextline = 1;
-            break;
-        }
-        case '\r': {
-            // CARRIAGE RETURN
-            __curses_x = 0;
-            break;
-        }
-        case '\t': {
-            // TAB
-            __curses_x = ( 1 + __curses_x / 8 ) * 8;
-            if( __curses_x >= COLS ) {
-                __curses_x = 0;
-                gonextline = 1;
-            }
-            break;
-        }
-
-        default: {
-            if( __curses_autorefresh ) {
-                tpu_set( __curses_x, __curses_y, __curses_back, __curses_fore );
-                tpu_output_character( ( __curses_bold ? 256 : 0 ) + ch );
-            }
-            temp.cell.character = ( __curses_bold ? 256 : 0 ) + ch;
-            temp.cell.background = __curses_back;
-            temp.cell.foreground = __curses_fore;
-            __write_curses_cell( __curses_x, __curses_y, temp );
-            if( __curses_x == COLS-1 ) {
-                __curses_x = 0;
-                gonextline = 1;
-            } else {
-                __curses_x++;
-            }
-        }
-    }
-
-    // GO TO NEXT LINE, SCROLL/WRAP IF REQUIRED
-    if( gonextline ) {
-        if( __curses_y == LINES-1 ) {
-            if( __curses_scroll ) {
-                __scroll();
-                if( __curses_autorefresh )
-                    refresh();
-            } else {
-                __curses_y = 0;
-            }
-        } else {
-            __curses_y++;
-        }
-    }
-
-    __position_curses( __curses_x, __curses_y );
-    return( true );
-}
-
-int mvaddch( int y, int x, unsigned char ch ) {
-    (void)move( y, x );
-    return( addch( ch ) );
-}
-
-void __curses_print_string(const char* s) {
-   for(const char* p = s; *p; ++p) {
-      addch(*p);
-   }
-}
-
-int printw( const char *fmt,... ) {
-    static char buffer[1024];
-    va_list args;
-    va_start (args, fmt);
-    vsnprintf( buffer, 1023, fmt, args);
-    va_end(args);
-
-    __curses_print_string( buffer );
-    return( true );
-}
-
-int mvprintw( int y, int x, const char *fmt,... ) {
-    static char buffer[1024];
-    va_list args;
-    va_start (args, fmt);
-    vsnprintf( buffer, 1023, fmt, args);
-    va_end(args);
-
-    move( y, x );
-    __curses_print_string( buffer );
-
-    return( true );
-}
-
-int attron( int attrs ) {
-    if( attrs & COLORS ) {
-        __curses_fore = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ];
-        __curses_back = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ];
-        __update_tpu();
-    }
-    if( attrs & A_NORMAL ) {
-        __curses_bold = 0;
-        __curses_reverse = 0;
-    }
-
-    if( attrs & A_BOLD )
-        __curses_bold = 1;
-
-    if( attrs & A_REVERSE )
-        __curses_reverse = 1;
-
-    return( true );
-}
-
-int attroff( int attrs ) {
-   if( attrs & A_BOLD ) {
-        __curses_bold = 0;
-    }
-
-    if( attrs & A_REVERSE )
-        __curses_reverse = 0;
-
-    return( true );
-}
-
-void bkgdset( int attrs ) {
-    __curses_fore = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ]; *CURSES_FOREGROUND = __curses_foregroundcolours[ attrs & COLOR_PAIRS_MASK ];
-    __curses_back = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ]; *CURSES_BACKGROUND = __curses_backgroundcolours[ attrs & COLOR_PAIRS_MASK ];
-}
-
-int deleteln( void ) {
-     while( *TPU_COMMIT );
-    *TPU_COMMIT = 9;
-
-    return( true );
-}
-
-int clrtoeol( void ) {
-     while( *TPU_COMMIT );
-    *TPU_COMMIT = 10;
-
-    return( true );
-}
-
-int clrtobot( void ) {
-     while( *TPU_COMMIT );
-    *TPU_COMMIT = 11;
-
-    return( true );
-}
-
-int intrflush( WINDOW *win, bool bf ) {
-    return( 0 );
-}
-
-int keypad( WINDOW *win, bool bf ) {
-    return( 0 );
-}
+#include "PAWSncurses.c"
 
 // FAT16/32 File IO Library from Ultra-Embedded.com
 #ifdef feof
@@ -1907,6 +1636,7 @@ int sd_media_write( uint32 sector, uint8 *buffer, uint32 sector_count ) {
         // MOVE TO NEXT SECTOR
         sector++; buffer += FAT_SECTOR_SIZE;
     }
+
     return(1);
 }
 
@@ -1925,13 +1655,51 @@ char *_sbrk( int incr ) {
     prev_heap = _heap;
 
     if( incr < 0 ) { _heap = _heap; } else { _heap += incr; }
+    if( (unsigned long)_heap < (unsigned long)*RAMTOP ) {
+        return prev_heap;
+    } else {
+        errno = ENOMEM;
+        return (char *)-1;
+    }
+}
 
-    return prev_heap;
+// PAWS SYSTEMCLOCK
+int __gettimeofday_init = 0;
+int bcdtobin( int bcd ) {
+    return( ( ( bcd & 0xf0 ) >> 4) * 10 + ( bcd & 0x0f ) );
+}
+// CONVERT ULX3S BCD RTC TO LINUX EPOCH TIME
+void paws_settime( void ) {
+    struct tm calendar; uint64_t rtc = *RTC, sinceepoch;
+
+    calendar.tm_sec = bcdtobin( ( rtc & 0x00000000000000ff ) >> 0 );
+    calendar.tm_min = bcdtobin( ( rtc & 0x000000000000ff00 ) >> 8 );
+    calendar.tm_hour = bcdtobin( ( rtc & 0x0000000000ff0000 ) >> 16 );
+    calendar.tm_mday = bcdtobin( ( rtc & 0x000000ff00000000 ) >> 32 );
+    calendar.tm_mon = bcdtobin( ( rtc & 0x0000ff0000000000 ) >> 40 ) - 1;
+    calendar.tm_year = 2000 + bcdtobin( ( rtc & 0x00ff000000000000 ) >> 48 ) - 1900;
+    calendar.tm_wday = 0; calendar.tm_yday = 0; calendar.tm_isdst = 0;
+    sinceepoch = mktime( &calendar );
+    *SET_RTC_TIME = sinceepoch; *SET_RTC = 1;
+}
+int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
+    if( !__gettimeofday_init ) {
+        paws_settime();
+        __gettimeofday_init = 1;
+    }
+    tv->tv_sec = *SYSTEMSECONDS; tv->tv_usec = *SYSTEMMILLISECONDS;
+    return( 0 );
+}
+int paws_clock_gettime( clockid_t clk_id, void *tz ) {
+    struct timespec *tv = tz;
+    tv->tv_sec = (time_t)*((long *)SYSTEMSECONDS);
+    tv->tv_nsec = (long)(*SYSTEMMILLISECONDS/1000);
+    return( 0 );
 }
 
 // PAWS INITIALISATION FOR THE TERMNAL AND THE SDCARD for fat_io_lib
 void __start_stdinout( void ) {
-    initscr(); start_color(); autorefresh( TRUE ); ps2_keyboardmode( PS2_KEYBOARD );
+    paws_settime(); initscr(); __pnc_start_color( stdscr ); __pnc_autorefresh( stdscr, TRUE ); ps2_keyboardmode( PS2_KEYBOARD );
     __stdinout_init = TRUE;
 }
 void __start_sdmedia( void ) {
@@ -1994,7 +1762,7 @@ int paws_vfprintf( void *fd, const char *format, va_list args ) {
 
 // LINK NEWLIB STUB FUNCTIONS TO FAT_IO_LIB FUNCTIONS
 
-#define MAXOPENFILES 4
+#define MAXOPENFILES 16
 struct sFL_FILE *__filehandles[ MAXOPENFILES + 3 ]; // stdin, stdout, stderr
 
 // FIND AN UNUSED FILE HANDLE FROM 3, 0 = stdin, 1 = stdout, 2 = stderr
@@ -2026,15 +1794,12 @@ int _open( const char *file, int flags ) {
             case O_RDWR | O_CREAT | O_APPEND:   mode = 5; break;
             default: mode = -1;
         }
-        fprintf(stderr,"Opening file %s into handle %0d using mode %s : ",file,handle,(mode == -1 ) ? "err" : __openmodes[mode]);
         if( mode != -1 ) {
             __filehandles[ handle ] = fl_fopen( file, __openmodes[ mode ] );
             if( __filehandles[ handle ] != NULL ) {
-                fprintf(stderr,"Success\n");
                 return handle;
             }
         }
-        fprintf(stderr,"Failed\n");
         return( -1 );
     }
 }
@@ -2073,7 +1838,7 @@ long _write( int fd, const void *buf, size_t cnt ) {
     while( cnt-- ) {
         switch( fd ) {
             case STDOUT_FILENO:
-                addch( *buffer++ );
+                __pnc_addch( stdscr, *buffer++ );
                 break;
             case STDERR_FILENO:
                 uart_outputcharacter( *buffer++ );
@@ -2194,7 +1959,7 @@ int paws_fgetc( void *fd ) {
     char input;
     if( fd == stdin ) {
         input = ps2_inputcharacter();
-        addch( input );
+        __pnc_addch( stdscr, input );
         return ( input );
     } else {
         return( fl_fgetc( fd ) );
@@ -2210,9 +1975,9 @@ char *paws_fgets( char *s, int cnt, void *fd ) {
             input = ps2_inputcharacter();
             if( input != 0x0d ) {
                 *buffer++ = input;
-                addch( input );
+                __pnc_addch( stdscr, input );
             } else {
-                addch( '\n' );
+                __pnc_addch( stdscr, '\n' );
                 *buffer = 0;
                 return( s);
             }
@@ -2226,7 +1991,7 @@ int paws_fputc( int c, void *fd ) {
     if( !__stdinout_init ) __start_stdinout();
     if( !__sdcard_init ) __start_sdmedia();
     if( ( fd == stdout ) || ( fd == stderr ) )  {
-        if( fd == stdout ) addch( c );
+        if( fd == stdout ) __pnc_addch( stdscr, c );
         if( fd == stderr ) uart_outputcharacter( c );
         return( c );
     } else {
@@ -2253,7 +2018,7 @@ int paws_fwrite(const void *data, int size, int count, void *fd ) {
         for( int i = 0; i < count; i++ ) {
             buffer = (unsigned char *)data;
             for( int j = 0; j < size; j++ ) {
-                if( fd == stdout ) addch( *buffer++ );
+                if( fd == stdout ) __pnc_addch( stdscr, *buffer++ );
                 if( fd == stderr ) uart_outputcharacter(  *buffer++  );
             }
         }
@@ -2307,46 +2072,14 @@ int paws_rmdir (const char *__path) {
     return(0);
 }
 
-// PAWS SYSTEMCLOCK
-int __gettimeofday_init = 0;
-int bcdtobin( int bcd ) {
-    return( ( ( bcd & 0xf0 ) >> 4) * 10 + ( bcd & 0x0f ) );
-}
-// CONVERT ULX3S BCD RTC TO LINUX EPOCH TIME
-void paws_settime( void ) {
-    struct tm calendar; uint64_t rtc = *RTC, sinceepoch;
-
-    calendar.tm_sec = bcdtobin( ( rtc & 0x00000000000000ff ) >> 0 );
-    calendar.tm_min = bcdtobin( ( rtc & 0x000000000000ff00 ) >> 8 );
-    calendar.tm_hour = bcdtobin( ( rtc & 0x0000000000ff0000 ) >> 16 );
-    calendar.tm_mday = bcdtobin( ( rtc & 0x000000ff00000000 ) >> 32 );
-    calendar.tm_mon = bcdtobin( ( rtc & 0x0000ff0000000000 ) >> 40 ) - 1;
-    calendar.tm_year = 2000 + bcdtobin( ( rtc & 0x00ff000000000000 ) >> 48 ) - 1900;
-    calendar.tm_wday = 0; calendar.tm_yday = 0; calendar.tm_isdst = 0;
-    sinceepoch = mktime( &calendar );
-    *SET_RTC_TIME = sinceepoch; *SET_RTC = 1;;
-}
-int _gettimeofday( struct timeval *restrict tv, struct timezone *restrict tz ) {
-    int *storage = (int *)tv;
-    if( !__gettimeofday_init ) {
-        paws_settime();
-        __gettimeofday_init = 1;
-    }
-    storage[0] = TIMER_REGS[8]; storage[1] = TIMER_REGS[9]; storage[2] = storage[3] = TIMER_REGS[10];
-    return( 0 );
-}
-int paws_clock_gettime( clockid_t clk_id, void *tz ) {
-    struct timespec *tv = tz;
-    tv->tv_sec = (time_t)*((long *)SYSTEMSECONDS);
-    tv->tv_nsec = (long)(*SYSTEMMILLISECONDS/1000);
-    return( 0 );
-}
-
 // PAWS SLEEP FOR sys/unistd.h
 unsigned int paws_sleep( unsigned int seconds ) {
-    // WAIT FOR A FREE TIMER
-    while( *SLEEPTIMER0 && *SLEEPTIMER1 );
-    sleep1khz( 1000 * seconds, ( !*SLEEPTIMER0 ) ? 0 : 1 );
+    unsigned long target = CSRtime() + seconds * 50000000;
+    while( CSRtime() < target );
+    return(0);
+}
+
+unsigned int paws_select(int nfds, fd_set *restrict readfds, fd_set *restrict writefds, fd_set *restrict exceptfds, struct timeval *restrict timeout) {
     return(0);
 }
 
@@ -2590,8 +2323,8 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
             // NO ENTRIES FOUND
             gpu_outputstringcentre( RED, 176, 1, "NO FILES", 1 );
             gpu_outputstringcentre( RED, 192, 1, "IN THIS DIRECTORY", 1 );
-            beep( CHANNEL_BOTH, WAVE_SAW, 27, 1000 );
-            sleep1khz( 1000, 0 );
+            beep( CHANNEL_LEFT_0, WAVE_SAW, 27, 1000, 7 );
+            sleep1khz( 1000 );
             return(0);
         } else {
             sortdirectoryentries( entries );
@@ -2606,7 +2339,7 @@ unsigned int filebrowser( char *message, char *extension, int startdirectoryclus
 
             unsigned short buttons = get_buttons();
             while( buttons == 1 ) { buttons = get_buttons(); }
-            while( get_buttons() != 1 ) {} sleep1khz( 100, 0 );
+            while( get_buttons() != 1 ) {} sleep1khz( 100 );
             if( buttons & 64 ) {
                 // MOVE RIGHT
                 if( present_entry == entries ) { present_entry = 0; } else { present_entry++; }

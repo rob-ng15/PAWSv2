@@ -31,8 +31,6 @@
 
 #include "v_video.h"
 
-#include <PAWSlibrary.h>
-
 // Each screen is [SCREENWIDTH*SCREENHEIGHT];
 byte*                           screens[5];
 
@@ -156,13 +154,31 @@ V_CopyRect
     byte*       src;
     byte*       dest;
 
+#ifdef RANGECHECK
+    if (srcx<0
+        ||srcx+width >SCREENWIDTH
+        || srcy<0
+        || srcy+height>SCREENHEIGHT
+        ||destx<0||destx+width >SCREENWIDTH
+        || desty<0
+        || desty+height>SCREENHEIGHT
+        || (unsigned)srcscrn>4
+        || (unsigned)destscrn>4)
+    {
+        I_Error ("Bad V_CopyRect");
+    }
+#endif
     V_MarkRect (destx, desty, width, height);
 
     src = screens[srcscrn]+SCREENWIDTH*srcy+srcx;
     dest = screens[destscrn]+SCREENWIDTH*desty+destx;
 
-    paws_memcpy_rectangle( dest, src, width, SCREENWIDTH, SCREENWIDTH, height );
-//    for ( ; height>0 ; height--) { memcpy (dest, src, width); src += SCREENWIDTH;  dest += SCREENWIDTH; }
+    for ( ; height>0 ; height--)
+    {
+        memcpy (dest, src, width);
+        src += SCREENWIDTH;
+        dest += SCREENWIDTH;
+    }
 }
 
 //
@@ -177,11 +193,24 @@ V_FillRect
   int           height,
   int           color )
 {
+#ifdef RANGECHECK
+    if (x < 0
+        || x+width > SCREENWIDTH
+        || y < 0
+        || y+height > SCREENHEIGHT
+        || (unsigned)scrn > 4)
+    {
+        I_Error ("Bad V_FillRect");
+    }
+#endif
     V_MarkRect (x, y, width, height);
 
     byte* dest = screens[scrn]+SCREENWIDTH*y+x;
-    paws_memset_rectangle( dest, color, width, SCREENWIDTH, height );
-//    for (int i = 0; i < height; ++i) { memset (dest, color, width); dest += SCREENWIDTH; }
+    for (int i = 0; i < height; ++i)
+    {
+        memset (dest, color, width);
+        dest += SCREENWIDTH;
+    }
 }
 
 static inline void V_DrawPatchScaledInternal (int x,
@@ -196,6 +225,16 @@ static inline void V_DrawPatchScaledInternal (int x,
     const int src_h = SHORT (patch->height);
     const int w = TOSCREENX (src_w);
     const int h = TOSCREENY (src_h);
+#ifdef RANGECHECK
+    if (x < 0 || x + w > SCREENWIDTH || y < 0 || y + h > SCREENHEIGHT ||
+        (unsigned)scrn > 4)
+    {
+        fprintf (stderr, "Patch at %d,%d exceeds LFB\n", x, y);
+        // No I_Error abort - what is up with TNT.WAD?
+        fprintf (stderr, "V_DrawPatchScaled: bad patch (ignored)\n");
+        return;
+    }
+#endif
 
     if (!scrn)
         V_MarkRect (x, y, w, h);
@@ -223,7 +262,35 @@ static inline void V_DrawPatchScaledInternal (int x,
             const byte* src = (byte*)post + 3;
             byte* dst = desttop + TOSCREENY ((int)post->topdelta) * SCREENWIDTH;
             int count = TOSCREENY ((int)post->length);
-
+#if defined(__MRISC32_VECTOR_OPS__)
+            // This vectorized routine takes <5 clock-cycles per pixel.
+            unsigned step_y_N, dst_incr;
+            __asm__ volatile(
+                "    ble     %[count], 2f\n"
+                "    getsr   vl, #0x10\n"
+                "    mul     %[step_y_N], vl, %[step_y]\n"
+                "    mul     %[dst_incr], vl, #%[stride]\n"
+                "    ldea    v1, [z, %[step_y]]\n"
+                "1:\n"
+                "    min     vl, vl, %[count]\n"
+                "    sub     %[count], %[count], vl\n"
+                "    asr     v2, v1, #16\n"
+                "    ldub    v2, [%[src], v2]\n"
+                "    stb     v2, [%[dst], #%[stride]]\n"
+                "    ldea    %[dst], [%[dst], %[dst_incr]]\n"
+                "    add     v1, v1, %[step_y_N]\n"
+                "    bnz     %[count], 1b\n"
+                "2:"
+                : [dst] "+r"(dst),
+                  [count] "+r"(count),
+                  [step_y_N] "=&r"(step_y_N),
+                  [dst_incr] "=&r"(dst_incr)
+                : [src] "r"(src),
+                  [step_y] "r"(step_y),
+                  [stride] "i"(SCREENWIDTH)
+                : "vl", "v1", "v2"
+                );
+#else
             fixed_t row_fixed = 0;
             for (int v = 0; v < count; ++v)
             {
@@ -231,6 +298,7 @@ static inline void V_DrawPatchScaledInternal (int x,
                 dst += SCREENWIDTH;
                 row_fixed += step_y;
             }
+#endif
             post = (post_t*)((byte*)post + post->length + 4);
         }
     }
@@ -244,6 +312,16 @@ static void V_DrawPatchInternal (int x,
 {
     y -= SHORT (patch->topoffset);
     x -= SHORT (patch->leftoffset);
+#ifdef RANGECHECK
+    if (x < 0 || x + SHORT (patch->width) > SCREENWIDTH || y < 0 ||
+        y + SHORT (patch->height) > SCREENHEIGHT || (unsigned)scrn > 4)
+    {
+        fprintf (stderr, "Patch at %d,%d exceeds LFB\n", x, y);
+        // No I_Error abort - what is up with TNT.WAD?
+        fprintf (stderr, "V_DrawPatch: bad patch (ignored)\n");
+        return;
+    }
+#endif
 
     if (!scrn)
         V_MarkRect (x, y, SHORT (patch->width), SHORT (patch->height));
@@ -266,8 +344,36 @@ static void V_DrawPatchInternal (int x,
             const byte* src = (byte*)column + 3;
             byte* dst = desttop + column->topdelta * SCREENWIDTH;
             int count = column->length;
-            paws_memcpy_step( dst, src, count, SCREENWIDTH, 1 );
-//            for (int v = 0; v < count; ++v) { *dst = *src++; dst += SCREENWIDTH; }
+#if defined(__MRISC32_VECTOR_OPS__)
+            // This vectorized routine takes <3 clock-cycles per pixel.
+            unsigned dst_incr;
+            __asm__ volatile(
+                "    ble     %[count], 2f\n"
+                "    getsr   vl, #0x10\n"
+                "    mul     %[dst_incr], vl, #%[stride]\n"
+                "1:\n"
+                "    min     vl, vl, %[count]\n"
+                "    sub     %[count], %[count], vl\n"
+                "    ldub    v1, [%[src], #1]\n"
+                "    stb     v1, [%[dst], #%[stride]]\n"
+                "    ldea    %[src], [%[src], vl]\n"
+                "    ldea    %[dst], [%[dst], %[dst_incr]]\n"
+                "    bnz     %[count], 1b\n"
+                "2:"
+                : [src] "+r"(src),
+                  [dst] "+r"(dst),
+                  [count] "+r"(count),
+                  [dst_incr] "=&r"(dst_incr)
+                : [stride] "i"(SCREENWIDTH)
+                : "vl", "v1"
+                );
+#else
+            for (int v = 0; v < count; ++v)
+            {
+                *dst = *src++;
+                dst += SCREENWIDTH;
+            }
+#endif
             column = (column_t*)((byte*)column + column->length + 4);
         }
     }
@@ -325,12 +431,27 @@ V_DrawBlock
 {
     byte*       dest;
 
+#ifdef RANGECHECK
+    if (x<0
+        ||x+width >SCREENWIDTH
+        || y<0
+        || y+height>SCREENHEIGHT
+        || (unsigned)scrn>4 )
+    {
+        I_Error ("Bad V_DrawBlock");
+    }
+#endif
+
     V_MarkRect (x, y, width, height);
 
     dest = screens[scrn] + y*SCREENWIDTH+x;
 
-    paws_memcpy_rectangle( dest, src, width, SCREENWIDTH, width, height );
-//    while (height--) { memcpy (dest, src, width); src += width; dest += SCREENWIDTH;  }
+    while (height--)
+    {
+        memcpy (dest, src, width);
+        src += width;
+        dest += SCREENWIDTH;
+    }
 }
 
 //
@@ -348,10 +469,25 @@ V_GetBlock
 {
     byte*       src;
 
+#ifdef RANGECHECK
+    if (x<0
+        ||x+width >SCREENWIDTH
+        || y<0
+        || y+height>SCREENHEIGHT
+        || (unsigned)scrn>4 )
+    {
+        I_Error ("Bad V_DrawBlock");
+    }
+#endif
+
     src = screens[scrn] + y*SCREENWIDTH+x;
 
-    paws_memcpy_rectangle( dest, src, width, width, SCREENWIDTH, height );
-//    while (height--) { memcpy (dest, src, width); src += SCREENWIDTH; dest += width; }
+    while (height--)
+    {
+        memcpy (dest, src, width);
+        src += SCREENWIDTH;
+        dest += width;
+    }
 }
 
 //
@@ -364,10 +500,8 @@ void V_Init (void)
 
     // stick these in low dos memory on PCs
 
-    base = I_AllocLow (SCREENWIDTH*SCREENHEIGHT*3);
+    base = I_AllocLow (SCREENWIDTH*SCREENHEIGHT*4);
 
-    for (i=1 ; i<4 ; i++)
-        screens[i] = base + (i-1)*SCREENWIDTH*SCREENHEIGHT;
-
-    screens[0] = (byte*)0x2020000;
+    for (i=0 ; i<4 ; i++)
+        screens[i] = base + i*SCREENWIDTH*SCREENHEIGHT;
 }

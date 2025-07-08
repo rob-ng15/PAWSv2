@@ -28,6 +28,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <unistd.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ipc.h>
@@ -62,7 +63,7 @@ typedef struct
 	int output;
 } keymap_t;
 
-viddef_t vid; // global video state
+extern viddef_t vid; // global video state
 unsigned short d_8to16table[256];
 
 int		num_shades=32;
@@ -102,12 +103,10 @@ static long X11_buffersize;
 int vid_surfcachesize;
 void *vid_surfcache;
 
-void (*vid_menudrawfn)(void);
-void (*vid_menukeyfn)(int key);
 void VID_MenuKey (int key);
 
-typedef unsigned short PIXEL16;
-typedef unsigned long PIXEL24;
+typedef uint16_t PIXEL16;
+typedef uint32_t PIXEL24;
 static PIXEL16 st2d_8to16table[256];
 static PIXEL24 st2d_8to24table[256];
 static int shiftmask_fl=0;
@@ -589,7 +588,7 @@ void	VID_Init (unsigned char *palette)
 			x_vis,
 			attribmask,
 			&attribs );
-		XStoreName( x_disp,x_win,"xquake");
+		XStoreName( x_disp,x_win,"MC1-Quake");
 
 
 		if (x_visinfo->class != TrueColor)
@@ -634,6 +633,7 @@ void	VID_Init (unsigned char *palette)
 // now safe to draw
 
 // even if MITSHM is available, make sure it's a local connection
+	doShm = false;
 	if (XShmQueryExtension(x_disp))
 	{
 		char *displayname;
@@ -984,8 +984,6 @@ void	VID_Update (vrect_t *rects)
 
 	// force full update if not 8bit
 	if (x_visinfo->depth != 8) {
-		extern int scr_fullupdate;
-
 		scr_fullupdate = 0;
 	}
 

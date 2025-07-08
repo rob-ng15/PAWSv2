@@ -1,6 +1,7 @@
 MEMORY
 {
-   ram (rwx) : ORIGIN = 0x00000000, LENGTH = 0x00004000
+   rom (rx)  : ORIGIN = 0x00000000, LENGTH = 0x00001800
+   ram (rwx) : ORIGIN = 0x00001800, LENGTH = 0x00000800
 }
 
 ENTRY(_start)
@@ -9,13 +10,13 @@ STARTUP(build/crt0.o)
 SECTIONS {
   .text 0x00000000 : {
         *crt0*(.text)
-    } > ram
+    } > rom
     .rodata :
     {
         . = ALIGN(8);
 		*(.rodata .rodata.* .gnu.linkonce.r.*)
 		*(.rodata1)
-    } > ram
+    } > rom
     .data :
     {
         . = ALIGN(8);

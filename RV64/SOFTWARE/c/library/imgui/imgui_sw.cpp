@@ -19,9 +19,10 @@ extern unsigned char volatile *DMACYCLES;
 extern unsigned int volatile *DMASOURCE;
 extern unsigned int volatile *DMADEST;
 extern unsigned int volatile *DMACOUNT;
-extern unsigned char volatile *DMAMODE;
-extern unsigned int volatile *DMASET;
+extern unsigned short volatile *DMAMODE;
+extern unsigned char volatile *DMASET;
 extern unsigned int volatile *DMASET32;
+#define DMA_SET_RECT    0x40
 
 namespace imgui_sw {
 namespace {
@@ -241,7 +242,7 @@ void dma_rectangle( const PaintTarget& target, int c, int minx, int maxx, int mi
 
     *DMASET32 = c; *DMADESTADD = target.width * 4; *DMACYCLES = lines;
 	*DMASOURCE = (unsigned long)DMASET; *DMADEST = (unsigned long)p_line; *DMACOUNT = bytes_wide;
-	*DMAMODE = ( ( bytes_wide > 0 ) && ( lines > 0 ) ) ? 9 : 0;
+	*DMAMODE = ( ( bytes_wide > 0 ) && ( lines > 0 ) ) ? DMA_SET_RECT : 0;
 }
 
 void paint_uniform_rectangle(

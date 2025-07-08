@@ -1,0 +1,295 @@
+// RAM - BRAM controller
+unit bramcontroller(
+    input   uint1   CS,
+
+    input   uint14  ADDR,
+    input   uint14  ADDR2,
+
+    input   uint2   SIZE,
+    input   uint1   WENABLE,
+    input   uint32  WDATA,
+    output  uint32  RDATA
+) {
+    uint1   IN_RANGE <:: ( CS & WENABLE & ADDR >= 14h1800 );                                                                    // CHIP SELECTED, WRITE REQUESTED, IN WRITEABLE RANGE
+
+    $$config['dualport_bram_wmask_byte_wenable0_width'] = 'data'
+    $$config['dualport_bram_wmask_byte_wenable1_width'] = 'data'
+    $$if not SIMULATION then
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/BIOS.bin"), pad(uninitialized)};              // BIOS WITH I/O
+    $$else
+        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/VBIOS.bin"), pad(uninitialized)};             // BIOS FOR VERILATOR ( SMP spites and mandelbrot )
+//        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/RBIOS.bin"), pad(uninitialized)};           // BIOS FOR VERILATOR ( raytracing demo )
+//        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/MBIOS.bin"), pad(uninitialized)};           // BIOS FOR VERILATOR ( memory test )
+    $$end
+
+    ram.wenable0 := {2{IN_RANGE}} & ( |SIZE ? 2b11 : { ADDR[0,1], ~ADDR[0,1] } );                                               // LOW WRITE FOR 8 OR 16/32 BIT
+    ram.wenable1 := {2{IN_RANGE}} & {2{SIZE[1,1]}};                                                                             // HIGH WRITE FOR 32 BIT
+    ram.addr0 := ADDR[1,12]; ram.addr1 := ADDR2[1,12];                                                                          // SET LOW AND HIGH ADDRESSES
+    ram.wdata0 := ~|SIZE ? { {2{WDATA[0,8]}} } : WDATA[0,16];                                                                   // ram0 LOW, 8 bit duplicate, else lower 16 bits
+    ram.wdata1 := WDATA[16,16];                                                                                                 // ram1 HIGH 16 bits
+    RDATA := { ram.rdata1, ram.rdata0 };                                                                                        // READ 32 BITS, COMBINE ram1 HIGH AND ram0 LOW
+}
+
+// HART ID 0 L1 CACHE
+unit iL10cache_read(
+    simple_dualport_bram_port0 L1cache,
+    input   uint$addr_width$  ADDR,
+    input   uint1   CLS,
+    output  uint30  instruction,
+    output  uint1   compressed,
+    output  uint1   tagmatch
+) {
+    L1cache.addr0 := ADDR[1,$L10Icount$];                                                                                       // FOR EACH CACHE BLOCK, SET ADDRESS FROM CPU
+    tagmatch := ~CLS & ( L10cacheI( L1cache.rdata0 ).partaddress == ADDR[$L10Ipartaddressstart$,$L10Ipartaddresswidth$] ) & L10cacheI( L1cache.rdata0 ).valid;
+    instruction := L10cacheI( L1cache.rdata0 ).instruction;
+    compressed := L10cacheI( L1cache.rdata0 ).compressed;
+}
+
+unit iL10cache_write(
+    simple_dualport_bram_port1 L1cache,
+    input   uint$addr_width$  ADDR,
+    input   uint30  newinstruction,
+    input   uint1   newcompressed,
+    input   uint1   update,
+    input   uint1   invalidate,
+    output  uint1   CLS
+) {
+    uint$L10Icount+1$ count = 0;
+
+    L1cache.addr1 := CLS ? count : ADDR[1,$L10Icount$];
+    L1cache.wdata1 := CLS ? 0 : { newinstruction, newcompressed, 1b1, ADDR[$L10Ipartaddressstart$,$L10Ipartaddresswidth$] };
+    L1cache.wenable1 := CLS | update;
+
+    CLS := invalidate | ( count != $L10Iblocks$ );
+    count := invalidate ? 0 :  count + CLS;
+}
+
+// HART ID 1 L1 CACHE
+unit iL11cache_read(
+    simple_dualport_bram_port0 L1cache,
+    input   uint$addr_width$  ADDR,
+    input   uint1   CLS,
+    output  uint30  instruction,
+    output  uint1   compressed,
+    output  uint1   tagmatch
+) {
+    L1cache.addr0 := ADDR[1,$L11Icount$];                                                                                       // FOR EACH CACHE BLOCK, SET ADDRESS FROM CPU ADDRESS
+    tagmatch := ~CLS & ( L11cacheI( L1cache.rdata0 ).partaddress == ADDR[$L11Ipartaddressstart$,$L11Ipartaddresswidth$] ) & L11cacheI( L1cache.rdata0 ).valid;
+    instruction := L11cacheI( L1cache.rdata0 ).instruction;
+    compressed := L11cacheI( L1cache.rdata0 ).compressed;
+}
+
+unit iL11cache_write(
+    simple_dualport_bram_port1 L1cache,
+    input   uint$addr_width$  ADDR,
+    input   uint30  newinstruction,
+    input   uint1   newcompressed,
+    input   uint1   update,
+    input   uint1   invalidate,
+    output  uint1   CLS
+) {
+    uint$L11Icount+1$ count = 0;
+
+    L1cache.addr1 := CLS ? count : ADDR[1,$L11Icount$];
+    L1cache.wdata1 := CLS ? 0 : { newinstruction, newcompressed, 1b1, ADDR[$L11Ipartaddressstart$,$L11Ipartaddresswidth$] };
+    L1cache.wenable1 := CLS | update;
+
+    CLS := invalidate | ( count != $L11Iblocks$ );
+    count := invalidate ? 0 :  count + CLS;
+}
+
+// 16Mb of SDRAM using @sylefeb controller
+// Controlled by a 16bit EVICTION CACHE FOR DATA
+// Cache-coherency is maintained
+// Controller is 16bit, the natural width of the SDRAM on the ULX3s
+// An eviction cache was chosen as easy to implement as a directly mapped cache
+// Writes to SDRAM only if required when evicting a cache entry
+
+// 16 bit to 32 bit controller
+// SDRAM is 16 bit
+// Interface the 32 bit CPU memory bus to the 16 bit SDRAM memory bus
+circuitry sdram_map( input in, output out ) { out = { in[23,2], 1b0, in[0,23] }; }                                              // DEAL WITH THE SDRAM DRIVER ONLY MAPPING 16Mb
+
+unit sdram_latch(                                                                                                               // LATCH THE 16 BIT SDRAM OUTPUT INTO 32 BIT SDRAM RDATA
+    input   uint16              WDATA,                                                                                          //      16 BIT SIO.DATA_OUT FROM SDRAM
+    input   uint2               LATCH,                                                                                          //      LATCH INTO LOWER / UPPER 16 BITS
+    output! uint32              RDATA                                                                                           //      32 BIT SDRAM RDATA
+) {
+    always {
+        switch( LATCH ) {
+            default: {}
+            case 1: { RDATA = { {2{WDATA}} }; }
+            case 2: { RDATA[16,16] = WDATA; }
+        }
+    }
+}
+
+unit cachecontroller(
+    sdram_user                  sio,
+    input   uint1               clock_cache,
+    input   uint1               cacheselect,
+
+    input   uint1               CS,
+    output  uint1               BUSY,
+    input   uint$paws_ram$      ADDR,
+    input   uint$paws_ram$      ADDR2,
+    input   uint$paws_ram$      ADDR0,
+    input   uint2               SIZE,
+    input   uint1               WENABLE,
+    input   uint32              WDATA,
+    input   uint1               RENABLE,
+    output  uint32              RDATA,
+) {
+    uint6               STATE = 1;                                                                                              // CACHE CONTROLLER FSM STATE FLAG
+                        $$ STATE_CACHE_WAIT = 1
+                        $$ STATE_CACHE_CHECK = 2
+                        $$ STATE_CACHE_EVICT2 = 4
+                        $$ STATE_CACHE_READSDRAM = 8
+                        $$ STATE_CACHE_READSDRAM2 = 16
+                        $$ STATE_CACHE_UPDATE_WAIT = 32
+
+    simple_dualport_bram uint$16+L2partaddresswidth+2$ Dcache0 <@clock_cache,@clock> [$L2size$] = uninitialized;                // COMBINED DATA&INSTRUCTION CACHE
+    simple_dualport_bram uint$16+L2partaddresswidth+2$ Dcache1 <@clock_cache,@clock> [$L2size$] = uninitialized;
+    cache_read DCACHE <@clock_cache> ( cache0 <:> Dcache0, cache1 <:> Dcache1, ADDR <: ADDR, ADDR0 <: ADDR0 );
+    cache_write DCACHEW( cache0 <:> Dcache0, cache1 <:> Dcache1, needwritetosdram <: dowrite, ADDR <: ADDR, ADDR0 <: ADDR0 );
+
+    uint1               dowrite = uninitialized;                                                                                // MEMORY WRITE OPERATION FLAG
+    uint1               doread = uninitialized;                                                                                 // MEMORY READ OPERATION FLAG
+    uint2               accessmask <:: { SIZE[1,1], 1b1 };                                                                      // ACCESSMASK WHICH PARTS OF THE 2 x 16 BIT CACHE PARTS ARE USED
+    uint2               Devict <:: { SIZE[1,1], 1b1 } & DCACHE.needswrite & ~DCACHE.tagmatch;                                   // CACHE EVICTION FLAG ( HIGH, LOW )
+    uint1               Dmatch <:: SIZE[1,1] ? &DCACHE.tagmatch : DCACHE.tagmatch[0,1];                                         // CACHE MATCH FLAGS ( 32 bit both, 16/8 bit lower )
+    uint2               Dread <:: { SIZE[1,1], 1b1 } & ~DCACHE.tagmatch;                                                        // CACHE READ REQUIRED FLAG ( HIGH, LOW )
+    uint1               doreadsdram <:: ( doread | ( dowrite & ~|SIZE ) );                                                      // SDRAM READ FLAG FOR CACHE MISS, READ OR 8 BIT WRITE
+
+    sdram_latch SDRAM( WDATA <: sio.data_out );
+    SDRAM.LATCH := 0;
+
+    DCACHEW.update := { {2{( STATE[1,1] & ( Dmatch | ( ~|Devict & ~( doreadsdram & |Dread ) ) ) ) | ( STATE[5,1] & sio.done )}} }   // UPDATE CACHE AND TAGS
+                      & ( Dmatch ? accessmask : doreadsdram ? Dread : accessmask );
+
+    sio.in_valid := 0; sio.rw := 0;
+
+    always {
+        onehot( STATE ) {
+            case 0:{                                                                                                            // STATE_CACHE_WAIT
+                doread = CS & RENABLE; dowrite = CS & WENABLE;                                                                  //  LATCH READ/WRITE FLAGS
+                if( CS & ( RENABLE | WENABLE ) ) {
+                    BUSY = ~Dmatch; STATE = ( Dmatch & ~WENABLE ) ? $STATE_CACHE_WAIT$ : $STATE_CACHE_CHECK$;                   //   IF NOT MATCH AND READ MOVE TO NEXT STAGE
+                }
+            }
+            case 1: {                                                                                                           // STATE_CACHE_CHECK
+                if( Dmatch ) {
+                    STATE = $STATE_CACHE_WAIT$;
+                    BUSY = 0;
+                } else {
+                    if( |Devict ) {                                                                                             //      EVICT FIRST ( possibly only ) 16 BITS
+                        ( sio.addr ) = sdram_map( Devict[0,1] ? DCACHE.cacheADDRL : DCACHE.cacheADDRH );
+                        sio.data_in = DCACHE.rdata[ Devict[0,1] ? 0 : 16, 16 ]; sio.rw = 1; sio.in_valid = 1;
+                        STATE =                  &Devict ? $STATE_CACHE_EVICT2$ :                                               //      MORE TO EVICT? NEED TO READ?
+                                ( doreadsdram & |Dread ) ? $STATE_CACHE_READSDRAM$ :                                            //      NEED TO READ SDRAM?
+                                                           $STATE_CACHE_UPDATE_WAIT$;                                           //      FINISHED?
+                    } else {
+                        if( doreadsdram & |Dread ) {
+                            ( sio.addr ) = sdram_map( Dread[0,1] ? ADDR : ADDR2 ); sio.in_valid = 1;                            //      READ FIRST ( possibly only ) 16 BITS
+                            STATE = &Dread ? $STATE_CACHE_READSDRAM2$ : $STATE_CACHE_UPDATE_WAIT$;                              //      MORE TO READ SDRAM OR FINISHED?
+                        } else {
+                            STATE = $STATE_CACHE_WAIT$;
+                            BUSY = 0;
+                        }
+                    }
+                }
+            }
+            case 2: {                                                                                                           // STATE_CACHE_EVICT2
+                if( sio.done ) {                                                                                                //  WAIT FOR SDDRAM OPERATION TO FINISH
+                    ( sio.addr ) = sdram_map( DCACHE.cacheADDRH );                                                              //      EVICT SECOND 16 BITS
+                    sio.data_in = DCACHE.rdata[16,16]; sio.rw = 1; sio.in_valid = 1;
+                    STATE = ( doreadsdram & |Dread ) ? $STATE_CACHE_READSDRAM$ : $STATE_CACHE_UPDATE_WAIT$;                     //      NEED TO READ SDRAM OR FINISHED?
+                }
+            }
+            case 3: {                                                                                                           // STATE_CACHE_READSDRAM
+                if( sio.done | ~|Devict ) {                                                                                     //  WAIT FOR SDDRAM OPERATION TO FINISH
+                    ( sio.addr ) = sdram_map( Dread[0,1] ? ADDR : ADDR2 ); sio.in_valid = 1;                                    //      READ FIRST ( only ) 16 BITS, MORE TO READ OR FINISHED?
+                    STATE = &Dread ? $STATE_CACHE_READSDRAM2$ : $STATE_CACHE_UPDATE_WAIT$;
+                }
+            }
+            case 4: {                                                                                                           // STATE_CACHE_READSDRAM2
+                if( sio.done ) {                                                                                                //      LATCH LOWER 16 BITS, READ UPPER 16 BITS
+                    SDRAM.LATCH = 1; ( sio.addr ) = sdram_map( ADDR2 ); sio.in_valid = 1;
+                    STATE = $STATE_CACHE_UPDATE_WAIT$;
+                }
+            }
+            case 5: {                                                                                                           // STATE_CACHE_UPDATE_WAIT
+                if( sio.done ) {                                                                                                //  WAIT FOR SDDRAM OPERATION TO FINISH
+                    if( doreadsdram & |Dread ) {
+                        if( &Dread ) { SDRAM.LATCH = 2; } else { SDRAM.LATCH = 1; }                                             //      IF READ, LATCH THE SDRAM READ RESULT
+                    }
+                    STATE = $STATE_CACHE_WAIT$;
+                    BUSY = 0;
+                }
+            }
+        }
+
+        RDATA = { DCACHE.tagmatch[1,1] ? DCACHE.rdata[16,16] : SDRAM.RDATA[16,16],                                              // GENERATE THE 32 BIT READ RESULT
+                  DCACHE.tagmatch[0,1] ? DCACHE.rdata[ 0,16] : SDRAM.RDATA[ 0,16] };
+
+        DCACHEW.WDATA = dowrite ? |SIZE ? WDATA :                                                                               // GENERATE THE CACHE DATA
+                              ADDR[0,1] ? { WDATA[0,8], DCACHE.tagmatch[0,1] ? DCACHE.rdata[ 0, 8] : SDRAM.RDATA[ 0, 8] } :     // 8 BIT ODD ADDRESS { goes into high byte }
+                                          { DCACHE.tagmatch[0,1] ? DCACHE.rdata[ 8, 8] : SDRAM.RDATA[ 8, 8], WDATA[0,8] } :     // 8 BIT EVEN ADDRESS { goes into low byte }
+                                          { DCACHE.tagmatch[1,1] ? DCACHE.rdata[16,16] : SDRAM.RDATA[16,16],
+                                            DCACHE.tagmatch[0,1] ? DCACHE.rdata[ 0,16] : SDRAM.RDATA[ 0,16] };
+    }
+}
+
+// L2 CACHES
+// DATA CACHE for SDRAM - CACHE SIZE DETERMINED BY L2size DEFINED ABOVE, MUST BE A POWER OF 2
+// 2 BLOCKS ONE FOR xxx0x ONE FOR xxx1x ADDRes ( combined to make 32-bit ADDRes, handles 32 bit read from 16 bit ADDR )
+// DATA CACHE ADDRESS IS LOWER bits of the ADDR, dropping the BYTE AND HALF WORD ADDR bits
+// DATA CACHE TAG IS REMAINING bits of the ADDR + 1 bit for valid flag + 1 bit for needwritetosdram flag
+unit cache_read(
+    simple_dualport_bram_port0  cache0,
+    simple_dualport_bram_port0  cache1,
+    input   uint$paws_ram$      ADDR,
+    input   uint$paws_ram$      ADDR0,
+    output! uint32              rdata,
+    output  uint$paws_ram$      cacheADDRL,
+    output  uint$paws_ram$      cacheADDRH,
+    output! uint2               tagmatch,
+    output  uint2               needswrite
+) {
+    cache0.addr0 := ADDR0[2,$L2cacheaddrwidth$];
+    cache1.addr0 :=  ADDR[2,$L2cacheaddrwidth$];
+
+    rdata := ADDR[1,1] ? { L2cache(cache0.rdata0).contents, L2cache(cache1.rdata0).contents } :
+                         { L2cache(cache1.rdata0).contents, L2cache(cache0.rdata0).contents };
+
+    tagmatch := ADDR[1,1] ? { { L2cache(cache0.rdata0).valid, L2cache(cache0.rdata0).partaddress } == { 1b1, ADDR0[$L2partaddressstart$,$L2partaddresswidth$] },
+                              { L2cache(cache1.rdata0).valid, L2cache(cache1.rdata0).partaddress } == { 1b1,  ADDR[$L2partaddressstart$,$L2partaddresswidth$] } } :
+                            { { L2cache(cache1.rdata0).valid, L2cache(cache1.rdata0).partaddress } == { 1b1,  ADDR[$L2partaddressstart$,$L2partaddresswidth$] },
+                              { L2cache(cache0.rdata0).valid, L2cache(cache0.rdata0).partaddress } == { 1b1, ADDR0[$L2partaddressstart$,$L2partaddresswidth$] } };
+
+    needswrite := ADDR[1,1] ? { L2cache(cache0.rdata0).needswrite, L2cache(cache1.rdata0).needswrite } :
+                              { L2cache(cache1.rdata0).needswrite, L2cache(cache0.rdata0).needswrite };
+
+    cacheADDRL := ADDR[1,1] ? { L2cache(cache1.rdata0).partaddress,  ADDR[2,$L2cacheaddrwidth$], 2b10 } :
+                              { L2cache(cache0.rdata0).partaddress, ADDR0[2,$L2cacheaddrwidth$], 2b00 };
+    cacheADDRH := ADDR[1,1] ? { L2cache(cache0.rdata0).partaddress, ADDR0[2,$L2cacheaddrwidth$], 2b00 } :
+                              { L2cache(cache1.rdata0).partaddress,  ADDR[2,$L2cacheaddrwidth$], 2b10 };
+}
+
+unit cache_write(
+    simple_dualport_bram_port1  cache0,
+    simple_dualport_bram_port1  cache1,
+    input   uint$paws_ram$      ADDR,
+    input   uint$paws_ram$      ADDR0,
+    input   uint32              WDATA,
+    input   uint1               needwritetosdram,
+    input   uint2               update
+) {
+    cache0.addr1 := ADDR0[2,$L2cacheaddrwidth$];
+    cache0.wdata1 := { ADDR[1,1] ? WDATA[16,16] : WDATA[0,16], needwritetosdram, 1b1, ADDR0[$L2partaddressstart$,$L2partaddresswidth$] };
+    cache0.wenable1 := ADDR[1,1] ? update[1,1] : update[0,1];
+
+    cache1.addr1 := ADDR[2,$L2cacheaddrwidth$];
+    cache1.wdata1 := { ADDR[1,1] ? WDATA[0,16] : WDATA[16,16], needwritetosdram, 1b1, ADDR[$L2partaddressstart$,$L2partaddresswidth$] };
+    cache1.wenable1 := ADDR[1,1] ? update[0,1] : update[1,1];
+}

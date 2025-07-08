@@ -10,7 +10,7 @@ unsigned short volatile *PS2_DATA = (unsigned short volatile *) 0xf102;
 unsigned char lshift, rshift, lalt, ralt, lctrl, rctrl, lwin, rwin, application, capslock, numlock = 1;
 
 // RETURN IF A PS/2 KEYEVENT IS AVAILABLE
-char ps2_event_available( void ) {
+unsigned char ps2_event_available( void ) {
     return *PS2_AVAILABLE;
 }
 

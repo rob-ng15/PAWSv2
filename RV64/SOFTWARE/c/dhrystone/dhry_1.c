@@ -58,9 +58,9 @@ extern  time_t     times ();
                 /* Measurements should last at least about 2 seconds */
 #endif
 #ifdef TIME
-extern unsigned long     CSRtime ();
+extern long     CSRtime ();
 #ifdef RISCV
-extern unsigned long     CSRinstructions();
+extern long     CSRinstructions();
 #endif
                 /* see library function "time"  */
 #define Too_Small_Time 2
@@ -323,7 +323,7 @@ int main ()
     printf ("\n");
   }
 #endif
-    sleep1khz( 4000, 0 );
+    sleep1khz( 4000 );
   return 0;
 }
 

@@ -24,13 +24,13 @@ bitmap_sprite tree_sprites[]= {
 };
 
 int main( void ) {
-    DrawBitmapSprite( 0, 0, 2, tree_sprites[ 0 ] ); sleep1khz( 4000, 0 );
-    DrawBitmapSprite( 160, 0, 0.5, tree_sprites[ 1 ] ); sleep1khz( 4000, 0 );
-    DrawBitmapSprite( 0, 120, 2, tree_sprites[ 2 ] ); sleep1khz( 4000, 0 );
-    DrawBitmapSprite( 160, 120, 0.25, tree_sprites[ 3 ] ); sleep1khz( 4000, 0 );
-    DrawBitmapSprite( 160, 60, 0.25, tree_sprites[ 4 ] ); sleep1khz( 4000, 0 );
+    DrawBitmapSprite( 0, 0, 2, tree_sprites[ 0 ] ); sleep1khz( 4000 );
+    DrawBitmapSprite( 160, 0, 0.5, tree_sprites[ 1 ] ); sleep1khz( 4000 );
+    DrawBitmapSprite( 0, 120, 2, tree_sprites[ 2 ] ); sleep1khz( 4000 );
+    DrawBitmapSprite( 160, 120, 0.25, tree_sprites[ 3 ] ); sleep1khz( 4000 );
+    DrawBitmapSprite( 160, 60, 0.25, tree_sprites[ 4 ] ); sleep1khz( 4000 );
 
-    sleep1khz( 4000, 0 );
+    sleep1khz( 4000 );
 }
 
 // EXIT WILL RETURN TO BIOS

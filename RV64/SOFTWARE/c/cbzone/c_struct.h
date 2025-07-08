@@ -139,4 +139,8 @@ typedef struct {
   Position_t base;
   Offset_t size;
 } Window_t;
+
+typedef struct {
+  int x, y, width, height;
+} Rectange_t;
                                       /* Now some useful globals */

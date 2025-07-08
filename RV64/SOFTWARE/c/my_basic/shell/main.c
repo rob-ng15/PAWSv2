@@ -1421,7 +1421,7 @@ static int do_beep(struct mb_interpreter_t* s, void** l) {
 
 	mb_check(mb_attempt_func_end(s, l));
 
-	beep( CHANNEL_BOTH, WAVE_SINE, 51, 250 );
+	beep( CHANNEL_LEFT_0, WAVE_SINE, 51, 250, 7 );
 
 	return result;
 }

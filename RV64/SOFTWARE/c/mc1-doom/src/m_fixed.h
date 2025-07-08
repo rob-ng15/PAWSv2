@@ -21,6 +21,10 @@
 #ifndef __M_FIXED__
 #define __M_FIXED__
 
+#ifdef __MRISC32__
+#include <mr32intrin.h>
+#endif
+
 //
 // Fixed point, 32bit as 16.16.
 //
@@ -36,7 +40,15 @@ typedef int fixed_t;
 
 static inline fixed_t FixedMul (fixed_t a, fixed_t b)
 {
+#if defined(__MRISC32_PACKED_OPS__)
+    // TODO(m): This produces different results than the generic long long
+    // solution (or so it seems).
+    fixed_t hi = _mr32_mulhi (a, b);
+    fixed_t lo = ((unsigned)(a * b)) >> 16;
+    return _mr32_pack (hi, lo);
+#else
     return ((long long) a * (long long) b) >> FRACBITS;
+#endif
 }
 
 //

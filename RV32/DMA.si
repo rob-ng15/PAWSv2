@@ -1,0 +1,571 @@
+// NEW DMA MODULES
+//  1x SET                      x == 0 TO S, == 1 TO M
+//  2x COPY                     x == 0 S TO S, == 1 M TO S, == 2 S TO M, == 3 M TO M, == 4 + ( 1 SRC+ ) ( 2 DST+ )
+//  40 SET RECTANGLE
+//  80 COPY RECTANGLE
+//  10x BYTES TO/FROM I/O       x == 0 TO I/O, == 1 FROM I/O
+//  200 PIXELBLOCK 24-bit RGB
+unit dma_new_flags(
+    input   uint2   DESTLOW,
+    input   uint1   DEST15,
+    input   uint3   DESTHIGH,
+    input   uint2   SRCLOW,
+    input   uint1   SRC15,
+    input   uint3   SRCHIGH,
+    input   uint2   DESTADD,
+    input   uint2   SRCADD,
+    input   uint2   COUNT,
+    output  uint10  FLAGS
+) <reginputs> {
+    uint1   dest16 <:: ( |DESTHIGH | ( ~|DESTHIGH & ~DEST15 ) ) & ~DESTLOW[0,1];                            // DESTINATION IS 16 BIT CAPABLE DRAM, BITMAP, CMAP OR BRAM
+    uint1   src16 <:: ( |SRCHIGH | ( ~|SRCHIGH & ~SRC15 ) ) & ~SRCLOW[0,1];                     // SOURCE IS 16 BIT CAPABLE DRAM, BITMAP, CMAP
+
+    uint1   count16 <:: ~COUNT[0,1];
+    uint1   count32 <:: ~|COUNT[0,2];
+
+    uint1   destadd16 <:: ~DESTADD[0,1];
+    uint1   destadd32 <:: ~|DESTADD[0,2];
+
+    uint1   srcadd16 <:: ~SRCADD[0,1];
+    uint1   srcadd32 <:: ~|SRCADD[0,2];
+
+    uint1   dest32 <:: dest16 & ~|DESTLOW;
+    uint1   src32 <:: src16 & ~|SRCLOW;
+
+    FLAGS := {
+        count32,
+        count16,
+        destadd32,
+        destadd16,
+        dest32,
+        dest16,
+        srcadd32,
+        srcadd16,
+        src32,
+        src16
+    };
+}
+
+unit dma_new(
+    input   uint$addr_width$  DMASOURCE,
+    input   uint$addr_width$  DMASOURCEADD,
+    input   uint$addr_width$  DMADEST,
+    input   uint$addr_width$  DMADESTADD,
+    input   uint$addr_width$  DMACOUNT,
+    input   uint8   DMACYCLES,
+    input   uint32  DMASET,
+    output  uint2   ACCESSSIZE,
+    output  uint1   ACTIVE(0),
+
+    input   uint1   DMASTART,
+    input   uint10  DMAMODE,
+
+    output! uint$addr_width$  ADDRESS,
+    output! uint32  WRITEDATA,
+    output! uint1   WRITEFLAG,
+    output! uint1   READFLAG,
+    input   uint32  READDATA,
+    input   uint1   MEMORYBUSY
+) <reginputs> {
+    dma_new_flags FLAGS(                                                                                                            // GENERATE THE 16/32 BIT CAPABILITY FLAGS
+        DESTLOW <: DMADEST[0,2], DEST15 <: DMADEST[15,1], DESTHIGH <: DMADEST[24,3],
+        SRCLOW <: DMASOURCE[0,2], SRC15 <: DMASOURCE[15,1], SRCHIGH <: DMASOURCE[24,3],
+        DESTADD <: DMADESTADD[0,2], SRCADD <: DMASOURCEADD[0,2],
+        COUNT <: DMACOUNT[0,2]
+    );
+
+    dma_setcopy DMA_SETCOPY(                                                                                  // MINI DMA CONTROLLER
+        memorybusy <: MEMORYBUSY,                                                                                               //  MEMORY BUSY FLAG
+        readdata <: READDATA,                                                                                                   //  READ RESULT
+        DMASOURCE <: DMASOURCE,                                                                                          //  REGISTERS FROM IO MEMORY MAP
+        DMASOURCEADD <: DMASOURCEADD,
+        DMADEST <: DMADEST,
+        DMADESTADD <: DMADESTADD,
+        DMACOUNT <: DMACOUNT,
+        DMAMODE <: DMAMODE,
+        DMAMODE_SET <: DMAMODE_SET,
+        DMAFLAGS <: FLAGS.FLAGS
+    );
+    dma_setcopy_rectangle DMA_SETCOPY_RECTANGLE(                                                                // MINI DMA CONTROLLER
+        memorybusy <: MEMORYBUSY,                                                                                               //  MEMORY BUSY FLAG
+        readdata <: READDATA,                                                                                                   //  READ RESULT
+        DMASOURCE <: DMASOURCE,                                                                                          //  REGISTERS FROM IO MEMORY MAP
+        DMASOURCEADD <: DMASOURCEADD,
+        DMADEST <: DMADEST,
+        DMADESTADD <: DMADESTADD,
+        DMACOUNT <: DMACOUNT,
+        DMACYCLES <: DMACYCLES,
+        DMAMODE_SET <: DMAMODE_SET,
+        DMAFLAGS <: FLAGS.FLAGS
+    );
+
+    dma_bytes_to_io DMA_TO_IO(                                                                             // MINI DMA CONTROLLER
+        memorybusy <: MEMORYBUSY,                                                                                               //  MEMORY BUSY FLAG
+        readdata <: READDATA,                                                                                                   //  READ RESULT
+        DMASOURCE <: DMASOURCE,                                                                                          //  REGISTERS FROM IO MEMORY MAP
+        DMADEST <: DMADEST,
+        DMACOUNT <: DMACOUNT,
+        DMAFLAGS <: FLAGS.FLAGS
+    );
+    dma_bytes_from_io DMA_FROM_IO(                                                                             // MINI DMA CONTROLLER
+        memorybusy <: MEMORYBUSY,                                                                                               //  MEMORY BUSY FLAG
+        readdata <: READDATA,                                                                                                   //  READ RESULT
+        DMASOURCE <: DMASOURCE,                                                                                          //  REGISTERS FROM IO MEMORY MAP
+        DMADEST <: DMADEST,
+        DMACOUNT <: DMACOUNT,
+        DMAFLAGS <: FLAGS.FLAGS
+    );
+
+    dma_pb_rgb DMA_PB_RGB(                                                                                      // MINI DMA CONTROLLER
+        memorybusy <: MEMORYBUSY,                                                                                               //  MEMORY BUSY FLAG
+        readdata <: READDATA,                                                                                                   //  READ RESULT
+        DMASOURCE <: DMASOURCE,                                                                                          //  REGISTERS FROM IO MEMORY MAP
+        DMACOUNT <: DMACOUNT
+    );
+
+    uint1   DMAMODE_SET = uninitialised;
+    DMAMODE_SET := DMASTART ? DMAMODE[4,1] | DMAMODE[6,1] : DMAMODE_SET;
+
+    DMA_SETCOPY.start := DMASTART & |DMAMODE[4,2];
+    DMA_SETCOPY_RECTANGLE.start := DMASTART & |DMAMODE[6,2];
+    DMA_TO_IO.start := DMASTART & DMAMODE[8,1] & ~DMAMODE[0,1];
+    DMA_FROM_IO.start := DMASTART & DMAMODE[8,1] & DMAMODE[0,1];
+    DMA_PB_RGB.start := DMASTART & DMAMODE[9,1];
+
+    ACTIVE := DMA_SETCOPY.ACTIVE | DMA_SETCOPY_RECTANGLE.ACTIVE | DMA_TO_IO.ACTIVE | DMA_FROM_IO.ACTIVE | DMA_PB_RGB.ACTIVE;
+
+    ACCESSSIZE := DMA_SETCOPY.ACTIVE ? DMA_SETCOPY.ACCESSSIZE :
+                  DMA_SETCOPY_RECTANGLE.ACTIVE ? DMA_SETCOPY_RECTANGLE.ACCESSSIZE :
+                  DMA_TO_IO.ACTIVE ? DMA_TO_IO.ACCESSSIZE :
+                  DMA_FROM_IO.ACTIVE ? DMA_FROM_IO.ACCESSSIZE :
+                  2b00;
+
+    ADDRESS := DMA_SETCOPY.ACTIVE ? DMA_SETCOPY.address :
+               DMA_SETCOPY_RECTANGLE.ACTIVE ? DMA_SETCOPY_RECTANGLE.address :
+               DMA_TO_IO.ACTIVE ? DMA_TO_IO.address :
+               DMA_FROM_IO.ACTIVE ? DMA_FROM_IO.address :
+               DMA_PB_RGB.address;
+
+    WRITEDATA := DMA_SETCOPY.ACTIVE ? DMAMODE_SET ? DMASET : DMA_SETCOPY.writedata :
+                 DMA_SETCOPY_RECTANGLE.ACTIVE ? DMAMODE_SET ? DMASET : DMA_SETCOPY_RECTANGLE.writedata :
+                 DMA_TO_IO.ACTIVE ? DMA_TO_IO.writedata :
+                 DMA_FROM_IO.ACTIVE ? DMA_FROM_IO.writedata :
+                 DMA_PB_RGB.writedata;
+
+    READFLAG := DMA_SETCOPY.readmemory | DMA_SETCOPY_RECTANGLE.readmemory | DMA_TO_IO.readmemory | DMA_FROM_IO.readmemory | DMA_PB_RGB.readmemory;                 //                                  READFLAG
+
+    WRITEFLAG := DMA_SETCOPY.writememory | DMA_SETCOPY_RECTANGLE.writememory | DMA_TO_IO.writememory | DMA_FROM_IO.writememory | DMA_PB_RGB.writememory;
+}
+
+// DMA SET MODE == 0 TO SINGLE DEST, == 2 TO MULTI DEST
+// DMA COPY MODE == 0 SINGLE SOURCE TO SINGLE DEST, == 1 MULTI SOURCE TO SINGLE DEST, == 2 SINGLE SOURCE TO MULTI DEST, == 3 MULTI SOURCE TO MULTI DEST, == 4 ADD TO SRC AND DEST
+unit dma_setcopy_flags(
+    input   uint1   mode_add,
+    input   uint1   mode_set,
+    input   uint10  DMAFLAGS,
+    input   uint$addr_width$  DMADEST,
+    output  uint2   ACCESSSIZE,
+) <reginputs> {
+    ACCESSSIZE := mode_add ? 2b00 :
+                  mode_set ? ( DMAFLAGS[5,1] & DMAFLAGS[9,1] ) ? 2b10 : ( DMAFLAGS[4,1] & DMAFLAGS[8,1] ) ? 2b01 : 2b00 :
+                  ( ( DMAFLAGS[1,1] & DMAFLAGS[5,1] & DMAFLAGS[9,1] ) | ( ( DMADEST[24,3] == 3b000 ) & ( DMADEST[4,12] == 12hd68 ) ) ) ? 2b10 :
+                  ( ( DMAFLAGS[0,1] & DMAFLAGS[4,1] & DMAFLAGS[8,1] ) | ( DMADEST == 27hd642 ) ) ? 2b01 :
+                  2b00;
+}
+unit dma_setcopy_write_data(
+    input   uint1   mode_set,
+    input   uint1   dmasrc,
+    input   uint32  readdata,
+    input   uint1   latch,
+    input   uint2   ACCESSSIZE,
+    output  uint32  writedata
+) <reginputs> {
+    uint32  memoryinput = uninitialised;
+
+    memoryinput := latch ? readdata : memoryinput;
+    writedata := |ACCESSSIZE ? memoryinput : memoryinput[ { dmasrc, 3b000 }, 8 ];
+}
+unit dma_setcopy(
+    input   uint$addr_width$  DMASOURCE,
+    input   uint$addr_width$  DMASOURCEADD,
+    input   uint$addr_width$  DMADEST,
+    input   uint$addr_width$  DMADESTADD,
+    input   uint$addr_width$  DMACOUNT,
+    input   uint3   DMAMODE,
+    input   uint1   DMAMODE_SET,
+    input   uint10  DMAFLAGS,
+    output  uint2   ACCESSSIZE,
+    output  uint1   ACTIVE(0),
+
+    input   uint1   start(0),
+    output  uint$addr_width$  address,
+    output  uint32  writedata,
+    output  uint1   writememory,
+    output  uint1   readmemory,
+    input   uint32  readdata,
+    input   uint1   memorybusy
+) <reginputs> {
+    uint3   dmamode = uninitialized;                                                                                            // DMA MODE SINGLE/MULTI SOURCE/DESTINATION
+    uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
+    dma_setcopy_flags FLAGS( mode_set <: DMAMODE_SET, mode_add <: dmamode[2,1], DMADEST <: DMADEST, DMAFLAGS <: DMAFLAGS,  ACCESSSIZE :> ACCESSSIZE  );
+    dma_setcopy_write_data WRITE( mode_set <: DMAMODE_SET, dmasrc <: dmasrc[0,1], readdata <: readdata, ACCESSSIZE <: FLAGS.ACCESSSIZE, writedata :> writedata );
+
+    writememory := 0; readmemory := 0; WRITE.latch := 0;
+
+    algorithm <autorun> {
+        uint$addr_width$  dmasrc_NEXT <:: dmamode[0,1] ? ( dmasrc + ( dmamode[2,1] ? DMASOURCEADD : BYTES ) ) : dmasrc;
+        uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
+        uint$addr_width$  dmadest_NEXT <:: dmamode[1,1] ? ( dmadest + ( dmamode[2,1] ? DMADESTADD : BYTES ) ) : dmadest;
+        uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
+        uint$addr_width$  dmacount_NEXT <:: dmacount - BYTES;
+        uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                                // NUMBER OF BYTES PER CYCLE
+
+        uint5   STATE = 1;
+            $$ STATE_DMA_SETCPY_WAIT        = 1
+            $$ STATE_DMA_SETCPY_SET_OR_READ = 2
+            $$ STATE_DMA_SETCPY_WAIT_READ   = 4
+            $$ STATE_DMA_SETCPY_CPY_WRITE   = 8
+            $$ STATE_DMA_SETCPY_NEXT        =16
+
+        ACTIVE = 0; while(1) {
+            onehot( STATE ) {
+                case 0:{
+                    dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmamode = DMAMODE; ACTIVE = start;                          // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
+                    if( start ) {
+                        STATE = $STATE_DMA_SETCPY_SET_OR_READ$;
+                    }
+                }
+                case 1:{
+                    if( |dmacount ) {
+                        if( DMAMODE_SET ) {
+                            WRITE.latch = 1; address = dmadest; writememory = 1; STATE = $STATE_DMA_SETCPY_NEXT$;
+                        } else {
+                            address = dmasrc; readmemory = 1; STATE = $STATE_DMA_SETCPY_WAIT_READ$;
+                        }
+                    } else {
+                        STATE = $STATE_DMA_SETCPY_WAIT$;
+                    }
+                }
+                case 2:{
+                    if( ~memorybusy ) {
+                        STATE = $STATE_DMA_SETCPY_CPY_WRITE$;
+                    }
+                }
+                case 3:{
+                    WRITE.latch = 1; address = dmadest; writememory = 1; STATE = $STATE_DMA_SETCPY_NEXT$;
+                }
+                case 4:{
+                    if( ~memorybusy ) {
+                        dmasrc = dmasrc_NEXT; dmadest = dmadest_NEXT; dmacount = dmacount_NEXT; STATE = $STATE_DMA_SETCPY_SET_OR_READ$;
+                    }
+                }
+            }
+        }
+    }
+}
+
+// DMA SET/COPY RECTANGLE ONLY TO MULTI DESTINATION
+unit dma_setcopy_rectangle_flags(
+    input   uint1   mode_set,
+    input   uint10  DMAFLAGS,
+    output  uint2   ACCESSSIZE,
+) <reginputs> {
+    ACCESSSIZE := mode_set ? ( DMAFLAGS[5,1] & DMAFLAGS[9,1] & DMAFLAGS[7,1] ) ? 2b10 : ( DMAFLAGS[4,1] & DMAFLAGS[8,1] & DMAFLAGS[6,1] ) ? 2b01 : 2b00 :
+    ( DMAFLAGS[0,1] & DMAFLAGS[5,1] & DMAFLAGS[9,1] & DMAFLAGS[3,1] & DMAFLAGS[7,1] ) ? 2b10 :
+    ( DMAFLAGS[0,1] & DMAFLAGS[4,1] & DMAFLAGS[8,1] & DMAFLAGS[2,1] & DMAFLAGS[6,1] ) ? 2b01 :
+    2b00;
+}
+unit dma_setcopy_rectangle(
+    input   uint$addr_width$  DMASOURCE,
+    input   uint$addr_width$  DMASOURCEADD,
+    input   uint$addr_width$  DMADEST,
+    input   uint$addr_width$  DMADESTADD,
+    input   uint$addr_width$  DMACOUNT,
+    input   uint1   DMAMODE_SET,
+    input   uint8   DMACYCLES,
+    input   uint10  DMAFLAGS,
+    output  uint2   ACCESSSIZE,
+    output  uint1   ACTIVE(0),
+
+    input   uint1   start(0),
+    output  uint$addr_width$  address,
+    output  uint32  writedata,
+    output  uint1   writememory,
+    output  uint1   readmemory,
+    input   uint32  readdata,
+    input   uint1   memorybusy
+) <reginputs> {
+    uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
+
+    dma_setcopy_rectangle_flags FLAGS( mode_set <: DMAMODE_SET, DMAFLAGS <: DMAFLAGS, ACCESSSIZE :> ACCESSSIZE );
+    dma_setcopy_write_data WRITE( mode_set <: DMAMODE_SET, dmasrc <: dmasrc[0,1], readdata <: readdata, ACCESSSIZE <: FLAGS.ACCESSSIZE, writedata :> writedata );
+
+    writememory := 0; readmemory := 0; WRITE.latch := 0;
+
+    algorithm <autorun> {
+        uint$addr_width$  dmasrc_NEXT <:: dmasrc + BYTES;
+        uint$addr_width$  dmasrc_CYCLE <:: dmasrc + DMASOURCEADD - DMACOUNT;
+        uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
+        uint$addr_width$  dmadest_NEXT <:: dmadest + BYTES;
+        uint$addr_width$  dmadest_CYCLE <:: dmadest + DMADESTADD - DMACOUNT;
+        uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
+        uint$addr_width$  dmacount_NEXT <:: dmacount - BYTES;
+        uint8   dmacycles = uninitialised;
+        uint8   dmacycles_NEXT <:: dmacycles - 1;
+        uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                                // NUMBER OF BYTES PER CYCLE
+
+        uint6   STATE = 1;
+            $$ STATE_DMA_SETCPYRECT_WAIT        = 1
+            $$ STATE_DMA_SETCPYRECT_SET_OR_READ = 2
+            $$ STATE_DMA_SETCPYRECT_WAIT_READ   = 4
+            $$ STATE_DMA_SETCPYRECT_CPY_WRITE   = 8
+            $$ STATE_DMA_SETCPYRECT_NEXT        = 16
+            $$ STATE_DMA_SETCPYRECT_NEXT_CYCLE  = 32
+
+        ACTIVE = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES; ACTIVE = start;          // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
+                    if( start ) { STATE = $STATE_DMA_SETCPYRECT_SET_OR_READ$; }
+                }
+                case 1: {
+                    if( |dmacycles ) {
+                        if( |dmacount ) {
+                            if( DMAMODE_SET ) {
+                                WRITE.latch = 1; address = dmadest; writememory = 1; STATE = $STATE_DMA_SETCPYRECT_NEXT$;
+                            } else {
+                                address = dmasrc; readmemory = 1; STATE = $STATE_DMA_SETCPYRECT_WAIT_READ$;
+                            }
+                        } else {
+                            STATE = $STATE_DMA_SETCPYRECT_NEXT_CYCLE$;
+                        }
+                    } else {
+                        STATE = $STATE_DMA_SETCPYRECT_WAIT$;
+                    }
+                }
+                case 2: {
+                    if( ~memorybusy ) {
+                        STATE = $STATE_DMA_SETCPYRECT_CPY_WRITE$;
+                    }
+                }
+                case 3: {
+                    WRITE.latch = 1; address = dmadest; writememory = 1; STATE = $STATE_DMA_SETCPYRECT_NEXT$;
+                }
+                case 4: {
+                    if( ~memorybusy ) {
+                        dmasrc = dmasrc_NEXT; dmadest = dmadest_NEXT; dmacount = dmacount_NEXT;
+                        STATE = $STATE_DMA_SETCPYRECT_SET_OR_READ$;
+                    }
+                }
+                case 5: {
+                    dmacycles = dmacycles_NEXT; dmasrc = dmasrc_CYCLE; dmadest = dmadest_CYCLE; dmacount = DMACOUNT;
+                    STATE = $STATE_DMA_SETCPYRECT_SET_OR_READ$;
+                }
+            }
+        }
+    }
+}
+
+unit dma_pb_rgb_write_data(
+    input   uint1   dmasrc,
+    input   uint16  readdata,
+    input   uint1   latch,
+    output  uint8  writedata
+) <reginputs> {
+    uint16  memoryinput = uninitialised;
+
+    memoryinput := latch ? readdata : memoryinput;
+    writedata := memoryinput[ { dmasrc, 3b000 }, 8 ];
+}
+unit dma_pb_rgb(
+    input   uint$addr_width$  DMASOURCE,
+    input   uint$addr_width$  DMACOUNT,
+    output  uint1   ACTIVE(0),
+
+    input   uint1   start(0),
+    output  uint$addr_width$  address,
+    output  uint8   writedata,
+    output  uint1   writememory,
+    output  uint1   readmemory,
+    input   uint16  readdata,
+    input   uint1   memorybusy
+) <reginputs> {
+    uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
+    uint$addr_width$  dmasrc_NEXT <:: dmasrc + 1;
+    uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
+    uint$addr_width$  dmadest_NEXT <:: &dmadest[1,2] ? $addr_width$hd672: dmadest + 2;
+    uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
+    uint$addr_width$  dmacount_NEXT <:: dmacount - 1;
+
+    dma_pb_rgb_write_data WRITE( dmasrc <: dmasrc[0,1], readdata <: readdata, writedata :> writedata );
+
+    writememory := 0; readmemory := 0; WRITE.latch := 0;
+
+    algorithm <autorun> {
+        uint5   STATE = 1;
+
+        ACTIVE = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    dmasrc = DMASOURCE; dmadest = $addr_width$hd672; dmacount = DMACOUNT; ACTIVE = start;                          // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
+                    if( start ) { STATE = 2; }
+                }
+                case 1: {
+                    if( |dmacount ) {
+                        address = dmasrc; readmemory = 1; STATE = 4;
+                    } else {
+                        STATE = 1;
+                    }
+                }
+                case 2: { if( ~memorybusy ) { STATE = 8; } }
+                case 3: { WRITE.latch = 1; address = dmadest; writememory = 1; STATE = 16; }
+                case 4: { if( ~memorybusy ) { dmasrc = dmasrc_NEXT; dmadest = dmadest_NEXT; dmacount = dmacount_NEXT; STATE = 2; } }
+            }
+        }
+    }
+}
+
+unit dma_bytes_to_io_flags(
+    input   uint$addr_width$  DMASOURCE,
+    input   uint10  DMAFLAGS,
+    output  uint2   ACCESSSIZE,
+) <reginputs> {
+    ACCESSSIZE := ( DMAFLAGS[1,1] & DMAFLAGS[9,1] ) ? 2b10 : ( DMAFLAGS[0,1] & DMAFLAGS[8,1] ) ? 2b01 : 2b00;
+}
+unit dma_bytes_to_io_write_data(
+    input   uint2   BYTE,
+    input   uint32  readdata,
+    input   uint1   latch,
+    output  uint8   writedata
+) <reginputs> {
+    uint32  memoryinput = uninitialised;
+
+    memoryinput := latch ? readdata : memoryinput;
+    writedata := memoryinput[ { BYTE, 3b000 }, 8];
+}
+unit dma_bytes_to_io(
+    input   uint$addr_width$  DMASOURCE,
+    input   uint$addr_width$  DMADEST,
+    input   uint$addr_width$  DMACOUNT,
+    input   uint10  DMAFLAGS,
+    output  uint2   ACCESSSIZE,
+    output  uint1   ACTIVE(0),
+
+    input   uint1   start(0),
+    output  uint$addr_width$  address,
+    output  uint8   writedata,
+    output  uint1   writememory,
+    output  uint1   readmemory,
+    input   uint32  readdata,
+    input   uint1   memorybusy
+) <reginputs> {
+    uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
+    uint$addr_width$  dmasrc_NEXT <:: dmasrc + BYTES;
+    uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
+    uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
+    uint$addr_width$  dmacount_NEXT <:: dmacount - BYTES;
+    uint3   BYTE = uninitialised;
+    uint3   BYTE_NEXT <:: BYTE + 1;
+    uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                                // NUMBER OF BYTES PER CYCLE
+
+    dma_bytes_to_io_flags FLAGS( DMAFLAGS <: DMAFLAGS, ACCESSSIZE :> ACCESSSIZE );
+    dma_bytes_to_io_write_data WRITE( BYTE <: BYTE[0,2], readdata <: readdata );  //, writedata :> writedata );
+
+    writememory := 0; readmemory := 0; WRITE.latch := 0;
+
+    algorithm <autorun> {
+        uint5   STATE = 1;
+
+        ACTIVE = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; ACTIVE = start;                                             // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
+                    if( start ) { STATE = 2; }
+                }
+                case 1: {
+                    if( |dmacount ) {
+                        BYTE = 0; address = dmasrc; readmemory = 1; STATE = 4;
+                    } else {
+                        STATE = 1;
+                    }
+                }
+                case 2: { if( ~memorybusy ) { STATE = 8; } }
+                case 3: { WRITE.latch = 1; address = dmadest; STATE = 16; }
+                case 4: {
+                    if( BYTE != BYTES ) {
+                        writedata = WRITE.writedata; writememory = 1; BYTE = BYTE_NEXT;
+                    } else {
+                        dmasrc = dmasrc_NEXT; dmacount = dmacount_NEXT; STATE = 2;
+                    }
+                }
+            }
+        }
+    }
+}
+
+unit dma_bytes_from_io_flags(
+    input   uint10  DMAFLAGS,
+    output  uint2   ACCESSSIZE,
+) <reginputs> {
+    ACCESSSIZE := ( DMAFLAGS[5,1] & DMAFLAGS[9,1] ) ? 2b10 : ( DMAFLAGS[4,1] & DMAFLAGS[8,1] ) ? 2b01 : 2b00;
+}
+unit dma_bytes_from_io(
+    input   uint$addr_width$  DMASOURCE,
+    input   uint$addr_width$  DMADEST,
+    input   uint$addr_width$  DMACOUNT,
+    input   uint10  DMAFLAGS,
+    output  uint2   ACCESSSIZE,
+    output  uint1   ACTIVE(0),
+
+    input   uint1   start(0),
+    output  uint$addr_width$  address,
+    output  uint32  writedata,
+    output  uint1   writememory,
+    output  uint1   readmemory,
+    input   uint8   readdata,
+    input   uint1   memorybusy
+) <reginputs> {
+    uint$addr_width$  dmasrc = uninitialised;                                                                                   // DMA PRESENT SOURCE ADDRESS
+    uint$addr_width$  dmadest = uninitialised;                                                                                  // DMA PRESENT DESTINATION ADDRRESS
+    uint$addr_width$  dmadest_NEXT <:: dmadest + BYTES;
+    uint$addr_width$  dmacount = uninitialised;                                                                                 // DMA COUNT FOR BYTES LEFT
+    uint$addr_width$  dmacount_NEXT <:: dmacount - BYTES;
+    uint3   BYTES <:: ( 1 << FLAGS.ACCESSSIZE );                                                                                // NUMBER OF BYTES PER CYCLE
+
+    dma_bytes_from_io_flags FLAGS( DMAFLAGS <: DMAFLAGS, ACCESSSIZE :> ACCESSSIZE );
+
+    writememory := 0; readmemory := 0;
+
+    algorithm <autorun> {
+        uint3   BYTE = uninitialised;
+        uint3   BYTE_NEXT <:: BYTE + 1;
+
+        uint6   STATE = 1;
+
+        ACTIVE = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; ACTIVE = start;                                             // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
+                    if( start ) { STATE = 2; }
+                }
+                case 1: {
+                    if( |dmacount ) {
+                        BYTE = 0; writedata = 0; address = dmasrc; STATE = 4;
+                    } else {
+                        STATE = 1;
+                    }
+                }
+                case 2: {
+                    if( BYTE != BYTES ) {
+                        readmemory = 1; STATE = 8;
+                    } else {
+                        address = dmadest; writememory = 1; STATE = 32;
+                    }
+                }
+                case 3: { if( ~memorybusy ) { STATE = 16; } }
+                case 4: { writedata[ { BYTE, 3b000 }, 8 ] = readdata; BYTE = BYTE_NEXT; STATE = 4; }
+                case 5: { if( ~memorybusy ) { dmadest = dmadest_NEXT; dmacount = dmacount_NEXT; STATE = 2; } }
+            }
+        }
+    }
+}

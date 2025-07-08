@@ -1,5 +1,5 @@
 CFLAGSEXTRA=
-include ../makefile.inc
+include ../makefile-lto.inc
 
 PROJECT=PBSPRITE
 PROJECTTYPE=TEST

@@ -24,18 +24,18 @@ void* operator new(size_t size) {
 extern unsigned int volatile *DMASOURCE;
 extern unsigned int volatile *DMADEST;
 extern unsigned int volatile *DMACOUNT;
-extern unsigned char volatile *DMAMODE;
+extern unsigned short volatile *DMAMODE;
 extern unsigned char volatile *DMASET;
 
-void cpp_DMASTART( void *source, void *destination, unsigned int count, unsigned char mode ) {
+void cpp_DMASTART( void *source, void *destination, unsigned int count, unsigned short mode ) {
     *DMASOURCE = (unsigned long)source; *DMADEST = (unsigned long)destination; *DMACOUNT = count; *DMAMODE = mode;
 }
 void *cpp_paws_memcpy( void * destination, const void *source, size_t count ) {
-    cpp_DMASTART( (void *)source, (void *)destination, count, 3 );
+    cpp_DMASTART( (void *)source, (void *)destination, count, DMA_CPY_M_TO_M );
     return( destination );
 }
 void *cpp_paws_memset( void *destination, int value, size_t count ) {
-    *DMASET = (unsigned char)value; cpp_DMASTART( (void *)DMASET, destination, count, 4 );
+    *DMASET = (unsigned char)value; cpp_DMASTART( (void *)DMASET, destination, count, DMA_SET_TO_M );
     return( destination );
 }
 
@@ -105,39 +105,39 @@ static ImGuiKey ImGui_ImplPAWS_KeycodeToImGuiKey(short keycode)
         //case 0x127: return ImGuiKey_RightSuper;
         //case 0x12f: return ImGuiKey_Menu;
 
-        //case 0x45: return ImGuiKey_0;
-        //case 0x16: return ImGuiKey_1;
-        //case 0x1e: return ImGuiKey_2;
-        //case 0x26: return ImGuiKey_3;
-        //case 0x25: return ImGuiKey_4;
-        //case 0x2e: return ImGuiKey_5;
-        //case 0x36: return ImGuiKey_6;
-        //case 0x3d: return ImGuiKey_7;
-        //case 0x3e: return ImGuiKey_8;
-        //case 0x46: return ImGuiKey_9;
+        case 0x45: return ImGuiKey_0;
+        case 0x16: return ImGuiKey_1;
+        case 0x1e: return ImGuiKey_2;
+        case 0x26: return ImGuiKey_3;
+        case 0x25: return ImGuiKey_4;
+        case 0x2e: return ImGuiKey_5;
+        case 0x36: return ImGuiKey_6;
+        case 0x3d: return ImGuiKey_7;
+        case 0x3e: return ImGuiKey_8;
+        case 0x46: return ImGuiKey_9;
         case 0x1c: return ImGuiKey_A;
-        //case 0x32: return ImGuiKey_B;
+        case 0x32: return ImGuiKey_B;
         case 0x21: return ImGuiKey_C;
-        //case 0x23: return ImGuiKey_D;
-        //case 0x24: return ImGuiKey_E;
-        //case 0x2b: return ImGuiKey_F;
-        //case 0x34: return ImGuiKey_G;
-        //case 0x33: return ImGuiKey_H;
-        //case 0x43: return ImGuiKey_I;
-        //case 0x3b: return ImGuiKey_J;
-        //case 0x42: return ImGuiKey_K;
-        //case 0x4b: return ImGuiKey_L;
-        //case 0x3a: return ImGuiKey_M;
-        //case 0x31: return ImGuiKey_N;
-        //case 0x44: return ImGuiKey_O;
-        //case 0x4d: return ImGuiKey_P;
-        //case 0x15: return ImGuiKey_Q;
-        //case 0x2d: return ImGuiKey_R;
-        //case 0x1b: return ImGuiKey_S;
-        //case 0x2c: return ImGuiKey_T;
-        //case 0x3c: return ImGuiKey_U;
+        case 0x23: return ImGuiKey_D;
+        case 0x24: return ImGuiKey_E;
+        case 0x2b: return ImGuiKey_F;
+        case 0x34: return ImGuiKey_G;
+        case 0x33: return ImGuiKey_H;
+        case 0x43: return ImGuiKey_I;
+        case 0x3b: return ImGuiKey_J;
+        case 0x42: return ImGuiKey_K;
+        case 0x4b: return ImGuiKey_L;
+        case 0x3a: return ImGuiKey_M;
+        case 0x31: return ImGuiKey_N;
+        case 0x44: return ImGuiKey_O;
+        case 0x4d: return ImGuiKey_P;
+        case 0x15: return ImGuiKey_Q;
+        case 0x2d: return ImGuiKey_R;
+        case 0x1b: return ImGuiKey_S;
+        case 0x2c: return ImGuiKey_T;
+        case 0x3c: return ImGuiKey_U;
         case 0x2a: return ImGuiKey_V;
-        //case 0x1d: return ImGuiKey_W;
+        case 0x1d: return ImGuiKey_W;
         case 0x22: return ImGuiKey_X;
         case 0x35: return ImGuiKey_Y;
         case 0x1a: return ImGuiKey_Z;
@@ -161,11 +161,12 @@ static ImGuiKey ImGui_ImplPAWS_KeycodeToImGuiKey(short keycode)
 int main(int, char**)
 {
     short mouse_x, mouse_y, mouse_btns;
-    set_sprite_bitmaps( UPPER_LAYER, 15, mouse_sprite );
+    set_sprite_bitmaps( 62, mouse_sprite );
 
     fb_base = (uint32_t*)malloc( 320 * 240 * 4); cpp_paws_memset( fb_base, 0, (uint32_t)320*240*4 );
-    bitmap_256( TRUE ); bitmap_display( 1 ); bitmap_draw( 1 ); gpu_cs(); gpu_pixelblock_mode( PB_WRITEALL );
-    ps2_keyboardmode( TRUE );
+    bitmap_256( TRUE ); bitmap_draw( 1 ); gpu_cs(); gpu_pixelblock_mode( PB_WRITEALL );
+    screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_3, LAYER_BITMAP_0, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
+    ps2_keyboardmode( TRUE ); reset_mouse();
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -202,7 +203,7 @@ int main(int, char**)
         io.MouseDown[ImGuiMouseButton_Left] = ( mouse_btns & 2 ) >> 1;          // set the mouse button states
         io.MouseDown[ImGuiMouseButton_Right] = ( mouse_btns & 4 ) >> 2;
         if( mouse_cursor != 0 ) { mouse_x -= 16; mouse_y -= 16; }               // adjust if focus point is not top left
-        set_sprite( UPPER_LAYER, 15, ( mouse_cursor != ImGuiMouseCursor_None ), mouse_x, mouse_y, mouse_cursor, SPRITE_DOUBLE );
+        set_sprite( 63, ( mouse_cursor != ImGuiMouseCursor_None ), mouse_x, mouse_y, mouse_cursor, SPRITE_DOUBLE );
 
         ImGui::NewFrame();
 
@@ -227,7 +228,6 @@ int main(int, char**)
     }
 
     while( get_buttons() != 1 );
-    printf("DestroyContext()\n");
     ImGui::DestroyContext();
     return 0;
 }

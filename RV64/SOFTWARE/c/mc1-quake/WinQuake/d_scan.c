@@ -94,6 +94,9 @@ void D_WarpScreen (void)
 	byte	*rowptr[MAXHEIGHT+(AMP2*2)];
 	int		column[MAXWIDTH+(AMP2*2)];
 	float	wratio, hratio;
+	byte	*rectptr;
+	int		rect_x;
+	float	scale;
 	unsigned int	_vid_rowbytes;
 
 	w = r_refdef.vrect.width;
@@ -104,6 +107,9 @@ void D_WarpScreen (void)
 	wratio = w / (float)src_w;
 	hratio = h / (float)src_h;
 
+#if 0
+	/* This code triggers MRISC32-A1 cache bug:
+	   https://gitlab.com/mrisc32/mrisc32-a1/-/issues/27  */
 	for (v=0 ; v<src_h+AMP2*2 ; v++)
 	{
 		rowptr[v] = d_viewbuffer + (r_refdef.vrect.y * screenwidth) +
@@ -115,6 +121,23 @@ void D_WarpScreen (void)
 		column[u] = r_refdef.vrect.x +
 				(int)((float)u * wratio * w / (w + AMP2 * 2));
 	}
+#else
+	/* Generate row pointers  */
+	rectptr = d_viewbuffer + (r_refdef.vrect.y * screenwidth);
+	scale = hratio * h / (h + AMP2 * 2);
+	for (v = 0; v < src_h + AMP2 * 2; ++v)
+	{
+		rowptr[v] = rectptr + (screenwidth * (int)(scale * (float)v));
+	}
+
+	/* Generate column indexes  */
+	rect_x = r_refdef.vrect.x;
+	scale = wratio * w / (w + AMP2 * 2);
+	for (u = 0; u < src_w + AMP2 * 2; ++u)
+	{
+		column[u] = rect_x + (int)(scale * (float)u);
+	}
+#endif
 
 	_vid_rowbytes = vid.rowbytes;
 	turb = intsintable + ((int)(cl.time*SPEED)&(CYCLE-1));

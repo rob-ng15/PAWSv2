@@ -10,12 +10,10 @@ unit pll(
   uint8 trigger = 8b11111111;
   sdram_clock   := clock;
   clock_decode   := clock;
-  compute_clock := ~counter[0,1]; // x2 slower
-  video_clock   := counter[1,1]; // x4 slower
-  always {
-        counter = counter + 1;
-        trigger = trigger >> 1;
-  }
+  compute_clock := ~counter[0,1];   // x2 slower
+  video_clock   := counter[1,1];    // x4 slower
+
+  always { counter = counter + 1; trigger = trigger >> 1; }
 }
 $$end
 
@@ -36,6 +34,8 @@ $$if not SIMULATION then
     // USB PS/2
     input   uint1   us2_bd_dp,
     input   uint1   us2_bd_dn,
+    output  uint1   usb_fpga_pu_dp(1),
+    output  uint1   usb_fpga_pu_dn(1),
 
     // AUDIO
     output  uint4   audio_l,
@@ -85,10 +85,10 @@ $$end
     inout   uint1   gpdi_scl
 ) <@clock_system,reginputs> {
     uint1   clock_system = uninitialized;
-    uint1   clock_system_alt = uninitialized;
+    uint1   clock_gpu = uninitialized;
     uint1   clock_cpu = uninitialized;
-    uint1   clock_decode = uninitialized;
     uint1   clock_cache = uninitialized;
+    uint1   clock_decode = uninitialized;
     uint1   clock_palette = uninitialized;
 $$if VERILATOR then
     $$clock_25mhz = 'video_clock'
@@ -98,7 +98,7 @@ $$if VERILATOR then
       sdram_clock   :> sdram_clock,
       clock_decode   :> clock_decode,
       compute_clock :> clock_system,
-      compute_clock :> clock_system_alt,
+      compute_clock :> clock_gpu,
       compute_clock :> clock_cpu,
       clock_decode :> clock_cache,
       compute_clock :> clock_palette,
@@ -113,7 +113,7 @@ $$else
         clkin    <: $clock_25mhz$,
         clkSYSTEM  :> clock_system,
         clkSDRAM :> sdram_clock,
-        clkSYSTEMalt :> clock_system_alt,
+        clkGPU :> clock_gpu,
         clkSDRAMcontrol :> sdram_clk,
         locked   :> pll_lock_SYSTEM
     );
@@ -122,30 +122,39 @@ $$else
         clkin    <: $clock_25mhz$,
         clkCPU :> clock_cpu,
         clkDECODE :> clock_decode,
-        clkPAL :> clock_palette,
         clkCACHE :> clock_cache,
+        clkPAL :> clock_palette,
         locked   :> pll_lock_CPU
     );
 $$end
 
-    // IDENTIFY ADDRESS BLOCK
-    uint1   SDRAM <: CPU.address[$addr_width-1$,1];
-    uint1   VIDEODIRECT <: ~SDRAM & CPU.address[$addr_width-2$,1];
-    uint1   BRAM <: ~SDRAM & ~VIDEODIRECT & ~CPU.address[15,1];
-    uint1   IOmem <: ~SDRAM & ~VIDEODIRECT & ~BRAM;
-    uint1   TIMERS <: IOmem & ( ~|CPU.address[12,2] );
-    uint1   VIDEO <: IOmem & ( CPU.address[12,2] == 2h1 );
-    uint1   AUDIO <: IOmem & ( CPU.address[12,2] == 2h2 );
-    uint1   IO <: IOmem & ( &CPU.address[12,2] );
+    csr_timer TIMER();                                                                                                          // SYSTEM TIMER
 
-    // SDRAM Reset
-    uint1   sdram_reset = uninitialized; clean_reset sdram_rstcond <@sdram_clock,!reset> ( out :> sdram_reset );
+    uint2   ACCESSSIZE <:: DMA.ACTIVE ? DMA.ACCESSSIZE : DMA_AUDIO.ACTIVE ? 2b10 : CPU.MEM_SIZE;                                // SELECT ACTIVE BUS, DMA OR CPU    MEMORY ACCESSSIZE
+    uint32  WRITEDATA <:: DMA.ACTIVE ? DMA.WRITEDATA : CPU.MEM_WDATA;                                                           //                                  WRITEDATA
+    uint1   READFLAG <:: CPU.MEM_RENABLE | DMA.READFLAG | DMA_AUDIO.READFLAG;                                                   //                                  READFLAG
+    uint1   WRITEFLAG <:: CPU.MEM_WENABLE | DMA.WRITEFLAG;                                                                      //                                  WRITEFLAG
+    uint$addr_width$ ADDRESS <:: DMA.ACTIVE ? DMA.ADDRESS : DMA_AUDIO.ACTIVE ? DMA_AUDIO.ADDRESS : CPU.MEM_ADDR;                //                                  ADDRESS
+    uint$addr_width$  address2 <:: ( DMA.ACTIVE ? DMA.ADDRESS : DMA_AUDIO.ACTIVE ? DMA_AUDIO.ADDRESS : CPU.MEM_ADDR ) + 2;      //                                  + 2
+    uint$addr_width$  address0 <:: ( DMA.ACTIVE ? DMA.ADDRESS : DMA_AUDIO.ACTIVE ? DMA_AUDIO.ADDRESS : CPU.MEM_ADDR ) +         //                                  ALIGN ON 16 BIT BOUNDARY
+                                   { ( DMA.ACTIVE ? DMA.ADDRESS[1,1] : DMA_AUDIO.ACTIVE ? DMA_AUDIO.ADDRESS[1,1] : CPU.MEM_ADDR[1,1] ), 1b0 };
+
+    uint1   SDRAM <:: ADDRESS[$addr_width-1$,1];                                                                                // CHIPSELECT   SDRAM
+    uint1   BITMAPDIRECT <:: ADDRESS[$addr_width-2$,2] == 2b01;                                                                 //              FRAMEBUFFER(S)
+    uint1   CMAPDIRECT <:: ADDRESS[$addr_width-3$,3] == 3b001;                                                                  //              CHARACTER MAP BUFFER
+    uint1   TMAPDIRECT <:: ADDRESS[$addr_width-4$,4] == 4b0001;                                                                 //              TILE MAP BUFFER(S)
+    uint1   BRAM <:: ~|ADDRESS[$addr_width-4$,4] & ~ADDRESS[15,1];                                                              //              BRAM / BIOS
+    uint1   TIMERS <:: ~|ADDRESS[$addr_width-4$,4] & ( ADDRESS[12,4] == 4hc );                                                  //              TIMER REGISTERS
+    uint1   VIDEO <:: ~|ADDRESS[$addr_width-4$,4] & ( ADDRESS[12,4] == 4hd );                                                   //              VIDEO BLOCKS REGISTERS
+    uint1   AUDIO <:: ~|ADDRESS[$addr_width-4$,4] & ( ADDRESS[12,4] == 4he );                                                   //              AUDIO REGISTERS
+    uint1   IO <:: ~|ADDRESS[$addr_width-4$,4] & ( ADDRESS[12,4] == 4hf );                                                      //              I/O + DMA + SMT REGISTERS
 
     // SDRAM chip controller by @sylefeb
-    sdram_r16w16_io sio_fullrate; sdram_r16w16_io sio_halfrate;
-    sdram_half_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );
-    sdram_controller_autoprecharge_r16_w16 sdram32MB <@sdram_clock,!sdram_reset> (
-        sd        <:> sio_fullrate,
+    uint1   sdram_reset = uninitialized; clean_reset sdram_rstcond <@sdram_clock,!reset> ( out :> sdram_reset );                // SDRAM RESET SIGNAL GENERATOR
+    sdram_r16w16_io sio_fullrate; sdram_r16w16_io sio_halfrate;                                                                 // SDRAM IS 16 BIT 100MHz SDRAM CLOCK, 50MHz SYSTEM CLOCK
+    sdram_half_speed_access sdaccess <@sdram_clock,!sdram_reset> ( sd <:> sio_fullrate, sdh <:> sio_halfrate );                 // SDRAM RUNS AT 100MHZ, SYSTEM AT 50MHz
+    sdram_controller_autoprecharge_r16_w16 sdram32MB <@sdram_clock,!sdram_reset> (                                              // SDRAM CONTROLLER
+        sd        <:> sio_fullrate,                                                                                             // CONTROL SIGNALS GO THROUGH A CLOCK GATE
         sdram_cle :>  sdram_cle,
         sdram_dqm :>  sdram_dqm,
         sdram_cs  :>  sdram_cs,
@@ -154,106 +163,109 @@ $$end
         sdram_ras :>  sdram_ras,
         sdram_ba  :>  sdram_ba,
         sdram_a   :>  sdram_a,
-  $$if VERILATOR then
+    $$if VERILATOR then
         dq_i       <: sdram_dq_i,
         dq_o       :> sdram_dq_o,
         dq_en      :> sdram_dq_en,
-  $$else
+    $$else
         sdram_dq  <:> sdram_dq,
-  $$end
+    $$end
     );
 
-    // SDRAM ( via CACHE )
-    uint1   DRAMreadflag <: SDRAM & CPU.readmemory;
-    uint1   DRAMwriteflag <: SDRAM & CPU.writememory;
-    cachecontroller DRAM <@clock_system,!reset> (
+    cachecontroller DRAM <@clock_system,!reset> (                                                                               // SDRAM VIA CACHE ( controls 16 BIT <-> 32 BIT )
         sio <:> sio_halfrate,
         clock_cache <: clock_cache,
-        accesssize <: CPU.accesssize,
-        cacheselect <: CPU.cacheselect,
-        address <: CPU.address[0,$addr_width-1$],
-        writedata <: CPU.writedata,
-        writeflag <: DRAMwriteflag,
-        readflag <: DRAMreadflag
+
+        CS <: SDRAM,
+        RENABLE <: READFLAG,
+        WENABLE <: WRITEFLAG,
+        SIZE <: ACCESSSIZE,
+        ADDR <: ADDRESS[0,$paws_ram$],
+        ADDR0 <: address0[0,$paws_ram$],
+        ADDR2 <: address2[0,$paws_ram$],
+        WDATA <: WRITEDATA
     );
 
-    // BRAM (for BIOS AND FAST BRAM ) SELECT BIOS FOR FPGA OR SIMULATION
-    uint1   RAMwriteflag <: BRAM & CPU.writememory;
-    bramcontroller RAM <@clock_system,!reset> (
-        accesssize <: CPU.accesssize,
-        address <: CPU.address[0,15],
-        writedata <: CPU.writedata,
-        writeflag <: RAMwriteflag
+    bramcontroller RAM <@clock_system,!reset> (                                                                                 // BRAM CONTROLLER
+        CS <: BRAM,
+        SIZE <: ACCESSSIZE,
+        ADDR <: ADDRESS,
+        ADDR2 <: address2,
+        WDATA <: WRITEDATA,
+        WENABLE <: WRITEFLAG
     );
 
-    // MEMORY MAPPED I/O + SMT CONTROLS
-    // 16 bit cache memory bus, 0 I cache, 16384 D cache
-    uint1   IO_MapmemoryRead <: IO & CPU.readmemory;
-    uint1   IO_MapmemoryWrite <: IO & CPU.writememory;
-    io_memmap IO_Map <@clock_system,!reset> (
-        leds :> leds,
+    io_memmap IO_Map <@clock_system,!reset> (                                                                                   // I/O REGISTERS CONTROLLER
+        CS <: IO,
+        ADDR <: ADDRESS,                                                                                                        //  MEMORY MAPPING
+        WENABLE <: WRITEFLAG,
+        RENABLE <: READFLAG,
+        WDATA <: WRITEDATA,
+
+        leds :> leds,                                                                                                           //  LEDS
 $$if not SIMULATION then
-        gn <: gn,
+        gn <: gn,                                                                                                               //  GPIO
         gp :> gp,
-        btns <: btns,
-        uart_tx :> uart_tx,
+        btns <: btns,                                                                                                           //  ULX3S BUTTONS
+        uart_tx :> uart_tx,                                                                                                     //  UART
         uart_rx <: uart_rx,
-        us2_bd_dp <: us2_bd_dp,
+        us2_bd_dp <: us2_bd_dp,                                                                                                 //  USB OTG PORT, FOR PS/2 KEYBOARD
         us2_bd_dn <: us2_bd_dn,
-        sd_clk :> sd_clk,
+        sd_clk :> sd_clk,                                                                                                       //  SDCARD
         sd_mosi :> sd_mosi,
         sd_csn :> sd_csn,
         sd_miso <: sd_miso,
 $$end
-        gpdi_sda <:> gpdi_sda,
+        gpdi_sda <:> gpdi_sda,                                                                                                  //  RTC ACCESS
         gpdi_scl <:> gpdi_scl,
 
-        clock_25mhz <: $clock_25mhz$,
-
-        memoryAddress <: CPU.address,
-        writeData <: CPU.writedata,
-        memoryWrite <: IO_MapmemoryWrite,
-        memoryRead <: IO_MapmemoryRead,
-        DMAACTIVE <: CPU.DMAACTIVE,
+        DMAACTIVE <: DMA.ACTIVE,
+        RDTIME <: TIMER.counter,
+        IRQ_VBLANK <: VIDEO_Map.IRQ_VBLANK
     );
 
-    uint1   TIMERS_MapmemoryRead <: TIMERS & CPU.readmemory;
-    uint1   TIMERS_MapmemoryWrite <: TIMERS & CPU.writememory;
-    timers_memmap TIMERS_Map <@clock_system,!reset> (
-        clock_25mhz <: $clock_25mhz$,
-        memoryAddress <: CPU.address[0,6],
-        writeData <: CPU.writedata,
-        memoryWrite <: TIMERS_MapmemoryWrite,
-        memoryRead <: TIMERS_MapmemoryRead
+    timers_memmap TIMERS_Map <@clock_system,!reset> (                                                                           // TIMERS REGISTERS CONTROLLER
+        CS <: TIMERS,
+        ADDR <: ADDRESS[0,6],
+        RENABLE <: READFLAG,
+        WENABLE <: WRITEFLAG,
+        WDATA <: WRITEDATA
     );
 
     $$if SIMULATION then
         uint4 audio_l(0);
         uint4 audio_r(0);
     $$end
-    uint1   AUDIO_MapmemoryWrite <: AUDIO & CPU.writememory;
-    audio_memmap AUDIO_Map <@clock_system,!reset> (
-        clock_25mhz <: $clock_25mhz$,
-        memoryAddress <: CPU.address[1,5],
-        writeData <: CPU.writedata,
-        memoryWrite <: AUDIO_MapmemoryWrite,
+    audio_memmap AUDIO_Map <@clock_system,!reset> (                                                                             // AUDIO REGISTERS CONTROLLER
+        CS <: AUDIO,
+        ADDR <: ADDRESS,
+        WDATA <: WRITEDATA,
+        WENABLE <: WRITEFLAG,
         audio_l :> audio_l,
         audio_r :> audio_r,
-        static8bit <: TIMERS_Map.static16bit[0,8]
+        STATIC <: TIMERS_Map.static16bit,
+        L_ADMA_ACTIVE <: DMA_AUDIO.L_ADMA_ACTIVE,
+        L_SAMPLE <: DMA_AUDIO.L_AUDIO_DMA_SAMPLE,
+        R_ADMA_ACTIVE <: DMA_AUDIO.R_ADMA_ACTIVE,
+        R_SAMPLE <:  DMA_AUDIO.R_AUDIO_DMA_SAMPLE,
+        RDTIME <: TIMER.counter
     );
 
-    uint1   VIDEO_MapmemoryWrite <: VIDEO & CPU.writememory;
-    uint1   VIDEO_MapmemoryWriteDirect <: VIDEODIRECT & CPU.writememory;
-    video_memmap VIDEO_Map <@clock_system,!reset> (
+    video_memmap VIDEO_Map <@clock_system,!reset> (                                                                             // VIDEO REGISTERS AND MEMORY CONTROLLERS
+        CS <: VIDEO,
+        CS_BM <: BITMAPDIRECT,
+        CS_CM <: CMAPDIRECT,
+        CS_TM <: TMAPDIRECT,
+
         video_clock <: $clock_25mhz$,
-        gpu_clock <: $clock_25mhz$,
+        gpu_clock <: clock_gpu,
         palette_clock <: clock_palette,
-        memoryAddressDirect <: CPU.address,
-        accesssize <: CPU.accesssize,
-        memoryAddress <: CPU.address[0,12],
-        writeData <: CPU.writedata,
-        memoryWrite <: VIDEO_MapmemoryWrite,
-        memoryWriteDirect <: VIDEO_MapmemoryWriteDirect,
+        ADDR <: ADDRESS,
+        ADDR0 <: address0,
+        SIZE <: ACCESSSIZE,
+        WDATA <: WRITEDATA,
+        WENABLE <: WRITEFLAG,
+
 $$if HDMI then
         gpdi_dp :> gpdi_dp,
 $$end
@@ -268,76 +280,66 @@ $$end
         blink <: TIMERS_Map.cursor,
 
         sdcardlightcolour <: IO_Map.sdcardlightcolour,
+$$if not SIMULATION then
+        sdcarderror <: IO_Map.sd_error,
+$$end
         JOYSTICK <: IO_Map.JOYSTICK,
         CAPSLOCK <: IO_Map.CAPSLOCK,
         NUMLOCK <: IO_Map.NUMLOCK,
         RESETSTATUS <: IO_Map.RESETSTATUS
     );
 
-    // LINK CPU TO MEMORY CONTROLLERS
-    //uint1   memorybusy <: DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & SDRAM ) | ( CPU.readmemory & BRAM ) | ( ( CPU.readmemory | CPU.writememory ) & VIDEODIRECT );
-    uint1   memorybusy <: DRAM.busy | ( ( CPU.readmemory | CPU.writememory ) & ( SDRAM ) ) | ( CPU.readmemory & ( VIDEODIRECT | BRAM ) );
-    uint32  readdata <: SDRAM ? DRAM.readdata :
-                        VIDEODIRECT ? VIDEO_Map.readDataDirect :
-                        BRAM ? RAM.readdata :
-                        TIMERS ? TIMERS_Map.readData :
-                        VIDEO ? VIDEO_Map.readData :
-                        AUDIO ? AUDIO_Map.readData :
-                        IO ? IO_Map.readData : 0;
-    PAWSCPU CPU <@clock_cpu> (
-        clock_CPUdecoder <: clock_decode,
-        clock_cache <: clock_cache,
-        memorybusy <: memorybusy,
-        readdata <: readdata,
-        SMTRUNNING <: IO_Map.SMTRUNNING,
-        SMTSTARTPC <: IO_Map.SMTSTARTPC[0,27],
-        DMASOURCE <: IO_Map.DMASOURCE,
+    uint1   MEMORYBUSY <:: DRAM.BUSY |                                                                                          // CPU MEMORY BUSY FLAG FROM    SDRAM
+                           ( ( READFLAG | WRITEFLAG ) & SDRAM ) |                                                               //                              SDRAM READ/WRITE REQUEST
+                           ( READFLAG & ( BRAM | VIDEO | BITMAPDIRECT) );                                                       //                              BRAM/VIDEO/BITMAP READ REQUEST
+    uint32  READDATA <::        SDRAM ? DRAM.RDATA :                                                                            // READ FROM SDRAM
+                         BITMAPDIRECT ? VIDEO_Map.BITMAP_RDATA :                                                                // READ FROM FRAMEBUFFERS
+                           CMAPDIRECT ? VIDEO_Map.CMAP_RDATA :                                                                  // READ FROM CHARACTERMAP
+                           TMAPDIRECT ? VIDEO_Map.TMAP_RDATA[ADDRESS[18,2]*9,9] :                                               // READ FROM TILEMAPS
+                                 BRAM ? RAM.RDATA :                                                                             // READ FROM BRAM
+                               TIMERS ? TIMERS_Map.RDATA :                                                                      // READ FROM TIMERS
+                                VIDEO ? VIDEO_Map.RDATA :                                                                       // READ FROM VIDEO
+                                AUDIO ? AUDIO_Map.RDATA :                                                                       // READ FROM AUDIO
+                                        IO_Map.RDATA;                                                                           // READ FROM I/O
+
+    PAWSCPU CPU <@clock_cpu,!reset> (                                                                                           // PAWS CPU
+        clock_CPUdecoder <: clock_decode,                                                                                       //  100MHz DECODE CLOCK
+        clock_cache <: clock_cache,                                                                                             //  100MHz CACHE CLOCK
+        MEM_BUSY <: MEMORYBUSY,
+        MEM_RDATA <: READDATA,
+        DMA_AUDIO_REQ <: DMA_AUDIO.REQUEST,
+        DMA_ACTIVE <: DMA.ACTIVE, DMA_AUDIO_ACTIVE <: DMA_AUDIO.ACTIVE,
+        RDTIME <: TIMER.counter, IRQ_TIMER <: IO_Map.IRQ_TIMER, TIMER_VALID <: IO_Map.TIMER_VALID,
+        IRQ_VBLANK <: VIDEO_Map.IRQ_VBLANK
+     );
+
+    dma DMA <@clock_cpu,!reset> (                                                                                               // MINI DMA CONTROLLER
+        DMASTART <: CPU.DMA_START,
+        MEMORYBUSY <: MEMORYBUSY,                                                                                               //  MEMORY BUSY FLAG
+        READDATA <: READDATA,                                                                                                   //  READ RESULT
+        DMASOURCE <: IO_Map.DMASOURCE,                                                                                          //  REGISTERS FROM IO MEMORY MAP
         DMASOURCEADD <: IO_Map.DMASOURCEADD,
         DMADEST <: IO_Map.DMADEST,
         DMADESTADD <: IO_Map.DMADESTADD,
         DMACOUNT <: IO_Map.DMACOUNT,
         DMACYCLES <: IO_Map.DMACYCLES,
-        DMASET <: IO_Map.DMASET,
-        DMAMODE <: IO_Map.DMAMODE
+        DMAMODE <: IO_Map.DMAMODE,
+        DMASET <: IO_Map.DMASET
     );
-}
 
-// RAM - BRAM controller
-unit bramcontroller(
-$$if not SIMULATION then
-    input   uint12  address,
-$$else
-    input   uint13  address,
-$$end
-    input   uint2   accesssize,
-    input   uint1   writeflag,
-    input   uint32  writedata,
-    output  uint32  readdata
-) <reginputs> {
-    // BRAM (for BIOS AND FAST BRAM ) SELECT BIOS FOR FPGA OR SIMULATION
-    $$config['dualport_bram_wmask_byte_wenable0_width'] = 'data'
-    $$config['dualport_bram_wmask_byte_wenable1_width'] = 'data'
-    $$if not SIMULATION then
-        // RISC-V FAST BRAM and BIOS
-        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [2048] = {file("ROM/BIOS.bin"), pad(uninitialized)};
-    $$else
-        // RISC-V FAST BRAM and BIOS FOR VERILATOR - TEST FOR SMT AND FPU
-        dualport_bram uint16 ram <"dualport_bram_wmask_byte"> [4096] = {file("ROM/VBIOS.bin"), pad(uninitialized)};
-    $$end
+    dma_digital_audio DMA_AUDIO <@clock_cpu,!reset> (                                                                           // ONDEMAND AUDIO DMA CONTROLLER
+        START <: CPU.DMA_AUDIO_START,
+        MEMORYBUSY <: MEMORYBUSY,                                                                                               //  MEMORY BUSY FLAG
+        READDATA <: READDATA,                                                                                                   //  READ RESULT
 
-    // BRAM FLAGS ram0 lower 16 bits, ram1 upper 16 bits, COMBINE ram0 AND ram1 TO 32 BIT READ
-    ram.wenable0 := 0; ram.addr0 := address[1,11];
-    ram.wenable1 := 0; ram.addr1 := address[1,11] + 1; ram.wdata1 := writedata[16,16];
-    readdata := { ram.rdata1, ram.rdata0 };
+        L_AUDIO_DMA_STATUS <: AUDIO_Map.L_AUDIO_DMA_STATUS,                                                                     //  CONTROL REGISTER    { 11025/22050, REPEAT, START, STOP }
+        L_AUDIO_DMA_BASE <: AUDIO_Map.L_AUDIO_DMA_BASE,                                                                         //  BASE MEMORY ADDRESS
+        L_AUDIO_DMA_LENGTH <: AUDIO_Map.L_AUDIO_DMA_LENGTH,                                                                     //  NUMBER OF SAMPLES
 
-    always_after {
-        if( writeflag ) {
-            ram.wdata0 = writedata[0,16];
-            switch( accesssize ) {
-                case 2b00: { ram.wdata0 = { {2{writedata[0,8]}} }; ram.wenable0 = address[0,1] ? 2b10 : 2b01; }
-                case 2b01: { ram.wenable0 = 2b11; }
-                default: { ram.wenable0 = 2b11; ram.wenable1 = 2b11; }
-            }
-        }
-    }
+        R_AUDIO_DMA_STATUS <: AUDIO_Map.R_AUDIO_DMA_STATUS,                                                                     //  CONTROL REGISTER    { 11025/22050, REPEAT, START, STOP }
+        R_AUDIO_DMA_BASE <: AUDIO_Map.R_AUDIO_DMA_BASE,                                                                         //  BASE MEMORY ADDRESS
+        R_AUDIO_DMA_LENGTH <: AUDIO_Map.R_AUDIO_DMA_LENGTH,                                                                     //  NUMBER OF SAMPLES
+    );
+
+    CPU.DMA_REQ := |IO_Map.DMAMODE;                                                                                             // DMA REQUESTED VIA IO FLAGS
 }

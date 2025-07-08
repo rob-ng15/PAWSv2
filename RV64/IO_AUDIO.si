@@ -1,0 +1,421 @@
+// AUDIO MEMORY MAP CONTROLLER
+unit audio_memmap(
+    input   uint$AUDIO_multi$   RDTIME,                                                                                         // CPU CYCLE COUNTER, USED BY PWM
+
+    input   uint1               CS,                                                                                             // FROM CPU     CHIP SELECT
+    input   uint8               ADDR,                                                                                           //              ADDRESS
+    input   uint1               WENABLE,                                                                                        //              WRITE ENABLE FLAG
+    input   uint32              WDATA,                                                                                          //              WRITE DATA
+    output  uint8               RDATA,                                                                                          // TO CPU       AUDIO STATUS FLAGS
+
+
+    output  uint4               audio_l,                                                                                        // AUDIO OUTPUT LEFT CHANNEL TO DAC
+    output  uint4               audio_r,                                                                                        // AUDIO OUTPUT RIGHT CHANNEL TO DAC
+
+    input  uint16               STATIC,                                                                                         // RANDOM NUMBER GENERATOR FOR STATIC/NOISE
+
+    input   uint1               L_ADMA_ACTIVE,                                                                                  // DMA DIGITAL AUDIO    LEFT ACTIVE?
+    input   uint8               L_SAMPLE,                                                                                       //                      LEFT SAMPLE
+    output  uint4               L_AUDIO_DMA_STATUS,                                                                             //                      LEFT CONTROL FLAG
+    output  uint$addr_width$    L_AUDIO_DMA_BASE,                                                                               //                      LEFT BASE ADDRESS
+    output  uint$addr_width$    L_AUDIO_DMA_LENGTH,                                                                             //                      LEFT SAMPLE LENGTH
+    input   uint1               R_ADMA_ACTIVE,                                                                                  // DMA DIGITAL AUDIO    RIGHT ACTIVE?
+    input   uint8               R_SAMPLE,                                                                                       //                      RIGHT SAMPLE
+    output  uint4               R_AUDIO_DMA_STATUS,                                                                             //                      RIGHT CONTROL FLAG
+    output  uint$addr_width$    R_AUDIO_DMA_BASE,                                                                               //                      RIGHT BASE ADDRESS
+    output  uint$addr_width$    R_AUDIO_DMA_LENGTH                                                                              //                      RIGHT SAMPLE LENGTH
+) {
+    pulse_1khz PULSE();                                                                                                         // Generate 1KHz pulse for audio timing
+
+    uint6               DS_NEW = uninitialised;
+    uint6               DS_LOAD = uninitialised;
+    uint6               BS_NEW = uninitialised;
+    uint6               BS_LOAD = uninitialised;
+    uint6               APU_WRITE = uninitialised;
+
+    $$for i=0,2 do
+    simple_dualport_bram uint7 samples_L$i$[128] = uninitialized;                                                               // DOOM SAMPLES, 128 NOTES PER TUNE/SAMPLE
+    simple_dualport_bram uint7 samples_R$i$[128] = uninitialized;
+    doom_samples_writer DSL$i$( doom_samples <:> samples_L$i$, samples <: WDATA[0,7], newsample <: DS_NEW[$i$,1], load <: DS_LOAD[$i$,1] );
+    doom_samples_writer DSR$i$( doom_samples <:> samples_R$i$, samples <: WDATA[0,7], newsample <: DS_NEW[$3+i$,1], load <: DS_LOAD[$3+i$,1] );
+
+    simple_dualport_bram uint$AUDIO_bits$ bit_samples_L$i$[256] = uninitialized;                                                // BIT SAMPLES
+    simple_dualport_bram uint$AUDIO_bits$ bit_samples_R$i$[256] = uninitialized;
+    bitsample_writer BSL$i$( bit_samples <:> bit_samples_L$i$, samples <: WDATA[ $8 - AUDIO_bits$, $AUDIO_bits$ ], newsample <: BS_NEW[$i$,1], load <: BS_LOAD[$i$,1] );
+    bitsample_writer BSR$i$( bit_samples <:> bit_samples_R$i$, samples <: WDATA[ $8 - AUDIO_bits$, $AUDIO_bits$ ], newsample <: BS_NEW[$3+i$,1], load <: BS_LOAD[$3+i$,1] );
+
+    dualport_bram uint8 sine_$i$[256] = {                                                                                       // CALCULATED SINE WAVE
+        128,131,134,137,140,144,147,150,153,156,159,162,165,168,171,174,
+        177,179,182,185,188,191,193,196,199,201,204,206,209,211,213,216,
+        218,220,222,224,226,228,230,232,234,235,237,239,240,241,243,244,
+        245,246,248,249,250,250,251,252,253,253,254,254,254,255,255,255,
+        255,255,255,255,254,254,254,253,253,252,251,250,250,249,248,246,
+        245,244,243,241,240,239,237,235,234,232,230,228,226,224,222,220,
+        218,216,213,211,209,206,204,201,199,196,193,191,188,185,182,179,
+        177,174,171,168,165,162,159,156,153,150,147,144,140,137,134,131,
+        128,125,122,119,116,112,109,106,103,100,97,94,91,88,85,82,
+        79,77,74,71,68,65,63,60,57,55,52,50,47,45,43,40,
+        38,36,34,32,30,28,26,24,22,21,19,17,16,15,13,12,
+        11,10,8,7,6,6,5,4,3,3,2,2,2,1,1,1,
+        1,1,1,1,2,2,2,3,3,4,5,6,6,7,8,10,11,
+        12,13,15,16,17,19,21,22,24,26,28,30,32,34,36,38,
+        40,43,45,47,50,52,55,57,60,63,65,68,71,74,77,79,
+        82,85,88,91,94,97,100,103,106,109,112,116,119,122,125
+    };
+    dualport_bram uint8 harmonic_$i$[256] = {                                                                                   // CALCULATED 1, 2, 4 CYCLE HARMONIC SINE WAVE
+        127,137,147,156,165,174,182,190,196,203,208,213,216,220,223,225,226,
+        228,229,230,231,232,233,234,235,236,238,239,241,243,245,247,249,250,
+        252,253,254,254,254,253,252,251,249,246,243,240,237,234,231,227,224,
+        222,219,217,216,215,215,215,216,217,219,221,223,225,228,230,233,234,
+        236,237,238,238,237,236,234,231,228,224,220,215,210,204,199,194,188,
+        183,178,174,169,166,162,159,156,154,152,150,148,146,144,143,141,139,
+        136,134,131,128,125,122,118,115,111,108,105,102,99,97,96,95,95,
+        96,97,99,102,105,108,113,117,122,127,132,137,141,146,149,152,
+        155,157,158,159,159,158,157,155,152,149,146,143,139,136,132,129,126,
+        123,120,118,115,113,111,110,108,106,104,102,100,98,95,92,88,85,
+        80,76,71,66,60,55,50,44,39,34,30,26,23,20,18,17,16,
+        16,17,18,20,21,24,26,29,31,33,35,37,38,39,39,39,38,
+        37,35,32,30,27,23,20,17,14,11,8,5,3,2,1,0,0,
+        0,1,2,4,5,7,9,11,13,15,16,18,19,20,21,22,23,
+        24,25,26,28,29,31,34,38,41,46,51,58,64,72,80,89,98,
+        107,117
+    };
+
+    audio_0 apu_processor_L$i$(                                                                                                 // LEFT AUDIO CHANNELS, USES PORT 0
+        PULSE_1KHZ <: PULSE.PULSE_1KHZ,
+        samples <:> samples_L$i$,
+        bit_samples <:> bit_samples_L$i$,
+        harmonic <:> harmonic_$i$,
+        sine <:> sine_$i$,
+        staticGenerator <: STATIC[0,8],
+        samples_MAX <: DSL$i$.max,
+        apu_write <: APU_WRITE[$i$,1]
+    );
+    audio_1 apu_processor_R$i$(                                                                                                 // RIGHT AUDIO CHANNELS, USES PORT 1
+        PULSE_1KHZ <: PULSE.PULSE_1KHZ,
+        samples <:> samples_R$i$,
+        bit_samples <:> bit_samples_R$i$,
+        harmonic <:> harmonic_$i$,
+        sine <:> sine_$i$,
+        staticGenerator <: STATIC[8,8],
+        samples_MAX <: DSR$i$.max,
+        apu_write <: APU_WRITE[$3+i$,1]
+    );
+    $$end
+
+    audio_pwm PWM_L(                                                                                                            // TIME MULTIPLEXED PWM FOR 4 CHANNELS, LEFT
+        active_1 <: L_ADMA_ACTIVE, wave_1 <: L_SAMPLE,
+        active_2 <: apu_processor_L0.audio_active, wave_2 <: apu_processor_L0.audio_wave,
+        active_3 <: apu_processor_L1.audio_active, wave_3 <: apu_processor_L1.audio_wave,
+        active_4 <: apu_processor_L2.audio_active, wave_4 <: apu_processor_L2.audio_wave,
+        RDTIME <: RDTIME, pwm :> audio_l
+    );
+    audio_pwm PWM_R(                                                                                                            // TIME MULTIPLEXED PWM FOR 4 CHANNELS, RIGHT
+        active_1 <: R_ADMA_ACTIVE, wave_1 <: R_SAMPLE,
+        active_2 <: apu_processor_R0.audio_active, wave_2 <: apu_processor_R0.audio_wave,
+        active_3 <: apu_processor_R1.audio_active, wave_3 <: apu_processor_R1.audio_wave,
+        active_4 <: apu_processor_R2.audio_active, wave_4 <: apu_processor_R2.audio_wave,
+        RDTIME <: RDTIME, pwm :> audio_r
+    );
+
+    DS_NEW := 0; DS_LOAD := 0; BS_NEW := 0; BS_LOAD := 0; APU_WRITE := 0;                                                       // HOLD NEW/LOAD/WRITE TRIGGERS AT 0
+    L_AUDIO_DMA_STATUS := 0; R_AUDIO_DMA_STATUS := 0;                                                                           // AUDIO DMA CONTROL FLAGS
+    RDATA := {                                                                                                                  // RETURN AUDIO ACTIVE STATE TO CPU
+        R_ADMA_ACTIVE,
+        L_ADMA_ACTIVE,
+        apu_processor_R2.audio_active,
+        apu_processor_R1.audio_active,
+        apu_processor_R0.audio_active,
+        apu_processor_L2.audio_active,
+        apu_processor_L1.audio_active,
+        apu_processor_L0.audio_active
+    };
+
+    always {
+        if( CS & WENABLE ) {
+            switch( ADDR[4,4] ) {
+                case 4h0: {
+                    switch( ADDR[0,3] ) {
+                        case 3h0: { apu_processor_L0.waveform = WDATA; }
+                        case 3h1: { apu_processor_L1.waveform = WDATA; }
+                        case 3h2: { apu_processor_L2.waveform = WDATA; }
+                        case 3h3: { apu_processor_R0.waveform = WDATA; }
+                        case 3h4: { apu_processor_R1.waveform = WDATA; }
+                        default:  { apu_processor_R2.waveform = WDATA; }
+                    }
+                }
+                case 4h1: {
+                    switch( ADDR[0,3] ) {
+                        case 3h0: { apu_processor_L0.frequency = WDATA; }
+                        case 3h1: { apu_processor_L1.frequency = WDATA; }
+                        case 3h2: { apu_processor_L2.frequency = WDATA; }
+                        case 3h3: { apu_processor_R0.frequency = WDATA; }
+                        case 3h4: { apu_processor_R1.frequency = WDATA; }
+                        default:  { apu_processor_R2.frequency = WDATA; }
+                    }
+                }
+                case 4h2: {
+                    switch( ADDR[1,3] ) {
+                        case 3h0: { apu_processor_L0.duration = WDATA; }
+                        case 3h1: { apu_processor_L1.duration = WDATA; }
+                        case 3h2: { apu_processor_L2.duration = WDATA; }
+                        case 3h3: { apu_processor_R0.duration = WDATA; }
+                        case 3h4: { apu_processor_R1.duration = WDATA; }
+                        default:  { apu_processor_R2.duration = WDATA; }
+                    }
+                    APU_WRITE[ ADDR[1,3], 1 ] = 1;
+                }
+                case 4h3: {
+                    switch( ADDR[0,3] ) {
+                        case 3h0: { apu_processor_L0.volume = WDATA; }
+                        case 3h1: { apu_processor_L1.volume = WDATA; }
+                        case 3h2: { apu_processor_L2.volume = WDATA; }
+                        case 3h3: { apu_processor_R0.volume = WDATA; }
+                        case 3h4: { apu_processor_R1.volume = WDATA; }
+                        default:  { apu_processor_R2.volume = WDATA; }
+                    }
+                }
+                case 4h4: { if( ADDR[3,1] ) { DS_LOAD[ ADDR[0,3], 1 ] = 1; } else { DS_NEW[ ADDR[0,3], 1 ] = 1; } }
+                case 4h5: { if( ADDR[3,1] ) { BS_LOAD[ ADDR[0,3], 1 ] = 1; } else { BS_NEW[ ADDR[0,3], 1 ] = 1; } }
+                case 4h8: {
+                    switch( ADDR[0,4] ) {
+                        case 4h0: { L_AUDIO_DMA_BASE = WDATA; }
+                        case 4h4: { L_AUDIO_DMA_LENGTH = WDATA; }
+                        default:  { L_AUDIO_DMA_STATUS = WDATA; }                                                               // DMA AUDIO LEFT CONTROL { 11025/22050, REPEAT, START, STOP }
+                    }
+                }
+                default: {
+                    switch( ADDR[0,4] ) {
+                        case 4h0: { R_AUDIO_DMA_BASE = WDATA; }
+                        case 4h4: { R_AUDIO_DMA_LENGTH = WDATA; }
+                        default:  { R_AUDIO_DMA_STATUS = WDATA; }                                                               // DMA AUDIO RIGHT CONTROL { 11025/22050, REPEAT, START, STOP }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// AUDIO Channel Controllers
+// LEFT USES HARMONIC AND SINE VIA PORT 0, RIGHT USES HARMONIC AND SINE VIA PORT 1
+$$for i=0,1 do
+unit audio_$i$(
+    input   uint1               PULSE_1KHZ,
+
+    simple_dualport_bram_port0  samples,
+    input   uint7               samples_MAX,
+    simple_dualport_bram_port0  bit_samples,
+    dualport_bram_port$i$       sine,
+    dualport_bram_port$i$       harmonic,
+
+    input   uint8               staticGenerator,
+    input   uint5               waveform,
+    input   uint7               frequency,
+    input   uint16              duration,
+    input   uint1               apu_write,
+    input   uint3               volume,
+    output  uint1               audio_active,
+    output  uint8               audio_wave
+) {
+    dualport_bram uint13 frequency_table[128] = {
+        0,                                                                                                                      // FREQUENCY TABLE3 = c 2 , 5 = c#2, 7 = d 2...
+        6328,6144,5972,5800,5638,5474,5320,5168,5022,4878,4740,4604,
+        4474,4344,4224,4102,3986,3870,3762,3654,3552,3448,3352,3056,
+        3164,3072,2986,2900,2819,2737,2660,2584,2511,2439,2370,2302,
+        2237,2172,2112,2051,1993,1935,1881,1827,1776,1724,1676,1528,
+        1582,1536,1493,1450,1410,1369,1330,1292,1256,1220,1185,1151,
+        1119,1086,1056,1026,997,968,941,914,888,862,838,764,
+        791,768,747,725,705,684,665,646,628,610,593,576,
+        559,543,528,513,498,484,470,457,444,431,419,382,
+        396,384,373,363,352,342,333,323,314,305,296,288,
+        280,272,264,256,249,242,235,228,222,216,210,191,
+        198,192,187,181,176,171,166
+    };
+    uint7               SAMP0P1 <:: samples.addr0 + 1;                                                                          // NEXT ADDRESS IN DOOM PC SPEAKER SAMPLES
+
+    apu_$i$ apu_processor(                                                                                                      // AUDIO CHANNEL
+        PULSE_1KHZ <: PULSE_1KHZ,                                                                                               // 8 bit output from audio channel goes through PWM modulator
+        bit_samples <:> bit_samples, sine <:> sine, harmonic <:> harmonic,
+        staticGenerator <: staticGenerator,
+        audio_active :> audio_active,
+        audio_output :> audio_wave
+    );
+
+    apu_processor.apu_write := 0;
+    frequency_table.addr0 := frequency; frequency_table.addr1 := samples.rdata0;
+
+    always {
+        uint1   SAMPLEMODE = uninitialised;                                                                                     // IS CHANNEL IN DOOM PC SPEAKER SAMPLE MODE?
+        uint1   REPEAT = uninitialised;                                                                                         // IS REPEAT FOR DOOM PC SPEAKER MODE RQQUIRED?
+        uint1   newS = uninitialised;                                                                                           // IS A NEW NOTE REQUIRED WHEN AUDIO STOPS?
+
+        if( SAMPLEMODE ) {                                                                                                      // DOOM PC SPEAKER MODE?
+            if( ~apu_processor.audio_active ) {                                                                                 //  PREVIOUS SAMPLE FINISHED?
+                if( newS ) {                                                                                                    //  NEW SAMPLE NEEDED?
+                    apu_processor.frequency = frequency_table.rdata1; apu_processor.apu_write = 1; newS = 0;                    //  SEND NEW NOTE
+                    if( SAMP0P1 == samples_MAX ) {                                                                              // AT END OF NOTES?
+                        samples.addr0 = 0; SAMPLEMODE = REPEAT;                                                                 //  RESTART IF REPEAT
+                    } else {
+                        samples.addr0 = SAMP0P1;                                                                                // MOVE TO NEXT NOTE
+                    }
+                }
+            } else {
+                newS = 1;                                                                                                       // DEFAULT TO NEW NOTE REQUIRED
+            }
+        }
+
+        if( apu_write ) {                                                                                                       // CPU AUDIO REQUEST
+            apu_processor.duration = duration; apu_processor.volume = volume; apu_processor.waveform = waveform[0,3];           // SET BASE DURATION WAVEFORM VOLUME
+            SAMPLEMODE = waveform[3,1]; REPEAT = waveform[4,1];                                                                 // SET DOOM PC SPEAKER SAMPLE MODE AND REPEAT FLAGS
+            samples.addr0 = 0; newS = 1;                                                                                        // RESET DOOM PC SPEAKER SAMPLE MODE, MOVE TO START
+            if( ~waveform[3,1] ) {
+                apu_processor.frequency = frequency_table.rdata0; apu_processor.apu_write = 1;                                  // NORMAL WAVEFORM MODE, SET FREQUENCY
+            }
+        }
+    }
+}
+
+unit audiocounter(
+    input   uint1           PULSE_1KHZ,
+    input   uint1           start,
+    input   uint13          selected_frequency,
+    input   uint16          selected_duration,
+    output  uint1           updatepoint,
+    output  uint1           active
+) {
+    uint13              counter50mhz = uninitialised;
+    uint13              counter50mhz_NEXT <:: counter50mhz - 1;
+    uint16              duration = uninitialised;
+    uint16              duration_NEXT <:: duration - 1;
+
+    active := |duration; updatepoint := |duration & ~|counter50mhz;
+
+    always {
+        if( start ) {
+            counter50mhz = 0; duration = selected_duration;
+        } else {
+            if( updatepoint ) { counter50mhz = selected_frequency; } else { counter50mhz = counter50mhz_NEXT; }
+            if( active & PULSE_1KHZ ) { duration = duration_NEXT; }
+        }
+    }
+}
+
+unit apu_$i$(                                                                                                                   // Single channel audio output, outputs 8 bits for PWM. 50MHz
+    input   uint1               PULSE_1KHZ,
+
+    simple_dualport_bram_port0  bit_samples,
+    dualport_bram_port$i$       harmonic,
+    dualport_bram_port$i$       sine,
+    input   uint3               waveform,
+    input   uint13              frequency,
+    input   uint16              duration,
+    input   uint1               apu_write,
+    input   uint8               staticGenerator,
+    input   uint3               volume,
+    output  uint1               audio_active,
+    output  uint8               audio_output
+) {
+    waveform_$i$ WAVEFORM(
+        active <: COUNTER.active,
+        bit_samples <:> bit_samples, sine <:> sine, harmonic <:> harmonic,
+        start <: apu_write, update <: COUNTER.updatepoint,
+        selected_waveform <: waveform,
+        staticGenerator <: staticGenerator
+    );
+    audiocounter COUNTER( PULSE_1KHZ <: PULSE_1KHZ, selected_frequency <: frequency, selected_duration <: duration, start <: apu_write, active :> audio_active );
+
+    always {
+        if( COUNTER.updatepoint ) { audio_output = ( WAVEFORM.audio_output * ( 8 - ~volume ) ) >> 3; }
+    }
+}
+
+unit waveform_$i$(
+    simple_dualport_bram_port0  bit_samples,
+    dualport_bram_port$i$       harmonic,
+    dualport_bram_port$i$       sine,
+    input   uint1               start,
+    input   uint1               update,
+    input   uint3               selected_waveform,
+    input   uint8               staticGenerator,
+    output  uint8               audio_output,
+    input   uint1               active
+) {
+    uint8               point = uninitialised;
+    uint8               point_NEXT <:: point + update;
+    uint8               TRIANGLE <:: ( point[7,1] ? ~{ point[0,7], 1b1 } : { point[0,7], 1b0 } );
+
+    sine.addr$i$ := point[0,8]; harmonic.addr$i$ := point[0,8];                                                                 // POINTER INTO HARMONIC AND SINE TABLES
+    bit_samples.addr0 := point;                                                                                                 // POINTERS INTO BITSAMPLES
+    point := active ? point_NEXT : 0;                                                                                           // WAVEFORM POINT ONLY RESETS WHEN AUDIO GOES INACTIVE
+                                                                                                                                //  ALLOWS BIT SAMPLES TO REPEAT
+    always {
+        switch( selected_waveform ) {
+            case 0: { audio_output = point[7,1] ? 255 : 127; }                                                                  // SQUARE
+            case 1: { audio_output = point[0,8]; }                                                                              // SAWTOOTH
+            case 2: { audio_output = TRIANGLE; }                                                                                // TRIANGLE
+            case 3: { audio_output = sine.rdata$i$; }                                                                           // SINE
+            case 4: { audio_output = staticGenerator; }                                                                         // NOISE
+            case 5: { audio_output = harmonic.rdata$i$; }                                                                       // HARMONIC WAVE
+            case 6: { audio_output = ( sine.rdata$i$ + TRIANGLE ) >> 1; }                                                       // HARMONIC TRIANGLE + SINE ( replaces old sample waveform )
+            case 7: { audio_output = { bit_samples.rdata0, $8 - AUDIO_bits$b0 }; }                                              // BIT SAMPLES
+        }
+    }
+}
+$$ end
+
+// HANDLE WRITING TO THE DOOM PC SPEAKER SAMPLES MEMORY
+unit doom_samples_writer(
+    simple_dualport_bram_port1  doom_samples,
+    input   uint7               samples,
+    input   uint1               load,
+    input   uint1               newsample,
+    output  uint8               max
+) {
+    uint8               NEXT <:: doom_samples.addr1 + 1;
+
+    doom_samples.wenable1 := load; doom_samples.wdata1 := samples; max := NEXT; doom_samples.addr1 := newsample ? (-1) : load ? NEXT : doom_samples.addr1;
+}
+
+// HANDLE WRITING TO THE 6 BIT SAMPLES MEMORY
+unit bitsample_writer(
+    simple_dualport_bram_port1  bit_samples,
+    input   uint$AUDIO_bits$    samples,
+    input   uint1               load,
+    input   uint1               newsample
+) {
+    uint8               NEXT <:: bit_samples.addr1 + load;
+
+    bit_samples.wenable1 := load; bit_samples.wdata1 := samples; bit_samples.addr1 := newsample ? (-1) : NEXT;
+}
+
+// SL 12-2020
+// https://github.com/sylefeb/Silice
+// MIT license, see LICENSE_MIT in Silice repo root
+
+// This is a nice trick to 'interpolate' through a 4-bits only DAC
+// I got this from emard: https://github.com/emard/ulx3s-misc/blob/master/examples/audio/hdl/dacpwm.v
+
+// For now fixed to 8 bits in to 4 bits DAC
+// TODO make it more general
+
+// Expanded by @rob-ng15 to time-multiplex four waveforms
+
+unit audio_pwm(
+    input   uint$AUDIO_multi$   RDTIME,
+    input   uint1               active_1,
+    input   uint8               wave_1,
+    input   uint1               active_2,
+    input   uint8               wave_2,
+    input   uint1               active_3,
+    input   uint8               wave_3,
+    input   uint1               active_4,
+    input   uint8               wave_4,
+    output  uint4               pwm
+) {
+    uint8               sample <: ( RDTIME[$AUDIO_multi-2$,2] == 2b00 ) ? active_1 ? wave_1 : 0 :
+                                  ( RDTIME[$AUDIO_multi-2$,2] == 2b01 ) ? active_2 ? wave_2 : 0 :
+                                  ( RDTIME[$AUDIO_multi-2$,2] == 2b10 ) ? active_3 ? wave_3 : 0 :
+                                                                          active_4 ? wave_4 : 0;
+
+    pwm := sample[4,4] + ( RDTIME[0,4] < sample[0,4] );
+}

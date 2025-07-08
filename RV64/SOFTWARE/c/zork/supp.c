@@ -158,7 +158,7 @@ const char *z;
 {
     // PAUSE 8 SECONDS WHEN OUTPUTTING A LOT OF TEXT
     if (crows > 0  &&  coutput > crows - 2) {
-    sleep1khz( 500, 0 );
+    sleep1khz( 250 );
     coutput--;
     }
 

@@ -4,387 +4,316 @@
 // A simple Risc-V RV64GC processor
 
 // RISC-V - MAIN CPU LOOP
-//          ALU FUNCTIONALITY LISTED IN ALU-
 
 unit PAWSCPU(
-    input   uint1   clock_CPUdecoder,
-    input   uint1   clock_cache,
+    input   uint1   clock_CPUdecoder,                                                                                           // 100 MHz clocks for fast decode/register fetch
+    input   uint1   clock_cache,                                                                                                // 100 MHz clock for on CPU instruction cache
+
+    output  uint1   cacheselect,                                                                                                // CACHESELECT == 0 instruction, == 1 data (not used)
+    output  uint$addr_width$  address,                                                                                          // MEMORY INTERFACE LINES
     output  uint2   accesssize,
-    output  uint$addr_width$  address(0),
-    output  uint1   cacheselect(0),
     output  uint32  writedata,
     output  uint1   writememory,
     input   uint32  readdata,
     output  uint1   readmemory,
     input   uint1   memorybusy,
 
-    // SMT
-    input   uint1   SMTRUNNING,
-    input   uint$addr_width$  SMTSTARTPC,
+    input   uint1   SMTRUNNING,                                                                                                 // SMT CONTROL FLAGS FROM IO REGISTERS
+    input   uint$addr_width$  SMTSTARTPC,                                                                                       // HART1 START ADDRESS
 
-    // MINI DMA CONTROLLER
-    input   uint$addr_width$  DMASOURCE,
-    input   uint$addr_width$  DMASOURCEADD,
-    input   uint$addr_width$  DMADEST,
-    input   uint$addr_width$  DMADESTADD,
-    input   uint$addr_width$  DMACOUNT,
-    input   uint8   DMACYCLES,
-    input   uint4   DMAMODE,
-    input   uint32  DMASET,
-    output! uint1   DMAACTIVE
+    output  uint1   DMASTART,                                                                                                   // DMA CONTROLLER FLAGS     CPU TO DMA START FLAG
+    input   uint1   DMAREQ,                                                                                                     //                          DMA START REQUEST WHEN != 0
+    input   uint1   DMAACTIVE                                                                                                   //                          DMA ACTIVE
 ) <reginputs> {
-    // RESET COUNTER
-    uint8  resetCounter = 8hff;                     uint8   resetNEXT <:: resetCounter - ~( memorybusy | DMAACTIVE | EXECUTESLOW.busy | ICACHE_0W.CLS | ICACHE_1W.CLS );
+    uint1   COMMIT = uninitialized;                 uint1   COMMIT_SMT = uninitialised;                                         // COMMIT RESULT TO REGISTERS FLAG AND TO WHICH THREAD
+    uint1   SMT = 0;                                                                                                            // SMT FLAG
+    uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;                                    // PROGRAMS COUNTERS FOR MAIN AND SMT THREADS
+    uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                  // SELECT PROGRAM COUNTER FOR THIS CYCLE
 
-    // THREAD SELECTION, INSTRUCTION AND COMPRESSED FLAG, PROGRAM COUNTERS
-    uint1   COMMIT = uninitialized;                 uint1   SMT = 0;
-    uint32  instruction = uninitialized;            uint1   compressed = uninitialized;
-    uint$addr_width$  pc = 0;                       uint$addr_width$  pcSMT = uninitialized;
-    uint$addr_width$  PC <:: SMT ? pcSMT : pc;                                                                                      // SELECT PC FOR THIS CYCLE
+    uint64  result <:: RV32CONTROL.IS_FPU ? EXECUTEFPU.result :                                                                 // SELECT RESULT FROM UNIT
+                      RV32CONTROL.IS_FAST ? RV32CONTROL.IS_ALU ? ALU.result :    // INTEGER ALU AND MULTIPLICATION, SIGN EXTEND 32 bit
+                                            EXECUTEFAST.result :
+                                            EXECUTESLOW.result;
+    uint1   frd <:: RV32CONTROL.IS_FPU ? EXECUTEFPU.frd : RV32CONTROL.writeRegisterF;                                           // DETERMINE PRESENT INSTRUCTION RESULT TYPE (FLOAT/INTEGER)
+    uint1   write <:: COMMIT & RV32CONTROL.writeRegister;                                                                       // WRITE TO REGISTERS FLAG
 
-    // RISC-V 32 BIT CONTROLLER FOR INTEGER OPERATIONS
-    uint3   OPERATION <:: { RV32ONTROL.IS_LOAD, RV32ONTROL.IS_FAST, RV32ONTROL.IS_STORE };
-    uint64  result <:: RV32ONTROL.IS_FPU ? EXECUTEFPU.result : RV32ONTROL.IS_FAST ? EXECUTEFAST.result : EXECUTESLOW.result;
-    uint1   frd <:: RV32ONTROL.IS_FPU ? EXECUTEFPU.frd : RV32ONTROL.writeRegisterF;
-    uint1   write <:: COMMIT & RV32ONTROL.writeRegister;
-    uint1   COMMIT_SMT = uninitialised;
-    control RV32ONTROL <@clock_CPUdecoder> (
+    control RV32CONTROL <@clock_CPUdecoder> (                                                                                   // RISC-V INSTRUCTION DECODER, ADDRESS GENERATOR, INTEGER REGISTERS
         cacheselect <: cacheselect,
-        DMAACTIVE <: DMA.DMAACTIVE,
-        DMAACCESSSIZE <: DMA.DMAACCESSSIZE,
         SMT <:: SMT,
         COMMIT_SMT <: COMMIT_SMT,
         frd <: frd,
         write <: write,
         result <: result,
         PC <: PC,
-        instruction <: instruction,
-        compressed <: compressed,
+        instruction <: MEMORY.instruction,
+        compressed <: MEMORY.compressed,
         accesssize :> accesssize
     );
 
-    // RISC-V 32 BIT CONTROLLER FOR SINGLE AND DOUBLE PRECISION FLOATING POINT OPERATIONS
-    float_control RV32ONTROLF <@clock_CPUdecoder> (
+    float_control RV32CONTROLF <@clock_CPUdecoder> (                                                                            // RISC-V FLOATING POINT REGISTERS AND REGISTER CLASSIFIERS
         SMT <:: SMT,
         COMMIT_SMT <: COMMIT_SMT,
         frd <: frd,
         write <: write,
         result <: result,
-        instruction <: instruction
+        instruction <: MEMORY.instruction
     );
 
-    // EXECUTE SINGLE CYLE INSTRUCTIONS, MOST OF BASE PLUS INTEGER MULTIPLICATION
-    cpuexecuteFASTPATH EXECUTEFAST(
-        opCode <: RV32ONTROL.opCode,
-        function3 <: RV32ONTROL.function3,
-        function7 <: RV32ONTROL.function7,
-        rs1 <: RV32ONTROL.rs1,
-        rs2 <: RV32ONTROL.rs2,
-        sourceReg1 <: RV32ONTROL.sourceReg1,
-        sourceReg2 <: RV32ONTROL.sourceReg2,
-        sourceReg2F <: RV32ONTROLF.sourceReg2F,
-        immediateValue <: RV32ONTROL.immediateValue,
-        memoryinput <: memoryinput,
-        AUIPCLUI <: RV32ONTROL.AUIPCLUI,
-        nextPC <: RV32ONTROL.nextPC,
-        isLOAD <: RV32ONTROL.IS_LOAD,
-        isAUIPCLUI <: RV32ONTROL.IS_AUIPCLUI,
-        isJAL <: RV32ONTROL.IS_JAL,
-        isFENCE <: RV32ONTROL.IS_FENCE,
-        LT <: RV32ONTROL.LT,
-        LTU <: RV32ONTROL.LTU
+    cpuexecuteFASTPATH EXECUTEFAST(                                                                                             // RISC-V SINGLE CYCLE OPERATIONS
+        function3 <: RV32CONTROL.function3,
+        function7 <: RV32CONTROL.function7,
+        memoryinput <: MEMORY.memoryinput,
+        AUIPCLUI <: RV32CONTROL.AUIPCLUI,
+        nextPC <: RV32CONTROL.nextPC,
+        isAUIPCLUI <: RV32CONTROL.IS_AUIPCLUI,
+        isJAL <: RV32CONTROL.IS_JAL,
+        isFENCE <: RV32CONTROL.IS_FENCE
     );
 
-    // EXECUTE MULTICYCLE INSTRUCTIONS, INTEGER DIVIDE, CSR AND ALU-A
-    cpuexecuteSLOWPATH EXECUTESLOW(
+    alu ALU(                                                                                                                    // SINGLE CYCLE INTEGER OPERATIONS
+        opCode <: RV32CONTROL.opCode,
+        function3 <: RV32CONTROL.function3, function7 <: RV32CONTROL.function7,
+        rs1 <: RV32CONTROL.rs1, rs2 <: RV32CONTROL.rs2,
+        sourceReg1 <: RV32CONTROL.sourceReg1, sourceReg2 <: RV32CONTROL.sourceReg2,
+        immediateValue <: RV32CONTROL.immediateValue,
+        LT <: RV32CONTROL.LT, LTU <: RV32CONTROL.LTU
+    );
+
+    cpuexecuteSLOWPATH EXECUTESLOW(                                                                                             // RISC-V MULTI-CYCLE OPERATIONS
         SMT <: SMT,
-        opCode <: RV32ONTROL.opCode,
-        function3 <: RV32ONTROL.function3,
-        function7 <: RV32ONTROL.function7,
-        rs1 <: RV32ONTROL.rs1, rs2 <: RV32ONTROL.rs2,
-        sourceReg1 <: RV32ONTROL.sourceReg1, S1_abs32 <: RV32ONTROL.S1_abs32,
-        sourceReg2 <: RV32ONTROL.sourceReg2, S2_abs32 <: RV32ONTROL.S2_abs32,
-        memoryinput <: memoryinput,
+        function3 <: RV32CONTROL.function3,
+        function7 <: RV32CONTROL.function7,
+        rs1 <: RV32CONTROL.rs1, rs2 <: RV32CONTROL.rs2,
+        sourceReg1 <: RV32CONTROL.sourceReg1, S1_abs32 <: RV32CONTROL.S1_abs32,
+        sourceReg2 <: RV32CONTROL.sourceReg2, S2_abs32 <: RV32CONTROL.S2_abs32,
+        memoryinput <: MEMORY.memoryinput,
         incCSRinstret <: COMMIT,
-        isALUM <: RV32ONTROL.IS_ALUM,
-        isCSR <: RV32ONTROL.IS_CSR,
-        isATOMIC <: RV32ONTROL.IS_ATOMIC,
+        isALU <: RV32CONTROL.IS_ALU,
+        isCSR <: RV32CONTROL.IS_CSR,
+        isATOMIC <: RV32CONTROL.IS_ATOMIC,
         FPUnewflags <: EXECUTEFPU.FPUnewflags,
         CSRupdateFPUflags <: EXECUTEFPU.CSRupdateFPUflags
     );
 
-    // EXECUTE FPU
-    cpuexecuteFPU EXECUTEFPU(
-        opCode <: RV32ONTROL.opCode,
-        function3 <: RV32ONTROL.function3,
-        function7 <: RV32ONTROL.function7,
-        rs2 <: RV32ONTROL.rs2,
-        sourceReg1 <: RV32ONTROL.sourceReg1, S1_abs32 <: RV32ONTROL.S1_abs32,
-        sourceReg1F <: RV32ONTROLF.sourceReg1F, sourceReg1Fx <: RV32ONTROLF.sourceReg1Fx, sourceReg1Fxopp <: RV32ONTROLF.sourceReg1Fxopp, typeAF <: RV32ONTROLF.typeAF, typeAopp <: RV32ONTROLF.typeAopp,
-        sourceReg2F <: RV32ONTROLF.sourceReg2F, sourceReg2Fx <: RV32ONTROLF.sourceReg2Fx, typeBF <: RV32ONTROLF.typeBF,
-        sourceReg3Fx <: RV32ONTROLF.sourceReg3Fx, typeCF <: RV32ONTROLF.typeCF,
-        FLT <: RV32ONTROLF.FLT,
-        FEQ <: RV32ONTROLF.FEQ,
-        isFASTFPU <: RV32ONTROL.IS_FASTFPU,
+    cpuexecuteFPU EXECUTEFPU(                                                                                                   // RISC-V FLOATING POINT OPERATIONS
+        opCode <: RV32CONTROL.opCode,
+        function3 <: RV32CONTROL.function3,
+        function7 <: RV32CONTROL.function7,
+        rs2 <: RV32CONTROL.rs2,
+        sourceReg1 <: RV32CONTROL.sourceReg1, S1_abs32 <: RV32CONTROL.S1_abs32,
+        sourceReg1F <: RV32CONTROLF.sourceReg1F, sourceReg1Fx <: RV32CONTROLF.sourceReg1Fx, sourceReg1Fxopp <: RV32CONTROLF.sourceReg1Fxopp, typeAF <: RV32CONTROLF.typeAF, typeAopp <: RV32CONTROLF.typeAopp,
+        sourceReg2F <: RV32CONTROLF.sourceReg2F, sourceReg2Fx <: RV32CONTROLF.sourceReg2Fx, typeBF <: RV32CONTROLF.typeBF,
+        sourceReg3Fx <: RV32CONTROLF.sourceReg3Fx, typeCF <: RV32CONTROLF.typeCF,
+        aObINF <: RV32CONTROLF.aObINF, aAbINF <: RV32CONTROLF.aAbINF, aObNAN <: RV32CONTROLF.aObNAN, aObZERO <: RV32CONTROLF.aObZERO, aAbZERO <: RV32CONTROLF.aAbZERO,
+        aZEROFRACTION <: RV32CONTROLF.aZEROFRACTION, bZEROFRACTION <: RV32CONTROLF.bZEROFRACTION,
+        FLT <: RV32CONTROLF.FLT,
+        FEQ <: RV32CONTROLF.FEQ,
+        isFASTFPU <: RV32CONTROL.IS_FASTFPU,
         FPUflags <: EXECUTESLOW.FPUflags
     );
 
-    // MINI DMA CONTROLLER
-    dma DMA(
-        DMASOURCE <: DMASOURCE,
-        DMASOURCEADD <: DMASOURCEADD,
-        DMADEST <: DMADEST,
-        DMADESTADD <: DMADESTADD,
-        DMACOUNT <: DMACOUNT,
-        DMACYCLES <: DMACYCLES,
-        DMAMODE <: DMAMODE,
-        DMASET <: DMASET,
-        DMAACTIVE :> DMAACTIVE,
-        readdata <: readdata,
-        memorybusy <: memorybusy
-    );
-
-    // FETCH UNIT
-    fetch FETCH(
+    uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );                                             // CPU L0 CACHE MATCH FOR PC
+    uint30  L0instruction <:: SMT ? ICACHE_1.instruction : ICACHE_0.instruction;                                                //  L0 instruction
+    uint1   L0compressed <:: SMT ? ICACHE_1.compressed : ICACHE_0.compressed;                                                   //  L0 compressed flag
+    memory_controller MEMORY(
         clock_CPUdecoder <: clock_CPUdecoder,
-        readdata <: readdata,
-        memorybusy <: memorybusy
+        accesssize <: RV32CONTROL.accesssize, IS_MA <: RV32CONTROL.IS_MA, IS_64 <: RV32CONTROL.IS_MEM64,
+        IS_FLOAT <:RV32CONTROL.opCode[0,1], IS_UNSIGNED <: RV32CONTROL.function3[2,1],
+        L0match <: L0match, L0instruction <: L0instruction, L0compressed <: L0compressed,
+        loadAddress <: RV32CONTROL.loadAddress, storeAddress <: RV32CONTROL.storeAddress,
+        SMT <: SMT, pc <: pc, pcSMT <: pcSMT,
+        readdata <: readdata, memorybusy <: memorybusy
     );
 
-    // 8, 16, 32, 64 BIT LOAD UNITS
-    uint1   MEM64 <:: &RV32ONTROL.function3[0,2];
-    uint64  memoryinput <:: MEM64 ? LOAD64.memoryinput : LOAD.memoryinput;
-    load LOAD(
-        accesssize <: accesssize,
-        byteaccess <: RV32ONTROL.loadAddress[0,1],
-        dounsigned <: RV32ONTROL.function3[2,1],
-        readdata <: readdata,
-        memorybusy <: memorybusy
-    );
-    load64 LOAD64(
-        loadAddress <: RV32ONTROL.loadAddress,
-        readdata <: readdata,
-        memorybusy <: memorybusy
-    );
+    simple_dualport_bram uint32 L00cache <@clock_cache,@clock> [$L00Iblocks$] = uninitialized;                                  // SMALL ON CPU L0 CACHE - 1 per HART - RESET FENCE MEM IS 1
+    simple_dualport_bram uint$L00Ipartaddresswidth$ L00tags <@clock_cache,@clock> [$L00Iblocks$] = uninitialized;
+    simple_dualport_bram uint32 L01cache <@clock_cache,@clock> [$L01Iblocks$] = uninitialized;
+    simple_dualport_bram uint$L01Ipartaddresswidth$ L01tags <@clock_cache,@clock> [$L01Iblocks$] = uninitialized;
+    uint1   ICACHEUPDATE = uninitialised;                                                                                       // CPU L0 CACHE UPDATE FLAG
+    uint1   CACHEL0CLEAR = uninitialised;                                                                                       // CPU L0 CACHE CLEAR FLAG, USED AFTER RESET
+    uint1   invalidate <:: CACHEL0CLEAR | EXECUTEFAST.fenceACTIVE[0,1];                                                         // CPU L0 CACHE INVALIDATE FLAG, USED AFTER PROGRAM LOAD
+    il00cache_read ICACHE_0 <@clock_cache> ( L0cache <:> L00cache, L0tags <:> L00tags, CLS <: ICACHE_0W.CLS, address <: pc );
+    il01cache_read ICACHE_1 <@clock_cache> ( L0cache <:> L01cache, L0tags <:> L01tags, CLS <: ICACHE_1W.CLS, address <: pcSMT );
+    il00cache_write ICACHE_0W( L0cache <:> L00cache, address <: pc, newinstruction <: MEMORY.instruction[2,30], newcompressed <: MEMORY.compressed, invalidate <: invalidate );
+    il01cache_write ICACHE_1W( L0cache <:> L01cache, address <: pcSMT, newinstruction <: MEMORY.instruction[2,30], newcompressed <: MEMORY.compressed, invalidate <: invalidate );
+    il00tags_write ITAGS_0W( L0tags <:> L00tags, address <: pc );
+    il01tags_write ITAGS_1W( L0tags <:> L01tags, address <: pcSMT );
 
-    // 8, 16, 32, 64 BIT STORE UNITS
-    store STORE( memorybusy <: memorybusy );
-    store64 STORE64( memorybusy <: memorybusy, storeAddress <: RV32ONTROL.storeAddress, storedata <: EXECUTEFAST.memoryoutput );
+    ICACHE_0W.update := ~SMT & ICACHEUPDATE; ICACHE_1W.update := SMT & ICACHEUPDATE;                                            // UPDATE CPU l0 CACHE FOR MAIN/SMT THREAD FLAG
+    ITAGS_0W.update := ~SMT & ICACHEUPDATE; ITAGS_1W.update := SMT & ICACHEUPDATE;                                              // UPDATE CPU l0 TAGS FOR MAIN/SMT THREAD FLAG
+    CACHEL0CLEAR := 0;
 
-    // SMALL ON CPU L0 CACHE - 1 per HART - RESET when pc == 0 @ START OF BIOS
-    // L0 INSTRUCTION CACHE { tag, instruction, compressed, valid } split into units
-    $$for i=0,(L00Iblocks-1) do
-        simple_dualport_bram uint$32+L00Ipartaddresswidth$ L00cache_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
-    $$end
-    $$for i=0,(L01Iblocks-1) do
-        simple_dualport_bram uint$32+L01Ipartaddresswidth$ L01cache_$i$ <@clock_cache,@clock> [$L0Isize$] = uninitialized;
-    $$end
-
-    il00cache_read ICACHE_0 <@clock_cache> (
-        $$for i=0,(L00Iblocks-1) do
-            L0cache_$i$ <:> L00cache_$i$,
-        $$end
-        CLS <: ICACHE_0W.CLS,
-        invalidate <: EXECUTEFAST.fenceACTIVE[0,1],
-        address <: pc
-    );
-    il01cache_read ICACHE_1 <@clock_cache> (
-        $$for i=0,(L01Iblocks-1) do
-            L0cache_$i$ <:> L01cache_$i$,
-        $$end
-        CLS <: ICACHE_1W.CLS,
-        invalidate <: EXECUTEFAST.fenceACTIVE[0,1],
-        address <: pcSMT
-    );
-    il00cache_write ICACHE_0W(
-        $$for i=0,(L00Iblocks-1) do
-            L0cache_$i$ <:> L00cache_$i$,
-        $$end
-        address <: pc, newinstruction <: instruction[2,30], newcompressed <: compressed,
-        invalidate <: EXECUTEFAST.fenceACTIVE[0,1]
-    );
-    il01cache_write ICACHE_1W(
-        $$for i=0,(L01Iblocks-1) do
-            L0cache_$i$ <:> L01cache_$i$,
-        $$end
-        address <: pcSMT, newinstruction <: instruction[2,30], newcompressed <: compressed,
-        invalidate <: EXECUTEFAST.fenceACTIVE[0,1]
-    );
-
-    uint6   memorycontrols <: { LOAD64.busy, STORE64.busy, FETCH.busy, LOAD.busy, STORE.busy, DMAACTIVE };
-    uint1   SMT_next <:: ~SMT & SMTRUNNING;
-    uint$addr_width$  pc_next <:: SMT ? pc :  RV32ONTROL.newPC;
-    uint$addr_width$  pcSMT_next <:: SMT ? RV32ONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;
-    uint1   START_LOAD = uninitialised;
-    uint1   START_STORE = uninitialised;
-
-    // SELECT L0 CACHE, MATCH AND COMPRESSED FLAGS, INSTRUCTION, UPDATE L0 cache flags
-    uint1   L0match <:: ( ~SMT & ICACHE_0.tagmatch ) | ( SMT & ICACHE_1.tagmatch );
-    uint32  L0instruction <:: { SMT ? ICACHE_1.instruction : ICACHE_0.instruction, 2b11 };
-    uint1   L0compressed <:: SMT ? ICACHE_1.compressed : ICACHE_0.compressed;
-    uint1   ICACHEUPDATE = uninitialised;
-    ICACHE_0W.update := ~SMT & ICACHEUPDATE; ICACHE_1W.update := SMT & ICACHEUPDATE;
-
-    // CONTROLS FOR MEMORY ACCESSES AND UNIT START FLAGS
-    FETCH.start := 0; LOAD.start := 0; STORE.start := 0; LOAD64.start := 0; STORE64.start := 0; START_LOAD :=0; START_STORE := 0;
-    DMA.start := 0; COMMIT := 0; ICACHEUPDATE := 0;
-    EXECUTESLOW.start := 0; EXECUTEFPU.start := 0;
+    MEMORY.start := 0;
+    DMASTART := 0;                                                                                                              // DMA CONTROLLER START FLAG
+    EXECUTESLOW.start := 0;                                                                                                     // CPU CSR, ATOMIC, INTEGER DIVIDE START FLAG
+    EXECUTEFPU.start := 0;                                                                                                      // CPU FPU START FLAG
+    ICACHEUPDATE := 0;                                                                                                          // UPDATE CPU L0 CACHE FLAG
+    COMMIT := 0;                                                                                                                // COMMIT TO REGISTERS FLAG
 
     algorithm <autorun> {
-        while( |resetCounter ) { resetCounter = resetNEXT; }                                                                    // WAIT FDR MEMORY AND CPU TO FINISH + DELAY FOR RESET
-        ++: cacheselect = 0; FETCH.start = ~L0match;                                                                                // START FETCH FIRST INSTRUCTION
+        uint8  resetCounter = -1;                                                                                              // RESET COUNTER
+        uint8  resetNEXT <:: resetCounter - ~( memorybusy | DMAACTIVE | EXECUTESLOW.busy | EXECUTEFPU.busy |                   // -1 WHEN ALL UNITS ARE NO LONGER BUSY
+                                            ICACHE_0W.CLS | ICACHE_1W.CLS | MEMORY.busy );
 
-        while(1) {
-            // CPU LOOP, CONTINUE UNTIL DMA REQUEST, THEN RESTART AT FETCH
-            if( DMAMODE ) {
-                DMA.start = 1; while( DMAACTIVE | |DMAMODE ) {} ++:                                                                 // PROCESS MINI-DMA ENGINE REQUESTS
-                cacheselect = 0; FETCH.start = ~L0match;                                                                        // START FETCH OF NEXT INSTRUCTION IF NOT IN ICACHE
-            } else {
-                COMMIT_SMT = SMT;
-                if( L0match ) {                                                                                                 // COMPLETE FETCH INSTRUCTION
-                    instruction =  L0instruction; compressed = L0compressed;                                                    // FROM CACHE
-                } else {
-                    if( FETCH.busy ) { while( FETCH.busy ) {} ++: }                                                             // FROM MEMORY
-                    instruction = FETCH.instruction; compressed = FETCH.compressed;
-                }
-                ICACHEUPDATE = 1; cacheselect = 1; ++:                                                                          // SWITCH TO DATA CACHE, UPDATE ICACHE, ALLOW ADDRESS GENERATION, REGISTER FETCH
+        uint8   STATE = 8b00000001;
+            $$ STATE_RESET = 1
+            $$ STATE_DMA   = 2
+            $$ STATE_FETCH = 4
+            $$ STATE_EXEC  = 8
+            $$ STATE_LOAD  = 16
+            $$ STATE_MULTI = 32
+            $$ STATE_COMMIT= 64
+            $$ STATE_NEXT  = 128
+        uint1   DELAY = uninitialised;
+        uint1   DMAREQUESTED = 0;
 
-                START_STORE = ( RV32ONTROL.IS_FAST & RV32ONTROL.IS_STORE );                                                   // START STORE IF FAST
-                START_LOAD = RV32ONTROL.IS_LOAD;                                                                               // START LOAD
-                EXECUTEFPU.start = RV32ONTROL.IS_FPU;                                                                          // START FPU
-                EXECUTESLOW.start = ~RV32ONTROL.IS_FPU & ~|OPERATION;                                                          // START DIVISION / CSR
+        CACHEL0CLEAR = 1;
 
-                switch( OPERATION ) {
-                    case 3b000: { while( EXECUTESLOW.busy | EXECUTEFPU.busy ) {} }                                              // DIVISION, CSR, FLOATIUNG POINT
-                    case 3b010: {}                                                                                              // FAST PATH - ALL BASE + MULTIPLICATION + B EXTENSION (except CLMUL)
-                    case 3b011: { while( STORE64.busy | STORE.busy ) {} }                                                       // INTEGER + FLOAT/DOUBLE STORE
-                    case 3b110: { while( LOAD64.busy | LOAD.busy ) {} }                                                         // INTEGER + FLOAT/DOUBLE LOAD
-                    default: {                                                                                                  // ATOMIC LOAD - MODIFY - STORE + EMULATION OF LR.W AND SC.W
-                        while( LOAD64.busy | LOAD.busy ) {} ++:
-                        EXECUTESLOW.start = 1; while( EXECUTESLOW.busy ) {} ++:
-                        START_STORE = RV32ONTROL.IS_STORE; while( STORE64.busy | STORE.busy ) {}
+        while(1) {                                                                                                              // CPU LOOP
+            onehot( STATE ) {
+                case 0: {                                                                                                       //  STATE_RESET
+                    if( |resetCounter ) {
+                        resetCounter = resetNEXT;
+                    } else {
+                        STATE = $STATE_NEXT$;
                     }
                 }
-                COMMIT = 1; ++:                                                                                                 // COMMIT REGISTERS< AND UPDATE PC AND SWITCH THREADS IF SMT ENABLED
-
-                if( ~|DMAMODE ) { cacheselect = 0; FETCH.start = ~L0match; }                                                    // START FETCH OF NEXT INSTRUCTION IF NO DMA REQUEST
+                case 1: {                                                                                                       //  STATE_DMA
+                    if( DMAREQ ) {
+                        if( ~DMAREQUESTED ) {
+                            DMAREQUESTED = 1; DMASTART = 1;
+                        }
+                    } else {
+                        if( ~( DMAREQ | DMAACTIVE ) ) {
+                            DMAREQUESTED = 0; STATE = $STATE_NEXT$;
+                        }
+                    }
+                }
+                case 2: {                                                                                                       //  STATE_FETCH
+                    if( ~MEMORY.busy ) {
+                        COMMIT_SMT = SMT; cacheselect = 1; ICACHEUPDATE = 1;                                                    //      LATCH THREAD MAIN/SMT, DATA CACHE, UPDATE ICACHE
+                        DELAY = 1;
+                        STATE = $STATE_EXEC$;                                                                                   //      START EXEC
+                        __display("INSN %h %b",MEMORY.instruction,MEMORY.compressed);
+                    }
+                }
+                case 3: {                                                                                                       // STATE_EXEC
+                    if( DELAY ) {                                                                                               //  CHECK FOR DELAY FLAG
+                        DELAY = 0;
+                    } else {
+                        if( RV32CONTROL.IS_LOAD ) {                                                                             //      START LOAD?
+                            MEMORY.start = 3b010; STATE = RV32CONTROL.IS_FAST ? $STATE_COMMIT$ : $STATE_LOAD$;                  //      LOAD ONLY -> COMMIT ELSE -> MULTI FOR ATOMIC
+                        } else {
+                            if( RV32CONTROL.IS_FAST & RV32CONTROL.IS_STORE ) {                                                  //      START STORE?
+                                MEMORY.start = 3b100; STATE = $STATE_COMMIT$;                                                   //      STORE ONLY -> COMMIT
+                            } else {
+                                if( RV32CONTROL.IS_FPU ) {                                                                      //      START FPU?
+                                    EXECUTEFPU.start = 1; STATE = $STATE_MULTI$;                                                //      FPU
+                                } else {
+                                    if( RV32CONTROL.IS_FAST ) {                                                                 //      START ALU OR SINGLE CYCLE INSTRUCTIONS
+                                        STATE = $STATE_COMMIT$;                                                                 //      FAST AND ALU OPERATIONS
+                                    } else {
+                                        EXECUTESLOW.start = 1;                                                                  //      START CSR, ATOMIC OR DIVISION
+                                        STATE = ( RV32CONTROL.IS_CSR | RV32CONTROL.IS_ATOMIC ) ? $STATE_MULTI$ :                //      MULTICYCLE CSR ATOMIC -> MULTI
+                                                                                                 $STATE_COMMIT$;                //      DIVISION -> COMMIT
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                case 4: { if( ~MEMORY.busy ) { EXECUTESLOW.start = 1; STATE = $STATE_MULTI$; } }                                // STATE LOAD WAIT FOR ATOMIC MEMORY OPERATIONS
+                case 5: {                                                                                                       // STATE_MULTI
+                    if( ~( EXECUTESLOW.busy | EXECUTEFPU.busy ) ) {
+                        MEMORY.start = { RV32CONTROL.IS_STORE, 2b00 };                                                          //  START STORE IF ATOMIC MEMORY STOTRE
+                        STATE = $STATE_COMMIT$;
+                    }
+                }
+                case 6: {                                                                                                       //  STATE_COMMIT
+                    if( ~MEMORY.busy & ~EXECUTESLOW.busy ) {                                                                    //      WAIT FOR LOAD/STORE/DIVIDE TO FINISH
+                        COMMIT = 1;                                                                                             //      COMMIT REGISTERS
+                        pc = SMT ? pc : RV32CONTROL.newPC; pcSMT = SMT ? RV32CONTROL.newPC : SMTRUNNING ? pcSMT : SMTSTARTPC;   //      MOVE TO NEXT INSTRUCTION
+                        if( ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = ~SMT & SMTRUNNING; }                                        //      SWITCH THREADS IF ACTIVE AND NOT FENCED
+                        STATE = $STATE_NEXT$;
+                        __display("RD %h <- %h",Rtype(MEMORY.instruction).destReg,result);
+                    }
+                }
+                case 7: {                                                                                                       //  STATE_NEXT
+                    if( DMAREQ ) {                                                                                              //      CHECK FOR DMA REQUEST
+                        STATE = $STATE_DMA$;
+                    } else {
+                        cacheselect = 0; MEMORY.start = 3b001; STATE = $STATE_FETCH$;                                           //      START FETCH OF NEXT INSTRUCTION
+                    }
+                }
             }
         }
     }
 
     always_after {
-        { if( START_LOAD ) { LOAD.start = ~MEM64; LOAD64.start = MEM64;} }
-        { if( START_STORE ) { STORE.start = ~MEM64; STORE64.start = MEM64; } }
+        MEMORY.storedata = RV32CONTROL.IS_FAST ? RV32CONTROL.opCode[0,1] ? RV32CONTROLF.sourceReg2F :                           // SELECT RESULT TO STORE   FAST FLOATING-POINT REGISTER
+                                                                           RV32CONTROL.sourceReg2 :                             //                          FAST INTEGER REGISTER
+                                                 EXECUTESLOW.memoryoutput;                                                      //                          SLOW ATOMIC MEMORY OPERATION
 
-        { writedata = memorycontrols[0,1] ? DMA.writedata : MEM64 ? STORE64.writedata : EXECUTEFAST.memoryoutput; }             // COPY MEMORY WRITE VALUE FROM DMA ENGINE OR STORE UNIT
-
-        {
-            if( |memorycontrols ) {                                                                                             // COPY MEMORY ADDRESS FROM MEMORY CONTROL UNITS
-                onehot( memorycontrols ) {
-                    case 0: { address = DMA.address; }
-                    case 1: { address = RV32ONTROL.storeAddress; }
-                    case 2: { address = RV32ONTROL.loadAddress; }
-                    case 3: { address = PC; }
-                    case 4: { address = STORE64.address; }
-                    case 5: { address = LOAD64.address; }
-                }
-            }
-        }
-
-        { readmemory = DMA.readmemory | LOAD.readmemory | LOAD64.readmemory | FETCH.readmemory; }                               // COPY MEMORY READ OR WRITE FLAGS
-        { writememory = DMA.writememory | STORE.writememory | STORE64.writememory; }
-
-        // UPDATE CPU STATE
-        { if( COMMIT ) { pc = pc_next; } }
-        { if( COMMIT ) { pcSMT = pcSMT_next; } }
-        { if( COMMIT & ~EXECUTEFAST.fenceACTIVE[1,1] ) { SMT = SMT_next; }  }
+        address = MEMORY.address;                                                                                               // OUTPUT ADDRESS TO MEMORY BUS
+        writedata = MEMORY.writedata;                                                                                           // OUTPUT WRITEDATA TO MEMORY BUS
+        writememory = MEMORY.writememory;                                                                                       // OUTPUT MEMORY WRITE FLAG
+        readmemory = MEMORY.readmemory;                                                                                         // OUTPUT MEMORY READ FLAG
     }
 }
 
 unit cpuexecuteFASTPATH(
-    input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
-    input   uint5   rs1,
-    input   uint5   rs2,
-    input   int32   sourceReg1,
-    input   int32   sourceReg2,
-    input   uint64  sourceReg2F,
-    input   int32   immediateValue,
     input   int64   memoryinput,
-    input   uint32  AUIPCLUI,
+    input   uint64  AUIPCLUI,
     input   uint$addr_width$  nextPC,
-    input   uint1   isLOAD,
     input   uint1   isAUIPCLUI,
     input   uint1   isJAL,
     input   uint1   isFENCE,
-    output  int64   memoryoutput,
     output  int64   result,
-    input   uint1   LT,
-    input   uint1   LTU,
     output  uint2   fenceACTIVE(0)
 ) <reginputs> {
-    // ALU
-    alu ALU(
-        opCode <: opCode, function3 <: function3, function7 <: function7,
-        rs1 <: rs1, rs2 <: rs2,
-        sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2,
-        immediateValue <: immediateValue,
-        LT <: LT, LTU <: LTU
-    );
-
-    always_after {
-        { memoryoutput = opCode[0,1] ? sourceReg2F : sourceReg2; }                                                              // FLOAT STORE OR STORE
-        { result = isAUIPCLUI ? AUIPCLUI :                                                                                      // LUI AUIPC
+    result := isAUIPCLUI ? AUIPCLUI :                                                                                           // LUI AUIPC
                    isJAL ? nextPC :                                                                                             // JAL[R]
-                   isLOAD ? ( ( opCode == 5b00001 ) & ~&function3[0,2] ) ? { 32hffffffff, memoryinput[0,32] } : memoryinput :   // [FLOAT]LOAD ( NAN BOX 32 BIT FLOAD LOADS )
-                   ALU.result; }                                                                                                // INTEGER ALU AND MULTIPLICATION
-        { if( isFENCE ) { fenceACTIVE = { |function7[1,2], ~function3[0,1] }; } }                                               // SET FENCE ACTIVE { IO, MEM }
-                                                                                                                                // IO STOPS THREAD SWITCHING, MEM RESETS L0CACHE (after load)
-    }
+                           memoryinput;                                                                                         // INTEGER/FLOAT LOAD SIGN EXTENDED/NAN BOIXED BY LOAD UNIT
+
+    fenceACTIVE := isFENCE ? { |function7[1,2], ~function3[0,1] } : fenceACTIVE;                                                // SET FENCE ACTIVE { IO, MEM }
 }
 
 unit cpuexecuteSLOWPATH(
     input   uint1   start,
     output  uint1   busy(0),
     input   uint1   SMT,
-    input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
     input   uint5   rs1,
     input   uint5   rs2,
-    input   int32   sourceReg1,
+    input   int64   sourceReg1,
     input   uint32  S1_abs32,
-    input   int32   sourceReg2,
+    input   uint64  S1_abs64,
+    input   int64   sourceReg2,
     input   uint32  S2_abs32,
-    input   int32   memoryinput,
-    output  int32   memoryoutput,
-    output  int32   result,
+    input   uint64  S2_abs64,
+    input   int64   memoryinput,
+    output  int64   memoryoutput,
+    output  int64   result,
     input   uint1   incCSRinstret,
     input   uint1   isCSR,
     input   uint1   isATOMIC,
-    input   uint1   isALUM,
+    input   uint1   isALU,
     output  uint8   FPUflags,
     input   uint5   FPUnewflags,
     input   uint1   CSRupdateFPUflags
 ) <reginputs> {
-    uint3   operation <:: { isALUM, isATOMIC, isCSR };
-    uint1   unitbusy <:: ALUMD.busy;
+    uint3   operation <:: { isALU, isATOMIC, isCSR };                                                                           // DETERMINE OPERATION, DIVIDE, AMO, CSR
 
-    // M EXTENSION - DIVISION
-    aludivision ALUMD(
-        function3 <: function3[0,2],
-        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32,
-        sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32,
+    aluA ALUA(                                                                                                                  // ATOMIC MEMORY OPERATIONS
+        function7 <: function7[2,5], memoryinput <: memoryinput, sourceReg2 <: sourceReg2
     );
 
-    // ATOMIC MEMORY OPERATIONS
-    aluA ALUA( function7 <: function7, memoryinput <: memoryinput, sourceReg2 <: sourceReg2 );
-
-    // MANDATORY RISC-V CSR REGISTERS + HARTID == 0 MAIN THREAD == 1 SMT THREAD
-    uint12  csrRegister <:: { function7, rs2 };
-    CSRblock CSR(
-        SMT <: SMT,
+    uint12  csrRegister <:: { function7, rs2 };                                                                                 // EXTRACT CSR REGISTER NUMBER FROM INSTRUCTION
+    CSRblock CSR(                                                                                                               // RISC-V CSR REGISTERS
+        SMT <: SMT,                                                                                                             //  HARTID == 0 MAIN THREAD == 1 SMT THREAD
         csrRegister <: csrRegister,
         function3 <: function3,
         rs1 <: rs1,
@@ -395,67 +324,54 @@ unit cpuexecuteSLOWPATH(
         incCSRinstret <: incCSRinstret
     );
 
-    // START FLAGS
-    ALUMD.start := start & isALUM;                                                                                              // INTEGER DIVISION
-    CSR.start := start & isCSR & |function3;                                                                                    // CSR
+    aludivision ALUMD(                                                                                                          // INTEGER 32/64 BIT SIGNED/UNSIGNED DIVISION
+        function3 <: function3,
+        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32,
+        sourceReg2 <: sourceReg2, S2_abs32 <: S2_abs32
+    );
+
+    CSR.start := start & isCSR & |function3; ALUMD.start := start & isALU;                                                      // START FLAGS
+
+    result := operation[0,1] ? |function3 ? CSR.result : 0 :                                                                    //  CSR
+              operation[1,1] ? function7[3,1] ? memoryinput : function7[2,1] ? 0 : memoryinput :                                //  ATOMIC LOAD - MODIFY - STORE
+                               ALUMD.result;                                                                                    //  INTEGER DIVISION, WITH SIGN EXTENSION FOR 32 BIT
+
+    memoryoutput := function7[3,1] ? ALUA.result : sourceReg2;                                                                  //  ATOMIC LOAD - MODIFY - STORE OR LR.W SC.W - MEMORYOUTPUT
 
     algorithm <autorun> {
-        // PROVIDE WAIT STATE FOR APPROPRIATE OPERATION
-        while(1) {
-            if( start ) {
-                onehot( operation ) {
-                    default: { ++: }                                                                                            // CSR ATOMIC OPERATIONS
-                    case 2: { while( unitbusy ) {} }                                                                            // INTEGER DIVISION + CLMUL
-                }
-                busy = 0;
-            }
-        }
-    }
+        uint3   STATE = 1;
+            $$ STATE_CPUSLOW_IDLE       = 1
+            $$ STATE_CPUSLOW_CSR_ATOMIC = 2
+            $$ STATE_CPUSLOW_DIVISION   = 4
 
-    // COLLECT THE APPROPRIATE RESULT
-    always_after {
-        { if( start ) { busy = 1; } }
-        {
-            if( busy ) {
-                onehot( operation ) {
-                    case 0: { result = |function3 ? CSR.result : 0; }                                                           // CSR
-                    case 1: {
-                        if( function7[3,1] ) {
-                            result = memoryinput;                                                                                // ATOMIC LOAD - MODIFY - STORE
-                        } else {
-                            result = function7[2,1] ? 0 : memoryinput;                                                          // LR.W SC.W
-                        }
-                    }
-                    case 2: { result = ALUMD.result; }
-                }
-            }
-        }
-        {
-            if( busy ) {
-                onehot( operation ) {
-                   default: {}
-                    case 1: {
-                        if( function7[3,1] ) {
-                            memoryoutput = ALUA.result;                                                                         // ATOMIC LOAD - MODIFY - STORE
-                        } else {
-                            memoryoutput = sourceReg2;                                                                          // LR.W SC.W
+        busy = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {                                                                                                       // WAIT FOR START
+                    if( start ) {
+                        busy = 1; onehot( operation ) {
+                            default: { STATE = $STATE_CPUSLOW_CSR_ATOMIC$; }                                                    //  CSR OR ATOMIC-MEMORY-OPERATION
+                            case 2: { STATE = $STATE_CPUSLOW_DIVISION$; }                                                       //  DIVISION
                         }
                     }
                 }
+                case 1: { busy = 0; STATE = $STATE_CPUSLOW_IDLE$; }                                                             // CSR OR AMO
+                case 2: { if( ~ALUMD.busy ) { busy = 0; STATE = $STATE_CPUSLOW_IDLE$; } }                                       // DIVISION
             }
+
         }
     }
 }
 
 unit cpuexecuteFPU(
     input   uint1   start,
-    output  uint1   busy(0),
+    output  uint1   busy,
     input   uint5   opCode,
     input   uint3   function3,
     input   uint7   function7,
     input   uint5   rs2,
-    input   int32   sourceReg1,
+    input   int64   sourceReg1,
     input   uint32  S1_abs32,
+    input   uint64  S1_abs64,
     input   uint64  sourceReg1F,
     input   uint64  sourceReg1Fx,
     input   uint64  sourceReg1Fxopp,
@@ -466,6 +382,13 @@ unit cpuexecuteFPU(
     input   uint4   typeBF,
     input   uint64  sourceReg3Fx,
     input   uint4   typeCF,
+    input   uint1   aObINF,                                                                                                     // EITHER A OR B INF?
+    input   uint1   aAbINF,                                                                                                     // BOTH A AND B INF?
+    input   uint1   aObNAN,                                                                                                     // EITHER A OR B NAN?
+    input   uint1   aObZERO,                                                                                                    // EITHER A OR B ZERO?
+    input   uint1   aAbZERO,                                                                                                    // BOTH A AND B ZERO?
+    input   uint1   aZEROFRACTION,                                                                                              // A FRACTION PART 0, POWER OF 2 OR TRUE ZERO DETECTION
+    input   uint1   bZEROFRACTION,                                                                                              // B FRACTION PART 0, POWER OF 2 OR TRUE ZERO DETECTION
     input   uint1   FLT,
     input   uint1   FEQ,
     output  uint1   frd,
@@ -475,490 +398,242 @@ unit cpuexecuteFPU(
     output  uint5   FPUnewflags,
     output  uint1   CSRupdateFPUflags
 ) <reginputs> {
-    // Classify the instruction
-    uint1   fpuconvert <:: ( opCode == 5b10100 ) & ( ( function7[2,5] == 5b11010 ) | ( function7[2,5] == 5b11000 ) | ( function7[2,5] == 5b01000 ) );
+    uint10  BIAS <:: function7[0,1] ? $BIAS64$ : function7[1,1] ? $BIAS16$ : $BIAS32$;                                          // SELECT BIAS
+    uint10  SBIAS <:: rs2[0,1] ? $BIAS64$ : rs2[1,1] ? $BIAS16$ : $BIAS32$;                                                     // SELECT BIAS ( SOURCE FOR CHANGE PRECISION )
+
     uint3   converttype <:: {
                                 ( function7[2,5] == 5b11000 ),                                                                  // FD2IL
                                 ( function7[2,5] == 5b11010 ),                                                                  // IL2FD
-                                ( function7[2,5] == 5b01000 )                                                                   // F2D or D2F
+                                ( function7[2,5] == 5b01000 )                                                                   // CHANGE PRECISION HSD <-> HSD
                             };
-    uint1   fpufast <:: isFASTFPU | fpuconvert;
-    uint1   fpucalc <:: ~fpufast;
-    uint3   operation <:: { fpucalc, fpuconvert, fpufast & ~fpuconvert };
+    uint1   fpuconvert <:: ( opCode == 5b10100 ) & |converttype;                                                                // FPU CONVERSION TO/FROM INT OR CHANGE OF PRECISION DETECTION
+    uint1   fpufast <:: isFASTFPU | fpuconvert;                                                                                 // SINGLE CYCLE OR CONVERSION DETECTION
+    uint1   fpucalc <:: ~fpufast;                                                                                               // CALCULATION DETECTION
+    uint3   operation <:: { fpucalc, fpuconvert, fpufast & ~fpuconvert };                                                       // PRESENT INSTRUCTION ROUTE
 
-    // FLOATING POINT CALCULATIONS
-    floatcalc FPUCALC(
-        df <: function7[0,1],
-        FPUflags <: FPUflags,
-        opCode <: opCode, function3 <: function3, function7 <: function7[2,5],
-        sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx, sourceReg3Fx <: sourceReg3Fx,
-        typeAF <: typeAF, typeBF <: typeBF, typeCF <: typeCF
-    );
-
-    // FLOATING POINT CONVERSIONS
-    intlong2floatdouble FPUIL2FD( rm <: function3, dounsigned <: rs2[0,1], df <: function7[0,1], sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32 );
-    floatdouble2intlong FPUFD2IL( rm <: function3, dounsigned <: rs2[0,1], df <: function7[0,1], sourceReg1Fx <: sourceReg1Fx, typeAF <: typeAF );
-    changeprecision FPUF2D_D2F( df <: function7[0,1], sourceReg1Fx <: sourceReg1Fxopp, typeAF <: typeAopp );
-
-    uint64  convertresult <:: converttype[2,1] ? FPUFD2IL.result : converttype[1,1] ? FPUIL2FD.result : FPUF2D_D2F.result;
-    uint5   convertflags  <:: FPUflags | ( converttype[2,1] ? FPUFD2IL.FPUflags : converttype[1,1] ? FPUIL2FD.FPUflags : FPUF2D_D2F.FPUflags );
-
-    // FLOATING POINT FAST OPERATIONS
-    fpuSINGLECYCLE FPUFAST(
-        df <: function7[0,1],
-        FPUflags <: FPUflags,
+    fpuSINGLECYCLE FPUFAST(                                                                                                     // FLOATING POINT SINGLE CYCLE OPERATIONS
+        dsh <: function7[0,2],
         function3 <: function3[0,2], function7 <: function7[2,5],
         sourceReg1 <: sourceReg1, sourceReg1F <: sourceReg1F, sourceReg2F <: sourceReg2F,
+        sign1F <: fp64( sourceReg1Fx ).sign, sign2F <: fp64( sourceReg2Fx ).sign,
         typeAF <: typeAF, typeBF <: typeBF,
+        aObNAN <: aObNAN,
+        aZEROFRACTION <: aZEROFRACTION,
         FLT <: FLT, FEQ <: FEQ
     );
 
-    // START FLAGS AND UPDATE CSR
-    FPUCALC.start := fpucalc & start; CSRupdateFPUflags := 0;
+    uint1   rm <:: ( &FPUflags[5,3] ? function3 : FPUflags[5,3] ) != 3b001;                                                     // SET ROUNDING FLAG ( RNE, RTZ SUPPORTED ), FCSR UNLESS 111
+    floatcalc FPUCALC(                                                                                                          // FLOATING POINT CALCULATIONS CONTROLLER
+        rm <: rm, dsh <: function7[0,2],                                                                                        //  RETURNS RESULT WIDE PACKED IN DOUBLE BITFIELDS
+        BIAS <: BIAS,
+        opCode <: opCode, function3 <: function3, function7 <: function7[2,5],
+        sourceReg1Fx <: sourceReg1Fx, sourceReg2Fx <: sourceReg2Fx, sourceReg3Fx <: sourceReg3Fx,
+        typeAF <: typeAF, typeBF <: typeBF, typeCF <: typeCF,
+        aObINF <: aObINF, aAbINF <: aAbINF, aObNAN <: aObNAN, aObZERO <: aObZERO, aAbZERO <: aAbZERO,
+        aZEROFRACTION <: aZEROFRACTION, bZEROFRACTION <: bZEROFRACTION
+    );
+    repackage_actual CALCRESULT( dsh <: function7[0,2], a <: FPUCALC.result );                                                  // REPACKAGE CALCULATION RESULT INTO CORRECT BITFIELDS
+
+    uint1   convertrm <:: ( function3 != 3b001 );                                                                               // SET ROUNDING FLAG FOR CONVERSIONS ( always uses function3 )
+    intlong2float FPUIL2F(                                                                                                      // INTEGER TO FLOATING-POINT CONVERSION
+        rm <: convertrm, dounsigned <: rs2[0,1], il <: rs2[1,1], dsh <: function7[0,2], BIAS <: BIAS,                           //  FLAGS ROUNDING, UNSIGNED, 32/64-BIT, HALF/SINGLE/DOUBLE
+        sourceReg1 <: sourceReg1, S1_abs32 <: S1_abs32, S1_abs64 <: S1_abs64
+    );
+    float2intlong FPUF2IL(                                                                                                      // FLOTING-POINT TO INTEGER CONVERSION
+        rm <: convertrm, dounsigned <: rs2[0,1], il <: rs2[1,1], BIAS <: BIAS,                                                  //  FLAGS ROUNDING, UNSIGNED, 32/64-BIT
+        sourceReg1Fx <: sourceReg1Fx, typeAF <: typeAF
+    );
+    changeprecision FPUF_CP(                                                                                                    // FLOATING-POINT CHANGE PRECISION
+        dest <: function7[0,2], DBIAS <: BIAS, source <: rs2[0,2], SBIAS <: SBIAS,                                              //  FLAGS DESTINATION PRECISION, SOUCRE PRECISION
+        sourceReg1Fx <: sourceReg1Fxopp, typeAF <: typeAopp
+    );
+
+    FPUCALC.start := fpucalc & start; CSRupdateFPUflags := 0;                                                                   // START FLAGS AND UPDATE CSR
 
     algorithm <autorun> {
-        // PROVIDE WAIT STATE FOR APPROPRIATE OPERATION
-        while(1) {
-            if( start ) {
-                onehot( operation ) {
-                    default: {}                                                                                                  // FPU COMPARE, MIN/MAX, CLASS, MOVE, CONVERT
-                    case 2: { while( FPUCALC.busy ) {} }                                                                        // FPU CALCULATIONS
+        uint3   STATE = 1;
+            $$ STATE_FPU_IDLE           = 1
+            $$ STATE_FPU_CALC           = 2
+            $$ STATE_FPU_CALC_FINISH    = 4
+
+        busy = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    if( start ) {                                                                                               // START FPU OPERATION
+                        onehot( operation ) {
+                            default: { CSRupdateFPUflags = 1; }                                                                 //  CONVERSION OR SINGLE-CYCLE OPERATION
+                            case 2: { busy = 1; STATE = $STATE_FPU_CALC$; }                                                     //  CALCULATION
+                        }
+                    }
                 }
-                busy = 0;
-                CSRupdateFPUflags = 1;
+                case 1: { if( ~FPUCALC.busy ) { STATE = $STATE_FPU_CALC_FINISH$; } }                                            // WAIT FOR FPU CALCULATION TO FINISH
+                case 2: { busy = 0; CSRupdateFPUflags = 1; STATE = $STATE_FPU_IDLE$; }                                          //  UPDATE FLAGS AND SIGNAL FINISHED
             }
         }
     }
 
-    // COLLECT THE APPROPRIATE RESULT
     always_after {
-        { if( start ) { busy = 1; } }
-        {
-            onehot( operation ) {
-                case 0: { result = FPUFAST.result; }
-                case 1: { result = convertresult; }
-                case 2: { result = FPUCALC.result; }
-            }
-        }
-        { frd = fpuconvert ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd; }
-        { FPUnewflags = fpuconvert ? convertflags : fpucalc ? FPUCALC.FPUnewflags : FPUFAST.FPUnewflags; }
+            result = operation[0,1] ? FPUFAST.result :                                                                          // COLLECT THE APPROPRIATE RESULT
+                     operation[1,1] ? converttype[2,1] ? FPUF2IL.result :
+                                      converttype[1,1] ? FPUIL2F.result :
+                                                         FPUF_CP.result :
+                                      CALCRESULT.repack;
+            frd = fpuconvert ? ( |converttype[0,2] ) : fpucalc ? 1 : FPUFAST.frd;                                               // WRITE TO F REGISTERS FLAG
+            FPUnewflags = FPUflags | (                                                                                          // MERGE OLD AND NEW FLAGS
+                                        fpuconvert ? converttype[2,1] ? FPUF2IL.FPUflags :
+                                                     converttype[1,1] ? FPUIL2F.FPUflags :
+                                                                        FPUF_CP.FPUflags :
+                                        fpucalc ? FPUCALC.FPUnewflags :
+                                                  FPUFAST.FPUnewflags
+                                     );
     }
 }
 
-// FETCH UNIT, INCLUDING COMPRESSED INSTRUCTION EXPANSION
-unit fetch(
+
+unit memory_controller(
     input   uint1   clock_CPUdecoder,
-    input   uint1   start,
-    output! uint1   busy(0),
+    input   uint3   start,                                                                                                      // { STORE, LOAD, FETCH }
+    output  uint1   busy,
+
+    input   uint2   accesssize,
+    input   uint1   IS_MA,
+    input   uint1   IS_64,
+    input   uint1   IS_FLOAT,
+    input   uint1   IS_UNSIGNED,
+
+    output! uint$addr_width$ address,
+    input   uint1   memorybusy,
+    output! uint1   writememory,
+    output! uint32  writedata,
+    output! uint1   readmemory,
+    input   uint32  readdata,
+
+    input   uint1   SMT,
+    input   uint$addr_width$ pc,
+    input   uint$addr_width$ pcSMT,
+    input   uint$addr_width$ loadAddress,
+    input   uint$addr_width$ storeAddress,
+
     output  uint32  instruction,
     output  uint1   compressed,
 
-    input!  uint32  readdata,
-    output! uint1   readmemory,
-    input!  uint1   memorybusy
-) <reginputs> {
-    // COMPRESSED INSTRUCTION EXPANDER
-    compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata[0,16] );
-    compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata[0,16] );
-    compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata[0,16] );
+    input   uint1   L0match,
+    input   uint30  L0instruction,
+    input   uint1   L0compressed,
 
-    uint1   complete = uninitialised;
-    readmemory := start; complete := 0;
+    output  uint64  memoryinput,
+    input   uint64  storedata
+) <reginputs> {
+    uint4   count = uninitialised;                                                                                              // NUMBER OF MEMORY OPERATION
+
+    compressed00 COMPRESSED00 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );                                                    // COMPRESSED INSTRUCTION EXPANDERS
+    compressed01 COMPRESSED01 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );
+    compressed10 COMPRESSED10 <@clock_CPUdecoder> ( i16 <: readdata[2,14] );
+
+    signnanbox LOAD(                                                                                                            // SIGN EXTEND IF SIGNED LOAD, OR NAN-BOX FOR FLOAT LOAD
+        floatload <: IS_FLOAT,                                                                                                  //  IS FLOAT LOAD
+        dounsigned <: IS_UNSIGNED,                                                                                              //  IS UNSIGNED INTEGER LOAD
+        accesssize <: accesssize,                                                                                               //  IS 8 BIT, 16, BIT, 32, 64 BIT LOAD
+        byteaccess <: loadAddress[0,1],                                                                                         //  ADDRESS LINE 0 FOR 8 BIT LOAD
+        readdata :> memoryinput                                                                                                 //  OUTPUT LOAD RESULT
+    );
+
+    readmemory := 0; writememory := 0;
 
     algorithm <autorun> {
-        while(1) {
-            if( start ) { while( memorybusy ) {} ++: complete = 1; } else { complete = 0; }
+        uint3   ACTION = uninitialised;
+        uint5   STATE = 1;
+            $$ STATE_FSL_WAIT       = 1
+
+            $$ STATE_FETCH_READ     = 2
+            $$ STATE_FETCH_COMPLETE = 4
+
+            $$ STATE_LOAD_MEMBUSY   = 8
+            $$ STATE_LS_NEXT        = 16
+
+        uint$addr_width$ address_NEXT <:: address + ( IS_MA ? 1 : 4 );
+        uint4   count_p1 <:: count + 1;
+        uint4   count_MAX <:: IS_MA ? ( 1 << accesssize ) : IS_64 ? 2 : 1;
+
+        busy = 0; while(1) {
+            onehot( STATE ) {
+                case 0: {
+                    busy = 0; if( |start ) {                                                                                    // WAIT FOR START
+                        count = 0; LOAD.memoryinput = 0;                                                                        //  0 COUNT AND MEMORY INPUT
+                        address = start[0,1] ? SMT ? pcSMT : pc : start[1,1] ? loadAddress : storeAddress;                      //  SET FIRST ADDRESS
+                        ACTION = start;
+
+                        onehot( start ) {                                                                                       // SEND TO { STORE, LOAD, FETCH }
+                            case 0: {
+                                if( L0match ) {
+                                    instruction = { L0instruction, 2b11 }; compressed = L0compressed;                           //  FETCH FROM L0 CACHE
+                                    __display("[HIT %h %c]",instruction,compressed);
+                                } else {
+                                    busy = 1; readmemory = 1; STATE = $STATE_FETCH_READ$;                                       //  FETCH FROM MEMORY
+                                }
+                            }
+                            case 1: { busy = 1; readmemory = 1; STATE = $STATE_LOAD_MEMBUSY$; }                                 //  LOAD FROM MEMORY
+                            case 2: { busy = 1; writememory = 1; STATE = $STATE_LS_NEXT$; }                                     //  STORE TO MEMORY
+                        }
+                    }
+                }
+
+                case 1: { if( ~memorybusy ) { STATE = $STATE_FETCH_COMPLETE$; } }                                               // WAIT FOR MEMORYREAD TO COMPLETE
+                case 2: {                                                                                                       // PACK FETCHED INSTRUCTION
+                    compressed = ~&readdata[0,2];                                                                               //  SET COMPRESSED FLAGS
+                    instruction = { &readdata[0,2] ? readdata[2,30] :                                                           //  32 BIT INSTRUCTION READ
+                                   ~|readdata[0,2] ? COMPRESSED00.i32 :                                                         //  16 BIT INSTRUCTION READ block 00
+                                     readdata[0,1] ? COMPRESSED01.i32 :                                                         //                          block 01
+                                                     COMPRESSED10.i32, 2b11 };                                                  //                          block 10, plus trailing 11
+                    busy = 0; STATE = $STATE_FSL_WAIT$;                                                                         // FINISHED FETCH
+                }
+
+                case 3: { if( ~memorybusy ) { STATE = $STATE_LS_NEXT$; } }                                                      // WAIT FOR MEMORYREAD TO COMPLETE
+                case 4: {
+                    if( ~memorybusy ) {                                                                                         // WAIT FOR MEMORYWRITE TO COMPLETE
+                        if( ACTION[1,1] ) {                                                                                     //  IF LOAD, PACK READDATA INTO MEMORY INPUT
+                            if( IS_MA ) {
+                                LOAD.memoryinput[ { count, 3b000 }, 8 ] = readdata[ { address[0,1], 3b000 }, 8 ];               //  SINGLE BYTE FOR MISALIGNED LOADS
+                            } else {
+                                LOAD.memoryinput[ { count[0,1], 5b00000 }, 32 ] = readdata;                                     //  8/16/32 BITS FOR ALIGNED LOADS
+                            }
+                        }
+                        if( count_p1 == count_MAX ) {
+                            busy = 0; STATE = $STATE_FSL_WAIT$;                                                                 //  FINISHED LOAD/STORE
+                        } else {
+                            count = count_p1; address = address_NEXT; writememory = ACTION[2,1]; readmemory = ACTION[1,1];      //  MOVE TO NEXT PART
+                            STATE = ACTION[2,1] ? $STATE_LS_NEXT$ : $STATE_LOAD_MEMBUSY$;
+                        }
+                    }
+                }
+            }
         }
     }
 
     always_after {
-        { if( start ) { busy = 1; } }
-        { if( complete ) { busy = 0; } }
-        {
-            if( complete ) {
-                switch( readdata[0,2] ) {                                               // EXPAND COMPRESSED INSTRUCTION
-                    case 2b00: { instruction = { COMPRESSED00.i32, 2b11 }; }            // OR KEEP 32 BIT INSTRUCTION
-                    case 2b01: { instruction = { COMPRESSED01.i32, 2b11 }; }
-                    case 2b10: { instruction = { COMPRESSED10.i32, 2b11 }; }
-                    default: { instruction = readdata; }
-                }
-            }
-        }
-        { if( complete ) { compressed = ( ~&readdata[0,2] ); } }                        // SET COMPRESSED FLAGS
+        writedata = IS_MA ? storedata[ { count, 3b000 }, 8 ] : IS_64 ? storedata[ { count, 5b00000 }, 32 ] : storedata;         // SET MEMORY OUTPUT TO PRESENT STORE PART
     }
 }
 
-// LOAD UNIT - INCLUDING SIGN EXTENSION FOR 8/16 BIT SIGNED LOADS
-unit load(
-    input   uint1   start,
-    output! uint1   busy(0),
-    input   uint1   byteaccess,
-    input   uint2   accesssize,
+unit signnanbox(                                                                                                                // SIGN EXTEND/NAN BOX MEMORYINPUT
+    input   uint1   floatload,
     input   uint1   dounsigned,
-    output  int32   memoryinput,
-
-    input!  uint32  readdata,
-    output! uint1   readmemory,
-    input!  uint1   memorybusy
+    input   uint2   accesssize,
+    input   uint1   byteaccess,
+    input   uint64  memoryinput,
+    output  uint64  readdata
 ) <reginputs> {
-    // SIGN FOR 8, 16, 32 BIT LOADS
-    uint1   sign <:: ~dounsigned & ( accesssize[0,1] ? readdata[15,1] : readdata[ { byteaccess, 3b111 }, 1 ] );
-    uint32  signextend <:: accesssize[1,1] ? readdata :                                                                         // 32 BIT
-                           accesssize[0,1] ? { {16{sign}}, readdata[0,16] } :                                                   // 16 BIT
-                                             { {24{sign}}, readdata[ { byteaccess, 3b000 }, 8 ] };                              // 8 BIT
-    uint1   complete = uninitialised;
-    readmemory := start; complete := 0;
-
     algorithm <autorun> {
+        uint1   sign <:: floatload | (                                                                                          // NAN BOX BIT FOR FLOAT LOAD
+                         ~dounsigned & memoryinput[ accesssize[1,1] ? 31 : accesssize[0,1] ? 15 : { byteaccess, 3b111 }, 1 ] ); // EXTRACT SIGN IF REQUIRED FOR 8/16/32 SIGNED LOADS
+
         while(1) {
-            if( start ) { while( memorybusy ) {} ++: complete = 1; } else { complete = 0; }
-        }
-    }
-
-    always_after {
-        { if( start ) { busy = 1; } }
-        { if( complete ) { busy = 0; } }
-        { if( complete ) { memoryinput = signextend; } }
-    }
-}
-unit load64(
-    input   uint1   start,
-    output! uint1   busy(0),
-    output  int64   memoryinput,
-    input   uint$addr_width$ loadAddress,
-    output! uint$addr_width$ address,
-    input!  uint32  readdata,
-    output! uint1   readmemory,
-    input!  uint1   memorybusy
-) <reginputs> {
-    uint$addr_width$ plus4 <:: loadAddress + 4;
-    uint1   complete = uninitialised;
-    readmemory := 0; complete := 0;
-
-    algorithm <autorun> {
-        while(1) {
-            if( start ) {
-                address = loadAddress; readmemory = 1; while( memorybusy ) {} ++: memoryinput[0,32] = readdata;
-                address = plus4; readmemory = 1; while( memorybusy ) {} ++: memoryinput[32,32]= readdata;
-                complete = 1;
-            } else { complete = 0; }
-        }
-    }
-
-    always_after {
-        { if( start ) { busy = 1; } }
-        { if( complete ) {  busy = 0; } }
-    }
-}
-// STORE UNIT FOR NON-FAST STORES ( to BRAM/SDRAM or 32 bit )
-unit store(
-    input   uint1   start,
-    output! uint1   busy(0),
-    output! uint1   writememory,
-    input!  uint1   memorybusy
-) <reginputs> {
-    writememory := start;
-
-    algorithm <autorun> {
-        while(1) {
-            if( start ) { while( memorybusy ) {} ++: busy = 0; } else { writememory = 0; }
-        }
-    }
-    always_after {
-        if( start ) { busy = 1; }
-    }
-}
-unit store64(
-    input   uint1   start,
-    input   uint64  storedata,
-    output! uint32  writedata,
-    input   uint$addr_width$ storeAddress,
-    output! uint$addr_width$ address,
-    output! uint1   busy(0),
-    output! uint1   writememory,
-    input!  uint1   memorybusy
-) <reginputs> {
-    uint$addr_width$ plus4 <:: storeAddress + 4;
-    writememory := 0;
-
-    algorithm <autorun> {
-        while(1) {
-            if( start ) {
-                address = storeAddress; writedata = storedata[0,32]; writememory = 1; while( memorybusy ) {}
-                ++: address = plus4; writedata = storedata[32,32]; writememory = 1; while( memorybusy ) {}
-                ++: busy = 0;
-            } else { writememory = 0; }
-        }
-    }
-    always_after {
-        if( start ) { busy = 1; }
-    }
-}
-
-// MINI DMA CONTROLLER
-// MODE 0   INACTIVE
-//      1   multi-src to single-dest PIXEL BLOCK 8 bit + SDCARD WRITE
-//      2   SPECIAL PIXEL BLOCK RGB
-//      3   multi-src to multi-dest MEMCPY
-//      4   single-src to multi-dest MEMSET + SDCARD READ
-//      5   single-src to single-dest SET TILE/CBLITTER to single value
-//      6   increase src and dest by additions
-//      7   32/16bit to 4/2 pixels for PIXEL BLOCK special mode
-//      8   MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
-//      9   MEMSET RECTANGLE IS 32/16 BIT CAPABLE
-unit dma_flags(
-    input   uint$addr_width$  DMASOURCE,
-    input   uint$addr_width$  DMASOURCEADD,
-    input   uint$addr_width$  DMADEST,
-    input   uint$addr_width$  DMADESTADD,
-    input   uint$addr_width$  DMACOUNT,
-    output  uint1   srcSET,
-    output  uint1   src16bit,
-    output  uint1   SD16,
-    output  uint1   SSD16,
-    output  uint1   SD32,
-    output  uint1   SSD32,
-    output  uint1   ADD16,
-    output  uint1   ADD32,
-    output  uint1   multi16,
-    output  uint1   multi32
-) <reginputs> {
-    uint1   srcBRAM <:: ~DMASOURCE[26,1] & ~DMASOURCE[25,1] & ~DMASOURCE[15,1];                                                 // SOURCE IS BRAM
-    uint1   destBRAM <:: ~DMADEST[26,1] & ~DMADEST[25,1] & ~DMADEST[15,1];                                                      // DEST IS BRAM
-    uint1   dest16bit <:: ( DMADEST[26,1] | DMADEST[25,1] | destBRAM ) & ~DMADEST[0,1];                                         // DESTINATION IS 16 BIT CAPABLE
-
-    always_after {
-        { srcSET = ( DMASOURCE == $addr_width$hfe0e ); }                                                                        // SOURCE IS THE SET VALUE REGISTER, NO LOADING REQUIRED
-        { src16bit = ( srcSET | DMASOURCE[26,1] | DMASOURCE[25,1] | srcBRAM ) & ~DMASOURCE[0,1]; }                              // SOURCE IS 16 BIT CAPABLE
-
-        { SD16 = src16bit & dest16bit & ~DMACOUNT[0,1]; }                                                                       // 16/32 BIT FLAGS FOR SOURCE&DEST + SET&DEST
-        { SSD16 = srcSET & dest16bit & ~DMACOUNT[0,1]; }
-        { SD32 = src16bit & dest16bit & ~|DMACOUNT[0,2]; }
-        { SSD32 = srcSET & dest16bit & ~|DMACOUNT[0,2]; }
-
-        { ADD16 = ~DMASOURCEADD[0,1] & ~DMADESTADD[0,1]; }                                                                      // 16/32 BIT FLAGS FOR SOURCE&DEST ADD
-        { ADD32 = ~|DMASOURCEADD[0,2] & ~|DMADESTADD[0,2]; }
-
-        { multi16 = ( DMADEST == 27hd642 ); }                                                                         // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
-        { multi32 = ( DMADEST == 27hd680 ) | ( DMADEST == 27hd684 ) |                                       // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
-                      ( DMADEST == 27hd688 ) | ( DMADEST == 27hd68c ); }
-    }
-}
-unit dma_src_add(
-    input   uint$addr_width$ dmasrc,
-    input   uint$addr_width$ DMASOURCEADD,
-    input   uint1   DMA16BIT,
-    input   uint1   DMA32BIT,
-    input   uint3   PBmax,
-    output  uint$addr_width$  NEXT,
-    output  uint$addr_width$  ADD,
-    output  uint$addr_width$  PB
-) <reginputs> {
-    always_after {
-        { NEXT = dmasrc + ( DMA32BIT ? 4 : DMA16BIT ? 2 : 1 ); }                                                                // NEXT SOURCE ADDRESS FOR 32/16/8 BITS
-        { ADD = dmasrc + DMASOURCEADD; }                                                                                        // NEXT DESTINATION ADDRESS IF STEPPING
-        { PB = dmasrc + PBmax; }                                                                                                // NEXT SOURCE ADDRESS FOR PIXELBLOCK TRANSFERS
-    }
-}
-unit dma_dest_add(
-    input   uint$addr_width$ dmadest,
-    input   uint$addr_width$ DMADESTADD,
-    input   uint1   DMA16BIT,
-    input   uint1   DMA32BIT,
-    input   uint3   PBmax,
-    output  uint$addr_width$  NEXT,
-    output  uint$addr_width$  ADD,
-    output  uint$addr_width$  PB
-) <reginputs> {
-    always_after {
-        { NEXT = dmadest + ( DMA32BIT ? 4 : DMA16BIT ? 2 : 1 ); }                                                               // NEXT DESTINATION ADDRESS FOR 32/16/8 BITS
-        { ADD = dmadest + DMADESTADD; }                                                                                         // NEXT DESTINATION ADDRESS IF STEPPING
-        { PB = &dmadest[1,2] ? 27hd672: dmadest + 2; }                                                                // DETECTS BLUE PIXEL WRITTEN, MOVES BACK TO RED
-    }
-}
-unit dma_pb_add(
-    input   uint3   PBcount,
-    input   uint3   PBmax,
-    output  uint3   NEXT,
-    output  uint1   WAIT
-) <reginputs> {
-    always_after {
-        { NEXT = PBcount + 1; }
-        { WAIT = ( NEXT != PBmax ); }
-    }
-}
-unit dma(
-    input   uint$addr_width$  DMASOURCE,
-    input   uint$addr_width$  DMASOURCEADD,
-    input   uint$addr_width$  DMADEST,
-    input   uint$addr_width$  DMADESTADD,
-    input   uint$addr_width$  DMACOUNT,
-    input   uint8   DMACYCLES,
-    input   uint4   DMAMODE,
-    input   uint32  DMASET,
-    output  uint2   DMAACCESSSIZE,
-    output! uint1   DMAACTIVE(0),
-
-    input   uint1   start,
-    output! uint$addr_width$  address,
-    output! uint32  writedata,
-    output! uint1   writememory,
-    output! uint1   readmemory,
-    input!  uint32  readdata,
-    input!  uint1   memorybusy
-) <reginputs> {
-    uint1   DMA16BIT = uninitialised;               uint1   DMA32BIT = uninitialised;                                               // IS DMA TRANSFER 16/32 BIT CAPABLE, DEFAULTS TO 8 BIT
-
-    // COUNTERS FOR PIXEL BLOCK TRANSFERS
-    uint1   PB4pixel = uninitialised;               uint3   PBmax <:: PB4pixel ? 4 : 2;                 uint3   PBcount = uninitialised;
-
-    uint4   dmamode = uninitialized;                uint$addr_width$  dmacount = uninitialised;         uint8   dmacycles = uninitialised;
-    uint$addr_width$  dmasrc = uninitialised;       uint$addr_width$  dmadest = uninitialised;          uint32  memoryinput = uninitialised;
-
-    uint1   update = uninitialised;
-
-    uint32  writecopy <:: DMA16BIT | DMA32BIT ? readdata :  readdata[ { dmasrc[0,1], 3b000 }, 8 ];
-
-    uint$addr_width$  dmacountNEXT <:: dmacount - ( DMA32BIT ? 4 : DMA16BIT | ( &dmamode[0,3] & PB4pixel ) ? 2 : 1 );
-
-    dma_flags FLAGS(                                                                                                             // GENERATE DMA SIZE FLAGS FOR 8/16/32 BIT ACCESS
-        DMASOURCE <: DMASOURCE,
-        DMASOURCEADD <: DMASOURCEADD,
-        DMADEST <: DMADEST,
-        DMADESTADD <: DMADESTADD,
-        DMACOUNT <: DMACOUNT,
-    );
-    dma_src_add SRC(                                                                                                            // GENERATE NEXT SOURCE ADDRESSES
-        dmasrc <: dmasrc,
-        DMASOURCEADD <: DMASOURCEADD,
-        DMA16BIT <: DMA16BIT,
-        DMA32BIT <: DMA32BIT,
-        PBmax <: PBmax
-    );
-    dma_dest_add DEST(                                                                                                          // GENERATE NEXT DESTINATION ADDRESSES
-        dmadest <: dmadest,
-        DMADESTADD <: DMADESTADD,
-        DMA16BIT <: DMA16BIT,
-        DMA32BIT <: DMA32BIT
-    );
-    dma_pb_add PB(                                                                                                              // GENERATE NEXT PIXELBLOCK COUNTERS
-        PBcount <: PBcount,
-        PBmax <: PBmax
-    );
-
-    writememory := 0; readmemory := 0; update := 0;
-
-    algorithm <autorun> {
-        while(1) {
-            if( start ) {
-                switch( dmamode[3,1] ) {
-                    case 0: {
-                        while( |dmacount ) {                                                                                        // SINGLE CYCLE MODE
-                            address = dmasrc; readmemory = ~FLAGS.srcSET;
-                            switch( { FLAGS.srcSET, &dmamode[0,3] } ) {
-                                case 2b00: { while( memorybusy ) {} ++: address = dmadest; writedata = writecopy; writememory = 1; while( memorybusy ) {} ++: }
-                                case 2b01: {
-                                    while( memorybusy ) {} ++: memoryinput = readdata;
-                                    address = dmadest; PBcount = 0;
-                                    while( PBcount != PBmax ) {
-                                        writedata = memoryinput[ { PBcount, 3b000 }, 8]; if( PB.WAIT ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PB.NEXT;
-                                    }
-                                }
-                                case 2b10: { address = dmadest; writememory = 1; while( memorybusy ) {} }
-                                case 2b11: {
-                                    address = dmadest; PBcount = 0;
-                                    while( PBcount != PBmax ) { if( PB.WAIT ) { writememory = 1; ++: ++: } else { writememory = 1; } PBcount = PB.NEXT; }
-                                }
-                            }
-                            update = 1;
-                        }
-                    }
-                    case 1: {
-                        while( |dmacycles ) {
-                            while( |dmacount ) {                                                                                    // MULTI-CYCLE MODE
-                                address = dmasrc; readmemory = ~FLAGS.srcSET;
-                                switch( FLAGS.srcSET ) {
-                                    case 0: { while( memorybusy ) {} ++: address = dmadest; writedata = writecopy; writememory = 1; while( memorybusy ) {} ++: }
-                                    case 1: { address = dmadest;  writememory = 1; while( memorybusy ) {} ++: }
-                                }
-                                update = 1;
-                            }
-                            ++: update = 1;
-                        }
-                    }
-                }
-                DMAACTIVE = 0;
+            switch( accesssize ) {
+                case 2b00: { readdata = { {56{sign}}, memoryinput[ { byteaccess, 3b000 }, 8 ] }; }                              // SIGN EXTEND 8 BIT LOAD
+                case 2b01: { readdata = { {48{sign}}, memoryinput[0,16] }; }                                                    // SIGN EXTEND / NAN BOX 16 BIT LOAD
+                case 2b10: { readdata = { {32{sign}}, memoryinput[0,32] }; }                                                    // SIGN EXTEND / NAN BOX 32 BIT LOAD
+                case 2b11: { readdata = memoryinput; }                                                                          // COPY 64 BIT LOAD
             }
         }
-    }
-
-    always_after {
-        // UPDATE SOURCE ADDRESSES
-        {
-            if( update ) {
-                if( dmamode[3,1] ) {
-                    if( |dmacount ) {
-                        if( ~dmamode[0,1] ) { dmasrc = SRC.NEXT; }
-                    } else {
-                        if( ~dmamode[0,1] ) { dmasrc = SRC.ADD - DMACOUNT; }
-                    }
-                } else {
-                    switch( dmamode[0,3] ) {
-                        default: {}
-                        case 1: { dmasrc = SRC.NEXT; }
-                        case 2: { dmasrc = SRC.NEXT; }
-                        case 3: { dmasrc = SRC.NEXT; }
-                        case 6: { dmasrc = SRC.ADD; }
-                        case 7: { dmasrc = SRC.PB; }
-                    }
-                }
-            }
-        }
-        // UPDATE DESTINATION ADDRESSES
-        {
-            if( update ) {
-                if( dmamode[3,1] ) {
-                    if( |dmacount ) { dmadest = DEST.NEXT; } else { dmadest = DEST.ADD - DMACOUNT; }                            // UPDATE DESTINATION ADDRESS IF RECTANGLE MODE
-                } else {
-                    switch( dmamode[0,3] ) {
-                        default: {}
-                        case 2: { dmadest = DEST.PB; }
-                        case 3: { dmadest = DEST.NEXT; }
-                        case 4: { dmadest = DEST.NEXT; }
-                        case 6: { dmadest = DEST.ADD; }
-                    }
-                }
-            }
-        }
-
-        { if( update ) { dmacount = |dmacount ? dmacountNEXT : dmamode[3,1] ? DMACOUNT : 0; } }                                 // UPDATE COUNT I` != 0, reset if multi-cycle mode
-        { if( update ) { dmacycles = dmacycles - ~|dmacount; } }                                                                // UPDATE CYCLES WHEN COUNT == 0
-
-        // DETERMINE MAXIMUM DMA TRANSFER SIZE, 8, 16 OR 32 BIT
-        {
-            if( start ) {
-                DMA16BIT = 0; DMA32BIT = 0; PB4pixel = 0;
-                switch( dmamode ) {
-                    default: {}                                                                                                 // DEFAULT TO 8 BIT MODE
-                    case 1: {
-                        DMA16BIT = FLAGS.multi16;                                                                               // MULTI-SRC TO SINGLE-DEST 16BIT FOR BLITTER TILE WRITER
-                        DMA32BIT = FLAGS.multi32;                                                                               // MULTI-SRC TO SINGLE-DEST 32BIT FOR PIXELBLOCK ARGB RGBA
-                    }
-                    case 3: { DMA32BIT = FLAGS.SD32; DMA16BIT = FLAGS.SD16; }                                                   // MEMCPY IS 32/16 BIT CAPABLE
-                    case 4: { DMA32BIT = FLAGS.SSD32; DMA16BIT = FLAGS.SSD16; }                                                 // MEMSET IS 32/16 BIT CAPABLE
-                    case 7: { PB4pixel = ~|DMACOUNT[0,2] & FLAGS.src16bit; }                                                    // PIXELBLOCK MODE CAN OPERATE AT 4 PIXELS, NOT 2
-                    case 8: { DMA32BIT = FLAGS.SD32 & FLAGS.ADD32; DMA16BIT = FLAGS.SD16 & FLAGS.ADD16; }                       // MEMCPY RECTANGLE IS 32/16 BIT CAPABLE
-                    case 9: { DMA32BIT = FLAGS.SSD32 & FLAGS.ADD32; DMA16BIT = FLAGS.SSD16 & FLAGS.ADD16; }                     // MEMSET RECTANGLE IS 32/16 BIT CAPABLE
-                }
-
-            }
-        }
-        { if( start ) { DMAACTIVE = 1; } }
-        { if( start ) { DMAACCESSSIZE = DMA32BIT | ( &DMAMODE[0,3] & PB4pixel ) ? 2b10 :                                        // SET THE ACCESS SIZE ( SPECIAL PIXEL BLOCK IS 32/16 for 4/2 pixels )
-                                        DMA16BIT | &DMAMODE[0,3] ? 2b01: 2b00; } }
-
-        { if( ~DMAACTIVE ) {
-            dmasrc = DMASOURCE; dmadest = DMADEST; dmacount = DMACOUNT; dmacycles = DMACYCLES;                                  // IF DMA NOT ACTIVE SET VALUES TO I/O REGISTERS
-            dmamode = DMAMODE; writedata = DMASET; } }
     }
 }

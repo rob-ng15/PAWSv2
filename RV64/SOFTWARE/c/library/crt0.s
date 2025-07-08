@@ -1,5 +1,8 @@
         .global _start
 _start:
+    csrwi   mstatus,0
+    csrwi   mie,0
+    csrwi   mip,0
 
 	addi sp, sp, -8
 	sd ra,  0(sp)

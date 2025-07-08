@@ -5,98 +5,134 @@
 #include <stdio.h>
 #include <PAWSlibrary.h>
 
-// BACKGROUND TILEMAPS
-unsigned short mountainslopes[] = {
-    0b0000000000000001,
-    0b0000000000000011,
-    0b0000000000000111,
-    0b0000000000001111,
-    0b0000000000011111,
-    0b0000000000111111,
-    0b0000000001111111,
-    0b0000000011111111,
-    0b0000000111111111,
-    0b0000001111111111,
-    0b0000011111111111,
-    0b0000111111111111,
-    0b0001111111111111,
-    0b0011111111111111,
-    0b0111111111111111,
-    0b1111111111111111,
-
-    0,0,0,0,0,0,0,0,
-    0b0000000110000000,
-    0b0000001111000000,
-    0b0000011111100000,
-    0b0000111111110000,
-    0b0001111111111000,
-    0b0011111111111100,
-    0b0111111111111110,
-    0b1111111111111111
-};
-
 #include "graphics/outrun-graphics.h"
 
 unsigned char *cityscape[]={
-    "                                          ",   // OFFSCREEN TOP
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "  Aa                                      ",
-    "  Bb                         JjJj    JjJj ",
-    "  Cc                      D  KkKk    KkKk ",
-    "  Cc                      E  LlLl    LlLl ",
-    "  Cc  OTTTTo              F  MmMm    MmMm ",
-    "  Cc  PUUUUp  V        v  G  NnNn    NnNn ",
-    "  Cc  QqQqQq  W        w  H  NnNnNnNnNnNn ",
-    "  Cc  RrRrRr  X        x  I  NnNnNnNnNnNn ",
-    "  Cc  SsSsSs  yYyY  yYyY  I  NnNn    NnNn ",
-    "  Cc  QqQqQq  YyYyYyYyYy  I  NnNnNnNnNnNn ",
-    "  Cc  RrRrRr  yYyYyYyYyY  I  NnNnNnNnNnNn ",
-    "  Cc  SsQsSs  YyYy  YyYy  I  NnNn    NnNn ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          ",
-    "                                          "    // OFFSCREEN BOTTOM
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "  Aa                                                          ",
+    "  Bb                         JjJj    JjJj                     ",
+    "  Cc                      D  KkKk    KkKk                     ",
+    "  Cc                      E  LlLl    LlLl                     ",
+    "  Cc  OTTTTo              F  MmMm    MmMm              OTTTTo ",
+    "  Cc  PUUUUp  V        v  G  NnNn    NnNn  V        v  PUUUUp ",
+    "  Cc  QqQqQq  W        w  H  NnNnNnNnNnNn  W        w  QqQqQq ",
+    "  Cc  RrRrRr  X        x  I  NnNnNnNnNnNn  X        x  RrRrRr ",
+    "  Cc  SsSsSs  yYyY  yYyY  I  NnNn    NnNn  yYyY  yYyY  SsSsSs ",
+    "  Cc  QqQqQq  YyYyYyYyYy  I  NnNnNnNnNnNn  YyYyYyYyYy  QqQqQq ",
+    "  Cc  RrRrRr  yYyYyYyYyY  I  NnNnNnNnNnNn  yYyYyYyYyY  RrRrRr ",
+    "  Cc  SsQsSs  YyYy  YyYy  I  NnNn    NnNn  YyYy  YyYy  SsQsSs ",
+    "##############################################################",
+    "**************************************************************",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
 };
 
+unsigned char *backdrop[]={
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "      afk  afk                 afk            afk  afk  afk   ",
+    " ADH  bgl  bgl  ADH  ADH  ADH  bgl  ADH  ADH  bgl  bgl  bgl   ",
+    " BEI  chm  chm  BEI  BEI  BEI  chm  BEI  BEI  chm  chm  chm   ",
+    " CFJ  din  din  CFJ  CFJ  CFJ  din  CFJ  CFJ  din  din  din   ",
+    "  G   ejo  ejo   G    G    G   ejo   G    G   ejo  ejo  ejo   ",
+    "##############################################################",
+    "**************************************************************",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+    "                                                              ",
+};
+
+// Music
+unsigned char *passing_breeze;
+unsigned int music_size;
+
 void set_tilemaps( void ) {
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
-    tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+    for( int i = 0; i < 4; i++ ) tm_cs( i );
 
     // SET BUILDINGS TILEMAPS
-    set_tilemap_bitamps_from_spritesheet( UPPER_LAYER, &building_graphics[ 0 ] );
+    set_tilemap_bitamps_from_spritesheet( 1, &building_graphics[ 0 ] );
 
     // SET CLOUD TILEMAPS
     for( int i = 0; i < 4; i++ ) {
-        set_tilemap_bitmap32x32( LOWER_LAYER, 1 + ( i * 4 ), &cloud_graphics[ i * 1024 ] );
+        set_tilemap_bitmap32x32( 0, 1 + ( i * 4 ), &cloud_graphics[ i * 1024 ] );
     }
 
     for( int y = 0; y < 32; y++ ) {
-        for( int x = 0; x < 42; x++ ) {
+        for( int x = 0; x < 63; x++ ) {
             switch( cityscape[y][x] ) {
+                case 0:
                 case ' ':
                 case '@':
+                    break;
+                case '#':
+                    set_tilemap_tile_abs( 3, x, y+1, 62, 0 );
+                    break;
+                case '*':
+                    set_tilemap_tile_abs( 3, x, y+1, 63, 0 );
                     break;
                 default:
                     if( cityscape[y][x] > 'Z' ) {
                         // LOWER CASE - REFLECTION
-                        set_tilemap_tile( UPPER_LAYER, x, y, cityscape[y][x] - 96, REFLECT_X );
+                        set_tilemap_tile_abs( 3, x, y+1, cityscape[y][x] - 96, REFLECT_X );
                     } else {
                         // UPPER CASE - NO REFLECTION
-                        set_tilemap_tile( UPPER_LAYER, x, y, cityscape[y][x] - 64, 0 );
+                        set_tilemap_tile_abs( 3, x, y+1, cityscape[y][x] - 64, 0 );
+                    }
+                    break;
+            }
+            switch( backdrop[y][x] ) {
+                case 0:
+                case ' ':
+                case '@':
+                    break;
+                case '#':
+                    set_tilemap_tile_abs( 2, x, y+1, 62, 0 );
+                    break;
+                case '*':
+                    set_tilemap_tile_abs( 2, x, y+1, 63, 0 );
+                    break;
+                default:
+                    if( backdrop[y][x] > 'Z' ) {
+                        // LOWER CASE - BIG TREE
+                        set_tilemap_tile_abs( 2, x, y+1, backdrop[y][x] - 96 + 35, 0 );
+                    } else {
+                        // UPPER CASE - SMALL TREE
+                        set_tilemap_tile_abs( 2, x, y+1, backdrop[y][x] - 64 + 25, 0 );
                     }
                     break;
             }
@@ -104,33 +140,50 @@ void set_tilemaps( void ) {
     }
 
     // DRAW THE CLOUD
-    set_tilemap_tile32x32( LOWER_LAYER, 17, 4, 1 );
-    set_tilemap_tile32x32( LOWER_LAYER, 17, 6, 5 );
-    set_tilemap_tile32x32( LOWER_LAYER, 19, 4, 9 );
-    set_tilemap_tile32x32( LOWER_LAYER, 19, 6, 13 );
+    set_tilemap_32x32tile_abs( 0, 17, 5, 1 );
+    set_tilemap_32x32tile_abs( 0, 17, 7, 5 );
+    set_tilemap_32x32tile_abs( 0, 19, 5, 9 );
+    set_tilemap_32x32tile_abs( 0, 19, 7, 13 );
 }
 
-// DRAW THE TRAFFIC IN FONT OF THE CITY
-#define SPRITE_YPOS 304
+
+// DRAW THE TRAFFIC IN FRONT OF THE CITY ( use sprites 16 - 31, sprite layer 1 ) and BEHIND THE CITY ( uses sprites 0 - 15, sprite layer 0 )
+#define SPRITE_YPOS 280
 unsigned char updateflags[] = { 31, 31, 31, 30, 30, 29, 29, 3, 3, 2, 2, 1, 1, 1 };
 void set_sprites() {
-    for( int i = 0; i < 16; i++ ) {
-        set_sprite_bitmaps( LOWER_LAYER, i, &traffic_sprites[0] );
+    for( int i = 0; i < 8; i++ ) {
+        set_sprite_bitmaps( i * 2, &traffic_sprites[0] );
+        set_sprite_bitmaps( i * 2 + 16, &traffic_sprites[0] );
     }
 
     unsigned short xpos[] = { 48, 64, 80, 48, 64, 48, 64, 64, 48, 64, 48, 80, 64, 48 };
-    unsigned short tiles[] = { 5, 6, 7, 3, 4, 1, 2, 1, 2, 3, 4, 5, 6, 7 };
+    unsigned char tiles[] = { 5, 6, 7, 3, 4, 1, 2, 1, 2, 3, 4, 5, 6, 7 };
 
     for( int i = 0; i < 7; i++ ) {
-        set_sprite( LOWER_LAYER, i, 1, xpos[i], SPRITE_YPOS, tiles[i], 0 );
-        set_sprite( LOWER_LAYER, i + 7, 1, xpos[ i + 7 ], SPRITE_YPOS, tiles[ i + 7 ], REFLECT_X );
+        set_sprite( i, 1, xpos[i] + 32, SPRITE_YPOS - 32, tiles[i], 0 );
+        set_sprite( i + 7, 1, xpos[ i + 7 ] + 32, SPRITE_YPOS - 16, tiles[ i + 7 ], REFLECT_X );
+
+        set_sprite( i + 16, 1, xpos[i], SPRITE_YPOS, tiles[i], 0 );
+        set_sprite( i + 16 + 7, 1, xpos[ i + 7 ], SPRITE_YPOS + 16, tiles[ i + 7 ], REFLECT_X );
     }
 }
 
-void move_sprites() {
-    for( int i = 0; i < 14; i++ ) {
-        update_sprite( LOWER_LAYER, i, updateflags[i] );
-    }
+// https://www.spriters-resource.com/fullview/25458/
+unsigned char car_spritesheet[] = {
+    #include "graphics/car-spritesheet.h"
+};
+
+#define FERRARI_y 400
+// DRAW THE FERRARI IN FRONT OF EVERYTHING ( use sprites 48 - 63, sprite layer 3 )
+void set_car_sprites( void ) {
+    set_sprite_bitamps_from_spritesheet( 48, 8, car_spritesheet, TRUE );
+
+    set_sprite( 48, 0, 320-64, FERRARI_y, 0, SPRITE_DOUBLE | SPRITE_32X32 );                                        // LEVEL
+    set_sprite( 49, 0, 320, FERRARI_y, 1, SPRITE_DOUBLE | SPRITE_32X32 );
+    set_sprite( 50, 0, 320-64, FERRARI_y, 0, SPRITE_DOUBLE | SPRITE_32X32 );
+    set_sprite( 51, 0, 320, FERRARI_y, 1, SPRITE_DOUBLE | SPRITE_32X32 );
+    set_sprite( 52, 0, 320-64, FERRARI_y, 0, SPRITE_DOUBLE | SPRITE_32X32 );
+    set_sprite( 53, 0, 320, FERRARI_y, 1, SPRITE_DOUBLE | SPRITE_32X32 );
 }
 
 // ROADSIDE ITEMS - AS DRAWLISTS FOR EASIER PLACEMENT AND SCALING
@@ -303,38 +356,6 @@ struct DrawList2D RIGHTBILLBOARD4[] = {
     { DLRECT, PINK, DITHERSOLID, { 52, -52 }, { 44, -60 }, },
 };
 
-// PIXELBLOCK SPRITES FOR TREES
-unsigned char tree_1[] = {
-#include "graphics/tree-1.h"
-};
-unsigned char tree_2[] = {
-#include "graphics/tree-2.h"
-};
-unsigned char tree_3[] = {
-#include "graphics/tree-3.h"
-};
-unsigned char tree_4[] = {
-#include "graphics/tree-4.h"
-};
-
-bitmap_sprite tree_sprites[]= {
-    {64,76,tree_1},
-    {64,72,tree_2},
-    {64,103,tree_3},
-    {64,53,tree_4}
-};
-
-// https://www.spriters-resource.com/fullview/25458/
-unsigned char car_0[] = {
-#include "graphics/car-down.h"
-};
-unsigned char car_1[] = {
-#include "graphics/car-level.h"
-};
-unsigned char car_2[] = {
-#include "graphics/car-up.h"
-};
-
 // ROAD SEGMENTS, DEFINING NUMBER OF SECTIONS BEFORE NEXT TURN, TURN ANGLE, AND SIDE OBJECTS
 #define MAXSEGMENT 17
 typedef struct {
@@ -372,9 +393,9 @@ int corner[MAXSEGMENT]; float pitch[MAXSEGMENT], slope[MAXSEGMENT];
 
 // VECTOR HELPERS FOR 2D to 3D PROJECTION
 typedef struct { float x,y,z; }   vec3;
-typedef struct { short x,y,z; }   ivec3;
+typedef struct { int x,y,z; }   ivec3;
 typedef struct { float x,y,z,w; } vec4;
-typedef struct { short x,y,z,w; } ivec4;
+typedef struct { int x,y,z,w; } ivec4;
 
 static inline vec3 make_vec3(float x, float y, float z) {
   vec3 V;
@@ -431,15 +452,16 @@ void update() {
 }
 
 // NUMBER OF SEGMENTS TO DRAW EACH ITERATION
-#define DRAWSEGMENTS 32
-void drawtrapezium( unsigned char colour, short x1, short y1, short w1, short x2, short y2, short w2 ) {
+#define DRAWSEGMENTS 28
+
+void drawtrapezium( unsigned char colour, int x1, int y1, int w1, int x2, int y2, int w2 ) {
     if( (((x1-w1)<0) && ((x1+w1)<0) && ((x2+w2)<0) && ((x2-w2)<0)) ||
         (((x1-w1)>319) && ((x1+w1)>319) && ((x2+w2)>319) && ((x2-w2)>319)) ) return;
     gpu_quadrilateral( colour, x1-w1, y1, x1+w1, y1, x2+w2, y2, x2-w2, y2 );
 }
 
-void gettunnelrectangle( float px, float py, float scale, short *x1, short *y1, short *x2, short *y2 )  {
-    short w = 6.4 * scale, h = 4 * scale;
+void gettunnelrectangle( float px, float py, float scale, int *x1, int *y1, int *x2, int *y2 )  {
+    int w = 6.4 * scale, h = 4 * scale;
     *x1 = px - w/2;
     *y1 = py -h;
     *x2 = px + w/2;
@@ -447,9 +469,9 @@ void gettunnelrectangle( float px, float py, float scale, short *x1, short *y1, 
 }
 
 void drawtunnelface( float px, float py, float scale ) {
-    short x1, y1, x2, y2;
+    int x1, y1, x2, y2;
     gettunnelrectangle( px, py, scale, &x1, &y1, &x2, &y2 );
-    short wh = 4.5 * scale, wy = py - wh;
+    int wh = 4.5 * scale, wy = py - wh;
     gpu_dither( DITHERBRICK, GREY2 );
     if( y1 > 0 ) gpu_rectangle( GREY3, 0, wy, 319, y1 - 1 );
     if( x1 > 0 ) gpu_rectangle( GREY3, 0, y1, x1 -1, y2 - 1 );
@@ -465,17 +487,17 @@ void drawroad( float x1, float y1, float scale1, float x2, float y2, float scale
         gpu_dither( DITHEROFF );
     }
 
-    short w1 = 3 * scale1, w2 = 3 * scale2;
+    int w1 = 3 * scale1, w2 = 3 * scale2;
     drawtrapezium( tnl ? GREY2 : GREY3, x1, y1, w1, x2, y2, w2 );
 
     // CENTRE LINE MARKINGS
     if( !(sumct&3) ) {
-        short mw1 = .1 * scale1, mw2 = .1 * scale2;
+        int mw1 = .1 * scale1, mw2 = .1 * scale2;
         drawtrapezium( tnl ? GREY5 : WHITE, x1, y1, mw1, x2, y2, mw2 );
     }
 
     // SHOULDER MARKINGS
-    short sw1 = .2 * scale1, sw2 = .2 * scale2;
+    int sw1 = .2 * scale1, sw2 = .2 * scale2;
     drawtrapezium( (sumct&1) ? tnl ? GREY5 : WHITE : tnl ? RED2 : RED, x1-w1, y1, sw1 ,x2-w2, y2, sw2 );
     drawtrapezium( (sumct&1) ? tnl ? GREY5 : WHITE : tnl ? RED2 : RED, x1+w1, y1, sw1, x2+w2, y2, sw2 );
 }
@@ -491,15 +513,15 @@ void draw() {
     // SPRIATES TO DRAW, ALONG WITH
     int lsprites[ DRAWSEGMENTS ], rsprites[ DRAWSEGMENTS ];
     vec3 spritesxyz[DRAWSEGMENTS];
-    short spriteclip[DRAWSEGMENTS][4];
+    int spriteclip[DRAWSEGMENTS][4];
 
     // SKEY CAMERA TO ACCOUNT FOR DIRECTION
     c = skew( camx, camy, camz, xd, yd );
     x = -c.x; y =-c.y+2; z = -c.z + 2;
 
     // CROPPING RECTANGLE
-    short crop[4] = { CROPFULLSCREEN }; gpu_crop( CROPFULLSCREEN ); gpu_cs();
-    short x1, y1, x2, y2, px1, py1, px2, py2;
+    int crop[4] = { CROPFULLSCREEN }; gpu_crop( CROPFULLSCREEN ); gpu_cs();
+    int x1, y1, x2, y2, px1, py1, px2, py2;
 
     pp = project( x, y, z );
 
@@ -507,13 +529,15 @@ void draw() {
 
     // MOVE THE TILEMAPS
     if( road[cnr].tu < 0 ) {
-        tilemap_scrollwrapclear( LOWER_LAYER, TM_LEFT, ( road[cnr].tu <= -0.5 ) ? 2 : 1 );
-        tilemap_scrollwrapclear( UPPER_LAYER, TM_LEFT,1 );
+        tilemap_scroll( 0, TM_LEFT, 1 );
+        tilemap_scroll( 2, TM_LEFT, ( road[cnr].tu <= -0.5 ) ? 2 : 1 );
+        tilemap_scroll( 3, TM_LEFT, ( road[cnr].tu <= -0.5 ) ? 3 : 2 );
     }
     if( road[cnr].tu > 0 ) {
-        tilemap_scrollwrapclear( LOWER_LAYER, TM_RIGHT, ( road[cnr].tu >= 0.5 ) ? 2 : 1 );
-        tilemap_scrollwrapclear( UPPER_LAYER, TM_RIGHT, 1 );
-   }
+        tilemap_scroll( 0, TM_RIGHT, 1 );
+        tilemap_scroll( 2, TM_RIGHT, ( road[cnr].tu >= 0.5 ) ? 2 : 1 );
+        tilemap_scroll( 3, TM_RIGHT, ( road[cnr].tu >= 0.5 ) ? 3 : 2 );
+    }
 
     for( int i = 0; i < DRAWSEGMENTS; i++ ) {
         x += xd; y += yd; z += zd;
@@ -656,51 +680,68 @@ void draw() {
             default:
         }
     }
-
-    // DRAW CAR GRAPHIC
-    if( road[camcnr].pi > 0 ) {
-        gpu_pixelblock( 121, 197, 78, 40, TRANSPARENT, car_0 );
-    } else {
-        if( road[camcnr].pi < 0 ) {
-            gpu_pixelblock( 121, 196, 78, 41, TRANSPARENT, car_2 );
-        } else {
-            gpu_pixelblock( 121, 197, 78, 40, TRANSPARENT, car_1 );
-        }
-    }
 }
 
 void set_background_generator( void ) {
     set_background( DKBLUE, BLUE, BKG_HATCH );
 }
 
+void __attribute__((interrupt ("machine"))) move_sprites() {
+    IRQ_ACK( IRQ_VBLANK );
+    for( int i = 0; i < 14; i++ ) {
+        update_sprite_compat( i, updateflags[i] );
+        update_sprite_compat( 16 + i, updateflags[i] );
+    }
+}
+
 int main( int argc, char **argv ) {
     unsigned char dimmerlevel = 8, counter = 3;
 
+    // Choose Music
+    screen_order( LAYER_CHARACTERMAP, LAYER_BITMAP_0, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
+    tpu_cs();
+    tpu_print_centre( 4, TRANSPARENT, WHITE,  TPU_BOLD + TPU_Y2, "Music Converted From https://archive.org/details/OutRunGEN" );
+    tpu_print_centre( 6, TRANSPARENT, WHITE,  TPU_BOLD + TPU_X2, "8 bit Mono @ 11025 KHz WAV" );
+
+    passing_breeze = sdcard_selectfile( "Please select Music", "WAV", &music_size, "Loading" );
+    if( music_size )
+        pcmsample_start( 1, music_size - 544, &passing_breeze[78], KHz11025, TRUE );
+
     // SETUP SCREEN
     screen_dimmer( dimmerlevel );
-    bitmap_draw( 0 ); gpu_cs();
-    bitmap_draw( 1 ); gpu_cs();
-    bitmap_display(0);
+    screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_3, LAYER_BITMAP_0, LAYER_SPRITES_1, LAYER_TILEMAP_3, LAYER_SPRITES_0, LAYER_TILEMAP_2, LAYER_TILEMAP_0, FALSE, FALSE, FALSE );
+
+    tpu_cs();
+    tpu_print_centre( 2, TRANSPARENT, WHITE,  TPU_BOLD + TPU_Y2 + TPU_BLINK, "Based upon https://www.lexaloffle.com/bbs/?tid=35767" );
+    tpu_print_centre( 4, TRANSPARENT, WHITE,  TPU_BOLD + TPU_X2 + TPU_BLINK, "Written by @tommulgrew" );
+
+    bitmap_draw( 3 ); gpu_cs();
     set_background_generator();
     set_tilemaps();
     set_sprites();
+    set_car_sprites();
+
+    // INTERRUPT HANDLER SETUP
+    IRQ_VECTOR( (void *)move_sprites ); IRQ_ON( IRQ_VBLANK, TRUE );
 
     // PREPARE ROAD
     init();
 
     unsigned char framebuffer = 1;
     while( !( get_buttons() & 4 ) ) {
-        bitmap_draw( 3 - framebuffer );
-        draw();
-        update(); move_sprites();
-        if( !(systemclock()&15) ) {
-            tpu_print_centre( 1, TRANSPARENT, WHITE, 1, "Based upon https://www.lexaloffle.com/bbs/?tid=35767" );
-            tpu_print_centre( 2, TRANSPARENT, WHITE, 1, "Written by @tommulgrew" );
-        } else {
-            if( systemclock()&3 ) tpu_cs();
-        }
-        framebuffer = 3 - framebuffer;
-        bitmap_display( framebuffer );
+        bitmap_draw( 3 - framebuffer ); draw(); update();
+
+        framebuffer = 3 - framebuffer; await_vblank();
+        screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_3, framebuffer, LAYER_SPRITES_1, LAYER_TILEMAP_3, LAYER_SPRITES_0, LAYER_TILEMAP_2, LAYER_TILEMAP_0, FALSE, FALSE, FALSE );
+
+        // SET FERRARI SPRITE
+        set_sprite_attribute( 48, ATTR_SPRITE_ACTIVE, road[camcnr].pi == 0 );
+        set_sprite_attribute( 49, ATTR_SPRITE_ACTIVE, road[camcnr].pi == 0 );
+        set_sprite_attribute( 50, ATTR_SPRITE_ACTIVE, road[camcnr].pi < 0 );
+        set_sprite_attribute( 51, ATTR_SPRITE_ACTIVE, road[camcnr].pi < 0 );
+        set_sprite_attribute( 52, ATTR_SPRITE_ACTIVE, road[camcnr].pi > 0 );
+        set_sprite_attribute( 53, ATTR_SPRITE_ACTIVE, road[camcnr].pi > 0 );
+
         if( dimmerlevel ) {
             if( !--counter ) { screen_dimmer( --dimmerlevel ); counter = 3; }
         }

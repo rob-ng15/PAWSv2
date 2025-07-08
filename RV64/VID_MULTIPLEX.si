@@ -1,0 +1,133 @@
+unit palette_lookup(
+    dualport_bram_port0         palette,                                                                                        // 256 x 24-BIT RGB, READ ONLY
+    input   uint8               index                                                                                           // PALETTE INDEX
+) {
+    palette.addr0 := index;
+}
+
+unit multiplex_display(
+    input   uint1   palette_clock,                                                                                              // DOUBLE CLOCK FOR PALETTE LOOKUP
+    dualport_bram_port0 palette,                                                                                                // 256 x 24-BIT RGB, READ ONLY
+
+    output! uint8   pix_red,                                                                                                    // 0 - 255 RED
+    output! uint8   pix_green,                                                                                                  // 0 - 255 GREEN
+    output! uint8   pix_blue,                                                                                                   // 0 - 255 BLUE
+
+    input   uint$11*4$ display_multiplex,                                                                                       // LAYER DISPLAY ORDER
+    input   uint1   colour,                                                                                                     // COLOUR OR GREYSCALE FLAG
+    input   uint1   usepalette,                                                                                                 // USE USER DEFINED PALETTE ( USED BY DOOM )
+
+    input uint8 background_p,                                                                                                   // BACKGROUND PIXEL
+
+    $$for i=0,3 do
+    input uint8 sprites_$i$,                                                                                                    // SPRITES PIXEL      (  0 - 15, 16 - 31, 32 - 47, 48 - 63 )
+    input uint1 sprites_display_$i$,                                                                                            //         DISPLAY?
+    input uint8 tilemap_$i$,                                                                                                    // TILEMAP PIXEL
+    input uint1 tilemap_display_$i$,                                                                                            //         DISPLAY?
+    $$end
+
+    input uint8 bitmap_0,                                                                                                       // BITMAP 0 PIXEL
+    input uint1 bitmap_0_display,                                                                                               //        DISPLAY?
+    input uint8 bitmap_1,                                                                                                       // BITMAP 1 PIXEL
+    input uint1 bitmap_1_display,                                                                                               //        DISPLAY?
+
+    input uint8 character_map_p,                                                                                                // CHARACTER MAP PIXEL
+    input uint1 character_map_display,                                                                                          //               DISPLAY?
+
+    input   uint8   status_p,                                                                                                   // STATUS LIGHTS PIXEL
+    input   uint1   status_display                                                                                              //               DISPLAY?
+) {
+    selectlayer mpd(
+        display_multiplex <: display_multiplex,
+        background <: background_p,
+        $$for i=0,3 do
+        tilemap_$i$ <: tilemap_$i$,
+        tilemap_display_$i$ <: tilemap_display_$i$,
+        sprites_$i$ <: sprites_$i$,
+        sprites_display_$i$ <: sprites_display_$i$,
+        $$end
+        bitmap_0 <: bitmap_0,
+        bitmap_0_display <: bitmap_0_display,
+        bitmap_1 <: bitmap_1,
+        bitmap_1_display <: bitmap_1_display,
+        character_map <: character_map_p,
+        character_map_display <: character_map_display,
+        status <: status_p,
+        status_display <: status_display
+    );
+    palette_lookup pl <@palette_clock> ( palette <:> palette, index <: mpd.pixel );
+
+    uint8   BIT3to8[] = { 0, 36, 73, 109, 146, 182, 219, 255 };                                                                 // xxx -> xxxxxxxx
+
+    always {
+        switch( colour ) {
+            case 0: {                                                                                                           // RGBM or PALETTE
+                if( usepalette & ~status_display ) {
+                    pix_red = palette.rdata0[16,8]; pix_green = palette.rdata0[8,8]; pix_blue = palette.rdata0[0,8];
+                } else {
+                    pix_red = BIT3to8[ { mpd.pixel[6,2], mpd.pixel[0,1]} ];                                                     // DEFAULT RGBM -> R8 G8 B8 via lookup
+                    pix_green = BIT3to8[ mpd.pixel[3,3] ];
+                    pix_blue = BIT3to8[ { mpd.pixel[1,2], mpd.pixel[0,1]} ];
+                }
+            }
+            case 1: { pix_red = mpd.pixel; pix_green = mpd.pixel; pix_blue = mpd.pixel; }                                       // GREYSCALE
+        }
+    }
+}
+
+// CHOOSE LAY TO DISPLAY
+unit selectlayer(
+    input   uint$11*4$ display_multiplex,
+    input   uint1   status_display,
+    input   uint8   status,
+    input   uint8   character_map,
+    input   uint1   character_map_display,
+    input   uint8   bitmap_0,
+    input   uint1   bitmap_0_display,
+    input   uint8   bitmap_1,
+    input   uint1   bitmap_1_display,
+    $$for i=0,3 do
+    input   uint8   sprites_$i$,                                                                                                // SPRITES PIXEL      (  0 - 15, 16 - 31, 32 - 47, 48 - 63 )
+    input   uint1   sprites_display_$i$,                                                                                        //         DISPLAY?
+    input   uint8   tilemap_$i$,                                                                                                // TILEMAP PIXELS
+    input   uint1   tilemap_display_$i$,                                                                                        //         DISPLAY?
+    $$end
+    input   uint8   background,
+    output! uint8   pixel
+) {
+    uint12  flags <: {                                                                                                          // ARRANGE THE LAYER DISPLAY FLAGS INTO AN ARRAY
+                            tilemap_display_3,
+                            tilemap_display_2,
+                            tilemap_display_1,
+                            tilemap_display_0,
+                            sprites_display_3,
+                            sprites_display_2,
+                            sprites_display_1,
+                            sprites_display_0,
+                            character_map_display,
+                            bitmap_1_display,
+                            bitmap_0_display,
+                            1b0
+                     };
+
+    uint$12*8$  pixels <: {                                                                                                     // ARRANGE THE LAYER PIXELS INTO AN ARRAY
+                            tilemap_3,
+                            tilemap_2,
+                            tilemap_1,
+                            tilemap_0,
+                            sprites_3,
+                            sprites_2,
+                            sprites_1,
+                            sprites_0,
+                            character_map,
+                            bitmap_1,
+                            bitmap_0,
+                            8h40
+                        };
+
+    pixel := status_display ? status :                                                                                          // SELECT THE LAYERS TO DISPLAY FROM THE ARRAY
+                              $$for i=0,10 do
+                                flags[display_multiplex[$i*4$,4],1] ? pixels[display_multiplex[$i*4$,4]*8,8] :
+                              $$end
+                              background;
+}

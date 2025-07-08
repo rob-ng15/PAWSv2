@@ -1,3 +1,4 @@
+#ifndef __PAWSDEFINITIONS__
 #include <stdbool.h>
 
 // STANDARD CONSTANTS
@@ -26,30 +27,79 @@
 #endif
 
 // DISPLAY LAYERS
-#define LOWER_LAYER 0
-#define UPPER_LAYER 1
+#define LAYER_NULL 0
+#define LAYER_BITMAP_0 1
+#define LAYER_BITMAP_1 2
+#define LAYER_CHARACTERMAP 3
+#define LAYER_SPRITES_0 4
+#define LAYER_SPRITES_1 5
+#define LAYER_SPRITES_2 6
+#define LAYER_SPRITES_3 7
+#define LAYER_TILEMAP_0 8
+#define LAYER_TILEMAP_1 9
+#define LAYER_TILEMAP_2 10
+#define LAYER_TILEMAP_3 11
 
 // BACKGROUND PATTERN GENERATOR
 #define BKG_SOLID 0
-#define BKG_5050_V 1
-#define BKG_5050_H 2
-#define BKG_CHKBRD_5 3
-#define BKG_RAINBOW 4
-#define BKG_SNOW 5
-#define BKG_STATIC 6
-#define BKG_CHKBRD_1 7
-#define BKG_CHKBRD_2 8
-#define BKG_CHKBRD_3 9
-#define BKG_CHKBRD_4 10
+#define BKG_CHKBRD_1 1
+#define BKG_CHKBRD_2 2
+#define BKG_CHKBRD_3 3
+#define BKG_CHKBRD_4 4
+#define BKG_CHKBRD_5 5
+#define BKG_5050_V 6
+#define BKG_5050_H 7
+#define BKG_RAINBOW 8
+#define BKG_SNOW 9
+#define BKG_STATIC 10
 #define BKG_HATCH 11
 #define BKG_LSLOPE 12
 #define BKG_RSLOPE 13
 #define BKG_VSTRIPE 14
 #define BKG_HSTRIPE 15
 
+// DMA(NEW) TRANSFER PROTOCOLS
+#define DMA_SET_TO_S    0x10
+#define DMA_SET_TO_M    0x12
+#define DMA_CPY_S_TO_S  0x20
+#define DMA_CPY_M_TO_S  0x21
+#define DMA_CPY_S_TO_M  0x22
+#define DMA_CPY_M_TO_M  0x23
+#define DMA_CPY_STEP_SD 0x27
+#define DMA_SET_RECT    0x40
+#define DMA_CPY_RECT    0x80
+#define DMA_TO_IO       0x100
+#define DMA_FROM_IO     0x101
+
+// IRQ FLAGS
+#define IRQ_SOFTWARE    ( 1 << 3 )
+#define IRQ_TIMER       ( 1 << 7 )
+#define IRQ_VBLANK      ( 1 << 11 )
+#define IRQ_CAUSE_SOFTWARE 3
+#define IRQ_CAUSE_TIMER 7
+#define IRQ_CAUSE_VBLANK 11
+#define IRQ_TIMER_CYCLES 50000000
+#define IRQ_1_HZ 0
+#define IRQ_10_HZ 1
+#define IRQ_100_HZ 2
+#define IRQ_1000_HZ 3
+
 // NEW CU BACKGROUND CO-PROCESSOR
-// OPCODES
-#define CU_JMP 0
+// OPCODES, NOTE OPCODE 0 IS MULTI-USE, JPL JSL AND SLI REQUIRE 1 OTHER ARGUMENT, THE LITERAL VALUE, JPx AND JSx REQUIRE 1 OTHER ARGUMENT, THE REGISTER WITH ADDRESS TO JUMP TO
+#define CU_JPL 0,0,1
+#define CU_JPR 0,0,0
+#define CU_JSL 0,1,1
+#define CU_JSR 0,0,0
+#define CU_RET 0,2,0,0
+#define CU_SLI 0,3,1
+#define CU_SR0 0,3,0,4
+#define CU_SR1 0,3,0,5
+#define CU_SR2 0,3,0,6
+#define CU_SR3 0,3,0,7
+#define CU_LR0 0,4,0,0
+#define CU_LR1 0,5,0,0
+#define CU_LR2 0,6,0,0
+#define CU_LR3 0,7,0,0
 #define CU_SET 1
 #define CU_ADD 2
 #define CU_SUB 3
@@ -66,7 +116,7 @@
 #define CU_LFM 14
 #define CU_STM 15
 
-// REGISTER NAMES { VBLANK, X, Y, CPU, R0, R1, R2, R3 }
+// REGISTER NAMES { VBLANK, X, Y, RC, R0, R1, R2, R3 } WHEN READING ( RC, R0, R1, R2, R3 ) ALSO WHEN WRITING
 #define CU_RB 0
 #define CU_RX 1
 #define CU_RY 2
@@ -160,22 +210,29 @@
 #define DITHER2COLSTATIC 15
 
 // SPRITE ATTRIBUTE FLAGS
-#define SPRITE_ACTIVE 0
-#define SPRITE_TILE 1
-#define SPRITE_COLOUR 2
-#define SPRITE_X 3
-#define SPRITE_Y 4
-#define SPRITE_ACTION 5
+#define ATTR_SPRITE_ACTIVE 0
+#define ATTR_SPRITE_TILE 1
+#define ATTR_SPRITE_X 3
+#define ATTR_SPRITE_Y 4
+#define ATTR_SPRITE_ACTION 5
 
 // SPRITE OTHER LAYER COLLISION FLAGS
-#define SPRITE_TO_BITMAP 8
-#define SPRITE_TO_LOWER_TILEMAP 4
-#define SPRITE_TO_UPPER_TILEMAP 2
-#define SPRITE_TO_OTHER_SPRITES 1
+#define SPRITE_TO_BITMAP_0 1
+#define SPRITE_TO_BITMAP_1 2
+#define SPRITE_TO_TILEMAP_0 4
+#define SPRITE_TO_TILEMAP_1 8
+#define SPRITE_TO_TILEMAP_2 16
+#define SPRITE_TO_TILEMAP_3 32
+#define SPRITE_TO_CHARACTERMAP 64
 
-// DOUBLE/QUADRUPAL SIZE OF SPRITE ( IN ADDITION TO THE FLAGS BELOW )
+// DOUBLE/QUADRUPAL HALF/QUARTER SIZE OF SPRITE ( IN ADDITION TO THE FLAGS BELOW )
 #define SPRITE_DOUBLE 8
 #define SPRITE_QUAD 16
+#define SPRITE_HALF 40
+#define SPRITE_QUARTER 48
+
+// SWITCH FROM 8 tiles of 16x16 TO 2 tiles of 32x32 FOR SPRITES
+#define SPRITE_32X32 64
 
 // FOR TILEMAP, BLITTERS, SPRITES
 #define REFLECT_X 1
@@ -193,18 +250,41 @@
 #define TM_UP 2
 #define TM_RIGHT 3
 #define TM_DOWN 4
-#define TM_CLEAR 5,0
+#define TM_RESET 5,0
+#define TM_RESET_BASE 6,0
+#define TM_RESET_OFFSET 7,0
+
+#define TILESET_01 0
+#define TILESET_23 1
 
 // CROP RECTANGLE
 #define CROPFULLSCREEN 0,0,319,239
+#define FULLSCREEN 0,0,319,239
 
 // KEYBOARD MODE
 #define PS2_KEYBOARD 1
 #define PS2_JOYSTICK 0
 
+// JOYSTICK BUTTONS
+#define JOY_NONE    1
+#define JOY_FIRE1   1<<1
+#define JOY_FIRE2   1<<2
+#define JOY_UP      1<<3
+#define JOY_DOWN    1<<4
+#define JOY_LEFT    1<<5
+#define JOY_RIGHT   1<<6
+
 // FONT ATTRIBUTES
-#define BOLD 1
+#define TPU_NORMAL 0
+#define TPU_BOLD 1
+#define TPU_X2 2
+#define TPU_Y2 4
+#define TPU_BLINK 8
+#define TPU_UNDER 16
+#define TPU_ALT 32
+
 #define NORMAL 0
+#define BOLD 1
 
 // SCREEN MODES
 #define MODE_RGBM 0
@@ -217,20 +297,43 @@
 #define PB_REMAP 1
 #define PB_WRITEALL 2
 
-// SOUNDS
-#define CHANNEL_LEFT 1
-#define CHANNEL_RIGHT 2
-#define CHANNEL_BOTH 3
+// WAVE GENERATOR
+#define CHANNEL_LEFT_0 0
+#define CHANNEL_LEFT_1 1
+#define CHANNEL_LEFT_2 2
+#define CHANNEL_RIGHT_0 3
+#define CHANNEL_RIGHT_1 4
+#define CHANNEL_RIGHT_2 5
+#define CHANNEL_PCM_LEFT 1
+#define CHANNEL_PCM_RIGHT 2
+#define CHANNEL_PCM_BOTH 3
 #define WAVE_SQUARE 0
 #define WAVE_SAW 1
 #define WAVE_TRIANGLE 2
 #define WAVE_SINE 3
 #define WAVE_NOISE 4
-#define WAVE_UD1 5
-#define WAVE_PCM 6
+#define WAVE_WOOD 5
+#define WAVE_BRASS 6
 #define WAVE_BITS 7
-#define WAVE_SAMPLE 8
-#define SAMPLE_REPEAT 16
+#define WAVE_TUNE 8
+#define WAVE_TUNE_REPEAT 16
+
+// PCM SAMPLE
+#define KHz11025 0
+#define KHz22050 1
+
+#define ACTIVE_CHANNEL_LEFT_0 1
+#define ACTIVE_CHANNEL_LEFT_1 2
+#define ACTIVE_CHANNEL_LEFT_2 4
+#define ACTIVE_CHANNEL_RIGHT_0 8
+#define ACTIVE_CHANNEL_RIGHT_1 16
+#define ACTIVE_CHANNEL_RIGHT_2 32
+#define ACTIVE_CHANNEL_LEFT_PCM 64
+#define ACTIVE_CHANNEL_RIGHT_PCM 128
+#define ACTIVE_CHANNEL_ALL 63
+#define ACTIVE_CHANNEL_PCM 192
+
+#define AUDIO_OFF for( int channel = CHANNEL_LEFT_0; channel <= CHANNEL_RIGHT_2; channel++) beep_stop( channel )
 
 // STRUCTURE OF THE SPRITE UPDATE FLAG
 struct sprite_update_flag {
@@ -275,10 +378,6 @@ typedef struct paws_timeval {
     unsigned int    ptv_usec;
 } paws_timeval;
 
-// SIMPLE CURSES
-typedef unsigned char chtype;
-typedef void WINDOW;
-
 // PIXELBLOCK SCALEABLE SPRITES
 typedef struct {
     int width;
@@ -286,36 +385,12 @@ typedef struct {
     unsigned char *bitmap;
 } bitmap_sprite;
 
-#define COLORS 256
-#define A_NOACTION 2048
-#define A_NORMAL 256
-#define A_BOLD 512
-#define A_STANDOUT 512
-#define A_UNDERLINE A_NOACTION
-#define A_REVERSE 1024
-#define A_BLINK A_NOACTION
-#define A_DIM A_NORMAL
-#define A_PROTECT A_NOACTION
-#define A_INVIS A_NOACTION
-#define A_ALTCHARSET A_NOACTION
-#define A_CHARTEXT A_NOACTION
-#define COLOR_PAIRS 256
-#define COLOR_PAIRS_MASK (COLOR_PAIRS-1)
-#define COLOR_PAIR(a) a|COLORS
-
-// COLOURS
-#define COLOR_BLACK BLACK
-#define COLOR_BLUE BLUE
-#define COLOR_GREEN GREEN
-#define COLOR_CYAN CYAN
-#define COLOR_RED RED
-#define COLOR_MAGENTA MAGENTA
-#define COLOR_YELLOW YELLOW
-#define COLOR_WHITE WHITE
-#define COLOR_ORANGE ORANGE
-
-#define COLS 80
-#define LINES 60
+// WAVE FILE, AS CONVERTED BY FFMPEG
+typedef struct {
+    unsigned char   pad[74];
+    unsigned int    size;
+    unsigned char   *data;
+} wave_file;
 
 // PACK RGB MACRO
 #define PACKRGB(r,g,b) _rv64_packw( _rv64_packh( b, g ), _rv64_packh( r, 0 ) )
@@ -335,4 +410,7 @@ typedef struct {
        __typeof__ (b) _b = (b); \
      _a > _b ? _a : _b; })
 #endif
+#endif
+
+#define __PAWSDEFINITIONS__
 #endif

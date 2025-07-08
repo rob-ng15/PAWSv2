@@ -1,0 +1,245 @@
+unit background_display(
+    input   uint10  pix_x,
+    input   uint9   pix_y,
+    input   uint1   pix_end,
+    output! uint8   pixel,
+
+    input   uint2  staticGenerator,
+
+    input   uint8   b_colour,
+    input   uint8   b_alt,
+    input   uint4   b_mode,
+    input   uint1   colourmode
+) {
+    uint1   tophalf <:: ( pix_y < 240 );                                                                                        // TOP HALF OF SCREEN
+    uint1   lefthalf <: ( pix_x < 320 );                                                                                        // LEFT HALF OF THE SCREEN
+
+    starfield STARS( pix_x <: pix_x, pix_y <: pix_y, pix_end <: pix_end );                                                      // STARFIELD GENERATOR
+    brom uint8 rainbow[8] = { 8h80, 8hc1, 8he1, 8hf9, 8h38, 8h0f, 8h45, 8ha7 }; rainbow.addr := pix_y[6,3];                     // RAINBOW DKRED RED ORANGE YELLOW GREEN BLUE DKPURPLE VIOLET
+
+    always {
+        switch( b_mode ) {                                                                                                      // DETERMINE BACKGROUND PATTERN
+            case 0: { pixel = b_colour; }                                                                                       //  SOLID
+            default: { pixel = ( pix_x[b_mode,1] ^ pix_y[b_mode,1] ) ? b_colour : b_alt; }                                      //  CHECKERBOARDS (1,2,3,4)
+            case 5: { pixel = ( lefthalf ^ tophalf ) ? b_colour : b_alt; }                                                      //  QUARTERS
+            case 6: { pixel = ( lefthalf ) ? b_colour : b_alt; }                                                                //  50:50 VERTICAL SPLIT
+            case 7: { pixel = tophalf ? b_colour : b_alt; }                                                                     //  50:50 HORIZONTAL SPLIT
+            case 8: { pixel = rainbow.rdata; }                                                                                  //  RAINBOW
+            case 9: { pixel  = STARS.star ? b_colour : b_alt; }                                                                 //  SNOW (from @sylefeb)
+            case 10: { pixel = {4{staticGenerator}}; }                                                                          //  STATIC
+            case 11: { pixel = ( pix_x[0,1] | pix_y[0,1] ) ? b_colour : b_alt; }                                                //  CROSSHATCH
+            case 12: { pixel = ( pix_x[0,2] == pix_y[0,2] ) ? b_colour : b_alt; }                                               //  LSLOPE
+            case 13: { pixel = ( pix_x[0,2] == ~pix_y[0,2] ) ? b_colour : b_alt; }                                              //  RSLOPE
+            case 14: { pixel = pix_x[0,1] ? b_colour : b_alt; }                                                                 //  VSTRIPES
+            case 15: { pixel = pix_y[0,1] ? b_colour : b_alt; }                                                                 //  HSTRIPES
+        }
+    }
+}
+
+// By @sylefeb
+unit starfield(
+    input   uint10  pix_x,
+    input   uint9   pix_y,
+    input   uint1   pix_end,
+    output  uint1   star
+) {
+    uint32  frame = 0;                                                                                                          // FRAME COUNTER
+    uint12  rand_x = 0;                                                                                                         // PSEUDO RANDOM NUMBER GENERATOR
+    uint10  dotpos <:: ( frame >> rand_x[10,2] ) + rand_x;
+
+    frame := frame + pix_end;                                                                                                   // INCREMENT AT END OF FRAME
+    rand_x := |pix_x ? rand_x * 31421 + 6927 : 1;
+    star := ( pix_y == dotpos );
+}
+
+// BACKGROUND CO-PROCESSOR ( NUCU )
+bitfield p_nucu{
+    uint4   op,
+    uint3   opd,
+    uint1   opf,
+    uint10  opl
+}
+
+unit nucu(
+    input   uint10  pix_x,
+    input   uint9   pix_y,
+    input   uint1   pix_vblank,
+
+    input   uint4   backgroundcolour_mode,                                                                                      // FROM CPU BACKGROUND MODE
+    input   uint8   backgroundcolour,                                                                                           // FROM CPU BACKGROUND COLOUR
+    input   uint8   backgroundcolour_alt,                                                                                       // FROM CPU BACKGROUND COLOUR ALT
+
+    input   uint1   copper_status,                                                                                              // START COPPER EXECUTING
+    input   uint10  copper_cpu_input,                                                                                           // FROM CPU VALUE
+    output  uint10  copper_cpu_output,                                                                                          // TO CPU VALUE
+    input   uint10  staticGenerator,                                                                                            // RANDOM NUMBER GENERATOR
+
+    output! uint4   BACKGROUNDmode,                                                                                             // COPPER/CPU BACKGROUND MODE TO GENERATOR
+    output! uint8   BACKGROUNDcolour,                                                                                           // COPPER/CPU BACKGROUND COLOUR TO GENERATOR
+    output! uint8   BACKGROUNDalt,                                                                                              // COPPER/CPU BACKGROUND COLOUR ALT TO GENERATOR
+
+    simple_dualport_bram_port0  PROG,                                                                                           // PROGRAM { OP, OPD, OPF, OPL }
+    input   uint$NUCUmem*10$  memoryinit                                                                                        // INITIAL SETTINGS OF THE MEMORY
+) {
+    uint$NUCUaddr$   PC = uninitialised;                                                                                        // PROGRAM COUNTER
+    uint$NUCUaddr$   PC_p1 <:: PC + 1;                                                                                          // NEXT INSTRUCTION
+    uint$NUCUaddr$   PC_p2 <:: PC + 2;                                                                                          // NEXT INSTRUCTION IF SKIP
+
+    uint10  REGS[4] = uninitialised;                                                                                            // STORAGE FOR 4 REGISTERS
+    uint10  reg1 <:: ( p_nucu( PROG.rdata0 ).opd == 0 ) ? pix_vblank :                                                          // REG1 <-  VBLANK              OPERATION INPUT 1
+                     ( p_nucu( PROG.rdata0 ).opd == 1 ) ? pix_x :                                                               //          X
+                     ( p_nucu( PROG.rdata0 ).opd == 2 ) ? pix_y :                                                               //          Y
+                     ( p_nucu( PROG.rdata0 ).opd == 3 ) ? copper_cpu_input :                                                    //          CPU_INPUT
+                                                          REGS[ p_nucu( PROG.rdata0 ).opd[0,2] ];                               //          REG[]
+    uint10  reg2 <:: ( p_nucu( PROG.rdata0 ).op == 0 ) & ( p_nucu( PROG.rdata0 ).opd == 2 ) ? rstack.rdata :                    // REG2 <-  RETURN STACK        OPERATION INPUT 2
+                                                                  p_nucu( PROG.rdata0 ).opf ? p_nucu( PROG.rdata0 ).opl :       //          LITERAL
+                                                         ( p_nucu( PROG.rdata0 ).opl == 0 ) ? pix_vblank :                      //          VBLANK
+                                                         ( p_nucu( PROG.rdata0 ).opl == 1 ) ? pix_x :                           //          X
+                                                         ( p_nucu( PROG.rdata0 ).opl == 2 ) ? pix_y :                           //          Y
+                                                         ( p_nucu( PROG.rdata0 ).opl == 3 ) ? copper_cpu_input :                //          CPU_INPUT
+                                                                                              REGS[ p_nucu( PROG.rdata0 ).opl[0,2] ];  //    REG[]
+
+    bram uint10 dstack[$NUCUstack$] = uninitialised;                                                                            // DATA STACK
+    bram uint$NUCUaddr$ rstack[$NUCUstack$] = uninitialised;                                                                    // RETURN STACK
+
+    uint$NUCUstackaddr$ dstack_p1 <:: dstack.addr + 1;
+    uint$NUCUstackaddr$ dstack_m1 <:: dstack.addr - 1;
+    uint$NUCUstackaddr$ rstack_p1 <:: rstack.addr + 1;
+    uint$NUCUstackaddr$ rstack_m1 <:: rstack.addr - 1;
+
+    dstack.wenable := 0; rstack.wenable := 0; dstack.wdata := reg2; rstack.wdata := PC_p1;
+
+    always {
+        uint2   PCinc = 0;                                                                                                      // PC ACTION FLAG == 0 PCnext, == 1 PCskip, == 2 REG2 value
+        uint1   WR = 1;                                                                                                         // WRITE TO REGISTERS FLAG
+        uint1   WM = 0;                                                                                                         // WRITE TO MEMORY FLAG
+
+        uint$NUCUmem*10$  MEM = uninitialised;                                                                                  // STORAGE FOR NUCUmem MEMORY LOCATIONS
+        uint10  result = uninitialised;                                                                                         // RESULT OF OP
+
+        if( copper_status ) {
+            switch( p_nucu( PROG.rdata0 ).op ) {
+                case 4h0: {                                                                                                     // JMP JSR RET SLI SRx LRx
+                    WR = p_nucu( PROG.rdata0 ).opd[2,1]; result = dstack.rdata;                                                 // WRITE TO REGISTER IF LRx, RESULT IS TOP OF DSTACK
+                    switch( p_nucu( PROG.rdata0 ).opd ) {                                                                       // reg1 acts as switch
+                        case 0: { PCinc = 2; }                                                                                  // Jump JP( L literal, R register value )
+                        case 1: {                                                                                               // Jump subroutine JS( L literal, R register value )
+                            rstack.addr = rstack_p1;  rstack.wenable = 1;                                                       //  SAVE NEXT ADDRESS TO RSTACK
+                            PCinc = 2;
+                        }
+                        case 2: { rstack.addr = rstack_m1; PCinc = 2; }                                                         // RET ( pop address from rstack )
+                        case 3: { dstack.addr = dstack_p1; dstack.wenable = 1; }                                                // SLI and SRx ( push literal or register value on dstack )
+                        default: { dstack.addr = dstack_m1; }                                                                   // LRx ( pop value from dstack, write to reg1 )
+                    }
+                }
+                case 4h1: { result = reg2; }                                                                                    // SET
+                case 4h2: { result = reg1 + reg2; }                                                                             // ADD
+                case 4h3: { result = reg1 - reg2; }                                                                             // SUB
+                case 4h4: { result = reg1 & reg2; }                                                                             // AND
+                case 4h5: { result = reg1 | reg2; }                                                                             // OR
+                case 4h6: { result = reg1 ^ reg2; }                                                                             // XOR
+                case 4h7: { result = reg1 << reg2; }                                                                            // SHL
+                case 4h8: { result = reg1 >> reg2; }                                                                            // SHR
+                case 4h9: { WR = 0; PCinc = ( reg1 == reg2 ); }                                                                 // SKIP =
+                case 4ha: { WR = 0; PCinc = ( reg1 != reg2 ); }                                                                 // SKIP !=
+                case 4hb: { WR = 0; PCinc = ( reg1 < reg2 ); }                                                                  // SKIP <
+                case 4hc: { WR = 0; PCinc = ( reg1 <= reg2 ); }                                                                 // SKIP <=
+                case 4hd: { result = staticGenerator & reg2; }                                                                  // RANDOM
+                case 4he: { result = MEM[ reg2[0,$NUCUmemaddr$] * 10, 10 ]; }                                                   // LOAD FROM MEMORY
+                case 4hf: { WR = 0; WM = 1; }                                                                                   // STORE TO MEMORY
+            }
+
+            if( WR ) {                                                                                                          // WRITE TO REGISTERS?
+                switch( p_nucu( PROG.rdata0 ).opd ) {
+                    case 0: { BACKGROUNDmode = result; }                                                                        // BACKGROUND MODE
+                    case 1: { BACKGROUNDcolour = result; }                                                                      // BACKGROUND COLOUR
+                    case 2: { BACKGROUNDalt = result; }                                                                         // BACKGROUND COLOUR ALT
+                    case 3: { copper_cpu_output = result; }                                                                     // COPPER TO CPU
+                    default: { REGS[ p_nucu( PROG.rdata0 ).opd[0,2] ] = result; }                                               // COPPER REGISTER
+                }
+            }
+
+            if( WM ) { MEM[ reg2[0,$NUCUmemaddr$] * 10, 10 ] = reg1[0,10]; }                                                    // WRITE TO MEMORY
+
+            PC = PCinc[1,1] ? reg2 : PCinc[0,1] ? PC_p2 : PC_p1;                                                                // UPDATE PC, PCinc == 2 JUMP,  ==1 SKIP, == 0 NEXT
+        } else {
+            PC = 0;                                                                                                             // set PC to 0
+            MEM = memoryinit;                                                                                                   // COPY CPU MEMORY INITIALISATION VALUES
+            dstack.addr = -1; rstack.addr = -1;                                                                                 // SET DEFAULT STACK ADDRESSES
+
+            BACKGROUNDmode = backgroundcolour_mode;                                                                             // UPDATE THE BACKGROUND GENERATOR FROM THE CPU
+            BACKGROUNDcolour = backgroundcolour;
+            BACKGROUNDalt = backgroundcolour_alt;
+        }
+
+        PROG.addr0 = PC;                                                                                                        // MOVE TO THE NEXT INSTRUCTION
+    }
+}
+
+unit background_memmap(
+    // Clocks
+    input   uint1   video_clock,
+    input   uint1   video_reset,
+
+    // Pixels
+    input   uint10  pix_x,
+    input   uint9   pix_y,
+    input   uint1   pix_vblank,
+    input   uint1   pix_end,
+    output! uint8   pixel,
+
+    // Memory access
+    input   uint6   ADDR,
+    input   uint1   WENABLE,
+    input   uint18  WDATA,
+    output  uint10  RDATA,
+
+    input   uint2   colourmode,
+    input   uint10  staticGenerator
+) {
+    simple_dualport_bram uint18 PROG <@video_clock,@clock> [ $NUCUblocks$ ] = uninitialised;                                   // BACKGROUND   PROGRAM STORAGE { op, opd, opf, opl }
+
+    // BACKGROUND GENERATOR
+    background_display BACKGROUND <@video_clock,!video_reset> (
+        pix_x <: pix_x,
+        pix_y <: pix_y,
+        pix_end <: pix_end,
+        pixel :> pixel,
+        staticGenerator <: staticGenerator[0,2],
+        b_colour <: BACKGROUND_COPPER.BACKGROUNDcolour,
+        b_alt <: BACKGROUND_COPPER.BACKGROUNDalt,
+        b_mode <: BACKGROUND_COPPER.BACKGROUNDmode,
+        colourmode <: colourmode
+    );
+    nucu BACKGROUND_COPPER <@video_clock,!video_reset> (
+        pix_x <: pix_x,
+        pix_y <: pix_y,
+        pix_vblank <: pix_vblank,
+        staticGenerator <: staticGenerator,
+        PROG <:> PROG,
+        copper_cpu_output :> RDATA
+    );
+
+    uint3   mempos = uninitialised;
+    uint3   mempos_NEXT <:: mempos + 1;
+
+    PROG.wenable1 :=  0;
+
+    always {
+        if( WENABLE ) {
+            switch( ADDR[1,4] ) {
+                case 4h0: { BACKGROUND_COPPER.backgroundcolour = WDATA; }
+                case 4h1: { BACKGROUND_COPPER.backgroundcolour_alt = WDATA; }
+                case 4h2: { BACKGROUND_COPPER.backgroundcolour_mode = WDATA; }
+                case 4h3: { BACKGROUND_COPPER.copper_status = WDATA; }
+                case 4h4: { BACKGROUND_COPPER.copper_cpu_input = WDATA; }
+                case 4h5: { PROG.wenable1 = 1; }
+                case 4h6: { PROG.addr1 = WDATA; }
+                case 4h8: { PROG.wdata1 = WDATA; }
+                case 4hb: { mempos = 0; }
+                case 4hc: { BACKGROUND_COPPER.memoryinit[ mempos * 10, 10 ] = WDATA; mempos = mempos_NEXT; }
+                default: {}
+            }
+        }
+    }
+}

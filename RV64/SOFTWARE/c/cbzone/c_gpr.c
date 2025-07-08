@@ -43,6 +43,7 @@
 int ufc, unfc;                        /* number of fading/nonfading colors */
 int cw, cr;                           /* number of colors wanted/received  */
 int wid, hei, depth;
+Rectange_t clipr;
 
 unsigned char paws_colour, paws_text_colour;
 
@@ -174,7 +175,7 @@ void printstring(x, y, string, nchars)
      char* string;
      int nchars;
 {
-     tpu_set( x * txscale, y * txscale, TRANSPARENT, paws_text_colour );
+     tpu_set( x * txscale, y * txscale, TRANSPARENT, paws_text_colour, TPU_NORMAL );
      tpu_print( 0, string );
 }
 
@@ -225,6 +226,11 @@ void clearrectangle(window, dsto)
 void gprsetclippingactive(flag)
      Bool flag;
 {
+  if( flag ) {
+    gpu_crop( 53 * xscale, 53 * yscale, ( 53 + 894 ) * xscale, ( 53 + 394 ) * yscale );
+  } else {
+    gpu_crop( CROPFULLSCREEN );
+  }
 //  if (flag) {
 //    XSetClipRectangles (d, DrawGC, 0, 0, &clipr, 1, YXBanded);
 //    XSetClipRectangles (d, EraseGC, 0, 0, &clipr, 1, YXBanded);
@@ -314,10 +320,10 @@ void gprcirclefilled(center, radius)
 void gprsetclipwindow(window)
      Window_t *window;
 {
-  //clipr.x = (window->base.x-XOFF)*XM/XD;
-  //clipr.y = (window->base.y-YOFF)*XM/XD;
-  //clipr.width = window->size.x*XM/XD;
-  //clipr.height =  window->size.y*YM/YD;
+  clipr.x = (window->base.x-XOFF)*XM/XD;
+  clipr.y = (window->base.y-YOFF)*XM/XD;
+  clipr.width = window->size.x*XM/XD;
+  clipr.height =  window->size.y*YM/YD;
 }
 
 void clearentirescreen()

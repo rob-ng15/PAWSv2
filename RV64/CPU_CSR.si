@@ -1,0 +1,218 @@
+// RISC-V CSR REGISTERS - TIMER, COUNTERS, INTERRUPTS, FLOATING-POINT STATUS
+
+unit csrf(
+    output  uint8   CSRf(0),
+    input   uint2   CSR_REG,
+    input   uint8   WDATA,
+    input   uint2   WENABLE,
+    input   uint1   W_FPUFLAGS,
+    input   uint5   IN_FPUFLAGS
+) {
+    uint8   WE_10 <:: ( ( CSR_REG == 1 ) ? CSRf[0,5] : ( CSR_REG == 2 ) ? CSRf[5,3] : CSRf ) | WDATA;
+    uint8   WE_11 <:: ( ( CSR_REG == 1 ) ? CSRf[0,5] : ( CSR_REG == 2 ) ? CSRf[5,3] : CSRf ) & ~WDATA;
+
+    always {
+        if( W_FPUFLAGS ) {
+            CSRf = { CSRf[5,3], IN_FPUFLAGS };
+        } else {
+            switch( CSR_REG ) {
+                case 0: {}
+                case 1: { switch( WENABLE ) {                                                                                 // fflags
+                    case 1: { CSRf[0,5] = WDATA[0,5]; }
+                    case 2: { CSRf[0,5] = WE_10[0,5]; }
+                    case 3: { CSRf[0,5] = WE_11[0,5]; }
+                    default: {}
+                } }
+                case 2: { switch( WENABLE ) {                                                                                 // frm
+                    case 1: { CSRf[5,3] = WDATA[0,3]; }
+                    case 2: { CSRf[5,3] = WE_10[0,3]; }
+                    case 3: { CSRf[5,3] = WE_11[0,3]; }
+                    default: {}
+                } }
+                case 3: { switch( WENABLE ) {                                                                                 // fcsr
+                    case 1: { CSRf = WDATA; }
+                    case 2: { CSRf = WE_10; }
+                    case 3: { CSRf = WE_11; }
+                    default: {}
+                } }
+            }
+        }
+    }
+}
+unit csr_timer(
+    output  uint$CWIDTH$  counter(0)
+) {
+    counter := counter + 1;
+}
+unit csr_counter(
+    output  uint$CWIDTH$  counter(0),
+    input   uint1   trigger
+) {
+    counter := counter + trigger;
+}
+
+unit CSRblock(
+    input   uint1               START,
+    input   uint1               CPU_ACTIVE,
+    input   uint1               DMA_ACTIVE,
+    input   uint1               DMA_AUDIO_ACTIVE,
+    input   uint12              CSR_REG,
+    input   uint3               function3,
+    input   uint5               rs1,
+    input   uint64              sourceReg1,
+    input   uint1               INC_INSNRET,
+    input   uint1               W_FPUFLAGS,
+    input   uint5               IN_FPUFLAGS,
+    output  uint8               OUT_FPUFLAGS,
+    output  uint64              result,
+
+    input   uint$addr_width$    PC_NEXT,
+    input   uint1               IS_ECALL,
+    input   uint1               IRQ_ACK,
+    input   uint1               IRQ_END,
+    output  uint1               IRQ_PENDING,
+    input   uint1               IRQ_VBLANK,
+    input   uint$CWIDTH$        IRQ_TIMER,
+    input   uint1               TIMER_VALID,
+    input   uint$CWIDTH$        RDTIME,
+    output  uint$addr_width$    CSR_MEPC,
+    output  uint$addr_width$    CSR_MTVEC,
+    output  uint4               IRQ_VECTOR
+) {
+    uint64              WDATA <:: function3[2,1] ? rs1 : sourceReg1;                                                            // SWITCH BETWEEN IMMEDIATE OR REGISTER VALUE TO WRITE TO CSR
+    uint2               IRQ_TRIGGERS <:: { IRQ_VBLANK, ( RDTIME == IRQ_TIMER ) & TIMER_VALID } & CSR_MIE;                       // { VBLANK, TIMER == COMPARATOR }
+
+    uint2               CSR_MSTATUS = 2b00;                                                                                     // BITS {  7, 3 }
+    uint2               MSTATUS_NEXT <:: ( function3[0,2] == 2b01 ) ? { WDATA[7,1], WDATA[3,1] } :
+                                         ( function3[0,2] == 2b10 ) ? CSR_MSTATUS | { WDATA[7,1], WDATA[3,1] } :
+                                                                      CSR_MSTATUS & ~{ WDATA[7,1], WDATA[3,1] };
+    uint2               CSR_MIE = 2b00;                                                                                         // BITS { 11, 7 }
+    uint2               MIE_NEXT <:: ( function3[0,2] == 2b01 ) ? { WDATA[11,1], WDATA[7,1] } :
+                                     ( function3[0,2] == 2b10 ) ? CSR_MIE | { WDATA[11,1], WDATA[7,1] } :
+                                                                  CSR_MIE & ~{ WDATA[11,1], WDATA[7,1] };
+
+
+    uint2               CSR_MIP = 2b00;                                                                                         // BITS { 11, 7 }
+    uint2               MIP_NEXT <:: ( START & ( CSR_REG == 12h344 ) & |function3[0,2] ) ?                                      // UPDATE PENDING INTERRUPT FLAG MIP
+                                        ( function3[0,2] == 2b01 ) ? { WDATA[11,1], WDATA[7,1] } :
+                                        ( function3[0,2] == 2b10 ) ? { CSR_MIP[1,1] | IRQ_TRIGGERS[1,1], CSR_MIP[0,1] | IRQ_TRIGGERS[0,1] } | { WDATA[11,1], WDATA[7,1] } :
+                                                                     { CSR_MIP[1,1] | IRQ_TRIGGERS[1,1], CSR_MIP[0,1] | IRQ_TRIGGERS[0,1] } & ~{ WDATA[11,1], WDATA[7,1] } :
+                                                                     { CSR_MIP[1,1] | IRQ_TRIGGERS[1,1], CSR_MIP[0,1] | IRQ_TRIGGERS[0,1] };
+
+    uint64              CSR_MSCRATCH = uninitialised;                                                                           // 64 BIT SCRATCH REGISTER
+    uint64              MSCRATCH_NEXT <:: ( function3[0,2] == 2b01 ) ? WDATA :
+                                          ( function3[0,2] == 2b10 ) ? CSR_MSCRATCH | WDATA :
+                                                                       CSR_MSCRATCH & ~WDATA;
+
+    uint4               CSR_MCAUSE = uninitialised;                                                                             // == 3 software, == 7 timer, == 11 external (vblank)
+    uint4               MCAUSE_NEXT <:: ( function3[0,2] == 2b01 ) ? WDATA :
+                                        ( function3[0,2] == 2b10 ) ? CSR_MCAUSE | WDATA :
+                                                                     CSR_MCAUSE & ~WDATA;
+
+    uint$addr_width$    MEPC_NEXT <:: ( function3[0,2] == 2b01 ) ? WDATA :
+                                      ( function3[0,2] == 2b10 ) ? CSR_MEPC | WDATA :
+                                                                   CSR_MEPC & ~WDATA;
+
+    uint$addr_width$    MTVEC_NEXT <:: ( function3[0,2] == 2b01 ) ? WDATA :
+                                       ( function3[0,2] == 2b10 ) ? CSR_MTVEC | WDATA :
+                                                                    CSR_MTVEC & ~WDATA;
+
+
+    csr_counter CYCLE( trigger <: CPU_ACTIVE );                                                                                 // CYCLES PER THREAD
+    csr_counter INSTRET( trigger <: INC_INSNRET );                                                                              // INSTRUCTIONS RETIRED
+    csr_counter DMA( trigger <: DMA_ACTIVE );                                                                                   // HIGH PERFORMANCE COUNTER 3
+    csr_counter DMA_AUDIO( trigger <: DMA_AUDIO_ACTIVE );                                                                       // HIGH PERFORMANCE COUNTER 4
+
+    csrf CSRF( CSR_REG <: CSR_REG[0,2], WDATA <: WDATA, CSRf :> OUT_FPUFLAGS, IN_FPUFLAGS <: IN_FPUFLAGS, W_FPUFLAGS <: W_FPUFLAGS );
+    CSRF.WENABLE := 0;                                                                                                          // WRITE TO FCSR FLAG
+
+    IRQ_PENDING := CSR_MSTATUS[0,1] & |( CSR_MIE & CSR_MIP );                                                                   // FLAG TO CPU THAT AN IRQ IS PENDING
+    IRQ_VECTOR := IS_ECALL ? 3 : CSR_MIP[0,1] ? 7 : 11;                                                                         // FLAG THE IRQ VECTOR IF VECTORED INTERRUPTS
+
+    always {
+        if( START ) {
+            result = 0;                                                                                                         // PERFORM READ, DEFAULT 0
+
+            switch( CSR_REG[8,4] ) {
+                case 4h0: { switch( CSR_REG[0,2] ) {
+                    case 2h1: { result = CSRF.CSRf[0,5];  }                                                                     //      001 fflags
+                    case 2h2: { result = CSRF.CSRf[5,3]; }                                                                      //      002 frm
+                    case 2h3: { result = CSRF.CSRf; }                                                                           //      003 fcsr
+                    default: {}
+                } }
+                case 4h3: {
+                    if( CSR_REG[6,1] ) {
+                        switch( CSR_REG[0,4] ) {
+                            case 4h0: { result = CSR_MSCRATCH; }                                                                //      340 MSCRATCH
+                            case 4h1: { result = CSR_MEPC; }                                                                    //      341 MEPC
+                            case 4h2: { result = CSR_MCAUSE; }                                                                  //      342 MCAUSE
+                            case 4h4: { result = { CSR_MIP[1,1], 3b000, CSR_MIP[0,1], 7b0000000 }; }                            //      344 MIP
+                            default: {}
+                        }
+                    } else {
+                        switch( CSR_REG[0,4] ) {
+                            case 4h0: { result = { CSR_MSTATUS[1,1], 3b000, CSR_MSTATUS[0,1], 3b000 }; }                        //      300 MSTATUS [3] MIE [7] MPIE
+                            case 4h1: { result = $CPUISA$; }                                                                    //      301 MISA
+                            case 4h4: { result = { CSR_MIE[1,1], 3b000, CSR_MIE[0,1], 7b0000000 }; }                            //      304 MIE
+                            case 4h5: { result = CSR_MTVEC; }                                                                   //      305 MTVEC
+                            default: {}
+                        }
+                    }
+                }
+                case 4hb: { switch( CSR_REG[0,4] ) {
+                    case 4h3: { result = DMA.counter; }                                                                         //      B03 MHPMCOUNTER3
+                    case 4h4: { result = DMA_AUDIO.counter; }                                                                   //      B04 MHPMCOUNTER4
+                    default: {}
+                } }
+                case 4hc: { switch( CSR_REG[0,3] ) {
+                    case 3h0: { result = CYCLE.counter; }                                                                       //      C00 CYCLES PER HART
+                    case 3h1: { result = RDTIME; }                                                                              //      C01 TOTAL CYCLES
+                    case 3h2: { result = INSTRET.counter; }                                                                     //      C02 INSTRUCTIONS RETIRED PER HART
+                    default: {}
+                } }
+                case 4hf: { result = 0; }                                                                                       //      F00 HART ID
+                default: {}
+            }
+
+            switch( function3[0,2] ) {                                                                                          // PERFORM WRITE SET CLEAR ( on capable registers )
+                case 2b00: {}                                                                                                   //  ECALL / EBREAK ( ignored )
+                default: {                                                                                                      //  CSRRW CSRRS CSRRC
+                    switch( CSR_REG[8,4] ) {
+                        case 4h0: { CSRF.WENABLE = function3[0,2]; }                                                            //      FFLAGS FRM FCSR
+                        case 4h3: {
+                            if( CSR_REG[6,1] ) {
+                                switch( CSR_REG[0,4] ) {
+                                    case 4h0: { CSR_MSCRATCH = MSCRATCH_NEXT; }                                                 //      MSCRATCH
+                                    case 4h1: { CSR_MEPC = MEPC_NEXT; }                                                         //      MEPC
+                                    case 4h2: { CSR_MCAUSE = MCAUSE_NEXT; }                                                     //      MCAUSE
+                                    default: {}
+                                }
+                            } else {
+                                switch( CSR_REG[0,4] ) {
+                                    case 4h0: { CSR_MSTATUS = MSTATUS_NEXT; }                                                   //      MSTATUS
+                                    case 4h4: { CSR_MIE = MIE_NEXT; }                                                           //      MIE
+                                    case 4h5: { CSR_MTVEC = MTVEC_NEXT; }                                                       //      MTVEC
+                                    default: {}
+                                }
+                            }
+                        }
+                        default: {}
+                    }
+                }
+            }
+        } else {
+            if( IRQ_ACK ) {                                                                                                     // IRQ ACKNOWLEDGE
+                CSR_MEPC = PC_NEXT;                                                                                             //  STORE NEXT PC INSTRUCTION FOR MRET
+                CSR_MCAUSE = IS_ECALL ? 3 : CSR_MIP[0,1] ? 7 : 11;                                                              //  == 3 ECALL, == 7 TIMER, == 11 VBLANK
+                CSR_MSTATUS = { CSR_MSTATUS[0,1], 1b0 };                                                                        //  STORE AND CLEAR MIE, MIE -> MPIE
+            } else {
+                if( IRQ_END ) {                                                                                                 // IRQ END
+                    CSR_MSTATUS = { 1b0, CSR_MSTATUS[1,1] };                                                                    //  RESTORE MIE, MPIE -> MIE
+                    CSR_MCAUSE = 0;                                                                                             //  CLEAR MCAUSE
+                }
+            }
+        }
+
+        CSR_MIP = MIP_NEXT;
+    }
+}

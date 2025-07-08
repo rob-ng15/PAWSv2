@@ -870,7 +870,7 @@ extern void paws_clearerr( void *fd );
 extern int paws_ungetc( int c, void *fd );
 extern void *paws_tmpfile(void);
 
-#define prinf paws_printf
+#define printf paws_printf
 #define fprintf paws_fprintf
 #define vfprintf paws_vfprintf
 #define fscanf paws_fscanf
@@ -879,7 +879,7 @@ extern void *paws_tmpfile(void);
 extern int paws_printf(const char *restrict, ... );
 extern int paws_fprintf( void *fd, const char *restrict, ... );
 extern int paws_vfprintf( void *stream, const char *, va_list );
-extern int paws_fscanf( void *fd, const char *restrict, ... );
-extern int paws_vfscanf( void *stream, const char *, va_list );
+extern int paws_fscanf( FL_FILE *fd, const char *restrict, ... );
+extern int paws_vfscanf( FL_FILE *stream, const char *, va_list );
 
 #endif /* _STDIO_H_ */

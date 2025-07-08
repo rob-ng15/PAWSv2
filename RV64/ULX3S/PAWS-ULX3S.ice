@@ -1,53 +1,66 @@
 // DEFINE I/O CLOCKS
 $$ uart_in_clock_freq_mhz = 50
 
-// ADDRESS WIDTH OF THE SDRAM ( 26 bits is 32Mb )
+// ADDRESS WIDTH OF THE SDRAM ( 25 bits is 32Mb, 26 bits used as an extra 0 has to be inserted to correctly address 32 bits )
 // CHIP SELECT is done by readflag/writeflag
-$$ sdram_addr_width = 26
+$$ sdram_width = 26
+$$ paws_ram = 25
 
 // REGISTER AND MEMORY BUS DEFINITIONS
 $$ reg_width = 64
-$$ addr_width = sdram_addr_width + 1
+$$ addr_width = 27
+
+// NuCU COPPER BACKGROUND PROCESSOR DEFINITIONS
+// blocks number of program entries, mem number of memory registers, stack number of rstack and dstack entries
+// NUCUmem must be at least 8, which can be set by the CPU before NUCU program starts
+$$ NUCUblocks = 128
+$$ NUCUaddr = clog2(NUCUblocks)
+$$ NUCUmem = 8
+$$ NUCUmemaddr = clog2(NUCUmem)
+$$ NUCUstack = 8
+$$ NUCUstackaddr = clog2(NUCUstack)
+
+// AUDIO CHANNEL MULTIPLEXER TIMER WIDTH, BIT SAMPLE WIDTH
+$$ AUDIO_multi = 7
+$$ AUDIO_bits = 4
 
 // ON CPU INSTRUCTION CACHE DEFINITIONS
-
-// L0 CACHE SIZES FOR HART ID 0 AND 1
-// 256 is 1k
-// size and blocks must be a power of 2
+// L1 CACHE SIZES FOR HART ID 0 AND 1
+// blocks must be a power of 2
 // HART 0 - MAIN
-$$ L00Iblocks = 1024
-$$ L00Icount = clog2(L00Iblocks)
-$$ L00Ipartaddresswidth = addr_width - 1 - L00Icount
-$$ L00Ipartaddressstart = 1 + L00Icount
-bitfield L00cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
+$$ L10Iblocks = 4096
+$$ L10Icount = clog2(L10Iblocks)
+$$ L10Ipartaddresswidth = addr_width - 1 - L10Icount
+$$ L10Ipartaddressstart = 1 + L10Icount
+bitfield L10cacheI{ uint30 instruction, uint1 compressed, uint1 valid, uint$L10Ipartaddresswidth$ partaddress }
 
 // HART 1 - SMT
-$$ L01Iblocks = 64
-$$ L01Icount = clog2(L01Iblocks)
-$$ L01Ipartaddresswidth = addr_width - 1 - L01Icount
-$$ L01Ipartaddressstart = 1 + L01Icount
-bitfield L01cacheI{ uint30 instruction, uint1 compressed, uint1 valid }
+$$ L11Iblocks = 512
+$$ L11Icount = clog2(L11Iblocks)
+$$ L11Ipartaddresswidth = addr_width - 1 - L11Icount
+$$ L11Ipartaddressstart = 1 + L11Icount
+bitfield L11cacheI{ uint30 instruction, uint1 compressed, uint1 valid, uint$L11Ipartaddresswidth$ partaddress }
 
 // SDRAM CACHE DEFINITIONS
+// CACHES SIZES - L2 2 x L2size for SDRAM CACHE
+$$ L2size = 4096
+$$ L2cacheaddrwidth = clog2(L2size)
+$$ L2partaddresswidth = paws_ram - 2 - L2cacheaddrwidth
+$$ L2partaddressstart = 2 + L2cacheaddrwidth
+bitfield L2cache{ uint16 contents, uint1 needswrite, uint1 valid, uint$L2partaddresswidth$ partaddress }
 
-// CACHES SIZES - L1 2 x L1size for DATA
-$$if VERILATOR then
-$$ L1size = 128
-$$else
-$$ L1size = 4096
-$$end
-$$ L1cacheaddrwidth = clog2(L1size)
-$$ L1partaddresswidth = sdram_addr_width - 2 - L1cacheaddrwidth
-$$ L1partaddressstart = 2 + L1cacheaddrwidth
-bitfield L1cachetag{ uint1 needswrite, uint1 valid, uint$L1partaddresswidth$ partaddress }
+$$ print('CACHE BLOCK CONFIGURATION')
+$$ print("L1 BLOCKS: "..L10Iblocks.." WIDTH: "..L10Icount.." TAG SIZE: "..L10Ipartaddresswidth.." AT: "..L10Ipartaddressstart)
+$$ print("L2 BLOCKS: "..L2size.." WIDTH: "..L2cacheaddrwidth.." TAG SIZE: "..L2partaddresswidth.." AT: "..L2partaddressstart)
 
 // BIT WIDTH FOR CSR COUNTERS ( spec is 64 bit )
 $$ CWIDTH = 40
 
 $$if not SIMULATION then
 // CLOCKS
-import('../common/clock_PAWS-sdram100.v')
+import('../common/clock_PAWS-SYS.v')
 import('../common/clock_PAWS-CPU.v')
+//import('../common/clock_PAWS-SDRAM.v')
 $$end
 
 // HDMI for FPGA, VGA for SIMULATION
@@ -78,29 +91,31 @@ $include('../definitions.si')
 $include('../circuitry.si')
 
 // Multiplexed Display Includes
-$include('../background.si')
-$include('../bitmap.si')
-$include('../GPU.si')
-$include('../character_map.si')
-$include('../sprite_layer.si')
-$include('../terminal.si')
-$include('../tile_map.si')
-$include('../multiplex_display.si')
-$include('../common/audio_pwm.si')
-$include('../audio.si')
-$include('../video_memmap.si')
-$include('../io_memmap.si')
-$include('../timers_random.si')
+$include('../VID_BACKGROUND.si')
+$include('../VID_BITMAP.si')
+$include('../VID_SPRITES.si')
+$include('../VID_TEXT.si')
+$include('../VID_TILES.si')
+$include('../VID_MULTIPLEX.si')
+$include('../VID_TOP.si')
 
-// CPU SPECIFICATION - RV32GCB
+// IO DEVICES
+$include('../IO_AUDIO.si')
+$include('../IO_TIMERS.si')
+$include('../IO_TOP.si')
+
+// CPU SPECIFICATION - RV64GCB
 $$CPUISA = 0x4001102F
-$include('../cpu_functionblocks.si')
-$include('../ALU.si')
-$include('../FPU64.si')
-$include('../CPU.si')
+$include('../CPU_ALU.si')
+$include('../CPU_CSR.si')
+$include('../CPU_DECODE.si')
+$include('../CPU_FPU.si')
+$include('../CPU_TOP.si')
 
 // MAIN PAWS.si
-$include('../caches.si')
+$include('../DMA.si')
+$include('../GPU.si')
+$include('../MEMORY.si')
 $include('../PAWS.si')
 
 // I2C (EMARD FOR RTC)

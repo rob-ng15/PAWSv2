@@ -27,7 +27,7 @@ void show( void ) {
 
     // SWITCH THE FRAMEBUFFER
     framebuffer = 3 - framebuffer;
-    bitmap_display( framebuffer );
+    screen_order( LAYER_CHARACTERMAP, framebuffer, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
 }
 
 void evolve( void) {

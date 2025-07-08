@@ -90,11 +90,11 @@ typedef enum
 // Actual rendering resolution.
 // TODO(m): We can't set this too high, or Doom will crash.
 #define SCREENWIDTH 320
-#define SCREENHEIGHT 240
+#define SCREENHEIGHT 200
 
 // Convert 320x200 coordinates to rendering coordinates. ( 200->240 = *1.2 using floating point is faster than integer multiply and divide)
 #define TOSCREENX(x) (x)
-#define TOSCREENY(y) (int)((float)y*1.2)
+#define TOSCREENY(y) (y)
 
 // The maximum number of players, multiplayer/networking.
 #define MAXPLAYERS              4

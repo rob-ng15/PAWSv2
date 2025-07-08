@@ -1,3 +1,4 @@
+CFLAGSEXTRA=-Wno-implicit-int -Wno-implicit-function-declaration -Wno-pointer-to-int-cast
 include ../makefile-lto.inc
 
 PROJECT=D-STONE

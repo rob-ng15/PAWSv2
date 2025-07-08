@@ -1,4 +1,4 @@
-include ../makefile.inc
+include ../makefile-cpp.inc
 
 PROJECT=IMGUI
 PROJECTTYPE=DEMO

@@ -786,16 +786,16 @@ char pacman_maze[][42] = {
 
 char *backgroundnames[] = {
     "BKG_SOLID",
-    "BKG_5050_V",
-    "BKG_5050_H",
-    "BKG_QUARTERS",
-    "BKG_RAINBOW",
-    "BKG_SNOW",
-    "BKG_STATIC",
     "BKG_CHKBRD_1",
     "BKG_CHKBRD_2",
     "BKG_CHKBRD_3",
     "BKG_CHKBRD_4",
+    "BKG_QUARTERS",
+    "BKG_5050_V",
+    "BKG_5050_H",
+    "BKG_RAINBOW",
+    "BKG_SNOW",
+    "BKG_STATIC",
     "BKG_HATCH",
     "BKG_LSLOPE",
     "BKG_RSLOPE",
@@ -824,22 +824,22 @@ char *dithernames[] = {
 
 void displayreset( void ) {
     // RESET THE DISPLAY
-    screen_mode( 0, MODE_RGBM, 0 ); bitmap_256( false );
+    screen_mode( MODE_RGBM ); bitmap_256( false );
+    screen_order( LAYER_CHARACTERMAP, LAYER_SPRITES_3, LAYER_SPRITES_2, LAYER_SPRITES_1, LAYER_SPRITES_0,
+                  LAYER_TILEMAP_3, LAYER_TILEMAP_2, LAYER_TILEMAP_1, LAYER_TILEMAP_0, LAYER_BITMAP_0, FALSE );
+
     gpu_cs();
     tpu_cs();
-    terminal_showhide( FALSE ); terminal_cs();
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
-    tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+    for( int i = 0; i < 4; i++ )
+        tm_cs( i );
     set_background( BLACK, BLACK, BKG_SOLID );
-    for( short i = 0; i < 16; i++ ) {
-        set_sprite_attribute( LOWER_LAYER, i, SPRITE_ACTIVE, 0 );
-        set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, 0 );
-    }
+    for( short i = 0; i < 64; i++ )
+        set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, 0 );
 }
 
 // DISPLAY COLOUR CHART
 void colourtable( void ) {
-    displayreset();
+    displayreset(); bitmap_256( true );
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Colour Test" );
 
     unsigned char colour = 0;
@@ -852,25 +852,9 @@ void colourtable( void ) {
 
     // CYCLE THROUGH COLOUR MODES
     for( short i = 0; i < 2; i++ ) {
-        screen_mode( 0, i, 0 );
-        sleep1khz( 2000, 0 );
+        screen_mode( i );
+        sleep1khz( 2000 );
     }
-}
-
-// BLUE TERMINAL WINDOW TEST
-void terminaldemo( void ) {
-    displayreset();
-    terminal_showhide( TRUE );
-
-    terminal_outputstring( "The Blue Terminal Window\n\n" );
-    sleep1khz( 1000, 0 );
-
-    for( short i = 0; i < 7; i++ ) {
-        terminal_outputstring( "Hello World!\n" );
-        sleep1khz( 200, 0 );
-    }
-
-    sleep1khz( 1000, 0 );
 }
 
 // DISPLAY THE BACKGROUNDS
@@ -881,32 +865,12 @@ void backgrounddemo( void ) {
     for( unsigned char bkg = 0; bkg < 16; bkg++ ) {
         set_background( PURPLE, ORANGE, bkg );
         tpu_print_centre( 59, TRANSPARENT, WHITE, 0, backgroundnames[bkg] );
-        sleep1khz( 1000, 0 );
+        sleep1khz( 1000 );
     }
 
     displayreset();
 
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Rainbow Stars Test" );
-
-    tpu_set( 0, 0, TRANSPARENT, WHITE ); tpu_print( 1, "MEM = { WHITE, RED, ORANGE, YELLOW, GREEN, LTBLUE, PURPLE, MAGENTA }" );
-
-    tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
-    tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
-    tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
-
-    tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET R0 <- 0            // SET R0 TO 0" );
-
-    tpu_set( 0, 8 , TRANSPARENT, WHITE ); tpu_print( 1, "04 SET R1 <- (R0)         // SET R1 TO R0" );
-    tpu_set( 0, 9 , TRANSPARENT, WHITE ); tpu_print( 1, "05 SHL R1 << 6            // SHIFT LEFT R1 BY 6" );
-    tpu_set( 0, 10, TRANSPARENT, WHITE ); tpu_print( 1, "06 LFM R2 <- [ (R0) ]     // LOAD R2 FROM MEM[R0]" );
-
-    tpu_set( 0, 12, TRANSPARENT, WHITE ); tpu_print( 1, "07 SEQ Y == (R1)          // SKIP IF Y == R1?" );
-    tpu_set( 0, 13, TRANSPARENT, WHITE ); tpu_print( 1, "08 JMP 7                  // ELSE JUMP TO 7" );
-
-    tpu_set( 0, 15, TRANSPARENT, WHITE ); tpu_print( 1, "09 SET BC <- (R2)         // SET COLOUR TO R2" );
-    tpu_set( 0, 16, TRANSPARENT, WHITE ); tpu_print( 1, "10 ADD R0 <- (R0) + 1     // ADD 1 TO R0" );
-    tpu_set( 0, 17, TRANSPARENT, WHITE ); tpu_print( 1, "11 AND R0 <- (R0) & 7     // AND R0 BY 7" );
-    tpu_set( 0, 18, TRANSPARENT, WHITE ); tpu_print( 1, "12 JMP 4                  // JUMP TO 4" );
 
     unsigned short memoryinit[8] = {
         WHITE,
@@ -918,54 +882,116 @@ void backgrounddemo( void ) {
         PURPLE,
         MAGENTA
     };
-    copper_set_memory( memoryinit );                                                                                            // PROGRAM COPPER MEMORY ARRAY OF COLOURS
+    copper_set_memory( memoryinit );                        tpu_set( 0, 0, TRANSPARENT, WHITE, TPU_BOLD ); tpu_print( 1, "MEM = { WHITE, RED, ORANGE, YELLOW, GREEN, LTBLUE, PURPLE, MAGENTA }" );
 
-    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );                                                                        // BACKGROUND SNOW GENERATOR
-    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT BLACK
-    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );                                                                           // BACKGROUND WHITE
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );    tpu_set( 0, 2 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );       tpu_set( 0, 4 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
 
-    copper_program( 3, CU_SET, CU_R0, CU_RL, 0 );                                                                               // SET R0 = 0
+    copper_program( 3, CU_SET, CU_R0, CU_RL, 0 );           tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "03 SET R0 <- 0            // SET R0 TO 0" );
 
-    copper_program( 4, CU_SET, CU_R1, CU_RR, CU_R0 );                                                                           // SET R1 = R0
-    copper_program( 5, CU_SHL, CU_R1, CU_RL, 6 );                                                                               // R1 = R1 * 64
-    copper_program( 6, CU_LFM, CU_R2, CU_RR, CU_R0 );                                                                           // R2 = MEM[ R0 ]
+    copper_program( 4, CU_SET, CU_R1, CU_RR, CU_R0 );       tpu_set( 0, 8 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 SET R1 <- (R0)         // SET R1 TO R0" );
+    copper_program( 5, CU_SHL, CU_R1, CU_RL, 6 );           tpu_set( 0, 9 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "05 SHL R1 << 6            // SHIFT LEFT R1 BY 6" );
+    copper_program( 6, CU_LFM, CU_R2, CU_RR, CU_R0 );       tpu_set( 0, 10, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "06 LFM R2 <- [ (R0) ]     // LOAD R2 FROM MEM[R0]" );
 
-    copper_program( 7, CU_SEQ, CU_RY, CU_RR, CU_R1 );                                                                           // Y == R1 ?
-    copper_program( 8, CU_JMP, FALSE, CU_RL, 7 );                                                                               // SKIP YES, ELSE GO TO 7
+    copper_program( 7, CU_SEQ, CU_RY, CU_RR, CU_R1 );       tpu_set( 0, 12, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "07 SEQ Y == (R1)          // SKIP IF Y == R1?" );
+    copper_program( 8, CU_JPL, 7 );                         tpu_set( 0, 13, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "08 JPL 7                  // ELSE JUMP TO 7" );
 
-    copper_program( 9, CU_SET, CU_BC, CU_RR, CU_R2 );                                                                           // SET BACKGROUND = R2
-    copper_program( 10, CU_ADD, CU_R0, CU_RL, 1 );                                                                              // R0 = R0 + 1
-    copper_program( 11, CU_AND, CU_R0, CU_RL, 7 );                                                                              // R0 = R0 & 7
-    copper_program( 12, CU_JMP, FALSE, CU_RL, 4 );                                                                              // JUMP 4
+    copper_program( 9, CU_SET, CU_BC, CU_RR, CU_R2 );       tpu_set( 0, 15, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "09 SET BC <- (R2)         // SET COLOUR TO R2" );
+    copper_program( 10, CU_ADD, CU_R0, CU_RL, 1 );          tpu_set( 0, 16, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "10 ADD R0 <- (R0) + 1     // ADD 1 TO R0" );
+    copper_program( 11, CU_AND, CU_R0, CU_RL, 7 );          tpu_set( 0, 17, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "11 AND R0 <- (R0) & 7     // AND R0 BY 7" );
+    copper_program( 12, CU_JPL, 4 );                        tpu_set( 0, 18, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "12 JPL 4                  // JUMP TO 4" );
 
-    copper_startstop( 1 );
-    sleep1khz( 4000, 0 );
+    copper_startstop( 1 ); sleep1khz( 2000 );
 
-    displayreset();
-    copper_startstop( 0 );
+    displayreset(); copper_startstop( 0 );
 
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Random Colour Stars Test" );
 
-    tpu_set( 0, 2 , TRANSPARENT, WHITE ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
-    tpu_set( 0, 3 , TRANSPARENT, WHITE ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
-    tpu_set( 0, 4 , TRANSPARENT, WHITE ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );    tpu_set( 0, 2 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "00 SET BM <- BKG_SNOW     // SET MODE TO SNOW" );
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );       tpu_set( 0, 4 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "02 SET BC <- WHITE        // SET COLOUR TO WHITE" );
 
-    tpu_set( 0, 5 , TRANSPARENT, WHITE ); tpu_print( 1, "03 SET R0 <- RANDOM & 255 // SET R0 TO RANDOM & 255" );
-    tpu_set( 0, 6 , TRANSPARENT, WHITE ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
-    tpu_set( 0, 7 , TRANSPARENT, WHITE ); tpu_print( 1, "05 JMP 3                  // JUMP TO 3" );
+    copper_program( 3, CU_RND, CU_BC, CU_RL, 255 );         tpu_set( 0, 5 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "03 SET BC <- RANDOM & 255 // SET COLOUR TO RANDOM & 255" );
+    copper_program( 4, CU_JPL, 3 );                         tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 JPL 3                  // JUMP TO 3" );
 
-    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SNOW );                                                                        // BACKGROUND SNOW GENERATOR
-    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );                                                                           // BACKGROUND ALT BLACK
-    copper_program( 2, CU_SET, CU_BC, CU_RL, WHITE );                                                                           // BACKGROUND WHITE
+    copper_startstop( 1 ); sleep1khz( 2000 );
 
-    copper_program( 3, CU_RND, CU_R0, CU_RL, 255 );                                                                             // SET R0 = RAND & 255
-    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );                                                                           // SET BACKGROUND = R0
-    copper_program( 5, CU_JMP, FALSE, CU_RL, 3 );                                                                               // JUMP 3
+    displayreset(); copper_startstop( 0 );
 
-    copper_startstop( 1 );
-    sleep1khz( 4000, 0 );
+    tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Vertical Coloured Bars" );
 
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SOLID );   tpu_set( 0, 2 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "00 SET BM <- BKG_SOLID    // SET MODE TO SOLID" );
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    copper_program( 2, CU_SET, CU_BC, CU_RL, BLACK );       tpu_set( 0, 4 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "02 SET BC <- BLACK        // SET COLOUR TO BLACK" );
 
+    copper_program( 3, CU_SET, CU_R0, CU_RR, CU_RX );       tpu_set( 0, 5 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "03 SET R0 <- (RX)         // SET R0 TO RX" );
+    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );       tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
+    copper_program( 5, CU_JPL, 3 );                         tpu_set( 0, 7 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "05 JPL 3                  // JUMP TO 3" );
+
+    copper_startstop( 1 ); sleep1khz( 2000 );
+
+    displayreset(); copper_startstop( 0 );
+
+    tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "COPPER Horizontal Coloured Bars" );
+
+    copper_program( 0, CU_SET, CU_BM, CU_RL, BKG_SOLID );   tpu_set( 0, 2 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "00 SET BM <- BKG_SOLID    // SET MODE TO SOLID" );
+    copper_program( 1, CU_SET, CU_BA, CU_RL, BLACK );       tpu_set( 0, 3 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "01 SET BA <- BLACK        // SET ALT TO BLACK" );
+    copper_program( 2, CU_SET, CU_BC, CU_RL, BLACK );       tpu_set( 0, 4 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "02 SET BC <- BLACK        // SET COLOUR TO BLACK" );
+
+    copper_program( 3, CU_SET, CU_R0, CU_RR, CU_RY );       tpu_set( 0, 5 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "03 SET R0 <- (RY)         // SET R0 TO RY" );
+    copper_program( 4, CU_SET, CU_BC, CU_RR, CU_R0 );       tpu_set( 0, 6 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "04 SET BC <- (R0)         // SET COLOUR TO R0" );
+    copper_program( 5, CU_JPL, 3 );                         tpu_set( 0, 7 , TRANSPARENT, WHITE, TPU_NORMAL ); tpu_print( 1, "05 JPL 3                  // JUMP TO 3" );
+
+    copper_startstop( 1 ); sleep1khz( 2000 );
+}
+
+// CHARACTER MAP DISPLAY
+void charactermapdemo( void ) {
+    displayreset();
+
+    unsigned char foreground = 0, x = 0, y = 0;
+
+    tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Character Map Test" );
+
+    for( int c = 3; c < 7; c++ ) {
+        for( int i = 0; i < 256; i++ ) {
+            tpu_set( x++, y, TRANSPARENT, foreground++, TPU_NORMAL );
+            tpu_output_character( c );
+            if( x == 80 ) { x = 0; y++; }
+        }
+        y++;
+    }
+
+    x = 0; y += 2;
+    for( int i = 0; i < 256; i++ ) {
+        tpu_set( x++, y, BLACK, WHITE, TPU_BOLD );
+        tpu_output_character( i );
+        if( x == 80 ) { x = 0; y++; }
+    }
+
+    x = 0; y += 2;
+    for( int i = 0; i < 256; i++ ) {
+        tpu_set( x, y, BLACK, WHITE, TPU_X2 );
+        tpu_output_character( i ); tpu_output_character( i );
+        x += 2; if( x == 80 ) { x = 0; y++; }
+    }
+
+    x = 0; y += 2;
+    for( int i = 0; i < 256; i++ ) {
+        tpu_set( x++, y, BLACK, WHITE, TPU_BLINK );
+        tpu_output_character( i );
+        if( x == 80 ) { x = 0; y++; }
+    }
+
+    x = 0; y += 2;
+    for( int i = 0; i < 256; i++ ) {
+        tpu_set( x++, y, BLACK, WHITE, TPU_UNDER );
+        tpu_output_character( i );
+        if( x == 80 ) { x = 0; y++; }
+    }
+
+    sleep1khz( 2000 );
 }
 
 // PUT SOME OBJECTS ON THE TILEMAP AND WRAP LOWER LAYER UP AND LEFT , UPPER LAYER DOWN AND RIGHT
@@ -975,22 +1001,24 @@ void tilemapdemo( void ) {
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "Tilemap Scroll With Wrap Test" );
 
     unsigned char x, y, count, colour, actionflag;
-    (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
-    (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
+    for( int i = 0; i < 4; i++ )
+        tm_cs( i );
 
     for( unsigned char tile_number = 0; tile_number < 10; tile_number++ ) {
-        set_tilemap_bitmap( LOWER_LAYER, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
-        set_tilemap_bitmap( UPPER_LAYER, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
+        set_tilemap_bitmap( 0, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
+        set_tilemap_bitmap( 1, tile_number + 1, &tilemap_bitmap[ tile_number * 256 ] );
     }
 
-    // PLACE NUMBERS ALONG THE TOP (LOWER LAYER) AND MIDDLE (UPPER LAYER)
-    x = 0; y = 2; count = 0; actionflag = 0;
-    for( unsigned char i = 0; i < 168; i++ ) {
-        set_tilemap_tile( LOWER_LAYER, x, y, count + 1, actionflag & 7 );
-        set_tilemap_tile( UPPER_LAYER, x, y + 16, count + 1, actionflag & 7 );
+    // PLACE NUMBERS ALONG THE LAYERS
+    x = 0; y = 0; count = 0; actionflag = 0;
+    for( unsigned int i = 0; i < 512; i++ ) {
+        set_tilemap_tile_abs( 0, x, y, count + 1, actionflag & 7 );
+        set_tilemap_tile_abs( 1, y, x, count + 1, actionflag & 7 );
+        set_tilemap_tile_abs( 2, x+20, y+20, count + 1, actionflag & 7 );
+        set_tilemap_tile_abs( 3, y+20, x+20, count + 1, actionflag & 7 );
 
-        y = ( x == 41 ) ? y + 1 : y;
-        x = ( x == 41 ) ? 0 : x + 1;
+        y = ( x == 63 ) ? y + 1 : y;
+        x = ( x == 63 ) ? 0 : x + 1;
 
         count = ( count == 9 ) ? 0 : count + 1;
         actionflag++;
@@ -998,12 +1026,10 @@ void tilemapdemo( void ) {
 
     for( unsigned short i = 0; i < 512; i++ ) {
         await_vblank();
-        // LOWER LEFT AND UP 1 PIXEL AT A TIME
-        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_LEFT, 1 );
-        (void)tilemap_scrollwrapclear( LOWER_LAYER, TM_UP, 1 );
-        // UPPER RIGHT AND DOWN 2 PIXELS AT A TIME
-        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_RIGHT, 2 );
-        (void)tilemap_scrollwrapclear( UPPER_LAYER, TM_DOWN, 2 );
+        tilemap_scroll( 0, TM_LEFT, 1 ); tilemap_scroll( 0, TM_UP, 1 );
+        tilemap_scroll( 1, TM_LEFT, 2 ); tilemap_scroll( 0, TM_UP, 2 );
+        tilemap_scroll( 2, TM_RIGHT, 1 ); tilemap_scroll( 2, TM_DOWN, 1 );
+        tilemap_scroll( 3, TM_RIGHT, 2 ); tilemap_scroll( 3, TM_DOWN, 2 );
         await_vblank_finish();
     }
 }
@@ -1022,7 +1048,7 @@ void gpudemo( void ) {
     for( i = 0; i < 2048; i++ ) {
         gpu_pixel( rng( 256 ), rng( 320 ), rng( 240 ) );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // LINES
     gpu_cs();
@@ -1030,7 +1056,7 @@ void gpudemo( void ) {
     for( i = 0; i < 1024; i++ ) {
         gpu_line( rng( 256 ), rng( 320 ), rng( 240 ), rng( 320 ), rng( 240 ) );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // WIDE LINES
     gpu_cs();
@@ -1038,7 +1064,7 @@ void gpudemo( void ) {
     for( i = 0; i < 1024; i++ ) {
         gpu_wideline( rng( 256 ), rng( 320 ), rng( 240 ), rng( 320 ), rng( 240 ), rng(8) + 1 );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // RECTANGLES
     gpu_cs();
@@ -1048,7 +1074,7 @@ void gpudemo( void ) {
         gpu_rectangle( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 352 ) - 16, rng( 256 ) - 8 );
     }
     gpu_dither( DITHEROFF );
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // CIRCLES
     gpu_cs();
@@ -1058,7 +1084,7 @@ void gpudemo( void ) {
         gpu_circle( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 32 ), 255, rng( 1 ) );
     }
     gpu_dither( DITHEROFF );
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // TRIANGLES
     gpu_cs();
@@ -1071,7 +1097,7 @@ void gpudemo( void ) {
         gpu_triangle( rng( 256 ), x1, y1, x2, y2, x3, y3 );
     }
     gpu_dither( DITHEROFF );
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // BLITTER
     // SET BLITTER OBJECTS - ALIENS
@@ -1083,7 +1109,7 @@ void gpudemo( void ) {
     for( i = 0; i < 128; i++ ) {
         gpu_blit( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 6 ), rng( 4 ), rng(8) );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // CHARACTER BLITTER
     gpu_cs();
@@ -1091,7 +1117,7 @@ void gpudemo( void ) {
     for( i = 0; i < 128; i++ ) {
         gpu_character_blit( rng( 256 ), rng( 352 ) - 16, rng( 256 ) - 8, rng( 256 ), rng( 4 ), rng(8) );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 
     // COLOUR BLITTER
     // SET COLOUR BLITTER OBJECTS - ALIENS FROM GALAXIAN
@@ -1136,7 +1162,7 @@ void gpudemo( void ) {
     for( i = 0; i < 128; i++ ) {
         gpu_colourblit( rng( 352 ) - 16, rng( 256 ) - 8, rng( 9 ), rng( 4 ), rng(8) );
     }
-    sleep1khz( 1000, 0 );
+    sleep1khz( 1000 );
 }
 
 void ditherdemo( void ) {
@@ -1154,7 +1180,7 @@ void ditherdemo( void ) {
         }
     }
     gpu_dither( DITHEROFF );
-    sleep1khz( 2000, 0 );
+    sleep1khz( 2000 );
 }
 
 unsigned char tune_treble[] = {  24, 36, 31, 28, 36, 30, 24, 27,  0,
@@ -1172,68 +1198,48 @@ unsigned char tune_bass[] = {   12,  0,  0, 19, 12,  0,  0, 20,
                                 12,  0,  0, 19, 12,  0,  0, 20,
                                 19,  0, 20,  0, 22,  0,  24, 0, 0xff };
 
-unsigned char harmonic_wave[256] = {
-127,137,147,156,165,174,182,190,196,203,208,213,216,220,223,225,226,
-228,229,230,231,232,233,234,235,236,238,239,241,243,245,247,249,250,
-252,253,254,254,254,253,252,251,249,246,243,240,237,234,231,227,224,
-222,219,217,216,215,215,215,216,217,219,221,223,225,228,230,233,234,
-236,237,238,238,237,236,234,231,228,224,220,215,210,204,199,194,188,
-183,178,174,169,166,162,159,156,154,152,150,148,146,144,143,141,139,
-136,134,131,128,125,122,118,115,111,108,105,102,99,97,96,95,95,
-96,97,99,102,105,108,113,117,122,127,132,137,141,146,149,152,
-155,157,158,159,159,158,157,155,152,149,146,143,139,136,132,129,126,
-123,120,118,115,113,111,110,108,106,104,102,100,98,95,92,88,85,
-80,76,71,66,60,55,50,44,39,34,30,26,23,20,18,17,16,
-16,17,18,20,21,24,26,29,31,33,35,37,38,39,39,39,38,
-37,35,32,30,27,23,20,17,14,11,8,5,3,2,1,0,0,
-0,1,2,4,5,7,9,11,13,15,16,18,19,20,21,22,23,
-24,25,26,28,29,31,34,38,41,46,51,58,64,72,80,89,98,
-107,117
-};
 
 void spritedemo( void ) {
     unsigned short animation_count = 0, ghost_animation_frame = 0, move_count = 0, do_power = 0, power = 0;
     char ghost_direction[4] = { 0, 1, 2, 3 };
     unsigned short trebleposition = 0, bassposition = 0, updateflag;
 
-    wavesample_upload( CHANNEL_BOTH, harmonic_wave );
-
     displayreset();
     tpu_print_centre( 59, TRANSPARENT, WHITE, 1, "SPRITE Demo" );
 
     for( unsigned char tile_number = 0; tile_number < 2; tile_number++ ) {
-        set_tilemap_bitmap( LOWER_LAYER, tile_number + 1, &pacman_maze_bitmaps[ tile_number * 256 ] );
+        set_tilemap_bitmap( 0, tile_number + 1, &pacman_maze_bitmaps[ tile_number * 256 ] );
     }
 
     for( short y = 0; y < 32; y++ ) {
         for( short x = 0; x < 42; x++ ) {
             switch( pacman_maze[y][x] ) {
                 case '.':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 0, 0 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 0, 0 );
                     break;
                 case '1':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, 0 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 1, 0 );
                     break;
                 case '2':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, ROTATE90 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 1, ROTATE90 );
                     break;
                 case '3':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, ROTATE180 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 1, ROTATE180 );
                     break;
                 case '4':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 1, ROTATE270 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 1, ROTATE270 );
                     break;
                 case '5':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 2, ROTATE180 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 2, ROTATE180 );
                     break;
                 case '6':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 2, 0 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 2, 0 );
                     break;
                 case '7':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 2, ROTATE90 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 2, ROTATE90 );
                     break;
                 case '8':
-                    set_tilemap_tile( LOWER_LAYER, x, y, 2, ROTATE270 );
+                    set_tilemap_tile_abs( 0, x+1, y+1, 2, ROTATE270 );
                     break;
             }
         }
@@ -1274,7 +1280,7 @@ void spritedemo( void ) {
                 colour_sprite_bitmap[ y * 16 + x ] = colour;
             }
         }
-        set_sprite_bitmaps( LOWER_LAYER, i * 2, &colour_sprite_bitmap[ 0 ] );
+        set_sprite_bitmaps( i * 4, &colour_sprite_bitmap[ 0 ] );
     }
 
     // SET COLOUR SPRITE OBJECTS - GHOSTS FROM PACMAN - POWER UP
@@ -1298,17 +1304,17 @@ void spritedemo( void ) {
                 colour_sprite_bitmap[ y * 16 + x ] = colour;
             }
         }
-        set_sprite_bitmaps( LOWER_LAYER, i * 2 + 1, &colour_sprite_bitmap[ 0 ] );
+        set_sprite_bitmaps( i * 4 + 2, &colour_sprite_bitmap[ 0 ] );
     }
 
-    // EVEN SPRITES GHOST NON-POWER, ODD SPRITES GHOST POWER
-    set_sprite( LOWER_LAYER, 0, 1, 144, 64, 0, SPRITE_DOUBLE );     set_sprite( LOWER_LAYER, 1, 0, 144, 64, 0, SPRITE_DOUBLE );
-    set_sprite( LOWER_LAYER, 2, 1, 464, 64, 2, SPRITE_DOUBLE );     set_sprite( LOWER_LAYER, 3, 0, 464, 64, 2, SPRITE_DOUBLE );
-    set_sprite( LOWER_LAYER, 4, 1, 464, 384, 4, SPRITE_DOUBLE );    set_sprite( LOWER_LAYER, 5, 0, 464, 384, 4, SPRITE_DOUBLE );
-    set_sprite( LOWER_LAYER, 6, 1, 144, 384, 6, SPRITE_DOUBLE );    set_sprite( LOWER_LAYER, 7, 0, 144, 384, 6, SPRITE_DOUBLE );
+    // 0, 4, 8, 12 SPRITES GHOST NON-POWER, 2, 6, 10, 14 SPRITES GHOST POWER
+    set_sprite( 0, 1, 144, 64, 0, SPRITE_DOUBLE );     set_sprite( 2, 0, 144, 64, 0, SPRITE_DOUBLE );
+    set_sprite( 4, 1, 464, 64, 2, SPRITE_DOUBLE );     set_sprite( 6, 0, 464, 64, 2, SPRITE_DOUBLE );
+    set_sprite( 8, 1, 464, 384, 4, SPRITE_DOUBLE );    set_sprite( 10, 0, 464, 384, 4, SPRITE_DOUBLE );
+    set_sprite( 12, 1, 144, 384, 6, SPRITE_DOUBLE );    set_sprite( 14, 0, 144, 384, 6, SPRITE_DOUBLE );
 
-    set_sprite_bitmaps( UPPER_LAYER, 0, &pacman_bitmap[0] );
-    set_sprite( UPPER_LAYER, 0, 1, 304, 415, 0, 1 );
+    set_sprite_bitmaps( 16, &pacman_bitmap[0] );
+    set_sprite( 16, 1, 304, 415, 0, 1 );
 
     for( short i = 0; i < 1280; i++ ) {
         await_vblank_finish(); await_vblank();
@@ -1316,37 +1322,37 @@ void spritedemo( void ) {
 
         // PACMAN "TUNE" - SLIGHTLY OUT
         if( tune_treble[ trebleposition ] != 0xff ) {
-            if( !get_beep_active( 1 ) ) {
-                beep( 1, WAVE_UD1, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3 );
+            if( !get_beep_active( ACTIVE_CHANNEL_LEFT_0 ) ) {
+                beep( CHANNEL_LEFT_0, WAVE_WOOD, tune_treble[ trebleposition ] * 2 + 3, size_treble[ trebleposition ] << 3, 7 );
                 trebleposition++;
             }
         }
         if( tune_bass[ bassposition ] != 0xff ) {
-            if( !get_beep_active( 2 ) ) {
-                beep( 2, WAVE_UD1, tune_bass[ bassposition ] * 2 + 3, 16 << 3 );
+            if( !get_beep_active( ACTIVE_CHANNEL_RIGHT_0 ) ) {
+                beep( CHANNEL_RIGHT_0, WAVE_BRASS, tune_bass[ bassposition ] * 2 + 3, 16 << 3, 7 );
                 bassposition++;
             }
         }
 
         // ANIMATE PACMAN
-        set_sprite_attribute( UPPER_LAYER, 0, SPRITE_TILE, ( ( animation_count & 96 ) >> 5 ) );
-        set_sprite_attribute( UPPER_LAYER, 0, SPRITE_ACTION, ghost_direction[1] + SPRITE_DOUBLE + ROTATE0 );
+        set_sprite_attribute( 16, ATTR_SPRITE_TILE, ( ( animation_count & 96 ) >> 5 ) );
+        set_sprite_attribute( 16, ATTR_SPRITE_ACTION, ghost_direction[1] + SPRITE_DOUBLE + ROTATE0 );
 
         // ANIMATE THE GHOSTS
         for( short i = 0; i < 4; i++ ) {
             if( power ) {
                 for( short i = 0; i < 4; i++ ) {
                     // TURN OFF NON-POWER UP SPRITE, TURN ON POWER UP SPRITE AND ANIMATE
-                    set_sprite_attribute( LOWER_LAYER, i * 2, SPRITE_ACTIVE, 0 );
-                    set_sprite_attribute( LOWER_LAYER, i * 2 + 1, SPRITE_ACTIVE, 1 );
-                    set_sprite_attribute( LOWER_LAYER, i * 2 + 1, SPRITE_TILE, ( ( move_count < 140 ) ? 0 : 1 ) * 2 + ghost_animation_frame );
+                    set_sprite_attribute( i * 4, ATTR_SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( i * 4 + 2, ATTR_SPRITE_ACTIVE, 1 );
+                    set_sprite_attribute( i * 4 + 2, ATTR_SPRITE_TILE, ( ( move_count < 140 ) ? 0 : 1 ) * 2 + ghost_animation_frame );
                 }
             } else {
                 for( short i = 0; i < 4; i++ ) {
                     // TURN ON NON-POWER UP SPRITE AND ANIMATE, TURN OFF POWER UP SPRITE
-                    set_sprite_attribute( LOWER_LAYER, i * 2, SPRITE_TILE, ghost_direction[i] * 2 + ghost_animation_frame );
-                    set_sprite_attribute( LOWER_LAYER, i * 2, SPRITE_ACTIVE, 1 );
-                    set_sprite_attribute( LOWER_LAYER, i * 2 + 1, SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( i * 4, ATTR_SPRITE_TILE, ghost_direction[i] * 2 + ghost_animation_frame );
+                    set_sprite_attribute( i * 4, ATTR_SPRITE_ACTIVE, 1 );
+                    set_sprite_attribute( i * 4 + 2, ATTR_SPRITE_ACTIVE, 0 );
                 }
             }
         }
@@ -1355,20 +1361,22 @@ void spritedemo( void ) {
         for( short i = 0; i <4; i++ ) {
             switch( ghost_direction[i] ) {
                 case 0:
-                    updateflag = 0b0000000000001;
+                    update_sprite( i * 4,     0, 1, 0, 0 );
+                    update_sprite( i * 4 + 2, 0, 1, 0, 0 );
                     break;
                 case 1:
-                    updateflag = 0b0000000100000;
+                    update_sprite( i * 4,     0, 0, 1, 0 );
+                    update_sprite( i * 4 + 2, 0, 0, 1, 0 );
                     break;
                 case 2:
-                    updateflag = 0b0000000011111;
+                    update_sprite( i * 4,     0, -1, 0, 0 );
+                    update_sprite( i * 4 + 2, 0, -1, 0, 0 );
                     break;
                 case 3:
-                    updateflag = 0b0001111100000;
+                    update_sprite( i * 4,     0, 0, -1, 0 );
+                    update_sprite( i * 4 + 2, 0, 0, -1, 0 );
                     break;
             }
-            update_sprite( LOWER_LAYER, i * 2, updateflag );
-            update_sprite( LOWER_LAYER, i * 2 + 1, updateflag );
         }
 
         // CHECK IF MOVED 160 SPACES
@@ -1405,16 +1413,16 @@ void floatdemo() {
         colour = ( colour == 0 ) ? 255 : colour - 1;
         scale = scale - 0.005;
     }
-    sleep1khz( 2000, 0 );
+    sleep1khz( 2000 );
 }
 
 int main( int argc, char **argv ) {
 	for( int loop = 0; loop < 4; loop++ ) {
         colourtable();
 
-        terminaldemo();
-
         backgrounddemo();
+
+        charactermapdemo();
 
         tilemapdemo();
 

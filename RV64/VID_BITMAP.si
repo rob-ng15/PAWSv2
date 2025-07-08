@@ -1,0 +1,366 @@
+unit framebuffer_read(
+    dualport_bram_port0 bitmap_000,
+    dualport_bram_port0 bitmap_001,
+    dualport_bram_port0 bitmap_010,
+    dualport_bram_port0 bitmap_011,
+    dualport_bram_port0 bitmap_100,
+    dualport_bram_port0 bitmap_101,
+    dualport_bram_port0 bitmap_110,
+    dualport_bram_port0 bitmap_111,
+
+    input   uint10  pix_x,
+    input   uint9   pix_y,
+    input   uint1   pix_active,
+    input   uint1   pix_vblank,
+
+    input   uint2   display256,
+    output! uint8   pixel_1,
+    output! uint8   pixel_0,
+    output! uint1   pixel_1_collision,
+    output! uint1   pixel_0_collision,
+) {
+    uint17  baseaddress <: ( pix_vblank ? 0 : pix_y[1,8] ) * 320 + ( pix_active ? pix_x[1,9] : 0 );                             // SET BASE ADDRESS
+    uint17  baseaddress0 <: baseaddress + ( pix_active & pix_x[0,1] );                                                          // SET BASE ADDRESS FOR FIRST PIXEL IN BLOCK
+                                                                                                                                // ( MAY NEED TO BE 1 AHEAD )
+
+    // Setup the address in the bitmap for the pixel being rendered
+    bitmap_000.addr0 := baseaddress0[2,15]; bitmap_001.addr0 := baseaddress[2,15]; bitmap_010.addr0 := baseaddress[2,15]; bitmap_011.addr0 := baseaddress[2,15];
+    bitmap_100.addr0 := baseaddress0[2,15]; bitmap_101.addr0 := baseaddress[2,15]; bitmap_110.addr0 := baseaddress[2,15]; bitmap_111.addr0 := baseaddress[2,15];
+
+    always {
+        switch( baseaddress[0,2] ) {                                                                                            // SELECT PIXELS FROM FRAMEBUFFERS (X.Y) SCREEN COORDINATES
+            case 2b00: { pixel_0 = bitmap_000.rdata0; pixel_1 = bitmap_100.rdata0; }
+            case 2b01: { pixel_0 = bitmap_001.rdata0; pixel_1 = bitmap_101.rdata0; }
+            case 2b10: { pixel_0 = bitmap_010.rdata0; pixel_1 = bitmap_110.rdata0; }
+            case 2b11: { pixel_0 = bitmap_011.rdata0; pixel_1 = bitmap_111.rdata0; }
+        }
+
+        pixel_0_collision = pix_active & ( ( pixel_0 != 64 ) | display256[0,1] );                                               // DETERMINE IF PIXEL_0 IS TO DISPLAY
+        pixel_1_collision = pix_active & ( ( pixel_1 != 64 ) | display256[1,1] );                                               // DETERMINE IF PIXEL_1 IS TO DISPLAY
+    }
+}
+
+unit bitmap_memmap(
+    // Clocks
+    input   uint1   video_clock,
+    input   uint1   video_reset,
+    input   uint1   gpu_clock,
+
+    // Pixels
+    input   uint10  pix_x,
+    input   uint9   pix_y,
+    input   uint1   pix_active,
+    input   uint1   pix_vblank,
+    output! uint8   pixel_1,
+    output! uint8   pixel_0,
+    output! uint1   pixel_0_collision,
+    output! uint1   pixel_1_collision,
+
+    // Memory access via I/O registers
+    input   uint18  ADDR,
+    input   uint18  ADDR0,
+    input   uint1   WENABLE,
+    input   uint32  WDATA,
+
+    // Memory access direct to bitmap
+    input   uint2   SIZE,
+    input   uint1   WENABLE_DIRECT,
+    output  uint32  RDATA_DIRECT,
+    input   uint8   static8bit,
+
+    output  uint1   gpu_active,
+    output  uint1   gpu_queue_full,
+    output  uint1   gpu_queue_complete,
+) {
+    // FRAMEBUFFERS - ORGANISED AS 4x8 BIT PIXELS TO ALLOW 8, 16 AND 32 BIT ACCESS FOR 2 FRAMEBUFFERS
+    dualport_bram uint8 bitmap_000 <@video_clock,@clock> [ 19200 ] = uninitialized; dualport_bram uint8 bitmap_001 <@video_clock,@clock> [ 19200 ] = uninitialized;
+    dualport_bram uint8 bitmap_010 <@video_clock,@clock> [ 19200 ] = uninitialized; dualport_bram uint8 bitmap_011 <@video_clock,@clock> [ 19200 ] = uninitialized;
+    dualport_bram uint8 bitmap_100 <@video_clock,@clock> [ 19200 ] = uninitialized; dualport_bram uint8 bitmap_101 <@video_clock,@clock> [ 19200 ] = uninitialized;
+    dualport_bram uint8 bitmap_110 <@video_clock,@clock> [ 19200 ] = uninitialized; dualport_bram uint8 bitmap_111 <@video_clock,@clock> [ 19200 ] = uninitialized;
+
+    // BITMAP DISPLAY
+    framebuffer_read framebuffer_display <@video_clock,!video_reset> (                                                          // READ FROM FRAMEBUFFERS FOR DISPLAY
+        bitmap_000 <:> bitmap_000, bitmap_001 <:> bitmap_001, bitmap_010 <:> bitmap_010, bitmap_011 <:> bitmap_011,
+        bitmap_100 <:> bitmap_100, bitmap_101 <:> bitmap_101, bitmap_110 <:> bitmap_110, bitmap_111 <:> bitmap_111,
+
+        pix_x      <: pix_x,
+        pix_y      <: pix_y,
+        pix_active <: pix_active,
+        pix_vblank <: pix_vblank,
+        pixel_1    :> pixel_1,
+        pixel_0    :> pixel_0,
+        pixel_0_collision :> pixel_0_collision,
+        pixel_1_collision :> pixel_1_collision
+    );
+
+    // DITHER PATTERN GENERATOR
+    dither DODITHER( bitmap_x_write <: PW.bitmap_x_write, bitmap_y_write <: PW.bitmap_y_write, dithermode <: PW.gpu_active_dithermode, static1bit <: static8bit[0,1] );
+
+    uint2   framebuffer = uninitialised;
+    uint17  GPU_ADDR <:: PW.bitmap_y_write[0,8] * 320 + PW.bitmap_x_write[0,9];                                                 // GPU PIXEL ADDRESS
+
+    uint8   pixeltowrite <:: ( PW.gpu_active_dithermode == 14 ) ? ( static8bit == 64 ) ? 65 : static8bit :                      // DETERMINE COLOUR OF PIXEL
+                                                                    DODITHER.condition ? PW.bitmap_colour_write :
+                                                                                         PW.bitmap_colour_write_alt;
+
+    simple_dualport_bram uint16 blit1tilemap <@gpu_clock,@clock> [ 1024 ] = uninitialized;                                      // 64 x 16 x 16 1 bit tilemap for blit1tilemap
+    uint4   BTWline_NEXT <:: blit1tilemap.addr1[0,4] + 1;
+
+    simple_dualport_bram uint8 characterGenerator8x8 <@gpu_clock,@clock> [] = {                                                 // Character ROM 8x8 x 512 for character blitter
+        $include('ROM/FONTS/CODE437-THINBOLD.inc')
+    };
+    uint3   CTWline_NEXT <:: characterGenerator8x8.addr1[0,3] + 1;
+
+    simple_dualport_bram uint8 colourblittilemap <@gpu_clock,@clock> [ 16384 ] = uninitialized;                                 // 64 x 16 x 16 8 bit tilemap for colourblittilemap
+    uint8   CBTWpixel_NEXT <:: colourblittilemap.addr1[0,8] + 1;
+
+    simple_dualport_bram uint8 pb_colourmap <@gpu_clock,@clock> [ 256 ] = uninitialized;                                        // 256 colour remapper
+
+    int10   minmax <:: ( __signed( WDATA ) < __signed( -32d512 ) ) ? -10d512 :                                                  // ADJUST FOR 10bit underflow/overflow for pixel coordinates
+                       ( __signed( WDATA ) > __signed(  32d511 ) ) ?  10d511 : WDATA;
+
+    gpu_queue PW <@gpu_clock,!video_reset> (                                                                                    // GPU QUEUE CONTROLLER
+        blit1tilemap <:> blit1tilemap,
+        characterGenerator8x8 <:> characterGenerator8x8,
+        colourblittilemap <:> colourblittilemap,
+        pb_colourmap <:> pb_colourmap,
+        queue_full :> gpu_queue_full,
+        queue_complete :> gpu_queue_complete,
+        gpu_active :> gpu_active
+    );
+
+    bitmap_000.wenable1 := 0; bitmap_001.wenable1 := 0; bitmap_010.wenable1 := 0; bitmap_011.wenable1 := 0;                     // BITMAP WRITE FLAGS
+    bitmap_100.wenable1 := 0; bitmap_101.wenable1 := 0; bitmap_110.wenable1 := 0; bitmap_111.wenable1 := 0;
+
+    bitmap_000.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];                // SET ADDRESS IN BITMAPS
+    bitmap_001.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_010.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_011.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_100.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_101.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_110.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+    bitmap_111.addr1 := PW.bitmap_write ? GPU_ADDR[2,15] : ( SIZE[1,1] & ADDR[1,1] ) ? ADDR0[2,15] : ADDR[2,15];
+
+    RDATA_DIRECT := ADDR[17,1] ? ADDR[1,1] ? { bitmap_101.rdata1, bitmap_100.rdata1, bitmap_111.rdata1, bitmap_110.rdata1 } :   // SET THE 32 BIT READ
+                                             { bitmap_111.rdata1, bitmap_110.rdata1, bitmap_101.rdata1, bitmap_100.rdata1 } :
+                                 ADDR[1,1] ? { bitmap_001.rdata1, bitmap_000.rdata1, bitmap_011.rdata1, bitmap_010.rdata1 } :
+                                             { bitmap_011.rdata1, bitmap_010.rdata1, bitmap_001.rdata1, bitmap_000.rdata1 };
+
+    blit1tilemap.wdata1 := WDATA; blit1tilemap.wenable1 := 0;
+    characterGenerator8x8.wdata1 := WDATA; characterGenerator8x8.wenable1 := 0;
+    colourblittilemap.wdata1 := WDATA; colourblittilemap.wenable1 := 0;
+    pb_colourmap.wenable1 := 1;
+    PW.gpu_write := 0; PW.pb_newpixel := 0;
+
+    always {
+        uint3   pbcolour = uninitialised;
+
+        if( ( PW.bitmap_x_write >= PW.bitmap_crop_left ) & ( PW.bitmap_x_write <= PW.bitmap_crop_right ) &                      // IS PIXEL IN THE CROPPING RECTANGLE?
+            ( PW.bitmap_y_write >= PW.bitmap_crop_top ) & ( PW.bitmap_y_write <= PW.bitmap_crop_bottom ) & PW.bitmap_write ) {  //  AND A PIXEL FROM THE GPU TO WRITE
+            if( framebuffer[0,1] ) {                                                                                            // HANDLE GPU WRITE TO FRAMEBUFFER 0
+                switch( GPU_ADDR[0,2] ) {
+                    case 2b00: { bitmap_000.wdata1 = pixeltowrite; bitmap_000.wenable1 = 1; }
+                    case 2b01: { bitmap_001.wdata1 = pixeltowrite; bitmap_001.wenable1 = 1; }
+                    case 2b10: { bitmap_010.wdata1 = pixeltowrite; bitmap_010.wenable1 = 1; }
+                    case 2b11: { bitmap_011.wdata1 = pixeltowrite; bitmap_011.wenable1 = 1; }
+                }
+            }
+            if( framebuffer[1,1] ) {                                                                                            // HANDLE GPU WRITE TO FRAMEBUFFER 1
+                switch( GPU_ADDR[0,2] ) {
+                    case 2b00: { bitmap_100.wdata1 = pixeltowrite; bitmap_100.wenable1 = 1; }
+                    case 2b01: { bitmap_101.wdata1 = pixeltowrite; bitmap_101.wenable1 = 1; }
+                    case 2b10: { bitmap_110.wdata1 = pixeltowrite; bitmap_110.wenable1 = 1; }
+                    case 2b11: { bitmap_111.wdata1 = pixeltowrite; bitmap_111.wenable1 = 1; }
+                }
+            }
+        }
+
+        if( WENABLE ) {
+            switch( ADDR[4,4] ) {
+                case 4h0: {
+                    switch( ADDR[1,3] ) {                                                                                       // SET GPU COORDINATES - ADJUST INTO RANGE
+                        case 3h0: { PW.gpu_x = minmax; }
+                        case 3h1: { PW.gpu_y = minmax; }
+                        case 3h2: { PW.gpu_param0 = minmax; }
+                        case 3h3: { PW.gpu_param1 = minmax; }
+                        case 3h4: { PW.gpu_param2 = minmax; }
+                        case 3h5: { PW.gpu_param3 = minmax; }
+                        case 3h6: { PW.gpu_param4 = minmax; }
+                        case 3h7: { PW.gpu_param5 = minmax; }
+                    }
+                }
+                case 4h1: {
+                    switch( ADDR[1,2] ) {
+                        case 2h0: {                                                                                             // SET GPU COLOUR
+                            PW.gpu_colour = SIZE[1,1] ? { WDATA[22,2], WDATA[13,3], WDATA[6,2], WDATA[21,1] & WDATA[5,1] } :    //  32 BIT RGB -> 8 BIT RGBM
+                                                        WDATA;                                                                  //   8 BIT RGBM
+                        }
+                        case 2h1: { PW.gpu_colour_alt = WDATA; }                                                                // SET GPU ALT COLOUR
+                        case 2h2: { PW.gpu_dithermode = WDATA; }                                                                // SET GPU DITHER MODE
+                        case 2h3: { PW.gpu_write = WDATA; pbcolour = 0; }                                                       // START GPU, PIXELBLOCK RESET COLOUR RGB CYCLE
+                    }
+                }
+                case 4h4: {
+                    switch( ADDR[1,1] ) {
+                        case 0: { blit1tilemap.addr1 = { WDATA[0,6], 4hf }; }
+                        case 1: { blit1tilemap.addr1[0,4] = BTWline_NEXT; blit1tilemap.wenable1 = 1; }
+                    }
+                }
+                case 4h5: {
+                    switch( ADDR[1,1] ) {
+                        case 0: { characterGenerator8x8.addr1 = { WDATA[0,6], 3h7 }; }
+                        case 1: { characterGenerator8x8.addr1[0,3] = CTWline_NEXT; characterGenerator8x8.wenable1 = 1; }
+                    }
+                }
+                case 4h6: {
+                    switch( ADDR[1,1] ) {
+                        case 0: { colourblittilemap.addr1 = { WDATA[0,6], 8hff }; }
+                        case 1: { colourblittilemap.addr1[0,8] = CBTWpixel_NEXT; colourblittilemap.wenable1 = 1; }
+                    }
+                }
+                case 4h7: {
+                    switch( ADDR[1,3] ) {
+                        default: { PW.pb_colour = WDATA; PW.pb_newpixel = 1; }
+                        case 3h1: {
+                            switch( pbcolour ) {
+                                case 0: { PW.pb_colour8r = WDATA; pbcolour = 1; }
+                                case 1: { PW.pb_colour8g = WDATA; pbcolour = 2; }
+                                default: { PW.pb_colour8b = WDATA; pbcolour = 0; PW.pb_newpixel = 2; }
+                            }
+                        }
+                        case 3h4: { PW.pb_newpixel = 3; }
+                        case 3h5: { PW.pb_mode = WDATA; }
+                        case 3h6: { pb_colourmap.addr1 = WDATA; }
+                        case 3h7: { pb_colourmap.wdata1 = WDATA; }
+                    }
+                }
+                case 4h8: {
+                    switch( ADDR[2,2] ) {                                                                                       // PIXELBLOCK ARGB RGBA ABGR BGRA modes
+                        case 2b00: {                                                                                            //  ARGB
+                            PW.pb_colour8r = WDATA[16,8];
+                            PW.pb_colour8g = WDATA[8,8];
+                            PW.pb_colour8b = WDATA[0,8];
+                        }
+                        case 2b01: {                                                                                            //  RGBA
+                            PW.pb_colour8r = WDATA[24,8];
+                            PW.pb_colour8g = WDATA[16,8];
+                            PW.pb_colour8b = WDATA[8,8];
+                        }
+                        case 2b10: {                                                                                            //  ABGR
+                            PW.pb_colour8r = WDATA[0,8];
+                            PW.pb_colour8g = WDATA[8,8];
+                            PW.pb_colour8b = WDATA[16,8];
+                        }
+                        case 2b11: {                                                                                            //  BGRA
+                            PW.pb_colour8r = WDATA[8,8];
+                            PW.pb_colour8g = WDATA[16,8];
+                            PW.pb_colour8b = WDATA[24,8];
+                        }
+                    }
+                    PW.pb_newpixel = 2;
+                }
+                case 4he: {
+                    switch( ADDR[1,2] ) {                                                                                       // SET GPU CROP - ADJUST INTO RANGE
+                        case 2h0: { PW.crop_left = WDATA; }
+                        case 2h1: { PW.crop_right = WDATA; }
+                        case 2h2: { PW.crop_top = WDATA; }
+                        case 2h3: { PW.crop_bottom = WDATA; }
+                    }
+                }
+                case 4hf: {
+                    switch( ADDR[1,2] ) {
+                        default: { framebuffer = WDATA; }
+                        case 2h2: { framebuffer_display.display256 = WDATA; }
+                    }
+                }
+                default: {}
+            }
+        }
+
+        if( WENABLE_DIRECT ) {                                                                                                  // HANDLE CPU MEMORY WRITE
+            switch( SIZE ) {
+                case 2b00: {
+                    if( ADDR[17,1] ) {                                                                                          // 8 BIT
+                        switch( ADDR[0,2] ) {
+                            case 2b00: { bitmap_100.wdata1 = WDATA[0,8]; bitmap_100.wenable1 = 1; }
+                            case 2b01: { bitmap_101.wdata1 = WDATA[0,8]; bitmap_101.wenable1 = 1; }
+                            case 2b10: { bitmap_110.wdata1 = WDATA[0,8]; bitmap_110.wenable1 = 1; }
+                            case 2b11: { bitmap_111.wdata1 = WDATA[0,8]; bitmap_111.wenable1 = 1; }
+                        }
+                    } else {
+                        switch( ADDR[0,2] ) {
+                            case 2b00: { bitmap_000.wdata1 = WDATA[0,8]; bitmap_000.wenable1 = 1; }
+                            case 2b01: { bitmap_001.wdata1 = WDATA[0,8]; bitmap_001.wenable1 = 1; }
+                            case 2b10: { bitmap_010.wdata1 = WDATA[0,8]; bitmap_010.wenable1 = 1; }
+                            case 2b11: { bitmap_011.wdata1 = WDATA[0,8]; bitmap_011.wenable1 = 1; }
+                        }
+                    }
+                }
+                default: {                                                                                                      // 16/32 BIT
+                    if( ADDR[17,1] ) {
+                        if( ADDR[1,1] ) {
+                            bitmap_100.wdata1 = WDATA[16,8]; bitmap_100.wenable1 = SIZE[1,1];
+                            bitmap_101.wdata1 = WDATA[24,8]; bitmap_101.wenable1 = SIZE[1,1];
+                            bitmap_110.wdata1 = WDATA[0,8]; bitmap_110.wenable1 = 1;
+                            bitmap_111.wdata1 = WDATA[8,8]; bitmap_111.wenable1 = 1;
+                        } else {
+                            bitmap_100.wdata1 = WDATA[0,8]; bitmap_100.wenable1 = 1;
+                            bitmap_101.wdata1 = WDATA[8,8]; bitmap_101.wenable1 = 1;
+                            bitmap_110.wdata1 = WDATA[16,8]; bitmap_110.wenable1 = SIZE[1,1];
+                            bitmap_111.wdata1 = WDATA[24,8]; bitmap_111.wenable1 = SIZE[1,1];
+                        }
+                    } else {
+                        if( ADDR[1,1] ) {
+                            bitmap_000.wdata1 = WDATA[16,8]; bitmap_000.wenable1 = SIZE[1,1];
+                            bitmap_001.wdata1 = WDATA[24,8]; bitmap_001.wenable1 = SIZE[1,1];
+                            bitmap_010.wdata1 = WDATA[0,8]; bitmap_010.wenable1 = 1;
+                            bitmap_011.wdata1 = WDATA[8,8]; bitmap_011.wenable1 = 1;
+                        } else {
+                            bitmap_000.wdata1 = WDATA[0,8]; bitmap_000.wenable1 = 1;
+                            bitmap_001.wdata1 = WDATA[8,8]; bitmap_001.wenable1 = 1;
+                            bitmap_010.wdata1 = WDATA[16,8]; bitmap_010.wenable1 = SIZE[1,1];
+                            bitmap_011.wdata1 = WDATA[24,8]; bitmap_011.wenable1 = SIZE[1,1];
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// DITHERMODE CALCULATIONS
+unit dither(
+    input   uint4   bitmap_x_write,
+    input   uint4   bitmap_y_write,
+    input   uint4   dithermode,
+    input   uint1   static1bit,
+    output! uint1   condition
+) {
+    uint2   checkmode <:: dithermode[0,2] - 1;
+
+    always {
+        // DITHER PATTERNS
+        // == 0 SOLID == 1 SMALL CHECKERBOARD == 2 MED CHECKERBOARD == 3 LARGE CHECKERBOARD
+        // == 4 VERTICAL STRIPES == 5 HORIZONTAL STRIPES == 6 CROSSHATCH == 7 LEFT SLOPE
+        // == 8 RIGHT SLOPE == 9 LEFT TRIANGLE == 10 RIGHT TRIANGLE == 11 X
+        // == 12 + == 13 BRICK == 14 COLOUR STATIC == 15 STATIC
+
+        switch( dithermode ) {
+            case 0: { condition = 1; }                                                                                          // SOLID
+            default: { condition = ( bitmap_x_write[checkmode,1] ^ bitmap_y_write[checkmode,1] ); }                             // CHECKERBOARDS 1 2 AND 3
+            case 4: { condition = bitmap_x_write[0,1]; }                                                                        // VERTICAL STRIPES
+            case 5: { condition = bitmap_y_write[0,1]; }                                                                        // HORIZONTAL STRIPES
+            case 6: { condition = ( bitmap_x_write[0,1] | bitmap_y_write[0,1] ); }                                              // CROSSHATCH
+            case 7: { condition = ( bitmap_x_write[0,2] == bitmap_y_write[0,2] ); }                                             // LEFT SLOPE
+            case 8: { condition = ( bitmap_x_write[0,2] == ~bitmap_y_write[0,2] ); }                                            // RIGHT SLOPE
+            case 9: { condition = ( bitmap_x_write[0,3] <= bitmap_y_write[0,3] ); }                                             // LEFT TRIANGLE
+            case 10: { condition = ( ~bitmap_x_write[0,3] <= bitmap_y_write[0,3] ); }                                           // RIGHT TRIANGLE
+            case 11: { condition = ( bitmap_x_write[0,3] == bitmap_y_write[0,3] ) |                                             // X
+                                   ( ~bitmap_x_write[0,3] == bitmap_y_write[0,3] ); }
+            case 12: { condition = ( bitmap_x_write[1,2] == 2b10 ) | ( bitmap_y_write[1,2] == 2b10 ); }                         // +
+            case 13: { condition = ( ~|bitmap_y_write[0,2] ) | ( bitmap_x_write[0,2] == { bitmap_y_write[2,1], 1b0 } ); }       // BRICK
+            case 14: {}                                                                                                         // COLOUR STATIC (placeholder, done in main)
+            case 15: { condition = static1bit; }                                                                                // STATIC
+        }
+    }
+}

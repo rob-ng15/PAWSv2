@@ -586,7 +586,7 @@ unsigned char tilemap_upper[] = {
     #include "graphics/tilemap_upper.h"
 };
 unsigned char sprite_upper[] = {
-    #include "graphics/sprite_upper.h"
+    #include "graphics/sprites.h"
 };
 
 // INCLUDE 3D PACMAN BACKDROP
@@ -841,20 +841,18 @@ int2_t dist_to_tile_mid(int2_t pos) {
 // clear tile buffer
 static void vid_clear(uint8_t tile_code, uint8_t color_code) {
     memset(&state.gfx.video_ram, tile_code, sizeof(state.gfx.video_ram));
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR );
-    tilemap_scrollwrapclear( UPPER_LAYER, TM_CLEAR );
-    gpu_cs();
+    tm_cs( 0 ); tm_cs( 2 ); gpu_cs();
 
     // CLEAR CENTRE TEXT
     for( int y = 0; y < 30; y++ ) {
-        tpu_set( 6, y, TRANSPARENT, WHITE );
-        tpu_outputstring( 0, "                            " );
+        tpu_set( 12, y * 2, TRANSPARENT, WHITE, TPU_NORMAL | TPU_X2 | TPU_Y2 );
+        tpu_outputstring( TPU_NORMAL | TPU_X2 | TPU_Y2, "                            " );
     }
     // CLEAR SCORE / HISCORE
     if(state.game.num_lives) {
-        tpu_set( 0, 1, TRANSPARENT, WHITE ); tpu_outputstring( 0, "      " );
+        tpu_set( 0, 2, TRANSPARENT, WHITE, TPU_NORMAL | TPU_X2 | TPU_Y2 ); tpu_outputstring( TPU_NORMAL | TPU_X2 | TPU_Y2, "      " );
     }
-    tpu_set( 0, 28, TRANSPARENT, WHITE ); tpu_outputstring( 0, "      " );
+    tpu_set( TPU_NORMAL | TPU_X2 | TPU_Y2, 56, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( TPU_NORMAL | TPU_X2 | TPU_Y2, "      " );
 }
 
 // check if a tile position is valid
@@ -863,7 +861,7 @@ static bool valid_tile_pos(int2_t tile_pos) {
 }
 
 static void paws_tile(int2_t tile_pos, uint8_t tile_code) {
-    set_tilemap_tile( LOWER_LAYER, tile_pos.x + 7, tile_pos.y - 2, tile_code, 0 );
+    set_tilemap_tile_abs( 0, tile_pos.x + 8, tile_pos.y - 1, tile_code, 0 );
     state.gfx.video_ram[tile_pos.y][tile_pos.x] = tile_code;
 }
 
@@ -882,14 +880,14 @@ static char conv_char(char c) {
 
 // put colored text into tpu buffer
 static void vid_color_text(int2_t tile_pos, uint8_t color_code, const char* text) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-    tpu_outputstring( BOLD, (char *)text );
+    tpu_set( tile_pos.x * 2, tile_pos.y * 2, TRANSPARENT, color_code, TPU_NORMAL | TPU_X2 | TPU_Y2 );
+    tpu_outputstring( TPU_BOLD | TPU_X2 | TPU_Y2, (char *)text );
 }
 
 // put text into tpu buffer
 static void vid_text(int2_t tile_pos, const char* text) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, COLOR_DEFAULT );
-    tpu_outputstring( BOLD, (char *)text );
+    tpu_set( tile_pos.x * 2, tile_pos.y * 2, TRANSPARENT, COLOR_DEFAULT, TPU_NORMAL | TPU_X2 | TPU_Y2 );
+    tpu_outputstring( TPU_BOLD | TPU_X2 | TPU_Y2, (char *)text );
 }
 
 /* print colored score number into tile+color buffers from right to left(!),
@@ -898,13 +896,13 @@ static void vid_text(int2_t tile_pos, const char* text) {
     the Pacman arcade machine)
 */
 static void vid_color_score(int2_t tile_pos, uint8_t color_code, uint32_t score) {
-    tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-    tpu_write( '0' );
+    tpu_set( tile_pos.x * 2, tile_pos.y * 2, TRANSPARENT, color_code, TPU_NORMAL | TPU_X2 | TPU_Y2 );
+    tpu_output_character( '0' );
     tile_pos.x--;
     for (int digit = 0; digit < 8; digit++) {
         char chr = (score % 10) + '0';
-        tpu_set( tile_pos.x, tile_pos.y, TRANSPARENT, color_code );
-        tpu_write( chr );
+        tpu_set( tile_pos.x * 2, tile_pos.y * 2, TRANSPARENT, color_code, TPU_NORMAL | TPU_X2 | TPU_Y2 );
+        tpu_output_character( chr );
         tile_pos.x--;
         score /= 10;
         if (0 == score) {
@@ -916,17 +914,17 @@ static void vid_color_score(int2_t tile_pos, uint8_t color_code, uint32_t score)
 // draw the fruit bonus score tiles (when Pacman has eaten the bonus fruit)
 static void vid_fruit_score(fruit_t fruit_type) {
     if(fruit_type != FRUIT_NONE) {
-        set_sprite( UPPER_LAYER, 13, TRUE, 304, 256, fruit_type-1, SPRITE_DOUBLE );
+        set_sprite( 26, TRUE, 304, 256, fruit_type-1, SPRITE_DOUBLE );
     } else {
-        set_sprite_attribute( UPPER_LAYER, 13, SPRITE_ACTIVE, FALSE );
+        set_sprite_attribute( 26, ATTR_SPRITE_ACTIVE, FALSE );
     }
 }
 
 // disable and clear all sprites
 static void spr_clear(void) {
     memset(&state.gfx.sprite, 0, sizeof(state.gfx.sprite));
-    for( int i = 0; i < 16; i++ )
-        set_sprite_attribute( UPPER_LAYER, i, SPRITE_ACTIVE, FALSE );
+    for( int i = 0; i < 64; i++ )
+        set_sprite_attribute( i, ATTR_SPRITE_ACTIVE, FALSE );
 }
 
 // get pointer to pacman sprite
@@ -1166,8 +1164,8 @@ static void dbg_marker(int index, int2_t tile_pos, uint8_t tile_code, uint8_t co
 // initialize the playfield tiles
 static void game_init_playfield(void) {
     // MOVE THE TILEMAP UP 8 PIXELS TO ALLOW MAZE TO "FIT" + SET THE DEFAULT MAP TILES
-    tilemap_scrollwrapclear( LOWER_LAYER, TM_CLEAR ); tilemap_scrollwrapclear( LOWER_LAYER, TM_UP, 8 );
-    set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, &tilemap_lower[0] );
+    tm_cs( 0 ); tilemap_scroll( 0, TM_UP, 8 );
+    set_tilemap_bitamps_from_spritesheet( 0, &tilemap_lower[0] );
     // decode the playfield from an ASCII map into tiles codes
     static const char* tiles =
        //0123456789012345678901234567
@@ -1215,7 +1213,7 @@ static void game_init_playfield(void) {
     for (int y = 3, i = 0; y <= 33; y++) {
         for (int x = 0; x < 28; x++, i++) {
             state.gfx.video_ram[y][x] = t[tiles[i] & 127];
-            set_tilemap_tile( LOWER_LAYER, x + 7, y - 2, t[tiles[i]]&0xff,(t[tiles[i]]&0xff00)>>8);
+            set_tilemap_tile_abs( 0, x + 8, y - 1, t[tiles[i]]&0xff,(t[tiles[i]]&0xff00)>>8);
         }
     }
     gpu_line( 15, 48, 0, 271, 0 ); gpu_line( 15, 48, 239, 271, 239 );
@@ -1397,22 +1395,22 @@ static void game_update_tiles(void) {
     // remaining lives at left of screen
     for (int i = 0; i < NUM_LIVES; i++) {
         if(i < state.game.num_lives) {
-            set_tilemap_32x32tile( UPPER_LAYER, 1, 4 + i*2, 17 );
+            set_tilemap_32x32tile_abs( 2, 2, 5 + i*2, 17 );
         } else {
-            set_tilemap_tile( UPPER_LAYER, 1, 5+i*2, 0, 0 );
-            set_tilemap_tile( UPPER_LAYER, 1, 4+i*2, 0, 0 );
-            set_tilemap_tile( UPPER_LAYER, 2, 4+i*2, 0, 0 );
-            set_tilemap_tile( UPPER_LAYER, 2, 5+i*2, 0, 0 );
+            set_tilemap_tile_abs( 2, 2, 6+i*2, 0, 0 );
+            set_tilemap_tile_abs( 2, 2, 5+i*2, 0, 0 );
+            set_tilemap_tile_abs( 2, 3, 5+i*2, 0, 0 );
+            set_tilemap_tile_abs( 2, 3, 6+i*2, 0, 0 );
         }
     }
 
     // bonus fruit list at right of screen
     {
-        int y = 27;
+        int y = 28;
         for (int i = ((int)state.game.round - NUM_STATUS_FRUITS + 1); i <= (int)state.game.round; i++) {
             if (i >= 0) {
                 fruit_t fruit = levelspec(i).bonus_fruit;
-                set_tilemap_32x32tile( UPPER_LAYER, 39, y, 4*fruit_tiles_colors[fruit][0]+21 );
+                set_tilemap_32x32tile_abs( 2, 40, y, 4*fruit_tiles_colors[fruit][0]+21 );
                 y -= 2 ;
             }
         }
@@ -1421,10 +1419,10 @@ static void game_update_tiles(void) {
     // if game round was won, render the entire playfield as blinking blue/white
     if (after(state.game.round_won, 1*60)) {
         if (since(state.game.round_won) & 0x10) {
-            set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, &tilemap_lower[0] );
+            set_tilemap_bitamps_from_spritesheet( 0, &tilemap_lower[0] );
             gpu_line( 15, 48, 0, 271, 0 ); gpu_line( 15, 48, 239, 271, 239 );
         } else {
-            set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, &tilemap_lower_alt[0] );
+            set_tilemap_bitamps_from_spritesheet( 0, &tilemap_lower_alt[0] );
             gpu_line( 255, 48, 0, 271, 0 ); gpu_line( 255, 48, 239, 271, 239 );
         }
     }
@@ -2143,7 +2141,7 @@ static void intro_tick(void) {
         const uint8_t y = 3*i + 6;
         delay += 30;
         if (after_once(state.intro.started, delay)) {
-            set_tilemap_32x32tile( UPPER_LAYER, 11, y+1, i*4+1 );
+            set_tilemap_32x32tile_abs( 2, 12, y+2, i*4+1 );
         }
         // after 1 second, the name of the ghost
         delay += 60;
@@ -2191,11 +2189,11 @@ static void intro_tick(void) {
 /*== GFX SUBSYSTEM ===========================================================*/
 
 static void gfx_init(void) {
-    set_tilemap_bitamps_from_spritesheet( LOWER_LAYER, &tilemap_lower[0] );
-    set_sprite_bitamps_from_spritesheet( UPPER_LAYER, &sprite_upper[0] );
+    set_tilemap_bitamps_from_spritesheet( 0, &tilemap_lower[0] );
+    set_sprite_bitamps_from_spritesheet( 0, 16, &sprite_upper[0], 0 );
 
     for( int i = 0; i < 13; i++ )
-        set_tilemap_bitmap32x32( UPPER_LAYER, i*4+1, &tilemap_upper[i*1024] );
+        set_tilemap_bitmap32x32( 1, i*4+1, &tilemap_upper[i*1024] );
 
     spr_clear();
 }
@@ -2233,46 +2231,46 @@ static void gfx_add_sprite_vertices(void) {
                         basesprite = 14; tile = spr->tile - 57; action = SPRITE_DOUBLE;
                         break;
                 }
-                set_sprite( UPPER_LAYER, basesprite, spr->enabled && (spr->tile != SPRITETILE_INVISIBLE), tocoords(spr->pos.x, spr->pos.y), tile, action );
-                set_sprite_attribute( UPPER_LAYER, (basesprite==15) ? 14: 15, SPRITE_ACTIVE, FALSE );
+                set_sprite( basesprite * 2, spr->enabled && (spr->tile != SPRITETILE_INVISIBLE), tocoords(spr->pos.x, spr->pos.y), tile, action );
+                set_sprite_attribute( ((basesprite==15) ? 14: 15)*2, ATTR_SPRITE_ACTIVE, FALSE );
                 break;
             case SPRITE_BLINKY:
             case SPRITE_PINKY:
             case SPRITE_INKY:
             case SPRITE_CLYDE:
-                basesprite = i-1; ghost_t* ghost = &state.game.ghost[i-1];
+                basesprite = (i-1)*2; ghost_t* ghost = &state.game.ghost[i-1];
                 if (spr->enabled && (spr->tile != SPRITETILE_INVISIBLE)) {
                     action = SPRITE_DOUBLE;
                     switch (ghost->state) {
                         case GHOSTSTATE_EYES:
-                            set_sprite( UPPER_LAYER, basesprite+4, spr->color != COLOR_GHOST_SCORE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir + 4, action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
-                            set_sprite( UPPER_LAYER, basesprite+8, spr->color == COLOR_GHOST_SCORE, tocoords(spr->pos.x, spr->pos.y), spr->tile, action );
+                            set_sprite( basesprite+8, spr->color != COLOR_GHOST_SCORE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir + 4, action );
+                            set_sprite_attribute( basesprite, ATTR_SPRITE_ACTIVE, 0 );
+                            set_sprite( basesprite+16, spr->color == COLOR_GHOST_SCORE, tocoords(spr->pos.x, spr->pos.y), spr->tile, action );
                             break;
                         case GHOSTSTATE_ENTERHOUSE:
-                            set_sprite( UPPER_LAYER, basesprite+4, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->actor.dir + 4, action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
+                            set_sprite( basesprite+8, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->actor.dir + 4, action );
+                            set_sprite_attribute( basesprite, ATTR_SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( basesprite+16, ATTR_SPRITE_ACTIVE, 0 );
                             break;
                         case GHOSTSTATE_FRIGHTENED:
-                            set_sprite( UPPER_LAYER, basesprite+4, TRUE, tocoords(spr->pos.x, spr->pos.y), (spr->color == COLOR_FRIGHTENED_BLINKING) ? 2 : 0 + (ghost->actor.anim_tick&1), action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
+                            set_sprite( basesprite+8, TRUE, tocoords(spr->pos.x, spr->pos.y), (spr->color == COLOR_FRIGHTENED_BLINKING) ? 2 : 0 + (ghost->actor.anim_tick&1), action );
+                            set_sprite_attribute( basesprite, ATTR_SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( basesprite+16, ATTR_SPRITE_ACTIVE, 0 );
                             break;
                         default:
-                            set_sprite( UPPER_LAYER, basesprite, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir * 2 + (ghost->actor.anim_tick&1), action );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+4, SPRITE_ACTIVE, 0 );
-                            set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
+                            set_sprite( basesprite, TRUE, tocoords(spr->pos.x, spr->pos.y), ghost->next_dir * 2 + (ghost->actor.anim_tick&1), action );
+                            set_sprite_attribute( basesprite+8, ATTR_SPRITE_ACTIVE, 0 );
+                            set_sprite_attribute( basesprite+16, ATTR_SPRITE_ACTIVE, 0 );
                     }
                 } else {
-                    set_sprite_attribute( UPPER_LAYER, basesprite, SPRITE_ACTIVE, 0 );
-                    set_sprite_attribute( UPPER_LAYER, basesprite+4, SPRITE_ACTIVE, 0 );
-                    set_sprite_attribute( UPPER_LAYER, basesprite+8, SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( basesprite, ATTR_SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( basesprite+8, ATTR_SPRITE_ACTIVE, 0 );
+                    set_sprite_attribute( basesprite+16, ATTR_SPRITE_ACTIVE, 0 );
                 }
                 break;
             case SPRITE_FRUIT:
                 action = SPRITE_DOUBLE;
-                set_sprite( UPPER_LAYER, 12, spr->enabled, tocoords(spr->pos.x, spr->pos.y), state.game.active_fruit - 1, action );
+                set_sprite( 24, spr->enabled, tocoords(spr->pos.x, spr->pos.y), state.game.active_fruit - 1, action );
                 break;
         }
     }
@@ -2289,44 +2287,40 @@ static void gfx_draw(void) {
 static void paws_snd( int action ) {
     switch( action ) {
         case SND_START_INTRO:
-            sample_upload( CHANNEL_LEFT, 64, &tune_treble[0] ); sample_upload( CHANNEL_RIGHT, 32, &tune_bass[0] );
-            set_volume( 7, 7 );
-            beep( CHANNEL_LEFT, WAVE_SAMPLE | WAVE_SINE, 0, 8 << 3 );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SINE, 0, 16 << 3 );
+            tune_upload( CHANNEL_LEFT_0, 64, &tune_treble[0] ); tune_upload( CHANNEL_RIGHT_0, 32, &tune_bass[0] );
+            beep( CHANNEL_LEFT_0, WAVE_TUNE | WAVE_SINE, 0, 8 << 3, 7 );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16 << 3, 7 );
             break;
         case SND_START_DOT1:
-            sample_upload( CHANNEL_RIGHT, 6, &eat_dot_1[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT_0, 6, &eat_dot_1[0] );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16, 7 );
             break;
         case SND_START_DOT2:
-            sample_upload( CHANNEL_RIGHT, 6, &eat_dot_2[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT_0, 6, &eat_dot_2[0] );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16, 7 );
             break;
         case SND_START_FRUIT:
-            sample_upload( CHANNEL_RIGHT, 24, &eat_fruit[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT_0, 24, &eat_fruit[0] );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16, 7 );
             break;
         case SND_START_GHOST:
-            sample_upload( CHANNEL_RIGHT, 33, &eat_ghost[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT_0, 33, &eat_ghost[0] );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16, 7 );
             break;
         case SND_START_PACMAN:
-            sample_upload( CHANNEL_RIGHT, 90, &eat_pacman[0] );
-            beep( CHANNEL_RIGHT, WAVE_SAMPLE | WAVE_SQUARE, 0, 16 );
+            tune_upload( CHANNEL_RIGHT_0, 90, &eat_pacman[0] );
+            beep( CHANNEL_RIGHT_0, WAVE_TUNE | WAVE_SINE, 0, 16, 7 );
             break;
         case SND_START_NORMAL:
-            set_volume( 6, 7 );
-            sample_upload( CHANNEL_LEFT, 22, &alert_normal[0] );
-            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 16 );
+            tune_upload( CHANNEL_LEFT_0, 22, &alert_normal[0] );
+            beep( CHANNEL_LEFT_0, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16, 6 );
             break;
         case SND_START_FRIGHTENDED:
-            set_volume( 6, 7 );
-            sample_upload( CHANNEL_LEFT, 8, &alert_frightended[0] );
-            beep( CHANNEL_LEFT, SAMPLE_REPEAT | WAVE_SAMPLE | WAVE_SINE, 0, 16 );
+            tune_upload( CHANNEL_LEFT_0, 8, &alert_frightended[0] );
+            beep( CHANNEL_LEFT_0, WAVE_TUNE_REPEAT | WAVE_TUNE | WAVE_SINE, 0, 16, 6 );
             break;
         case SND_STOP_ALL:
-            set_volume( 7, 7 );
-            beep( CHANNEL_BOTH, 0, 0, 0 );
+            AUDIO_OFF;
             break;
     }
 }
@@ -2335,17 +2329,16 @@ static void snd_shutdown(void) {
       paws_snd( SND_STOP_ALL );
 }
 
-
 int main( int argc, char **argv ) {
     init();
-    screen_mode( 0, MODE_RGBM, CM_LOW );
+    screen_mode( MODE_RGBM );
 
     // DISPLAY WELCOME SCREEN
     gpu_pixelblock( 0, 0, 320, 240, TRANSPARENT, pacman3dbitmap );
-    tpu_set( 0, 27, TRANSPARENT, WHITE ); tpu_outputstring( TRUE, "Ported from" );
-    tpu_set( 0, 28, TRANSPARENT, WHITE ); tpu_outputstring( FALSE, "https://github.com/floooh/pacman.c" );
-    tpu_set( 0, 29, TRANSPARENT, WHITE ); tpu_outputstring( TRUE, "by Andre Weissflog" );
-    sleep1khz( 4000, 0 );
+    tpu_set( 0, 54, TRANSPARENT, WHITE, TPU_BOLD ); tpu_outputstring( TPU_BOLD | TPU_X2 | TPU_Y2, "Ported from" );
+    tpu_set( 0, 56, TRANSPARENT, WHITE, TPU_NORMAL ); tpu_outputstring( TPU_X2 | TPU_Y2, "https://github.com/floooh/pacman.c" );
+    tpu_set( 0, 58, TRANSPARENT, WHITE, TPU_BOLD ); tpu_outputstring( TPU_BOLD | TPU_X2 | TPU_Y2, "by Andre Weissflog" );
+    sleep1khz( 4000 );
     tpu_cs(); gpu_cs();
 
     while(1) {

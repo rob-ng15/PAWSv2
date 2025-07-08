@@ -24,11 +24,10 @@
 #define BGCOLOR         7
 #define FGCOLOR         8
 
+#include <stdio.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/unistd.h>
-#include <stdio.h>
-
-#include <stdlib.h>
 
 #include "doomdef.h"
 #include "doomstat.h"
@@ -63,7 +62,6 @@
 #include "r_local.h"
 
 #include "d_main.h"
-
 #include <curses.h>
 #include <PAWSlibrary.h>
 
@@ -87,7 +85,7 @@ boolean         fastparm;       // checkparm of -fast
 
 boolean         drone;
 
-boolean         singletics = true; // debug flag to cancel adaptiveness
+boolean         singletics = false; // debug flag to cancel adaptiveness
 
 //extern int soundVolume;
 //extern  int   sfxVolume;
@@ -439,7 +437,7 @@ void D_AdvanceDemo (void)
         if ( gamemode == commercial )
             pagetic = 35 * 11;
         else
-            pagetic = 16;
+            pagetic = 170;
         gamestate = GS_DEMOSCREEN;
         pagename = "TITLEPIC";
         if ( gamemode == commercial )
@@ -696,7 +694,7 @@ void FindResponseFile (void)
             handle = fopen (&myargv[i][1],"rb");
             if (!handle)
             {
-                fprintf (stderr,"No such response file!\n");
+                printf ("\nNo such response file!");
                 exit(1);
             }
             printf("Found response file %s!\n",&myargv[i][1]);
@@ -757,7 +755,6 @@ void D_DoomMain (void)
 
     IdentifyVersion ();
 
-//  setbuf (stdout, NULL);
     modifiedgame = false;
 
     nomonsters = M_CheckParm ("-nomonsters");
@@ -832,7 +829,7 @@ void D_DoomMain (void)
     if (M_CheckParm("-cdrom"))
     {
         printf(D_CDROM);
-        // mkdir("c:\\doomdata",0);
+        mkdir("c:\\doomdata",0);
         strcpy (basedefault,"c:/doomdata/default.cfg");
     }
 
@@ -1115,11 +1112,10 @@ void D_DoomMain (void)
             G_InitNew (startskill, startepisode, startmap);
         else
             D_StartTitle ();                // start up intro loop
+        // RESET TERMINAL AND SET DEFAULT PALETTE
+        autorefresh( FALSE ); curs_set( FALSE ); ps2_keyboardmode( PS2_KEYBOARD ); tpu_cs(); gpu_rectangle( 0, 0, 0, 319, 239 );
+        I_SetPalette (W_CacheLumpName ("PLAYPAL",PU_CACHE));
     }
-
-    // RESET TERMINAL AND SET DEFAULT PALETTE
-    autorefresh( FALSE ); curs_set( FALSE ); ps2_keyboardmode( PS2_KEYBOARD ); tpu_cs(); gpu_rectangle( 0, 0, 0, 319, 239 );
-    I_SetPalette (W_CacheLumpName ("PLAYPAL",PU_CACHE));
 
     D_DoomLoop ();  // never returns
 }

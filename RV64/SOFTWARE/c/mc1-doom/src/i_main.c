@@ -18,6 +18,10 @@
 //
 //-----------------------------------------------------------------------------
 
+#ifdef MC1_SDK
+#include <mc1/newlib_integ.h>
+#endif
+
 #include "doomdef.h"
 
 #include "m_argv.h"
@@ -28,10 +32,18 @@ main
 ( int           argc,
   char**        argv )
 {
+#ifdef MC1_SDK
+    mc1newlib_init(MC1NEWLIB_ALL & ~MC1NEWLIB_CONSOLE);
+#endif
+
     myargc = argc;
     myargv = argv;
 
     D_DoomMain ();
+
+#ifdef MC1_SDK
+    mc1newlib_terminate();
+#endif
 
     return 0;
 }

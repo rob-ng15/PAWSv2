@@ -11,7 +11,7 @@ int __wrap___clzsi2(unsigned int a) {
     return( _rv64_clzw( a ) );
 }
 
-int __wrap___clzdi2(unsigned long a) {
+int __wrap__clzdi2(unsigned long a) {
     return( _rv64_clz( a ) );
 }
 
@@ -39,11 +39,11 @@ int __wrap___paritydi2(unsigned long a) {
     return( _rv64_cpop( a ) & 1 );
 }
 
-int __wrap___bswapsi2(unsigned int a) {
+unsigned int __wrap___bswapsi2(unsigned int a) {
     return( _rv64_rev8( a ) >> 32 );
 }
 
-int __wrap___bswapdi2(unsigned long a) {
+unsigned long __wrap___bswapdi2(unsigned long a) {
     return( _rv64_rev8( a ) );
 }
 

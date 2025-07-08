@@ -732,8 +732,18 @@ void opcode_F( uint16_t instruction ) {
                 case SCHIP:
                     machine.MODE = XOCHIP;
                     DEBUG("*** -> XOCHIP ");
-                case XOCHIP:                                                                                                    // XOCHIP UPLOAD 16 BYTE BIT SAMPLE
-                    bitsample_upload_128( 3, &machine.MEMORY[ I ] );
+                case XOCHIP:                                                                                                    // XOCHIP UPLOAD BIT SAMPLE, EXPAND TO 256 BYTES AND UPLOAD
+                    unsigned char samples[256];
+                    unsigned long bit_samples = 0;
+                    for( int blocks = 0; blocks < 2; blocks++ ) {
+                        for( int bytes = 0; bytes < 8; bytes++ ) {
+                            bit_samples = bit_samples | ( machine.MEMORY[ I + blocks * 8 + bytes ] << bytes * 8 );
+                        }
+                        for( int bits = 0; bits < 64; bits++ ) {
+                            samples[ blocks * 64 + bits ] = samples[ 128 + blocks * 64 + bits ] = _rv64_bext( bit_samples, bits ) ? 0xff : 0x00;
+                        }
+                    }
+                    bitsample_upload( CHANNEL_LEFT_0, samples );
                     DEBUG("load_audio %04x",I);
                     break;
             }
@@ -758,9 +768,9 @@ void opcode_F( uint16_t instruction ) {
         case 0x18:
             machine.audio_timer = X;                                                                                            // SET AUDIO TIMER
             if( X ) {
-                beep( 3, ( machine.MODE == XOCHIP ) ? WAVE_BITS : WAVE_SQUARE, machine.PITCH, (short)(X * 1000/60) );
+                beep( CHANNEL_LEFT_0, ( machine.MODE == XOCHIP ) ? WAVE_BITS : WAVE_SQUARE, machine.PITCH, (short)(X * 1000/60), 7 );
             } else {
-                beep( 3, 0, 0, 0 );
+                beep_stop( CHANNEL_LEFT_0 );
             }
             DEBUG("audio_timer = %02x",NN);
             break;

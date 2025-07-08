@@ -1,0 +1,130 @@
+bitfield  cmentry{
+    uint6   attributes,                                                                                                         // { alternate, underline, flashing, y double, x double, bold }
+    uint8   background,
+    uint8   foreground,
+    uint8   character
+}
+
+unit characterrom512(
+    dualport_bram_port0         altset8x8,                                                                                      // 512 user definable alternate characters
+    input   uint1               cursor_blink,                                                                                   // CURSOR BLINKING PULSE
+    input   uint8               character,                                                                                      // CHARACTER NUMBER 0 - 255 { others via attributes }
+    input   uint3               x,                                                                                              // X POSITION IN TILE
+    input   uint3               y,                                                                                              // Y POSITION IN TILE
+    input   uint6               attribute,                                                                                      // { alternate, underline, flashing, y double, x double, bold }
+    input   uint1               double_right,                                                                                   // IN LEFT OR RIGHT CELL OF DOUBLED X
+    input   uint1               double_bottom,                                                                                  // IN TOP OR BOTTOM CELL OF DOUBLED Y
+    output! uint1               pixel                                                                                           // PIXEL ON OR OFF
+) {
+    brom uint8 characterGenerator8x8[4096] =  {                                                                                 // IBM CODE 437 8x8 PIXEL FONT NORMAL + BOLD
+        $include('ROM/FONTS/CODE437-THINBOLD.inc')
+        ,pad(uninitialized)
+    };
+
+    // Setup the reading of the characterGenerator8x8 ROM
+    characterGenerator8x8.addr  := { attribute[0,1], character, attribute[2,1] ? { double_bottom, y[1,2] } : y };               // SET ADDRESS IN CHARACTER ROM, HANDLING BOLD AND DOUBLE Y FLAGS
+    altset8x8.addr0 := { attribute[0,1], character, attribute[2,1] ? { double_bottom, y[1,2] } : y };                           // SET ADDRESS IN ALTERNATE ROM, HANDLING BOLD AND DOUBLE Y FLAGS
+
+    pixel := attribute[3,1] & ~cursor_blink ? 0 :                                                                               // HANDLE FLASHING
+             attribute[4,1] & |character & ( ( attribute[2,1] ? { double_bottom, y[1,2] } : y ) == 7 ) ? 1 :                    // HANDLE UNDERLINE
+             attribute[5,1] ? altset8x8.rdata0[ attribute[1,1] ? ~{ double_right, x[1,2] } : ~x, 1 ] :                          // HANDLE DOUBLE X FLAGS    ALT SET
+                              characterGenerator8x8.rdata[ attribute[1,1] ? ~{ double_right, x[1,2] } : ~x, 1 ];                //                          NORMAL SET
+}
+
+unit character_map(
+    input   uint1               clockCG,                                                                                        // DOUBLED CLOCK FOR CHARACTER GENERATOR ROM
+    dualport_bram_port0         altset8x8,                                                                                      // USER DEFINED ALTERNATE CHARACTER BITMAPS
+    dualport_bram_port0         charactermap,                                                                                   // CHARACTER MAP
+
+    input   uint10              pix_x,                                                                                          // PIXEL POSITION ON THE SCREEN X
+    input   uint10              pix_x1,                                                                                         //                              X + 1 FOR LOOK AHEAD
+    input   uint9               pix_y,                                                                                          //                              Y
+    output! uint8               pixel,                                                                                          // PIXEL COLOUR
+    output! uint1               character_map_display,                                                                          // PIXEL DISPLAY/TRANSPARENT
+
+    input   uint1               blink,                                                                                          // CURSOR BLINKING PULSE
+    input   uint7               cursor_x,                                                                                       // CURSOR POSITION X
+    input   uint6               cursor_y,                                                                                       // CURSOR POSITION Y
+    input   uint8               tpu_foreground,                                                                                 // CURSOR FOREGROUND COLOUR
+    input   uint8               tpu_background,                                                                                 // CURSOR BACKGROUND COLOUR
+    input   uint1               tpu_showcursor                                                                                  // DISPLAY CURSOR?
+) {
+    uint1               is_cursor <: tpu_showcursor & blink & ( cursor_x == ( pix_x[3,7] ) ) & ( cursor_y == pix_y[3,6] );      // Is current coordinate the cursor coordinate, cursor visible?
+
+    characterrom512 CGROM <@clockCG> (                                                                                          // Character ROM 8x8 1024 characters, 256 normal, 256 bold
+        altset8x8 <:> altset8x8,                                                                                                // 512 alternative character set
+        cursor_blink <: blink,
+        character <: cmentry(charactermap.rdata0).character,
+        attribute <: cmentry(charactermap.rdata0).attributes,
+        x <: pix_x[0,3],
+        y <: pix_y[0,3],
+        double_right <: pix_x[3,1],
+        double_bottom <: pix_y[3,1]
+    );
+
+    charactermap.addr0 := pix_x1[3,7] + 80 * pix_y[3,6];                                                                        // SET ADDRESS IN CHAARCTER MAP ( for next pixel )
+    character_map_display := ( CGROM.pixel |                                                                                    // DISPLAY ( current pixel )    PIXEL SET IN CHARACTER ROM
+                             ( cmentry(charactermap.rdata0).background != 64 ) | is_cursor );                                   //                              OR IS THE FLASHING CURSOR
+    pixel := is_cursor ? CGROM.pixel ? tpu_background : tpu_foreground :                                                        // IF CURSOR, INVERT PIXEL
+                         CGROM.pixel ? cmentry(charactermap.rdata0).foreground :                                                // IF PIXEL, FOREGROUND
+                                       cmentry(charactermap.rdata0).background;                                                 //  ELSE BACKGROUND
+}
+
+unit charactermap_memmap(
+    input   uint1               video_clock,
+    input   uint1               video_reset,
+    input   uint1               clockCG,
+
+    input   uint10              pix_x,
+    input   uint10              pix_x1,
+    input   uint9               pix_y,
+    output! uint8               pixel,
+    output! uint1               pixel_display,
+    input   uint1               blink,
+
+    input   uint15              ADDR,
+    input   uint1               WENABLE,
+    input   uint1               WENABLE_DIRECT,
+    input   uint30              WDATA,
+    output  uint30              RDATA_DIRECT
+) {
+    uint12 chargen_NEXT <:: ( altset8x8.addr1 + 1 );
+    dualport_bram uint8 altset8x8 <@clockCG,@clock> [4096] = uninitialized;
+
+    uint1   LOREZ = 0;
+
+    // 80 x 30 character buffer
+    dualport_bram uint30 charactermap <@video_clock,@clock> [4800] = uninitialized;
+
+    // CHARACTER MAP DISPLAY
+    character_map character_map_window <@video_clock,!video_reset> (
+        altset8x8 <:> altset8x8,
+        clockCG <: clockCG,
+        charactermap <:> charactermap,
+        pixel    :> pixel,
+        character_map_display :> pixel_display,
+        blink <: blink
+    );
+
+    charactermap.addr1 := ADDR[2,13]; charactermap.wdata1 := WDATA; charactermap.wenable1 := WENABLE_DIRECT; RDATA_DIRECT := charactermap.rdata1;
+    altset8x8.wdata1 := WDATA; altset8x8.wenable1 := 0;
+
+    character_map_window.pix_x :=  LOREZ ? { 1b0,  pix_x[1,9] } : pix_x;
+    character_map_window.pix_x1 := LOREZ ? { 1b0, pix_x1[1,9] } : pix_x1;
+    character_map_window.pix_y :=  LOREZ ? { 1b0,  pix_y[1,8] } : pix_y;
+
+    always {
+        if( WENABLE ) {
+            switch( ADDR[0,4] ) {
+                default: { character_map_window.cursor_x = WDATA; }
+                case 4h1: { character_map_window.cursor_y = WDATA; }
+                case 4h2: { character_map_window.tpu_background = WDATA; }
+                case 4h3: { character_map_window.tpu_foreground = WDATA; }
+                case 4h4: { character_map_window.tpu_showcursor = WDATA; }
+                case 4h5: { LOREZ = WDATA; }
+                case 4h8: { altset8x8.addr1 = { WDATA[0,9], 3b000 } - 1; }
+                case 4ha: { altset8x8.addr1 = chargen_NEXT; altset8x8.wenable1 = 1; }
+            }
+        }
+    }
+}
