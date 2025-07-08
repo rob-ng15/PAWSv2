@@ -884,7 +884,7 @@ int main( int argc, char **argv ) {
                 gpu_cs();
                 gpu_circle( YELLOW, 160, 120, 80, drawsector[i], 1 );
                 framebuffer = 3 - framebuffer;
-                screen_order( LAYER_CHARACTERMAP, framebuffer, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
+                await_vblank(); screen_order( LAYER_CHARACTERMAP, framebuffer, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE );
                 sleep1khz( 250 );
             }
             // DISPLAY TOMBSTONE BITMAP AND RESET TO BEGINNING

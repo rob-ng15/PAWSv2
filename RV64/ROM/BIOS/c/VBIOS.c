@@ -125,6 +125,7 @@ void reset_system( void ) {
     for( int i = 0; i < 6; i++ ) AUDIO_DURATION[ i ] = 0;
 
     *GPU_DITHERMODE = 0;
+    *CROP_LEFT = 0; *CROP_RIGHT = 319; *CROP_TOP = 0; *CROP_BOTTOM = 239;
     *FRAMEBUFFER_DRAW = 3; gpu_cs(); while( !*GPU_FINISHED );
     *FRAMEBUFFER_DRAW = 1; *BITMAP_DISPLAY256 = 0;
     *SCREENORDER = ( 3 << 0 ) | ( 1 << 4 ) | ( 4 << 8 ) | ( 8 << 12 ) | ( 9 << 16 ) | ( 10 << 20 ) | ( 11 << 24 );
@@ -224,7 +225,7 @@ void main( void ) {
     beep( 0, 5, 54, 500, 7 );
 
     // SET THE DISPLAY
-    set_background( UK_BLUE, UK_GOLD, 1 );
+    set_background( UK_BLUE, UK_GOLD, BKG_5050_H );
     draw_paws_logo();
     gpu_outputstring( WHITE, 66, 2, 1, "PAWSv2", 2 );
     gpu_outputstring( WHITE, 70, 34, 1, "Risc-V RV64GC+ CPU", 0 );

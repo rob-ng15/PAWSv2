@@ -380,6 +380,7 @@ void reset_mouse( void ) {
 // DISPLAY FUNCTIONS
 // FUNCTIONS ARE IN LAYER ORDER: BACKGROUND, TILEMAP, SPRITES (for LOWER ), BITMAP & GPU, ( UPPER SPRITES ), CHARACTERMAP & TPU
 // colour is in the form { RRGGGBBM } { COLOUR 64 ALPHA - show layer below }
+
 // INTERNAL FUNCTION - WAIT FOR THE GPU TO BE ABLE TO RECEIVE A NEW COMMAND
 void wait_gpu( void ) {
     while( *GPU_STATUS );
@@ -628,7 +629,9 @@ void gpu_dither( unsigned char mode, unsigned char colour ) {
 // SET GPU CROPPING RECTANGLE
 void gpu_crop( short left, short top, short right, short bottom ) {
     wait_gpu();
-    *CROP_LEFT = left < 0 ? 0 : left; *CROP_RIGHT = right > 319 ? 319 : right; *CROP_TOP = top < 0 ? 0 : top; *CROP_BOTTOM = bottom > 239 ? 239 : bottom;
+    short L = min( left, right ), R = max( left, right ), B = min( top, bottom ), T = max( top, bottom );
+
+    *CROP_LEFT = L < 0 ? 0 : L; *CROP_RIGHT = R > 319 ? 319 : R; *CROP_TOP = T < 0 ? 0 : T; *CROP_BOTTOM = B > 239 ? 239 : B;
 }
 
 // SET THE PIXEL at (x,y) to colour

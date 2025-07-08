@@ -1,5 +1,24 @@
 circuitry copycoordinates( input x, input y, output x1, output y1 ) { x1 = x; y1 = y; }                                         // COPY COORDINATES CIRCUIT
 
+bitfield Q {
+    uint4   write,
+    uint8   colour,
+    uint8   colour_alt,
+    uint4   dither,
+    uint10  x,
+    uint10  y,
+    uint10  p0,
+    uint10  p1,
+    uint10  p2,
+    uint10  p3,
+    uint10  p4,
+    uint10  p5,
+    uint9   c_L,
+    uint9   c_R,
+    uint8   c_T,
+    uint8   c_B
+}
+
 unit gpu_queue(
     output  int10   bitmap_x_write,                                                                                             // TO FRAMEBUFFER PIXEL WRITER
     output  int10   bitmap_y_write,
@@ -46,6 +65,12 @@ unit gpu_queue(
     output  uint1   queue_complete,
     output  uint1   gpu_active
 ) {
+    simple_dualport_bram uint138 QUEUE[16] = uninitialised;
+    uint1   TRIANGLE2 = 0;
+    uint1   WRITE = 0;
+    uint4   QA0P1 <:: QUEUE.addr0 + 1;
+    uint4   QA1P1 <:: QUEUE.addr1 + 1;
+
     gpu GPU(
         blit1tilemap <:> blit1tilemap,
         characterGenerator8x8 <:> characterGenerator8x8,
@@ -59,64 +84,44 @@ unit gpu_queue(
         gpu_active :> gpu_active
     );
 
-    uint2               STATE = 1;
-                        $$ STATE_GPU_WAIT_CPU   = 1
-                        $$ STATE_GPU_DISPATCH   = 2
-
-    uint4               queue_write = 0;                                                                                        // QUEUED GPU OPERATION
-    uint1               queue_busy <:: |queue_write;                                                                            // IS QUEUE OCCUPIED?
-
+    QUEUE.wenable1 := |gpu_write;
+    QUEUE.wdata1 := {   gpu_write, gpu_colour, gpu_colour_alt, gpu_dithermode,
+                        gpu_x, gpu_y, gpu_param0, gpu_param1, gpu_param2, gpu_param3, gpu_param4, gpu_param5,
+                        crop_left, crop_right, crop_top, crop_bottom
+                    };
     GPU.gpu_write := 0;                                                                                                         // GPU START OPERATION FLAG
-    queue_full := queue_busy ; queue_complete := ~( gpu_active | queue_full );                                                  // QUEUE FULL OR COMPLETE?
-    bitmap_crop_left := GPU.crop_left; bitmap_crop_right := GPU.crop_right;
-    bitmap_crop_top := GPU.crop_top; bitmap_crop_bottom := GPU.crop_bottom ;
+    queue_full := ( QA1P1 == QUEUE.addr0 ); queue_complete := ~gpu_active & ~WRITE & ( QUEUE.addr1 == QUEUE.addr0 );            // QUEUE FULL OR COMPLETE?
 
     always {
-        int10   queue_x = uninitialised;                int10   queue_y = uninitialised;                                        // QUEUE STORAGE
-        uint8   queue_colour = uninitialised;           uint8   queue_colour_alt = uninitialised;
-        int10   queue_param0 = uninitialised;           int10   queue_param1 = uninitialised;
-        int10   queue_param2 = uninitialised;           int10   queue_param3 = uninitialised;
-        int10   queue_param4 = uninitialised;           int10   queue_param5 = uninitialised;
-        uint4   queue_dithermode = uninitialised;
-        uint9   queue_cropL = uninitialised;            uint8   queue_cropT = uninitialised;
-        uint9   queue_cropR = uninitialised;            uint8   queue_cropB = uninitialised;
+        if( ~gpu_active & ~WRITE & ( QUEUE.addr0 != QUEUE.addr1 ) ) {                                                           // GPU READY FOR NEXT ENTRY
+            GPU.gpu_dithermode = Q( QUEUE.rdata0 ).dither;                                                                      //  COPY QUEUE ENTRY
+            GPU.gpu_colour = Q( QUEUE.rdata0 ).colour;
+            GPU.gpu_colour_alt = Q( QUEUE.rdata0 ).colour_alt;
+            GPU.gpu_x = Q( QUEUE.rdata0 ).x;
+            GPU.gpu_y = Q( QUEUE.rdata0 ).y;
+            GPU.gpu_param0 = TRIANGLE2 ? Q( QUEUE.rdata0 ).p4 : Q( QUEUE.rdata0 ).p0;                                           //  IF 2ND TRIANGLE OF QUADRILATERAL USE P4/5 NOT P0/1
+            GPU.gpu_param1 = TRIANGLE2 ? Q( QUEUE.rdata0 ).p5 : Q( QUEUE.rdata0 ).p1;
+            GPU.gpu_param2 = Q( QUEUE.rdata0 ).p2;
+            GPU.gpu_param3 = Q( QUEUE.rdata0 ).p3;
+            GPU.crop_left = Q( QUEUE.rdata0 ).c_L; bitmap_crop_left = Q( QUEUE.rdata0 ).c_L;
+            GPU.crop_right = Q( QUEUE.rdata0 ).c_R; bitmap_crop_right = Q( QUEUE.rdata0 ).c_R;
+            GPU.crop_top = Q( QUEUE.rdata0 ).c_T; bitmap_crop_top = Q( QUEUE.rdata0 ).c_T;
+            GPU.crop_bottom = Q( QUEUE.rdata0 ).c_B; bitmap_crop_bottom = Q( QUEUE.rdata0 ).c_B;
 
-        onehot( STATE ) {
-            case 0: {                                                                                                           // STATE_GPU_WAIT_CPU
-                if( |gpu_write ) {                                                                                              // WAIT FOR CPU REQUEST AND QUEUE
-                    queue_write = gpu_write;                                                                                    // COPY REQUEST
-                    queue_dithermode = gpu_dithermode; queue_colour = gpu_colour; queue_colour_alt = gpu_colour_alt;
-                    ( queue_x, queue_y ) = copycoordinates( gpu_x, gpu_y );
-                    ( queue_param0, queue_param1 ) = copycoordinates( gpu_param0, gpu_param1 );
-                    ( queue_param2, queue_param3 ) = copycoordinates( gpu_param2, gpu_param3 );
-                    ( queue_param4, queue_param5 ) = copycoordinates( gpu_param4, gpu_param5 );
-                    ( queue_cropL, queue_cropR ) = copycoordinates( crop_left, crop_right );
-                    ( queue_cropT, queue_cropB ) = copycoordinates( crop_top, crop_bottom );
-
-                    STATE = $STATE_GPU_DISPATCH$;
-                }
-            }
-            case 1: {                                                                                                           // STATE_GPU_DISPATCH
-                if( queue_busy & ~gpu_active ) {                                                                                // DISPATCH FROM QUEUE
-                    GPU.gpu_dithermode = queue_dithermode; GPU.gpu_colour = queue_colour; GPU.gpu_colour_alt = queue_colour_alt;
-                    ( GPU.gpu_x, GPU.gpu_y ) = copycoordinates( queue_x, queue_y );
-                    ( GPU.gpu_param0, GPU.gpu_param1 ) = copycoordinates( queue_param0, queue_param1 );
-                    ( GPU.gpu_param2, GPU.gpu_param3 ) = copycoordinates( queue_param2, queue_param3 );
-                    ( GPU.crop_left, GPU.crop_right ) = copycoordinates( queue_cropL, queue_cropR );
-                    ( GPU.crop_top, GPU.crop_bottom ) = copycoordinates( queue_cropT, queue_cropB );
-
-                    switch( queue_write ) {                                                                                     // COPY REQUESTED OPERATION OR SPLIT QUADRILATERAL
-                        case 0: {}
-                        case 14: {                                                                                              // QUADRILATERAL, SECOND TRIANGLE TO GPU
-                            ( GPU.gpu_param0, GPU.gpu_param1 ) = copycoordinates( queue_param4, queue_param5 );
-                            GPU.gpu_write = 6; queue_write = 0; STATE = $STATE_GPU_WAIT_CPU$;
-                        }
-                        case 15: { GPU.gpu_write = 6; queue_write = 14; }                                                       // QUADRILATERAL, SEND FIRST TRIANGLE TO GPU
-                        default: { GPU.gpu_write = queue_write; queue_write = 0; STATE = $STATE_GPU_WAIT_CPU$; }                // EVERYTHING ELSE, SEND TO GPU
-                    }
+            if( TRIANGLE2 ) {                                                                                                   // IF 2ND TRIANGLE OF QUADRILATERAL
+                GPU.gpu_write = 6; TRIANGLE2 = 0; QUEUE.addr0 = QA0P1;                                                          //  DISPATCH TRIANGLE AND MOVE TO NEXT
+            } else {
+                if( &Q( QUEUE.rdata0 ).write ) {                                                                                // IF QUADRILATERAL
+                    GPU.gpu_write = 6; TRIANGLE2 = 1;                                                                           //  SEND 1ST TRIANGLE AND FLAG 2ND TRIANGLE NEEDED
+                } else {
+                    GPU.gpu_write = Q( QUEUE.rdata0 ).write; QUEUE.addr0 = QA0P1;                                               // ANYTHING ELSE DISPATCH AND MOVE TO NEXT
                 }
             }
         }
+        QUEUE.addr1 = WRITE ? QA1P1 : QUEUE.addr1;                                                                              // NEW ENTRY WRITTEN? MOVE TO NEXT SLOT
+        WRITE = |gpu_write;                                                                                                     //  PROVIDE DELAY TO ALLOW QUEUE ENTRY TO SHOW
+
+        if( reset ) { QUEUE.addr0 = 0; QUEUE.addr1 = 0; }
     }
 }
 
