@@ -276,16 +276,22 @@ unit floatcalc(
                                                                               5b00001 :
                                                                               5b10000;
 
-    uint106             NORMAL_bitstream <:: action[2,1] ? FPUdivide.fraction : action[3,1] ? FPUsqrt.fraction : MULT.fraction; // SELECT BITSTREAM FOR NORMALISATION
-    donormalexp NORMAL( bitstream <: NORMAL_bitstream );                                                                        // HANDLE NORMALISATION OF ALL BUT FULL FUSED * + CALCULATIONS
+    uint106             NORMAL_bitstream <:: action[2,1] ? FPUdivide.fraction :                                                 // SELECT BITSTREAM FOR NORMALISATION   DIVISION
+                                             action[3,1] ? FPUsqrt.fraction :                                                   //                                      SQUARE ROOT
+                                             action[1,1] ? MULT.fraction :                                                      //                                      MULTIPLICATION
+                                                           FPUfused.FRACTION;                                                   //                                      FUSED/ADDSUB
+    donormalexp NORMAL( bitstream <: NORMAL_bitstream, exp <: FPUfused.EXP );                                                   // HANDLE NORMALISATION
 
-    uint1               MAKERESULT_sign <:: |action[1,2] ? MULT.sign : action[3,1] ? 0 : FUSED_productsign;                     // SELECT SIGN FOR ROUNDING AND COMBINING
-    uint13              MAKERESULT_exponent <:: action[2,1] ? FPUdivide.exponent : action[3,1] ? FPUsqrt.exponent : MULT.exp;   // SELECT EXPONENT FOR ROUNDING AND COMBINING
-    doroundcombine MAKERESULT(                                                                                                  // HANDLE ROUNDING AND COMBINING ( not FULL FUSED * + )
+    uint1               MAKERESULT_sign <:: |action[1,2] ? MULT.sign :                                                          // SELECT SIGN FOR RESULT               DIVISION/MULTIPLICATION
+                                             action[3,1] ? 0 :                                                                  //                                      SQUARE ROOT
+                                                           FPUfused.SIGN;                                                       //                                      FUSED/ADDSUB
+    uint13              MAKERESULT_exponent <:: action[2,1] ? FPUdivide.exponent :                                              // SELECT EXPONENT FOR RESULT           DIVISION
+                                                action[3,1] ? FPUsqrt.exponent :                                                //                                      SQUARE ROOT
+                                                action[1,1] ? MULT.exp :                                                        //                                      MULTIPLICATION
+                                                              NORMAL.newexponent;                                               //                                      FUSED/ADDSUB
+    doroundcombine MAKERESULT(                                                                                                  // HANDLE ROUNDING AND COMBINING
         rm <: rm, dsh <: dsh, BIAS <: BIAS,
-        sign <: MAKERESULT_sign,
-        exponent <: MAKERESULT_exponent,
-        bitstream <: NORMAL.normalfraction
+        sign <: MAKERESULT_sign, exponent <: MAKERESULT_exponent, bitstream <: NORMAL.normalfraction
     );
 
     // FUSED UNIT IS USED FOR   A+B ( AS A*1.0+B )
@@ -301,8 +307,8 @@ unit floatcalc(
 
     uint1               FUSED_productsign <:: action[1,1] ? MULT.sign : OPCODE[1,1] ^ MULT.sign;                                // SELECTION MULTIPLICATION SIGN, SWITCH IF FUSED NEGATE
     uint64              FUSED_c <:: action[0,1] ? { FUNCTION7[0,1] ^ fp64( F_2_X ).sign, F_2_X[0,63] } :                        // ADD/SUB SWITCH SIGN OF B INPUT IF SUBTRACTION
-                        action[1,1] ? 0 :                                                                                       // SET C INPUT TO 0 IF A*B+0.0
-                                      { OPCODE[0,1] ^ fp64( F_3_X ).sign, F_3_X[0,63] };                                        // SWITCH SIGN OF C INPUT IF SUBTRACTION REQUIRED, FUSED
+                                    action[1,1] ? 0 :                                                                           // SET C INPUT TO 0 IF A*B+0.0
+                                                  { OPCODE[0,1] ^ fp64( F_3_X ).sign, F_3_X[0,63] };                            // SWITCH SIGN OF C INPUT IF SUBTRACTION REQUIRED, FUSED
     uint4               FUSED_F_3_TYPE <:: action[0,1] ? F_2_TYPE :                                                             // SET TYPE OF C TO TYPE OF B FOR ADDITION/SUBTRACTION
                                            action[1,1] ? 4b0001 :                                                               // SET TYPE OF C TO 0 FOR MULTIPLICATION
                                                          F_3_TYPE;                                                              // SELECT TYPE OF C, FUSED
@@ -366,7 +372,7 @@ unit floatcalc(
                              FPUfused.special[0,1] ? 0 :                                                                        //          RETURN 0, * + == 0
                              FPUfused.special[1,1] ? 64h7FF8000000000000 :                                                      //          RETURN qNAN
                              FPUfused.special[3,1] ? xINF.value :                                                               //          RETURN INF, * == INF
-                               FUSED_F_3_TYPE[0,1] ? MAKERESULT.combined : FPUfused.RESULT;                                     //          RETURN MULTIPLY IF C == 0 OR RETURN FULL RESULT
+                                                     MAKERESULT.combined;                                                       //          RETURN MULTIPLY IF C == 0 OR RETURN FULL RESULT
 
     OUT_FPUFLAGS := action[4,1] ? FPUfused.flags :                                                                              //  FUSED MULT-ADD   { NV, --, UF, OF, -- }
                     action[3,1] ? FPUsqrt.flags :                                                                               //  SQRT             { NV, --, UF, OF, -- }
@@ -1004,7 +1010,9 @@ unit floatfused(
     input   uint1   UF,
     output  uint5   flags,                                                                                                      // OPERATION FLAGS
     output  uint5   special,                                                                                                    // { C, INF, sNAN, qNAN, ZERO }, C+INF = C, INF = +/- INF FROM X
-    output  uint64  RESULT                                                                                                      // RESULT OF CALCULATION
+    output  uint1   SIGN,
+    output  int13   EXP,
+    output  uint106 FRACTION
 ) {
     uint1   ZERO <:: F1_OR_F2_ZERO | F_3_TYPE[0,1];                                                                             // DETECT ZERO
     uint1   IF <:: F1_OR_F2_INF | F_3_TYPE[3,1];                                                                                // DETECT INFINITY
@@ -1015,20 +1023,13 @@ unit floatfused(
     uint13  ALIGN_expC <:: { 2b00, fp64( c ).exponent } - { 3b000, BIAS };                                                      // REMOVE BIAS FROM C INPUT
     do_addsub_align_fused ALIGN(                                                                                                // ALIGN THE FRACTIONS
         expA <: productexp, fractionA <: productfraction,                                                                       // MOVE THE FRACTION WITH THE SMALLEST EXPONENT RIGHT
-        expC <: ALIGN_expC, fractionC <: fp64( c ).fraction
+        expC <: ALIGN_expC, fractionC <: fp64( c ).fraction,
+        fusedexp :> EXP
     );
     do_float_addsub ADDSUB(                                                                                                     // PERFORM THE ADDITION/SUBTRACTION, ACCOUNTING FOR SIGNS
         signA <: productsign, sigA <: ALIGN.sigA,                                                                               // SPECIAL CASE FOR SUBTRACTION WHEN EQUAL EXPONENTS
-        signB <: fp64( c ).sign, sigB <: ALIGN.sigC                                                                             // AND SECOND FRACTION IS LARGER THAN THE FIRST
-    );
-    donormalexp NORMAL(                                                                                                         // NORMALISE THE RESULT
-        exp <: ALIGN.fusedexp,                                                                                                  // 1 IS ADDED TO THE EXPONENT IN CASE OF OVERFLOW
-        bitstream <: ADDSUB.RESULTfraction                                                                                      // NORMALISING WILL ADJUST
-    );
-    doroundcombine ADDRESULT(                                                                                                   // DO ROUNDING AND COMBINING
-        dsh <: dsh, BIAS <: BIAS, rm <: rm,                                                                                     //  ( leave in double bitfields ) FOR FULL FUSED OPERATION
-        sign <: ADDSUB.RESULTsign, exponent <: NORMAL.newexponent, bitstream <: NORMAL.normalfraction,
-        combined :> RESULT
+        signB <: fp64( c ).sign, sigB <: ALIGN.sigC,                                                                             // AND SECOND FRACTION IS LARGER THAN THE FIRST
+        RESULTsign :> SIGN, RESULTfraction :> FRACTION
     );
 
     uint1   wait = uninitialised; BUSY := START | wait; wait := START;                                                          // PROVIDE WAIT STATES
@@ -1063,8 +1064,8 @@ unit floatfused(
         }
 
         flags = {  NV, 1b0,                                                                                                     // RETURN FLAGS
-            ( ~|ACTION & ADDRESULT.OF ) | ( ( ACTION == 2b01 ) & ~F1_OR_F2_ZERO & ~F_3_TYPE[0,1] & OF ),
-            ( ~|ACTION & ADDRESULT.UF ) | ( ( ACTION == 2b01 ) & ~F1_OR_F2_ZERO & ~F_3_TYPE[0,1] & UF ),
+            ( ~|ACTION & OF ) | ( ( ACTION == 2b01 ) & ~F1_OR_F2_ZERO & ~F_3_TYPE[0,1] & OF ),
+            ( ~|ACTION & UF ) | ( ( ACTION == 2b01 ) & ~F1_OR_F2_ZERO & ~F_3_TYPE[0,1] & UF ),
             1b0
         };
     }

@@ -15,18 +15,16 @@ unit aluaddsub(
 }
 // CALCULATES BCLR BCLRI BEXT BEXTI BIN BINI BSET BSETI ( SINGLE BIT OPERATIONS )
 unit alubits(
-    input   uint64  sourceReg1,
-    input   uint6   shiftcount,
-    output  uint64  CLR,
-    output  uint64  INV,
-    output  uint64  SET,
-    output  uint1   EXT
+    input   uint64  I_1,
+    input   uint6   SHIFT,
+    input   uint3   ACTION,
+    output  uint64  RESULT,
 ) {
-    uint64  mask <:: ( 1 << shiftcount );
+    uint64  MASK <:: ( 1 << SHIFT );
 
-    CLR := sourceReg1 & ~mask;                                                                                                  // CLEAR BIT
-    INV := sourceReg1 ^ mask;                                                                                                   // INVERT BIT
-    SET := sourceReg1 | mask;                                                                                                   // SET BIT
+    RESULT := ACTION[0,1] ? I_1 |  MASK :
+              ACTION[1,1] ? I_1 ^  MASK :
+                            I_1 & ~MASK;
 }
 // CALCULATES CLZ CTZ CPOP
 unit alucount(
@@ -80,6 +78,7 @@ unit alumultiply(
 // CALCULATES SLL SLLI SRL SRLI SRA SRAI + ROL ROR RORI
 unit alushift(
     input   uint1   size32,
+    input   uint1   rotate,
     input   uint1   reverse,
     input   uint64  sourceReg1,
     input   uint6   shiftcount,
@@ -90,12 +89,11 @@ unit alushift(
 ) {
     uint7   reverseshift <:: ( { ~size32, size32, 5b00000 } - shiftcount );
 
-    SLL := ( size32 ? sourceReg1[0,32] : sourceReg1 ) << shiftcount;
-    SRL := ( size32 ? sourceReg1[0,32] : sourceReg1 ) >> shiftcount;
+    SLL := ( size32 ? sourceReg1[0,32] : sourceReg1 ) << ( ( rotate & reverse) ? reverseshift : shiftcount );
+    SRL := ( size32 ? sourceReg1[0,32] : sourceReg1 ) >> ( rotate ? reverse ? shiftcount : reverseshift : shiftcount );
     SRA := __signed( { size32 ? {32{sourceReg1[31,1]}} : sourceReg1[32,32], sourceReg1[0,32] } ) >>> shiftcount;
 
-    ROTATE := ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) << ( reverse ? reverseshift : shiftcount ) ) |
-              ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) >> ( reverse ? shiftcount : reverseshift ) );
+    ROTATE := SLL | SRL;
 }
 
 unit alu(
@@ -153,7 +151,7 @@ unit alu(
                                     $$end
                                     sourceReg1[7,1]
                                 };
-    uint64  ORCB <:: {                                                                                   // ORC.B
+    uint64  ORCB <:: {                                                                                                          // ORC.B
                         $$for i=0,6 do
                         {8{|sourceReg1[$(7-i)*8$,8]}},
                         $$end
@@ -161,11 +159,11 @@ unit alu(
                      };
 
     aluaddsub ADDSUB( size32 <: size32, function3 <: function3[1,2], dosub <: $doalt$, doadduw <: $doadduw$, sourceReg1 <: sourceReg1, operand2 <: operand2 );
-    alubits BITS( sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
+    alubits BITS( I_1 <: sourceReg1, SHIFT <: shiftcount, ACTION <: OP[9,3] );
     alucount COUNT( size32 <: size32, counttype <: rs2[0,2], sourceReg1 <: sourceReg1 );
     alulogic LOGIC( doinv <: $doalt$, sourceReg1 <: sourceReg1, operand2 <: operand2 );
     alumultiply MULT( size32 <: size32, function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
-    alushift SHIFTS( size32 <: size32, reverse <: function3[2,1], sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
+    alushift SHIFTS( size32 <: size32, rotate <: $dorotate$, reverse <: function3[2,1], sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
 
     always {
         if( immediate ) {
@@ -173,9 +171,7 @@ unit alu(
                 case 3b000: { result = $domul$ ? MULT.mult : ADDSUB.addsub; }                                                   // ADD[W][.UW] SUB[W] MUL[W]
                 case 3b001: {
                     result =     $domul$ ? MULT.mult :                                                                          // MULH
-                             $dobclrext$ ? BITS.CLR :                                                                           // BCLR
-                             $dobinvrev$ ? BITS.INV :                                                                           // BINV
-                                $dobset$ ? BITS.SET :                                                                           // BSET
+                                $dobits$ ? BITS.RESULT :                                                                        // BCLR BINV BSET
                               $dorotate$ ? SHIFTS.ROTATE :                                                                      // ROL[W]
                                            SHIFTS.SLL;                                                                          // SLL[W]
                 }
@@ -187,7 +183,7 @@ unit alu(
                 }
                 case 3b011: {
                     result =  $domul$ ? MULT.mult :                                                                             // MULHU
-                            ( ~|rs1 ) ? SR2_N0 : LTU;                                                                           // SLTU  ( rs1==x0 ? op2!=0 : op1<op2 )
+                            ( ~|rs1 ) ? SR2_N0 : LTU;                                                                           // SLTU ( rs1==x0 ? op2!=0 : op1<op2 )
                 }
                 case 3b100: {
                     result =   $dominmax$ ? LT ? sourceReg1 : sourceReg2 :                                                      // MIN
@@ -198,7 +194,7 @@ unit alu(
                 }
                 case 3b101: {
                     result =  $dominmax$ ? LTU ? sourceReg1 : sourceReg2 :                                                      // MINU
-                             $dobclrext$ ? sourceReg1[ shiftcount, 1 ] :                                                        // BEXT
+                                $dobext$ ? sourceReg1[ shiftcount, 1 ] :                                                        // BEXT
                                 $docond$ ? SR2_0 ? 0 : sourceReg1 :                                                             // CZERO.EQZ ( rd = ( rs2==0 ) ? 0 : rs1 )
                               $dorotate$ ? SHIFTS.ROTATE :                                                                      // ROR[W]
                                  $dosra$ ? SHIFTS.SRA :                                                                         // SRA[W]
@@ -220,12 +216,10 @@ unit alu(
             switch( function3 ) {                                                                                               // SINGLE REGISTER OR REGISTER AND IMMEDIATE
                 case 3b000: { result = ADDSUB.addsub; }                                                                         // ADDI[W]
                 case 3b001: {
-                    result =  $docountsignx$ ? rs2[2,1] ? rs2[0,1] ? { {48{sourceReg1[15,1]}}, sourceReg1[0,16] } :             // SEXT.[B][H] CLZ[W] CTZ[W] CPOP[W]
-                                                                     { {56{sourceReg1[ 7,1]}}, sourceReg1[0, 8] } :
-                                                          COUNT.result :
-                                 $dobclrext$ ? BITS.CLR :                                                                       // BCLRI
-                                 $dobinvrev$ ? BITS.INV :                                                                       // BINVI
-                                    $dobset$ ? BITS.SET :                                                                       // BSETI
+                    result =  $docountsignx$ ? rs2[2,1] ? rs2[0,1] ? { {48{sourceReg1[15,1]}}, sourceReg1[0,16] } :             // SEXT.H
+                                                                     { {56{sourceReg1[ 7,1]}}, sourceReg1[0, 8] } :             // SEXT.B
+                                                          COUNT.result :                                                        // CLZ[W] CTZ[W] CPOP[W]
+                                    $dobits$ ? BITS.RESULT :                                                                    // BCLRI BINVI BSETI
                                                SHIFTS.SLL;                                                                      // SLLI[W]
                 }
                 case 3b010: { result = LT; }                                                                                    // SLTI
@@ -233,8 +227,8 @@ unit alu(
                 case 3b100: { result = LOGIC.XOR; }                                                                             // XORI
                 case 3b101: {
                     result = $doorcxperm$ ? ORCB :                                                                              // ORC.B
-                              $dobinvrev$ ? REV :                                                                               // REV8 REV.B
-                              $dobclrext$ ? BITS.EXT :                                                                          // BEXTI
+                                  $dorev$ ? REV :                                                                               // REV8 REV.B
+                                 $dobext$ ? sourceReg1[ shiftcount, 1 ] :                                                       // BEXTI
                                $dorotate$ ? SHIFTS.ROTATE :                                                                     // RORI[W]
                                   $dosra$ ? SHIFTS.SRA :                                                                        // SRAI[W]
                                             SHIFTS.SRL;                                                                         // SRLI[W]
