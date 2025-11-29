@@ -19,7 +19,7 @@ unit statusdisplay(
     input   uint1   CAPSLOCK,
     input   uint1   NUMLOCK,
     input   uint1   RESETSTATUS
-) {
+) <reginputs> {
     uint6               COUNTER = uninitialised;                                                                                // TIMER, 1 SECOND = 60 frames
     uint6               COUNTER_NEXT <:: COUNTER - ( |COUNTER & pix_end );                                                      // TIMER, 1 SECOND = 60 frames
 
@@ -95,7 +95,7 @@ $$end
     input   uint1               RESETSTATUS,
 
     output  uint1               IRQ_VBLANK                                                                                      // SIGNAL START OF VBLANK FOR INTERRUPT
-) {
+) <reginputs> {
     uint1   video_reset = uninitialised; clean_reset video_rstcond<@video_clock,!reset> ( out :> video_reset );                 // Video Reset
 
     uint1                       vblank = uninitialized;                                                                         // DISPLAY  IN VBLANK
@@ -126,12 +126,12 @@ $$end
     // PREPARE COORDINATES FOR PRE-FETCHERS, ALL LAYERS BUT BACKGROUND
     // HDMI IMAGE STARTS IMMEDIATELY AFTER VBLANK, VGA HAS A "PORCH" FOR EACH LINE, PART OF HBLANK
     // (xscreen,yscreen) is the screen coordinate that is next to be rendered.
-    uint10                  xscreen <:: pix_active ? pix_x : 0;
-    uint10                  xscreenp1 <:: pix_active ? ( pix_x + 1 ) : 0;
+    uint11                  xscreen <:: pix_active ? pix_x : 0;
+    uint11                  xscreenp1 <:: pix_active ? ( pix_x + 1 ) : 0;
 $$if HDMI then
-    uint9                   yscreen <:: vblank ? 0 : pix_active ? pix_y : ( pix_y + 1 );
+    uint10                  yscreen <:: vblank ? 0 : pix_active ? pix_y : ( pix_y + 1 );
 $$else
-    uint9                   yscreen <:: vblank ? 0 : pix_y;
+    uint10                  yscreen <:: vblank ? 0 : pix_y;
 $$end
 
     background_memmap BACKGROUND(
@@ -179,10 +179,10 @@ $$end
     uint7   sprite_pixel_widths[8] = { 16, 32, 64, 128, 16, 8, 4, 2 };                                                                  // POSSIBLE SIZES OF SPRITES
     dualport_bram uint1 sprite_active <@clock,@video_clock> [64] = uninitialised;                                                       // MEMORY MAPPED SPRITE REGISTERS   ACTIVE
     dualport_bram uint3 sprite_tile <@clock,@video_clock> [64] = uninitialised;                                                         //                                  TILE NUMBER
-    dualport_bram uint7 sprite_actions <@clock,@video_clock> [64] = uninitialised;                                                      //                                  ACTIONS
+    dualport_bram uint9 sprite_actions <@clock,@video_clock> [64] = uninitialised;                                                      //                                  ACTIONS
     dualport_bram uint8 sprite_size <@clock,@video_clock> [64] = uninitialised;                                                         //                                  SIZE ( not writeable )
     dualport_bram int11 sprite_x <@clock,@video_clock> [64] = uninitialised;                                                            //                                  X POSITION
-    dualport_bram int10 sprite_y <@clock,@video_clock> [64] = uninitialised;                                                            //                                  Y POSITION
+    dualport_bram int11 sprite_y <@clock,@video_clock> [64] = uninitialised;                                                            //                                  Y POSITION
     simple_dualport_bram uint64 sprite_collision_memory <@clock,@video_clock> [64] = uninitialised;                                     //                                  SPRITE COLLISIONS
     simple_dualport_bram uint7 sprite_layer_collision_memory <@clock,@video_clock> [64] = uninitialised;                                //                                  LAYER COLLISIONS
     sprite_memmap SPRITES(
@@ -244,8 +244,8 @@ $$end
         $$for i=0,3 do
         tilemap_$i$ <: TILES.pixel_$i$,
         tilemap_display_$i$ <: TILES.pixel_display_$i$,
-        sprites_$i$ <: SPRITES.pixel_$i$,
-        sprites_display_$i$ <: SPRITES.sprite_display_$i$,
+        sprites_$i$ <: SPRITES.pixels[$i*8$,8],
+        sprites_display_$i$ <: SPRITES.sprite_display[$i$,1],
         $$end
         bitmap_0 <: BITMAP.pixel_0,
         bitmap_0_display <: BITMAP.pixel_0_collision,
@@ -259,6 +259,7 @@ $$end
 
     uint4               dimmer = 0;
     uint32              framecount = 0;
+    uint32              framecount_NEXT <:: framecount + pix_end;
 
     BACKGROUND.WENABLE := 0;
     BITMAP.WENABLE := 0; BITMAP.WENABLE_DIRECT := CS_BM & WENABLE;
@@ -280,10 +281,10 @@ $$end
         video_r := display.pix_red[2,6] >> dimmer; video_g := display.pix_green[2,6] >> dimmer; video_b := display.pix_blue[2,6] >> dimmer;
     $$end
     $$if HDMI then
-        video.red := display.pix_red >> dimmer; video.green := display.pix_green >> dimmer; video.blue := display.pix_blue >> dimmer;
+        video.red := display.pix_red[ dimmer, 8 ]; video.green := display.pix_green[ dimmer, 8 ]; video.blue := display.pix_blue[ dimmer, 8 ];
     $$end
 
-    framecount := framecount + pix_end; IRQ_VBLANK := pix_end;
+    framecount := framecount_NEXT; IRQ_VBLANK := pix_end;
 
     always {
         if( CS & WENABLE ) {                                                                                                    // WRITE VIDEO REGISTERS

@@ -249,6 +249,8 @@ void main( void ) {
         set_tilemap_tile( 2, i, 30, i+1, 0 ); set_tilemap_tile( 3, i, 29, i+1, 0 );
     }
 
+    tpu_set( 0, 17, TRANSPARENT, WHITE, 1 ); tpu_outputstring( "Awaiting RTC" );
+
     // INTERRUPT HANDLER SETUP
     IRQ_VECTOR( (void *)interrupt_handler ); IRQ_SET_TIMER_QUICK( 1 ); IRQ_ON( IRQ_VBLANK | IRQ_TIMER, TRUE );
 

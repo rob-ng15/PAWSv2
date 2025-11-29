@@ -14,7 +14,7 @@ echo "using $ARCH"
 # Following based on FemtoRV compile scripts https://github.com/BrunoLevy/learn-fpga/tree/master/FemtoRV
 
 $ARCH-elf-gcc -fwhole-program -ffunction-sections -fdata-sections -fno-unroll-loops -Os -fno-builtin -fno-pic $CPUOPTS -c -o build/code.o c/RBIOS.c
-$ARCH-elf-gcc -Os -fno-pic $CPUOPTS -c -o build/crt0.o crt0.c
+$ARCH-elf-gcc -Os -fno-pic $CPUOPTS -c -o build/crt0.o crt0.s
 $ARCH-elf-ld -m elf64lriscv -b elf64-littleriscv -Tconfig_c.ld  --relax-gp -o build/code.elf build/code.o /usr/lib/gcc/$ARCH-elf/$GCCVER/rv64imafdc/lp64d/libgcc.a
 $ARCH-elf-objcopy -O binary build/code.elf ../RBIOS.bin
 

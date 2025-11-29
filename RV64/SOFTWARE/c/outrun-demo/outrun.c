@@ -160,11 +160,11 @@ void set_sprites() {
     unsigned char tiles[] = { 5, 6, 7, 3, 4, 1, 2, 1, 2, 3, 4, 5, 6, 7 };
 
     for( int i = 0; i < 7; i++ ) {
-        set_sprite( i, 1, xpos[i] + 32, SPRITE_YPOS - 32, tiles[i], 0 );
-        set_sprite( i + 7, 1, xpos[ i + 7 ] + 32, SPRITE_YPOS - 16, tiles[ i + 7 ], REFLECT_X );
+        set_sprite( i, 1, xpos[i] + 32, SPRITE_YPOS - 32, tiles[i], SPRITE_LAYER_0 );
+        set_sprite( i + 7, 1, xpos[ i + 7 ] + 32, SPRITE_YPOS - 16, tiles[ i + 7 ], SPRITE_LAYER_0 | REFLECT_X );
 
-        set_sprite( i + 16, 1, xpos[i], SPRITE_YPOS, tiles[i], 0 );
-        set_sprite( i + 16 + 7, 1, xpos[ i + 7 ], SPRITE_YPOS + 16, tiles[ i + 7 ], REFLECT_X );
+        set_sprite( i + 16, 1, xpos[i], SPRITE_YPOS, tiles[i], SPRITE_LAYER_1 );
+        set_sprite( i + 16 + 7, 1, xpos[ i + 7 ], SPRITE_YPOS + 16, tiles[ i + 7 ], SPRITE_LAYER_1 | REFLECT_X );
     }
 }
 
@@ -178,12 +178,12 @@ unsigned char car_spritesheet[] = {
 void set_car_sprites( void ) {
     set_sprite_bitamps_from_spritesheet( 48, 8, car_spritesheet, TRUE );
 
-    set_sprite( 48, 0, 320-64, FERRARI_y, 0, SPRITE_DOUBLE | SPRITE_32X32 );                                        // LEVEL
-    set_sprite( 49, 0, 320, FERRARI_y, 1, SPRITE_DOUBLE | SPRITE_32X32 );
-    set_sprite( 50, 0, 320-64, FERRARI_y, 0, SPRITE_DOUBLE | SPRITE_32X32 );
-    set_sprite( 51, 0, 320, FERRARI_y, 1, SPRITE_DOUBLE | SPRITE_32X32 );
-    set_sprite( 52, 0, 320-64, FERRARI_y, 0, SPRITE_DOUBLE | SPRITE_32X32 );
-    set_sprite( 53, 0, 320, FERRARI_y, 1, SPRITE_DOUBLE | SPRITE_32X32 );
+    set_sprite( 48, 0, 320-64, FERRARI_y, 0, SPRITE_LAYER_3 | SPRITE_DOUBLE | SPRITE_32X32 );                                        // LEVEL
+    set_sprite( 49, 0, 320, FERRARI_y, 1, SPRITE_LAYER_3 | SPRITE_DOUBLE | SPRITE_32X32 );
+    set_sprite( 50, 0, 320-64, FERRARI_y, 0, SPRITE_LAYER_3 | SPRITE_DOUBLE | SPRITE_32X32 );
+    set_sprite( 51, 0, 320, FERRARI_y, 1, SPRITE_LAYER_3 | SPRITE_DOUBLE | SPRITE_32X32 );
+    set_sprite( 52, 0, 320-64, FERRARI_y, 0, SPRITE_LAYER_3 | SPRITE_DOUBLE | SPRITE_32X32 );
+    set_sprite( 53, 0, 320, FERRARI_y, 1, SPRITE_LAYER_3 | SPRITE_DOUBLE | SPRITE_32X32 );
 }
 
 // ROADSIDE ITEMS - AS DRAWLISTS FOR EASIER PLACEMENT AND SCALING

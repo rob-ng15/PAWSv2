@@ -470,7 +470,7 @@ void copper_program( unsigned short address, unsigned char command, unsigned cha
 
 void copper_set_memory( unsigned short *memory ) {
     *BACKGROUND_COPPER_MEMRESET = 0;
-    for( int i = 0; i <8; i++ )
+    for( int i = 0; i < 8; i++ )
         *BACKGROUND_COPPER_MEMVINIT = memory[i];
 }
 
@@ -479,7 +479,15 @@ void set_copper_cpuinput( unsigned short value ) {
 }
 
 unsigned short get_copper_cpuoutput( void ) {
-    return( *BACKGROUND_COPPER_CPUINPUT );
+    return( *BACKGROUND_COPPER_CPUOUTPUT );
+}
+
+void copper_memwrite( unsigned short value, unsigned short cell ) {
+    BACKGROUND_MEMORY[ cell & 7 ] = value;
+}
+
+unsigned short copper_memread( unsigned short cell ) {
+    return( BACKGROUND_MEMORY[ cell & 7 ] );
 }
 
 // SCROLLABLE TILEMAP
@@ -629,9 +637,10 @@ void gpu_dither( unsigned char mode, unsigned char colour ) {
 // SET GPU CROPPING RECTANGLE
 void gpu_crop( short left, short top, short right, short bottom ) {
     wait_gpu();
-    short L = min( left, right ), R = max( left, right ), B = min( top, bottom ), T = max( top, bottom );
-
-    *CROP_LEFT = L < 0 ? 0 : L; *CROP_RIGHT = R > 319 ? 319 : R; *CROP_TOP = T < 0 ? 0 : T; *CROP_BOTTOM = B > 239 ? 239 : B;
+    *CROP_LEFT = ( left < 0 ) ? 0 : ( left > 319 ) ? 319 : left;
+    *CROP_RIGHT = ( right < 0 ) ? 0 : ( right > 319 ) ? 319 : right;
+    *CROP_TOP = ( top < 0 ) ? 0 : ( top > 239 ) ? 239 : top;
+    *CROP_BOTTOM = ( bottom < 0 ) ? 0 : ( bottom > 239 ) ? 239 : bottom;
 }
 
 // SET THE PIXEL at (x,y) to colour
@@ -1255,8 +1264,8 @@ void set_sprite_bitamps_from_spritesheet( unsigned char sprite_number, unsigned 
     }
 }
 
-// SET SPRITE sprite_number to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror
-void set_sprite( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_actions ) {
+// SET SPRITE sprite_number to active status, in colour to (x,y) with bitmap number tile ( 0 - 7 ) in sprite_attributes bit 0 size == 0 16 x 16 == 1 32 x 32 pixel size, bit 1 x-mirror bit 2 y-mirror 2 bit layer number
+void set_sprite( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned short sprite_actions ) {
     SPRITE_ACTIVE[sprite_number] = active;
     SPRITE_TILE[sprite_number] = tile;
     SPRITE_X[sprite_number] = x;
@@ -1269,7 +1278,7 @@ void set_sprite( unsigned char sprite_number, unsigned char active, short x, sho
 //  attribute == 1 tile number ( 0 to 7 )
 //  attribute == 3 x coordinate
 //  attribute == 4 y coordinate
-//  attribute == 5 attributes bit 0 = size == 0 16x16 == 1 32x32. bit 1 = x-mirror bit 2 = y-mirror
+//  attribute == 5 attributes bit 0 = size == 0 16x16 == 1 32x32. bit 1 = x-mirror bit 2 = y-mirror + 2 bit layer number
 void set_sprite_attribute( unsigned char sprite_number, unsigned char attribute, short value ) {
     switch( attribute ) {
         case 0:
@@ -1307,6 +1316,14 @@ short get_sprite_attribute( unsigned char sprite_number, unsigned char attribute
         default:
             return( 0 );
     }
+}
+
+short get_sprite_layer( unsigned char sprite_number ) {
+    return( ( SPRITE_ACTIONS[sprite_number] >> 7 ) & 3 );
+}
+
+void set_sprite_layer( unsigned char sprite_number, unsigned char sprite_layer ) {
+    SPRITE_ACTIONS[sprite_number] = ( SPRITE_ACTIONS[sprite_number] & 127 ) | ( sprite_layer << 7 );
 }
 
 // RETURN THE COLLISION STATUS for sprite_number to other sprites

@@ -203,7 +203,7 @@ int main(int, char**)
         io.MouseDown[ImGuiMouseButton_Left] = ( mouse_btns & 2 ) >> 1;          // set the mouse button states
         io.MouseDown[ImGuiMouseButton_Right] = ( mouse_btns & 4 ) >> 2;
         if( mouse_cursor != 0 ) { mouse_x -= 16; mouse_y -= 16; }               // adjust if focus point is not top left
-        set_sprite( 63, ( mouse_cursor != ImGuiMouseCursor_None ), mouse_x, mouse_y, mouse_cursor, SPRITE_DOUBLE );
+        set_sprite( 63, ( mouse_cursor != ImGuiMouseCursor_None ), mouse_x, mouse_y, mouse_cursor, SPRITE_LAYER_3 | SPRITE_DOUBLE );
 
         ImGui::NewFrame();
 

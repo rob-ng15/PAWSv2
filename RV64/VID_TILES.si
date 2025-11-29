@@ -11,8 +11,8 @@ unit tile1616_0(
     input   uint4   x,
     input   uint4   y,
     output! uint8   pixel
-) {
-    tiles16x16.addr0 := { tile, y, x };  tiles16x16.wenable0 := 0;                                                              // FIND CURRENT TILE PIXEL
+) <reginputs> {
+    tiles16x16.addr0 := { tile, y, x }; tiles16x16.wenable0 := 0;                                                               // FIND CURRENT TILE PIXEL
     pixel := tiles16x16.rdata0;                                                                                                 // OUTPUT CURRENT TILE PIXEL
 }
 unit tile1616_1(
@@ -24,10 +24,34 @@ unit tile1616_1(
     input   uint1   WENABLE,
     input   uint8   WDATA,
     input   uint14  W_PIXEL
-) {
+) <reginputs> {
     tiles16x16.wdata1 := WDATA; tiles16x16.wenable1 := WENABLE;
     tiles16x16.addr1 := WENABLE ? W_PIXEL : { tile, y, x };                                                                     // FIND CURRENT TILE PIXEL OR WRITE PIXEL
     pixel := tiles16x16.rdata1;                                                                                                 // OUTPUT CURRENT TILE PIXEL
+}
+
+unit pos_intm(
+    input   int5    offset,
+    input   uint10  coord,
+    output! uint11  pos
+) <reginputs> {
+    pos := {{6{offset[4,1]}}, offset } + coord + 11d32;
+}
+
+unit which(
+    input   uint6   pos,
+    input   uint6   base,
+    output! uint6   tile
+) <reginputs> {
+    tile := { 1b0, pos } + base;
+}
+
+unit pixel(
+    input   uint4   coord,
+    input   int5    offset,
+    output! uint4   pix
+) <reginputs> {
+    pix := { 1b0, coord } + offset;
 }
 
 unit tilemap_0(
@@ -37,7 +61,7 @@ unit tilemap_0(
 
     input   uint10  pix_x,
     input   uint10  pix_x1,
-    input   uint9   pix_y,
+    input   uint10  pix_y,
     output! uint8   pixel,
     output! uint1   tilemap_display,
 
@@ -46,30 +70,31 @@ unit tilemap_0(
     input   uint6   base_y,
     input   int5    tm_offset_x,
     input   int5    tm_offset_y
-) {
-    uint11  xtmpos <: ( {{6{tm_offset_x[4,1]}}, tm_offset_x } + pix_x1 + 11d32 );                                               // FIND CURRENT X PIXEL COORDINATE IN TERMS OF TILEMAP TILES
-    uint10  ytmpos <: ( {{5{tm_offset_y[4,1]}}, tm_offset_y } + pix_y + 10d32 );                                                // FIND CURRENT Y PIXEL COORDINATE IN TERMS OF TILEMAP TILES
-    uint6   tmxpb <: ( xtmpos[4,6] + base_x );                                                                                  // FIND CURRENT TILE X COORDINATE ADJUSTED FOR OFFSET
-    uint6   tmypb <: ( ytmpos[4,6] + base_y );                                                                                  // FIND CURRENT TILE Y COORDINATE ADJUSTED FOR OFFSET
-    uint4   xintm <: { 1b0, pix_x[0,4] } + tm_offset_x;                                                                         // X COORDINATE IN CURRENT TILE
-    uint4   yintm <: { 1b0, pix_y[0,4] } + tm_offset_y;                                                                         // Y COORDINATE IN CURRENT TILE
+) <reginputs> {
+    pos_intm TMX( offset <: tm_offset_x, coord <: pix_x1 );                                                                     // FIND CURRENT X PIXEL COORDINATE IN TERMS OF TILEMAP TILES
+    pos_intm TMY( offset <: tm_offset_y, coord <: pix_y );                                                                      // FIND CURRENT Y PIXEL COORDINATE IN TERMS OF TILEMAP TILES
+    which TILEX( pos <: TMX.pos[4,6], base <: base_x );                                                                         // FIND CURRENT TILE X COORDINATE ADJUSTED FOR OFFSET
+    which TILEY( pos <: TMY.pos[4,6], base <: base_y );                                                                         // FIND CURRENT TILE Y COORDINATE ADJUSTED FOR OFFSET
+    pixel X( coord <: pix_x[0,4], offset <: tm_offset_x );                                                                      // X COORDINATE IN CURRENT TILE
+    pixel Y( coord <: pix_y[0,4], offset <: tm_offset_y );                                                                      // Y COORDINATE IN CURRENT TILE
 
     // Apply rotation/reflection
-    uint1   action00 <: ( ~|tmentry( tiles.rdata0 ).action );                                                                   // CHECK ACTION FLAGS FOR ROTATION
-    uint1   action01 <: ( tmentry( tiles.rdata0 ).action == 2b01 );
-    uint1   action10 <: ( tmentry( tiles.rdata0 ).action == 2b10 );
+    uint1   action00 <:: ( ~|tmentry( tiles.rdata0 ).action );                                                                   // CHECK ACTION FLAGS FOR ROTATION
+    uint1   action01 <:: ( tmentry( tiles.rdata0 ).action == 2b01 );
+    uint1   action10 <:: ( tmentry( tiles.rdata0 ).action == 2b10 );
 
-    tile1616_0 TG <@clockTG> (                                                                                                    // DOUBLE CLOCKED TILE GENERATOR
+    uint4   x <:: tmentry( tiles.rdata0 ).rflag ? action00 ? X.pix : action01 ? Y.pix : action10 ? ~X.pix : ~Y.pix :            // ROTATE X?
+                              tiles.rdata0[6,1] ? ~X.pix : X.pix;                                                               // REFLECT X?
+    uint4   y <:: tmentry( tiles.rdata0 ).rflag ? action00 ? Y.pix : action01 ? ~X.pix : action10 ? ~Y.pix : X.pix :            // ROTATE Y?
+                              tiles.rdata0[7,1] ? ~Y.pix : Y.pix;                                                               // REFLECT Y?
+
+    tile1616_0 TG <@clockTG> (                                                                                                  // DOUBLE CLOCKED TILE GENERATOR
         tiles16x16 <:> tiles16x16,
-        tile <: tmentry( tiles.rdata0 ).tilenumber,
+        tile <: tmentry( tiles.rdata0 ).tilenumber, x <: x, y <: y,
         pixel :> pixel
     );
-    TG.x := tmentry( tiles.rdata0 ).rflag ? action00 ? xintm : action01 ? yintm : action10 ? ~xintm : ~yintm :                  // ROTATE X?
-                        tiles.rdata0[6,1] ? ~xintm : xintm;                                                                     // REFLECT X?
-    TG.y := tmentry( tiles.rdata0 ).rflag ? action00 ? yintm : action01 ? ~xintm : action10 ? ~yintm : xintm :                  // ROTATE Y?
-                        tiles.rdata0[7,1] ? ~yintm : yintm;                                                                     // REFLECT Y?
 
-    tiles.addr0 := { tmypb, tmxpb };                                                                                            // SET ADDRESS FOR READING THE TILEMAP ( next pixel )
+    tiles.addr0 := { TILEY.tile, TILEX.tile };                                                                                  // SET ADDRESS FOR READING THE TILEMAP ( next pixel )
     tilemap_display := ( TG.pixel != 64 );                                                                                      // IS PIXEL TO DISPLAY? ( current pixel )
 }
 unit tilemap_1(
@@ -92,31 +117,32 @@ unit tilemap_1(
     input   uint1   WENABLE,
     input   uint8   WDATA,
     input   uint14  W_PIXEL
-) {
-    uint11  xtmpos <: ( {{6{tm_offset_x[4,1]}}, tm_offset_x } + pix_x1 + 11d32 );                                               // FIND CURRENT X PIXEL COORDINATE IN TERMS OF TILEMAP TILES
-    uint10  ytmpos <: ( {{5{tm_offset_y[4,1]}}, tm_offset_y } + pix_y + 10d32 );                                                // FIND CURRENT Y PIXEL COORDINATE IN TERMS OF TILEMAP TILES
-    uint6   tmxpb <: ( xtmpos[4,6] + base_x );                                                                                  // FIND CURRENT TILE X COORDINATE ADJUSTED FOR OFFSET
-    uint6   tmypb <: ( ytmpos[4,6] + base_y );                                                                                  // FIND CURRENT TILE Y COORDINATE ADJUSTED FOR OFFSET
-    uint4   xintm <: { 1b0, pix_x[0,4] } + tm_offset_x;                                                                         // X COORDINATE IN CURRENT TILE
-    uint4   yintm <: { 1b0, pix_y[0,4] } + tm_offset_y;                                                                         // Y COORDINATE IN CURRENT TILE
+) <reginputs> {
+    pos_intm TMX( offset <: tm_offset_x, coord <: pix_x1 );                                                                     // FIND CURRENT X PIXEL COORDINATE IN TERMS OF TILEMAP TILES
+    pos_intm TMY( offset <: tm_offset_y, coord <: pix_y );                                                                      // FIND CURRENT Y PIXEL COORDINATE IN TERMS OF TILEMAP TILES
+    which TILEX( pos <: TMX.pos[4,6], base <: base_x );                                                                         // FIND CURRENT TILE X COORDINATE ADJUSTED FOR OFFSET
+    which TILEY( pos <: TMY.pos[4,6], base <: base_y );                                                                         // FIND CURRENT TILE Y COORDINATE ADJUSTED FOR OFFSET
+    pixel X( coord <: pix_x[0,4], offset <: tm_offset_x );                                                                      // X COORDINATE IN CURRENT TILE
+    pixel Y( coord <: pix_y[0,4], offset <: tm_offset_y );                                                                      // Y COORDINATE IN CURRENT TILE
 
     // Apply rotation/reflection
-    uint1   action00 <: ( ~|tmentry( tiles.rdata0 ).action );                                                                   // CHECK ACTION FLAGS FOR ROTATION
-    uint1   action01 <: ( tmentry( tiles.rdata0 ).action == 2b01 );
-    uint1   action10 <: ( tmentry( tiles.rdata0 ).action == 2b10 );
+    uint1   action00 <:: ( ~|tmentry( tiles.rdata0 ).action );                                                                   // CHECK ACTION FLAGS FOR ROTATION
+    uint1   action01 <:: ( tmentry( tiles.rdata0 ).action == 2b01 );
+    uint1   action10 <:: ( tmentry( tiles.rdata0 ).action == 2b10 );
 
-    tile1616_1 TG <@clockTG> (                                                                                                    // DOUBLE CLOCKED TILE GENERATOR
+    uint4   x <:: tmentry( tiles.rdata0 ).rflag ? action00 ? X.pix : action01 ? Y.pix : action10 ? ~X.pix : ~Y.pix :            // ROTATE X?
+                              tiles.rdata0[6,1] ? ~X.pix : X.pix;                                                               // REFLECT X?
+    uint4   y <:: tmentry( tiles.rdata0 ).rflag ? action00 ? Y.pix : action01 ? ~X.pix : action10 ? ~Y.pix : X.pix :            // ROTATE Y?
+                              tiles.rdata0[7,1] ? ~Y.pix : Y.pix;                                                               // REFLECT Y?
+
+    tile1616_1 TG <@clockTG> (                                                                                                  // DOUBLE CLOCKED TILE GENERATOR
         tiles16x16 <:> tiles16x16,
-        tile <: tmentry( tiles.rdata0 ).tilenumber,
+        tile <: tmentry( tiles.rdata0 ).tilenumber, x <: x, y <: y,
         pixel :> pixel,
         WENABLE <: WENABLE, WDATA <: WDATA, W_PIXEL <: W_PIXEL
     );
-    TG.x := tmentry( tiles.rdata0 ).rflag ? action00 ? xintm : action01 ? yintm : action10 ? ~xintm : ~yintm :                  // ROTATE X?
-                        tiles.rdata0[6,1] ? ~xintm : xintm;                                                                     // REFLECT X?
-    TG.y := tmentry( tiles.rdata0 ).rflag ? action00 ? yintm : action01 ? ~xintm : action10 ? ~yintm : xintm :                  // ROTATE Y?
-                        tiles.rdata0[7,1] ? ~yintm : yintm;                                                                     // REFLECT Y?
 
-    tiles.addr0 := { tmypb, tmxpb };                                                                                            // SET ADDRESS FOR READING THE TILEMAP ( next pixel )
+    tiles.addr0 := { TILEY.tile, TILEX.tile };                                                                                  // SET ADDRESS FOR READING THE TILEMAP ( next pixel )
     tilemap_display := ( TG.pixel != 64 );                                                                                      // IS PIXEL TO DISPLAY? ( current pixel )
 }
 
@@ -128,7 +154,7 @@ unit calcoffset(
     output  int5    PREV,
     output  uint1   MAX,
     output  int5    NEXT
-) {
+) <reginputs> {
     int6    offsetPLUS <:: { offset[4,1], offset } + adjust;                                                                    // PRESENT OFFSET PLUS ADJUSTMENT
     int6    offsetMINUS <:: { offset[4,1], offset } - adjust;                                                                   // PRESENT OFFSET MINUS ADJUSTMENT
 
@@ -137,6 +163,7 @@ unit calcoffset(
     PREV := offsetMINUS + ( MIN ? 16 : 0 );                                                                                     // NEW ADJUSTMENT IF MOVED TO NEXT TILE ( MINIMUM )
     NEXT := offsetPLUS - ( MAX ? 16 : 0 );                                                                                      // NEW ADJUSTMENT IF MOVED TO NEXT TILE ( MAXIMUM )
 }
+
 unit tile_map_writer(
     input   uint6   tm_x,                                                                                                       // CPU INPUT OF TM  X TOP LEFT
     input   uint6   tm_y,                                                                                                       //                  Y TOP LEFT
@@ -151,7 +178,7 @@ unit tile_map_writer(
     input   uint3   tm_scrollwrap,                                                                                              // SCROLL/WRAP ACTION
     input   uint4   tm_adjust,                                                                                                  //  AMOUNT TO SCROLL
     output  uint4   tm_lastaction                                                                                               //  OUTPUT IF TM TOP LEFT ADJUSTED
-)  {
+) <reginputs> {
     calcoffset TMOX( offset <: tm_offset_x, adjust <: tm_adjust );                                                              // X TILEMAP COORDINATE
     calcoffset TMOY( offset <: tm_offset_y, adjust <: tm_adjust );                                                              // Y TILEMAP COORDINATE
 
@@ -218,7 +245,7 @@ unit tilemap_memmap(
     output  int$5*4$    tm_offset_x,
     output  int$5*4$    tm_offset_y,
     output  uint$4*4$   tm_lastaction
-) {
+) <reginputs> {
     uint1   latch = 0;
 
     // Tiles 64 x 16 x 16 ARRGGBB ( first tile defaults to transparent )
@@ -261,7 +288,7 @@ unit tilemap_memmap(
         pad(uninitialized)
     };
 
-    // 64 x 64 tile maps, 40 x 32 visiable, allows for pixel scrolling with border { 3 bits rotation/reflection, 6 bits tile number }
+    // 64 x 64 tile maps, 40 x 30 visible, allows for pixel scrolling with border { 3 bits rotation/reflection, 6 bits tile number }
     dualport_bram uint9 tiles_0 <@video_clock,@clock> [4096] = uninitialized;
     dualport_bram uint9 tiles_1 <@video_clock,@clock> [4096] = uninitialized;
     dualport_bram uint9 tiles_2 <@video_clock,@clock> [4096] = uninitialized;
@@ -270,6 +297,13 @@ unit tilemap_memmap(
     uint4   LOREZ = 0;
     uint8   W_PIXEL_NEXT_1 <:: tile_map_1.W_PIXEL[0,8] + 1;
     uint8   W_PIXEL_NEXT_3 <:: tile_map_3.W_PIXEL[0,8] + 1;
+
+    uint$4*6$   tm_x = uninitialised;
+    uint$4*6$   tm_y = uninitialised;
+    uint$4*5$   tm_x_offset = uninitialised;
+    uint$4*5$   tm_y_offset = uninitialised;
+    uint$4*3$   tm_scrollwrap = uninitialised;
+    uint$4*4$   tm_adjust = uninitialised;
 
     $$for i=0,1 do
     tilemap_0 tile_map_$i*2$ <@video_clock,!video_reset> (
@@ -280,10 +314,18 @@ unit tilemap_memmap(
         base_y <: TMW_$i*2$.base_y,
         tm_offset_x <: TMW_$i*2$.tm_offset_x,
         tm_offset_y <: TMW_$i*2$.tm_offset_y,
+        pix_x <: pix_x[ LOREZ[$i*2$,1], 10 ], pix_x1 <: pix_x1[ LOREZ[$i*2$,1], 10 ], pix_y <: pix_y[ LOREZ[$i*2$,1], 9 ],
         pixel    :> pixel_$i*2$,
         tilemap_display :> pixel_display_$i*2$
     );
-    tile_map_writer TMW_$i*2$();
+    tile_map_writer TMW_$i*2$(
+        tm_x <: tm_x[$i*2*6$,6],
+        tm_y <: tm_y[$i*2*6$,6],
+        tm_x_off <: tm_x_offset[$i*2*5$,5],
+        tm_y_off <: tm_y_offset[$i*2*5$,5],
+        tm_scrollwrap <: tm_scrollwrap[$i*2*3$,3],
+        tm_adjust <: tm_adjust[$i*2*4$,4],
+    );
 
     tilemap_1 tile_map_$i*2+1$ <@video_clock,!video_reset> (
         clockTG <: clockTG,
@@ -294,23 +336,27 @@ unit tilemap_memmap(
         base_y <: TMW_$i*2+1$.base_y,
         tm_offset_x <: TMW_$i*2+1$.tm_offset_x,
         tm_offset_y <: TMW_$i*2+1$.tm_offset_y,
+        pix_x <: pix_x[ LOREZ[$i*2+1$,1], 10 ], pix_x1 <: pix_x1[ LOREZ[$i*2+1$,1], 10 ], pix_y <: pix_y[ LOREZ[$i*2+1$,1], 9 ],
         pixel    :> pixel_$i*2+1$,
         tilemap_display :> pixel_display_$i*2+1$
     );
-    tile_map_writer TMW_$i*2+1$();
+    tile_map_writer TMW_$i*2+1$(
+        tm_x <: tm_x[$i*2*6+6$,6],
+        tm_y <: tm_y[$i*2*6+6$,6],
+        tm_x_off <: tm_x_offset[$i*2*5+5$,5],
+        tm_y_off <: tm_y_offset[$i*2*5+5$,5],
+        tm_scrollwrap <: tm_scrollwrap[$i*2*3+3$,3],
+        tm_adjust <: tm_adjust[$i*2*4+4$,4],
+    );
     $$end
 
     $$for i=0,3 do
-    tile_map_$i$.pix_x := LOREZ[$i$,1] ? pix_x[1,9] : pix_x;                                                                    // SET X PIXEL ACCOUNTING FOR DOUBLE FLAG
-    tile_map_$i$.pix_x1 := LOREZ[$i$,1] ? pix_x1[1,9] : pix_x1;                                                                 // SET X+! PIXEL ACCOUNTING FOR DOUBLE FLAG
-    tile_map_$i$.pix_y := LOREZ[$i$,1] ? pix_y[1,8] : pix_y;                                                                    // SET Y PIXEL ACCOUNTING FOR DOUBLE FLAG
-
     tiles_$i$.wdata1 := WDATA;                                                                                                  // SET TILEMAP WRITE TO CPU INPUT
     tiles_$i$.wenable1 := WENABLE_DIRECT[$i$,1];                                                                                // SET TILEMAP WRITE FLAG
     tiles_$i$.addr1 := ADDR[1,13];                                                                                              // SET TILEMAP ADDRESS
-
-    TMW_$i$.tm_scrollwrap := 0;                                                                                                 // SCROLL FLAG
     $$end
+
+    tm_scrollwrap := 0;
 
     RDATA_DIRECT := { tiles_0.rdata1, tiles_1.rdata1, tiles_2.rdata1, tiles_3.rdata1 };                                         // CPU OUTPUT DIRECT
     base_x := { TMW_0.base_x, TMW_1.base_x, TMW_2.base_x, TMW_3.base_x };
@@ -321,29 +367,19 @@ unit tilemap_memmap(
 
     always {
         // TILE BITMAP WRITER - SETTING THE TILE NUMBER RESETS THE COUNT, WRITING A PIXEL INCREMENTS THE COUNT - ALLOWS USE OF DMA TRANSFER
-        if( latch ) {
-            latch = 0;
-        } else {
-            tile_map_1.WENABLE = 0; tile_map_3.WENABLE = 0;
-        }
+        if( latch ) { latch = 0; } else { tile_map_1.WENABLE = 0; tile_map_3.WENABLE = 0; }
 
         if( WENABLE ) {
             switch( ADDR[6,2] ) {
                 case 2b00: {
-                    switch( ADDR[1,2] ) {
-                        $$for i=0,3 do
-                        case $i$: {
-                            switch( ADDR[3,3] ) {
-                                case 3h0: { TMW_$i$.tm_x = WDATA; }
-                                case 3h1: { TMW_$i$.tm_y = WDATA; }
-                                case 3h2: { TMW_$i$.tm_x_off = WDATA; }
-                                case 3h3: { TMW_$i$.tm_y_off = WDATA; }
-                                case 3h4: { TMW_$i$.tm_scrollwrap = WDATA; }
-                                case 3h5: { TMW_$i$.tm_adjust = WDATA; }
-                                default: {}
-                            }
-                        }
-                        $$end
+                    switch( ADDR[3,3] ) {
+                        case 3h0: { tm_x[ADDR[1,2]*6,6] = WDATA[0,6]; }
+                        case 3h1: { tm_y[ADDR[1,2]*6,6] = WDATA[0,6]; }
+                        case 3h2: { tm_x_offset[ADDR[1,2]*5,5] = WDATA[0,5]; }
+                        case 3h3: { tm_y_offset[ADDR[1,2]*5,5] = WDATA[0,5]; }
+                        case 3h4: { tm_scrollwrap[ADDR[1,2]*3,3] = WDATA[0,3]; }
+                        case 3h5: { tm_adjust[ADDR[1,2]*4,4] = WDATA[0,4]; }
+                        default: {}
                     }
                 }
                 case 2b01: {

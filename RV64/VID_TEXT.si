@@ -15,7 +15,7 @@ unit characterrom512(
     input   uint1               double_right,                                                                                   // IN LEFT OR RIGHT CELL OF DOUBLED X
     input   uint1               double_bottom,                                                                                  // IN TOP OR BOTTOM CELL OF DOUBLED Y
     output! uint1               pixel                                                                                           // PIXEL ON OR OFF
-) {
+) <reginputs> {
     brom uint8 characterGenerator8x8[4096] =  {                                                                                 // IBM CODE 437 8x8 PIXEL FONT NORMAL + BOLD
         $include('ROM/FONTS/CODE437-THINBOLD.inc')
         ,pad(uninitialized)
@@ -48,8 +48,8 @@ unit character_map(
     input   uint8               tpu_foreground,                                                                                 // CURSOR FOREGROUND COLOUR
     input   uint8               tpu_background,                                                                                 // CURSOR BACKGROUND COLOUR
     input   uint1               tpu_showcursor                                                                                  // DISPLAY CURSOR?
-) {
-    uint1               is_cursor <: tpu_showcursor & blink & ( cursor_x == ( pix_x[3,7] ) ) & ( cursor_y == pix_y[3,6] );      // Is current coordinate the cursor coordinate, cursor visible?
+) <reginputs> {
+    uint1               is_cursor <:: tpu_showcursor & blink & ( cursor_x == ( pix_x[3,7] ) ) & ( cursor_y == pix_y[3,6] );      // Is current coordinate the cursor coordinate, cursor visible?
 
     characterrom512 CGROM <@clockCG> (                                                                                          // Character ROM 8x8 1024 characters, 256 normal, 256 bold
         altset8x8 <:> altset8x8,                                                                                                // 512 alternative character set
@@ -87,31 +87,25 @@ unit charactermap_memmap(
     input   uint1               WENABLE_DIRECT,
     input   uint30              WDATA,
     output  uint30              RDATA_DIRECT
-) {
-    uint12 chargen_NEXT <:: ( altset8x8.addr1 + 1 );
-    dualport_bram uint8 altset8x8 <@clockCG,@clock> [4096] = uninitialized;
+) <reginputs> {
+    dualport_bram uint8 altset8x8 <@clockCG,@clock> [4096] = uninitialized;                                                     // USER DEFINED ALTERNATE CHARACTER SET
+    uint12              chargen_NEXT <:: ( altset8x8.addr1 + 1 );                                                               // WRITE ADDRESS FOR ALTERNATE CHARACTER SET DEFINITIONS
 
-    uint1   LOREZ = 0;
+    uint1               LOREZ = 0;                                                                                              // LOREZ 40x30 DISPLAY
+    dualport_bram uint30 charactermap <@video_clock,@clock> [4800] = uninitialized;                                             // 80 x 60 character buffer
 
-    // 80 x 30 character buffer
-    dualport_bram uint30 charactermap <@video_clock,@clock> [4800] = uninitialized;
-
-    // CHARACTER MAP DISPLAY
-    character_map character_map_window <@video_clock,!video_reset> (
+    uint9               cm_y <:: pix_y[LOREZ,9];
+    character_map character_map_window <@video_clock,!video_reset> (                                                            // CHARACTER MAP DISPLAY
         altset8x8 <:> altset8x8,
         clockCG <: clockCG,
         charactermap <:> charactermap,
-        pixel    :> pixel,
-        character_map_display :> pixel_display,
+        pix_x <: pix_x[LOREZ,10], pix_x1 <: pix_x1[LOREZ,10], pix_y <: cm_y,
+        pixel :> pixel, character_map_display :> pixel_display,
         blink <: blink
     );
 
     charactermap.addr1 := ADDR[2,13]; charactermap.wdata1 := WDATA; charactermap.wenable1 := WENABLE_DIRECT; RDATA_DIRECT := charactermap.rdata1;
     altset8x8.wdata1 := WDATA; altset8x8.wenable1 := 0;
-
-    character_map_window.pix_x :=  LOREZ ? { 1b0,  pix_x[1,9] } : pix_x;
-    character_map_window.pix_x1 := LOREZ ? { 1b0, pix_x1[1,9] } : pix_x1;
-    character_map_window.pix_y :=  LOREZ ? { 1b0,  pix_y[1,8] } : pix_y;
 
     always {
         if( WENABLE ) {
