@@ -93,6 +93,8 @@ extern void copper_program( unsigned short address, unsigned char command, unsig
 extern void copper_set_memory( unsigned short *memory );
 extern void set_copper_cpuinput( unsigned short );
 extern unsigned short get_copper_cpuoutput( void );
+extern void copper_memwrite( unsigned short value, unsigned short cell );
+extern unsigned short copper_memread( unsigned short cell );
 
 // TILEMAP
 extern void tm_cs( unsigned char tm_layer );
@@ -172,10 +174,12 @@ extern void DoDrawList2D( struct DrawList2D *, int, int, int, int, float );
 extern void DoDrawList2Dscale( struct DrawList2D *, int, int, int, float );
 
 // SPRITES - MAIN ACCESS
-extern void set_sprite( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes );
+extern void set_sprite( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned short sprite_attributes );
 extern void set_sprite32( unsigned char sprite_number, unsigned char active, short x, short y, unsigned char tile, unsigned char sprite_attributes );
 extern short get_sprite_attribute( unsigned char sprite_number, unsigned char attribute );
 extern void set_sprite_attribute( unsigned char sprite_number, unsigned char attribute, short value );
+extern short get_sprite_layer( unsigned char sprite_number );
+extern void set_sprite_layer( unsigned char sprite_number, unsigned char sprite_layer );
 extern void update_sprite( unsigned char sprite_number, unsigned char kill, short dx, short dy, unsigned char dt );
 extern void update_sprite_compat( unsigned char sprite_number, unsigned short updateflag );
 extern unsigned long get_sprite_collision( unsigned char sprite_number );

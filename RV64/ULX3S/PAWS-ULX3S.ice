@@ -13,7 +13,7 @@ $$ addr_width = 27
 // NuCU COPPER BACKGROUND PROCESSOR DEFINITIONS
 // blocks number of program entries, mem number of memory registers, stack number of rstack and dstack entries
 // NUCUmem must be at least 8, which can be set by the CPU before NUCU program starts
-$$ NUCUblocks = 128
+$$ NUCUblocks = 1024
 $$ NUCUaddr = clog2(NUCUblocks)
 $$ NUCUmem = 8
 $$ NUCUmemaddr = clog2(NUCUmem)
@@ -25,21 +25,12 @@ $$ AUDIO_multi = 7
 $$ AUDIO_bits = 4
 
 // ON CPU INSTRUCTION CACHE DEFINITIONS
-// L1 CACHE SIZES FOR HART ID 0 AND 1
-// blocks must be a power of 2
-// HART 0 - MAIN
-$$ L10Iblocks = 4096
-$$ L10Icount = clog2(L10Iblocks)
-$$ L10Ipartaddresswidth = addr_width - 1 - L10Icount
-$$ L10Ipartaddressstart = 1 + L10Icount
-bitfield L10cacheI{ uint30 instruction, uint1 compressed, uint1 valid, uint$L10Ipartaddresswidth$ partaddress }
-
-// HART 1 - SMT
-$$ L11Iblocks = 512
-$$ L11Icount = clog2(L11Iblocks)
-$$ L11Ipartaddresswidth = addr_width - 1 - L11Icount
-$$ L11Ipartaddressstart = 1 + L11Icount
-bitfield L11cacheI{ uint30 instruction, uint1 compressed, uint1 valid, uint$L11Ipartaddresswidth$ partaddress }
+// L1 CACHE SIZE
+$$ L1Iblocks = 4096
+$$ L1Icount = clog2(L1Iblocks)
+$$ L1Ipartaddresswidth = addr_width - 1 - L1Icount
+$$ L1Ipartaddressstart = 1 + L1Icount
+bitfield L1cacheI{ uint30 instruction, uint1 compressed, uint1 valid, uint$L1Ipartaddresswidth$ partaddress }
 
 // SDRAM CACHE DEFINITIONS
 // CACHES SIZES - L2 2 x L2size for SDRAM CACHE
@@ -50,7 +41,7 @@ $$ L2partaddressstart = 2 + L2cacheaddrwidth
 bitfield L2cache{ uint16 contents, uint1 needswrite, uint1 valid, uint$L2partaddresswidth$ partaddress }
 
 $$ print('CACHE BLOCK CONFIGURATION')
-$$ print("L1 BLOCKS: "..L10Iblocks.." WIDTH: "..L10Icount.." TAG SIZE: "..L10Ipartaddresswidth.." AT: "..L10Ipartaddressstart)
+$$ print("L1 BLOCKS: "..L1Iblocks.." WIDTH: "..L1Icount.." TAG SIZE: "..L1Ipartaddresswidth.." AT: "..L1Ipartaddressstart)
 $$ print("L2 BLOCKS: "..L2size.." WIDTH: "..L2cacheaddrwidth.." TAG SIZE: "..L2partaddresswidth.." AT: "..L2partaddressstart)
 
 // BIT WIDTH FOR CSR COUNTERS ( spec is 64 bit )

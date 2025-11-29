@@ -140,13 +140,13 @@ unsigned char next_colour( unsigned char colour_cycle, unsigned char position ) 
 unsigned char last_colour = 65;
 void game_over( void ) {
     gpu_character_blit( swizzle(last_colour), 16, 116, 'G' + 256, 2, 0 );
-    gpu_character_blit( swizzle(next_colour(last_colour,1)), 48, 124, 'A' + 256, 2, 0 );
+    gpu_character_blit( swizzle(255-next_colour(last_colour,1)), 48, 124, 'A' + 256, 2, 0 );
     gpu_character_blit( swizzle(next_colour(last_colour,2)), 80, 116, 'M' + 256, 2, 0 );
-    gpu_character_blit( swizzle(next_colour(last_colour,3)), 112, 124, 'E' + 256, 2, 0 );
+    gpu_character_blit( swizzle(255-next_colour(last_colour,3)), 112, 124, 'E' + 256, 2, 0 );
     gpu_character_blit( swizzle(next_colour(last_colour,4)), 176, 116, 'O' + 256, 2, 0 );
-    gpu_character_blit( swizzle(next_colour(last_colour,5)), 208, 124, 'V' + 256, 2, 0 );
+    gpu_character_blit( swizzle(255-next_colour(last_colour,5)), 208, 124, 'V' + 256, 2, 0 );
     gpu_character_blit( swizzle(next_colour(last_colour,6)), 240, 116, 'E' + 256, 2, 0 );
-    gpu_character_blit( swizzle(next_colour(last_colour,7)), 272, 124, 'R' + 256, 2, 0 );
+    gpu_character_blit( swizzle(255-next_colour(last_colour,7)), 272, 124, 'R' + 256, 2, 0 );
     last_colour = ( last_colour == 255 ) ? 65 : last_colour + 1;
 }
 
@@ -343,7 +343,7 @@ void move_ship() {
 }
 
 void draw_score( void ) {
-    tpu_printf_centre( 1, TRANSPARENT, ( lives > 0 ) ? WHITE : GREY3, BOLD, "Score %5d", score );
+    tpu_printf_centre( 0, TRANSPARENT, ( lives > 0 ) ? WHITE : GREY3, BOLD | TPU_X2 | TPU_Y2, "Score %5d", score );
 }
 
 void draw_lives( void ) {
@@ -688,7 +688,7 @@ int main( void ) {
         // BEEP / BOOP
         beepboop();
 
-        if( ( rng( 512 ) == 1 ) && ( ufo_sprite_number == 0xff ) && ( get_sprite_attribute( 10, ATTR_SPRITE_ACTIVE ) == 0 ) ) {
+        if( !get_timer1khz( 0 ) && ( rng( 512 ) == 1 ) && ( ufo_sprite_number == 0xff ) && ( get_sprite_attribute( 10, ATTR_SPRITE_ACTIVE ) == 0 ) ) {
             // START UFO
             ufo_sprite_number = find_asteroid_space();
 
@@ -701,6 +701,7 @@ int main( void ) {
                 ufo_leftright = rng( 2 );
                 set_sprite( ufo_sprite_number, 1, ( ufo_leftright == 1 ) ? 639 : ( level < 2 ) ? -31 : -15, ufo_y, 6, ( level < 2 ) ? SPRITE_DOUBLE : 0 );
                 asteroid_active[ ufo_sprite_number ] = 3; sample_change = 2;
+                set_timer1khz( 10000, 0 );
             }
         }
 
@@ -800,6 +801,8 @@ int main( void ) {
                 ufo_sprite_number = 0xff; ufo_leftright = 0;
                 draw_lives();
                 shipexplode = 0;
+
+                set_timer1khz( 10000, 0 );
             } else {
                 if( ( lives == 0 ) && ( ( get_buttons() & JOY_DOWN ) != 0 ) ) {
                     exit( FALSE );

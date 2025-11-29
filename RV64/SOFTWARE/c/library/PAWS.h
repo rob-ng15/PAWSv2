@@ -42,6 +42,8 @@ unsigned short volatile *BACKGROUND_COPPER_ADDRESS = (unsigned short volatile *)
 unsigned int volatile *BACKGROUND_COPPER_OP = (unsigned int volatile *) 0xd010;
 unsigned char volatile *BACKGROUND_COPPER_MEMRESET = (unsigned char volatile *) 0xd016;
 unsigned short volatile *BACKGROUND_COPPER_MEMVINIT = (unsigned short volatile *) 0xd018;
+unsigned short volatile *BACKGROUND_COPPER_CPUOUTPUT = (unsigned short volatile *) 0xd000;
+unsigned short volatile *BACKGROUND_MEMORY = (unsigned short volatile *) 0xd020;
 
 unsigned short volatile *TM_X = (unsigned short volatile *) 0xd100;
 unsigned short volatile *TM_Y = (unsigned short volatile *) 0xd108;
@@ -54,6 +56,15 @@ unsigned char volatile *TM_WRITER_TILE_NUMBER = (unsigned char volatile *) 0xd14
 unsigned char volatile *TM_WRITER_COLOUR = (unsigned char volatile *) 0xd142;
 unsigned char volatile *TM_LOREZ = (unsigned char volatile *) 0xd180;
 unsigned short volatile *TMAPBUFFER[4] = { (unsigned short volatile *) 0x800000, (unsigned short volatile *) 0x808000, (unsigned short volatile *) 0x810000, (unsigned short volatile *) 0x818000 };
+
+unsigned char volatile *TPU_X = (unsigned char volatile *) 0xd200;
+unsigned char volatile *TPU_Y = (unsigned char volatile *) 0xd201;
+unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd202;
+unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd203;
+unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd204;
+unsigned char volatile *TPU_LOREZ = (unsigned char volatile *) 0xd205;
+unsigned short volatile *TPU_CHARGEN_CHAR = (unsigned short volatile *) 0xd208;
+unsigned char volatile *TPU_CHARGEN_BITMAP = (unsigned char volatile *) 0xd20a;
 
 short volatile *GPU_X = (short volatile *) 0xd300;
 short volatile *GPU_Y = (short volatile *) 0xd302;
@@ -97,15 +108,6 @@ unsigned short volatile *CROP_BOTTOM = (unsigned short volatile *) 0xd3e6;
 unsigned char volatile *FRAMEBUFFER_DRAW = (unsigned char volatile *) 0xd3f2;
 unsigned char volatile *BITMAP_DISPLAY256 = (unsigned char volatile *) 0xd3f4;
 unsigned char volatile *FRAMEBUFFERS[2] = { (unsigned char volatile *)0x2000000, (unsigned char volatile *)0x2020000 };
-
-unsigned char volatile *TPU_X = (unsigned char volatile *) 0xd300;
-unsigned char volatile *TPU_Y = (unsigned char volatile *) 0xd301;
-unsigned char volatile *TPU_BACKGROUND = (unsigned char volatile *) 0xd302;
-unsigned char volatile *TPU_FOREGROUND = (unsigned char volatile *) 0xd303;
-unsigned char volatile *TPU_CURSOR = (unsigned char volatile *) 0xd304;
-unsigned char volatile *TPU_LOREZ = (unsigned char volatile *) 0xd305;
-unsigned short volatile *TPU_CHARGEN_CHAR = (unsigned short volatile *) 0xd308;
-unsigned char volatile *TPU_CHARGEN_BITMAP = (unsigned char volatile *) 0xd30a;
 
 unsigned short volatile *SPRITE_ACTIVE = (unsigned short volatile *) 0xd400;
 unsigned short volatile *SPRITE_ACTIONS = (unsigned short volatile *) 0xd480;

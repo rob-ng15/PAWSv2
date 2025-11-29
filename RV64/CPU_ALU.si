@@ -1,27 +1,12 @@
 // ALU - ALU for immediate-register operations and register-register operations
 
-// CALCULATES ADD ADDI SUB SH1ADD SH2ADD SH3ADD
-unit aluaddsub(
-    input   uint1   size32,                                                                                                     // 32/64 bit flag
-    input   uint2   function3,                                                                                                  // SHIFT AMOUNT FOR SHxADD ( will be 0 for regular add )
-    input   uint1   doadduw,                                                                                                    // ADD unsigned 32 bit word flag
-    input   uint1   dosub,                                                                                                      // SUB flag
-    input   int64   sourceReg1,                                                                                                 // FIRST REGISTER
-    input   int64   operand2,                                                                                                   // SECOND REGISTER / IMMEDIATE
-    output  int64   addsub                                                                                                      // RESULT
-) {
-    addsub := dosub ? ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) -  ( size32 & ~doadduw ? operand2[0,32] : operand2 ) ) :
-                      ( ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) << function3 ) +  ( size32 & ~doadduw ? operand2[0,32] : operand2 ) );
-}
 // CALCULATES BCLR BCLRI BEXT BEXTI BIN BINI BSET BSETI ( SINGLE BIT OPERATIONS )
 unit alubits(
     input   uint64  I_1,
-    input   uint6   SHIFT,
+    input   uint64  MASK,
     input   uint3   ACTION,
     output  uint64  RESULT,
-) {
-    uint64  MASK <:: ( 1 << SHIFT );
-
+) <reginputs> {
     RESULT := ACTION[0,1] ? I_1 |  MASK :
               ACTION[1,1] ? I_1 ^  MASK :
                             I_1 & ~MASK;
@@ -32,13 +17,13 @@ unit alucount(
     input   uint2   counttype,
     input   uint64  sourceReg1,
     output  uint7   result
-) {
+) <reginputs> {
     always {
         if( ( ~size32 & |sourceReg1 ) | ( size32 & |sourceReg1[0,32] ) ) {                                                      // CHECK FOR 1's IN 64 OR 32 BITS
             switch( counttype ) {
-                case 2b00: { ( result ) = clz_silice_64( size32 ? { sourceReg1[0,32], 32hffffffff } : sourceReg1 ); }
-                case 2b01: { ( result ) = ctz_silice_64( size32 ? { 32hffffffff, sourceReg1[0,32] } : sourceReg1 ); }
-                default:   { ( result ) = cpop_silice_64( size32 ? sourceReg1[0,32] : sourceReg1 ); }
+                case 2b00: { ( result ) =  clz_silice_64( size32 ? { sourceReg1[0,32], 32hffffffff } : sourceReg1 ); }
+                case 2b01: { ( result ) =  ctz_silice_64( size32 ? { 32hffffffff, sourceReg1[0,32] } : sourceReg1 ); }
+                default:   { ( result ) = cpop_silice_64( size32 ?                sourceReg1[0,32] :   sourceReg1 ); }
             }
         } else {
             result = { ~size32 & ~counttype[1,1], size32 & ~counttype[1,1], 5b00000 };                                          // REPORT 32/64 FOR CTZ/CLZ AND 0 FOR CPOP IF SOURCEREG1 == 0
@@ -47,18 +32,17 @@ unit alucount(
 }
 // CALCULATES AND/ANDN OR/ORN XOR/XNOR
 unit alulogic(
-    input   uint1   doinv,
-    input   uint64  sourceReg1,
-    input   uint64  operand2,
-    output  uint64  AND,
-    output  uint64  OR,
-    output  uint64  XOR
-) {
-    uint64  op2 <:: doinv ? ~operand2 : operand2;
+    input   uint1   INV,
+    input   uint2   ACTION,
+    input   uint64  I_1,
+    input   uint64  I_2,
+    output  uint64  RESULT
+) <reginputs> {
+    uint64  OP_2 <:: INV ? ~I_2 : I_2;
 
-    AND := sourceReg1 & op2;
-    OR  := sourceReg1 | op2;
-    XOR := sourceReg1 ^ op2;
+    RESULT :=      ~|ACTION ? I_1 ^ OP_2 :
+                ACTION[0,1] ? I_1 & OP_2 :
+                              I_1 | OP_2;
 }
 // UNSIGNED / SIGNED 65 by 65 bit multiplication giving 130 bit product using DSP blocks
 unit alumultiply(
@@ -67,10 +51,10 @@ unit alumultiply(
     input   int64   sourceReg1,
     input   int64   sourceReg2,
     output  int64   mult
-) {
+) <reginputs> {
     uint2   dosigned <:: function3[1,1] ? { 1b0, ~function3[0,1] } : 2b11;
-    int130  product <:: ( size32 ? { 33b0, sourceReg1[0,32] } : { dosigned[0,1] & sourceReg1[ 63, 1 ], sourceReg1 } ) *         // SIGN EXTEND 64bit IF SIGNED MULTIPLY
-                        ( size32 ? { 33b0, sourceReg2[0,32] } : { dosigned[1,1] & sourceReg2[ 63, 1 ], sourceReg2 } );          // SIGN EXTEND 64bit IF SIGNED MULTIPLY
+    int130  product <:: ( size32 ? { 33b0, sourceReg1[0,32] } : { dosigned[0,1] & sourceReg1[63,1], sourceReg1 } ) *            // SIGN EXTEND 64bit IF SIGNED MULTIPLY
+                        ( size32 ? { 33b0, sourceReg2[0,32] } : { dosigned[1,1] & sourceReg2[63,1], sourceReg2 } );             // SIGN EXTEND 64bit IF SIGNED MULTIPLY
 
     mult := size32 ? product[ 0, 32 ] : product[ { |function3, 6b0 }, 64 ];
 }
@@ -86,7 +70,7 @@ unit alushift(
     output  uint64  SRL,
     output  uint64  SRA,
     output  uint64  ROTATE
-) {
+) <reginputs> {
     uint7   reverseshift <:: ( { ~size32, size32, 5b00000 } - shiftcount );
 
     SLL := ( size32 ? sourceReg1[0,32] : sourceReg1 ) << ( ( rotate & reverse) ? reverseshift : shiftcount );
@@ -110,8 +94,9 @@ unit alu(
     input   uint1   LT,                                                                                                         // SIGNED COMPARE sourceReg1 < operand2
     input   uint1   LTU,                                                                                                        // UNSIGNED COMPARE sourceReg1 < operand2
     output  int64   result
-) {
+) <reginputs> {
     uint6   shiftcount <:: immediate ? ( size32 ? sourceReg2[0,5] : sourceReg2[0,6] ) : { ~size32 & shiftbit6, rs2 };           // EXTRACT SHIFT COUNT FOR SHIFTS AND ROTATES
+    uint64  mask <:: 1 << ( immediate ? ( size32 ? sourceReg2[0,5] : sourceReg2[0,6] ) : { ~size32 & shiftbit6, rs2 } );
     uint64  operand2 <:: immediate ? sourceReg2 : immediateValue;                                                               // REG AND REG, OR REG AND IMMEDIATE
 
     uint1   SR1_0 <:: ~|sourceReg1;                                                                                             // sourceReg1 == 0?
@@ -119,20 +104,23 @@ unit alu(
     uint1   SR2_N0 <:: |sourceReg2;                                                                                             // sourceReg2 != 0?
     uint1   IMM_1 <:: ( immediateValue == 1 );                                                                                  // IMM == 1?
 
-    uint64  PACK <:: function3[1,1] ? { 48b0, sourceReg2[0,8], sourceReg1[0,8] } :                                              // PACKH ( low 8 bits of rs1 rs2 into rd ) ZEXT.H
+    uint64  ADDSUB <:: $doalt$ ?  ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) - ( size32 ? operand2[0,32] : operand2 ) ) :
+                                  ( ( ( size32 ? sourceReg1[0,32] : sourceReg1 ) << function3[1,2] ) + ( size32 & ~$doadduw$ ? operand2[0,32] : operand2 ) );
+
+    uint64  PACK <:: function3[1,1] ? {                   48b0, sourceReg2[0, 8], sourceReg1[0, 8] } :                          // PACKH ( low 8 bits of rs1 rs2 into rd ) ZEXT.H
                              size32 ? { {32{sourceReg2[15,1]}}, sourceReg2[0,16], sourceReg1[0,16] } :                          // PACKW ( low 16 bits of rs1 rs2 into rd )
-                                      { sourceReg2[0,32], sourceReg1[0,32] };                                                   // PACK  ( low 32 bits of rs1 rs2 into rd, ZEXT.H when rs2 == 0 )
+                                      {                         sourceReg2[0,32], sourceReg1[0,32] };                           // PACK  ( low 32 bits of rs1 rs2 into rd, ZEXT.H when rs2 == 0 )
     uint64  XPERM <:: function3[1,1] ? {                                                                                        // XPERMN
                                                 $$for i=0,14 do
-                                                sourceReg1[ { sourceReg2[ $(16-i)*4-4$, 4 ], 2b00 }, 4 ],
+                                                sourceReg1[ { sourceReg2[$(16-i)*4-4$,4], 2b00 }, 4 ],
                                                 $$end
-                                                sourceReg1[ { sourceReg2[0,4], 2b00 }, 4 ]
+                                                sourceReg1[ {            sourceReg2[0,4], 2b00 }, 4 ]
                                        } :
                                        {                                                                                        // XPERMB
                                                 $$for i=0,6 do
                                                 sourceReg2[ $(8-i)*8-1$,1 ] ? 8h0 : sourceReg1[ { sourceReg2[ $(8-i)*8-4$, 3 ], 3b000 }, 8 ],
                                                 $$end
-                                                sourceReg2[ 7,1 ] ? 8h0 : sourceReg1[ { sourceReg2[ 0, 3 ], 3b000 }, 8 ]
+                                                sourceReg2[           7,1 ] ? 8h0 : sourceReg1[ {           sourceReg2[ 0, 3 ], 3b000 }, 8 ]
                                        };
     uint64  REV <:: shiftbit6 ? {                                                                                               // REV8
                                     sourceReg1[ 0,8], sourceReg1[ 8,8],
@@ -155,20 +143,19 @@ unit alu(
                         $$for i=0,6 do
                         {8{|sourceReg1[$(7-i)*8$,8]}},
                         $$end
-                        {8{|sourceReg1[0,8]}}
+                        {8{|sourceReg1[        0,8]}}
                      };
 
-    aluaddsub ADDSUB( size32 <: size32, function3 <: function3[1,2], dosub <: $doalt$, doadduw <: $doadduw$, sourceReg1 <: sourceReg1, operand2 <: operand2 );
-    alubits BITS( I_1 <: sourceReg1, SHIFT <: shiftcount, ACTION <: OP[9,3] );
+    alubits BITS( I_1 <: sourceReg1, MASK <: mask, ACTION <: OP[9,3] );
     alucount COUNT( size32 <: size32, counttype <: rs2[0,2], sourceReg1 <: sourceReg1 );
-    alulogic LOGIC( doinv <: $doalt$, sourceReg1 <: sourceReg1, operand2 <: operand2 );
+    alulogic LOGIC( INV <: $doalt$, ACTION <: function3[0,2], I_1 <: sourceReg1, I_2 <: operand2 );
     alumultiply MULT( size32 <: size32, function3 <: function3[0,2], sourceReg1 <: sourceReg1, sourceReg2 <: sourceReg2 );
     alushift SHIFTS( size32 <: size32, rotate <: $dorotate$, reverse <: function3[2,1], sourceReg1 <: sourceReg1, shiftcount <: shiftcount );
 
     always {
         if( immediate ) {
             switch( function3 ) {                                                                                               // REGISTER AND REGISTER
-                case 3b000: { result = $domul$ ? MULT.mult : ADDSUB.addsub; }                                                   // ADD[W][.UW] SUB[W] MUL[W]
+                case 3b000: { result = $domul$ ? MULT.mult : ADDSUB; }                                                          // ADD[W][.UW] SUB[W] MUL[W]
                 case 3b001: {
                     result =     $domul$ ? MULT.mult :                                                                          // MULH
                                 $dobits$ ? BITS.RESULT :                                                                        // BCLR BINV BSET
@@ -177,7 +164,7 @@ unit alu(
                 }
                 case 3b010: {
                     result =      $domul$ ? MULT.mult :                                                                         // MULHSU
-                               $doshxadd$ ? ADDSUB.addsub :                                                                     // SH1ADD[.UW]
+                               $doshxadd$ ? ADDSUB :                                                                            // SH1ADD[.UW]
                              $doorcxperm$ ? XPERM :                                                                             // XPERMN
                                             LT;                                                                                 // SLT
                 }
@@ -187,10 +174,10 @@ unit alu(
                 }
                 case 3b100: {
                     result =   $dominmax$ ? LT ? sourceReg1 : sourceReg2 :                                                      // MIN
-                               $doshxadd$ ? ADDSUB.addsub :                                                                     // SH2ADD[.UW]
+                               $doshxadd$ ? ADDSUB :                                                                            // SH2ADD[.UW]
                                  $dopack$ ? PACK :                                                                              // PACKW PACK
                              $doorcxperm$ ? XPERM :                                                                             // XPERMB
-                                            LOGIC.XOR;                                                                          // XOR XNOR
+                                            LOGIC.RESULT;                                                                       // X[N]OR
                 }
                 case 3b101: {
                     result =  $dominmax$ ? LTU ? sourceReg1 : sourceReg2 :                                                      // MINU
@@ -202,19 +189,19 @@ unit alu(
                 }
                 case 3b110: {
                     result = $dominmax$ ? LT ? sourceReg2 : sourceReg1 :                                                        // MAX
-                             $doshxadd$ ? ADDSUB.addsub :                                                                       // SH3ADD
-                                          LOGIC.OR;                                                                             // OR[N]
+                             $doshxadd$ ? ADDSUB :                                                                              // SH3ADD
+                                          LOGIC.RESULT;                                                                         // OR[N]
                 }
                 case 3b111: {
                     result = $dominmax$ ? LTU ? sourceReg2 : sourceReg1 :                                                       // MAXU
                                $dopack$ ? PACK :                                                                                // PACKH
                                $docond$ ? SR2_0 ? sourceReg1 : 0 :                                                              // CZERO.NEZ ( rd = ( rs2!=0 ) ? rs1 : 0 )
-                                          LOGIC.AND;                                                                            // AND[N]
+                                          LOGIC.RESULT;                                                                         // AND[N]
                 }
             }
         } else {
             switch( function3 ) {                                                                                               // SINGLE REGISTER OR REGISTER AND IMMEDIATE
-                case 3b000: { result = ADDSUB.addsub; }                                                                         // ADDI[W]
+                case 3b000: { result = ADDSUB; }                                                                                // ADDI[W]
                 case 3b001: {
                     result =  $docountsignx$ ? rs2[2,1] ? rs2[0,1] ? { {48{sourceReg1[15,1]}}, sourceReg1[0,16] } :             // SEXT.H
                                                                      { {56{sourceReg1[ 7,1]}}, sourceReg1[0, 8] } :             // SEXT.B
@@ -224,7 +211,7 @@ unit alu(
                 }
                 case 3b010: { result = LT; }                                                                                    // SLTI
                 case 3b011: { result = IMM_1 ? SR1_0 : LTU; }                                                                   // SLTIU op2==1 ? rs1==0 : op1<op2
-                case 3b100: { result = LOGIC.XOR; }                                                                             // XORI
+                case 3b100: { result = LOGIC.RESULT; }                                                                          // XORI
                 case 3b101: {
                     result = $doorcxperm$ ? ORCB :                                                                              // ORC.B
                                   $dorev$ ? REV :                                                                               // REV8 REV.B
@@ -233,8 +220,8 @@ unit alu(
                                   $dosra$ ? SHIFTS.SRA :                                                                        // SRAI[W]
                                             SHIFTS.SRL;                                                                         // SRLI[W]
                 }
-                case 3b110: { result = LOGIC.OR; }                                                                              // ORI
-                case 3b111: { result = LOGIC.AND; }                                                                             // ANDI
+                case 3b110: { result = LOGIC.RESULT; }                                                                          // ORI
+                case 3b111: { result = LOGIC.RESULT; }                                                                          // ANDI
             }
 
         }
@@ -250,7 +237,7 @@ unit dointegerdivide(
     input   uint64  divisor,
     output  uint64  quotient,
     output  uint64  remainder
-) {
+) <reginputs> {
     uint2   STATE = 1;
         $$ STATE_INT_DIV_WAIT = 1
         $$ STATE_INT_DIV_CALC = 2
@@ -291,15 +278,15 @@ unit aludivision(
     input   uint64  S2_abs64,
     input   uint64  sourceReg2,
     output  uint64  result
-) {
+) <reginputs> {
     uint1   notdivzero <:: |( size32 ? sourceReg2[0,32] : sourceReg2 );                                                         // CHECK DIVISOR IS NOT ZERO
     uint6   signbit <:: { ~size32, 5b11111 };                                                                                   // POSITION OF SIGN OR THE STARTING BIT FOR DIVISION
 
-    dointegerdivide DODIVIDE( startingbit <: signbit );                                                                         // START DIVISION AT BIT 63 LONG OR 31 INT
-    DODIVIDE.dividend := size32 ? ( function3[0,1] ? sourceReg1[0,32] : S1_abs32 ) :                                            // ABSOLUTE VALUE OF DIVIDEND
-                                  ( function3[0,1] ? sourceReg1 : S1_abs64 ) ;
-    DODIVIDE.divisor :=  size32 ? ( function3[0,1] ? sourceReg2[0,32] : S2_abs32 ) :                                            // ABSOLUTE VALUE OF DIVISOR
-                                  ( function3[0,1] ? sourceReg2 : S2_abs64 );
+    uint64  dividend <:: size32 ? ( function3[0,1] ? sourceReg1[0,32] : S1_abs32 ) :                                            // ABSOLUTE VALUE OF DIVIDEND
+                                  ( function3[0,1] ? sourceReg1       : S1_abs64 ) ;
+    uint64  divisor <::  size32 ? ( function3[0,1] ? sourceReg2[0,32] : S2_abs32 ) :                                            // ABSOLUTE VALUE OF DIVISOR
+                                  ( function3[0,1] ? sourceReg2       : S2_abs64 );
+    dointegerdivide DODIVIDE( startingbit <: signbit, dividend <: dividend, divisor <: divisor );                               // START DIVISION AT BIT 63 LONG OR 31 INT
 
     busy := start | DODIVIDE.busy; DODIVIDE.start := start & notdivzero;                                                        // START DIVISION IF NOT DIVIDE BY ZERO
 
@@ -317,25 +304,26 @@ unit aluA(
     input   uint64  RDATA,
     input   uint64  sourceReg2,
     output  uint64  result
-) {
-    uint64  I1 <:: &function3[0,2] ? RDATA : { {32{function7[3,1] & RDATA[31,1]}}, RDATA[0,32] };                               // 32/64 BIT FOR MEMORY INPUT
+) <reginputs> {
+    uint64  I1 <:: &function3[0,2] ?      RDATA : { {32{function7[3,1] &       RDATA[31,1]}},       RDATA[0,32] };              // 32/64 BIT FOR MEMORY INPUT
     uint64  I2 <:: &function3[0,2] ? sourceReg2 : { {32{function7[3,1] &  sourceReg2[31,1]}},  sourceReg2[0,32] };              // 32/64 BIT FOR SOURCEREG2
+    uint2   LOGIC_F3 <:: ( function7[0,4] == 4b0100 ) ? 2b00 : ( function7[0,4] == 4b1000 ) ? 2b10 : 2b11;                      // TRANSLATE 4-BIT F7 TO 2-BIT F3 FOR LOGIC OPERATIONS
+    uint1   MINMAX <:: ( function7[2,1] ^ ( function7[3,1] ? COMPARE.FLAGS[3,1] : COMPARE.FLAGS[2,1] ) );
+    uint64  ADD <:: I1 + I2;
 
-    aluaddsub ADD( sourceReg1 <: I1, operand2 <: I2 );
-    alulogic LOGIC( sourceReg1 <: I1, operand2 <: I2 );
+    alulogic LOGIC( ACTION <: LOGIC_F3, I_1 <: I1, I_2 <: I2 );
     i_compare COMPARE( I_1 <: I1, IMMEDIATE <: I2 );                                                                            // INTEGER REGISTER COMPARISON FLAGS
 
     always {
         if( function7[4,1] ) {                                                                                                  // AMOMAX[U] AMOMIN[U] UNSIGNED/SIGNED COMPARISONS, FLIPPED IF MAX
-            result = ( function7[2,1] ^ ( function7[3,1] ? COMPARE.FLAGS[3,1] : COMPARE.FLAGS[2,1] ) ) ? I1 :                   //  MEMORYINPUT
-                                                                                                         I2;                    //  SOURCEREG1?
+            result = MINMAX ? I1 : I2;                                                                                          //  MEMORYINPUT SOURCEREG1?
         } else {
             switch( function7[0,4] ) {
-                default: { result = ADD.addsub; }                                                                               // ADD
+                default: { result = ADD; }                                                                                      // ADD
                 case 4b0001: { result = I2; }                                                                                   // AMOSWAP
-                case 4b0100: { result = LOGIC.XOR; }                                                                            // AMOXOR
-                case 4b1000: { result = LOGIC.OR; }                                                                             // AMOOR
-                case 4b1100: { result = LOGIC.AND; }                                                                            // AMOAND
+                case 4b0100: { result = LOGIC.RESULT; }                                                                         // AMOXOR
+                case 4b1000: { result = LOGIC.RESULT; }                                                                         // AMOOR
+                case 4b1100: { result = LOGIC.RESULT; }                                                                         // AMOAND
             }
         }
     }
